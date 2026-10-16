@@ -1,0 +1,58 @@
+# Production-style stack: PostgreSQL, API and web. Put an HTTPS reverse proxy (Caddy, nginx, a cloud load
+# balancer) in front of the web service. Usage:
+#   cp .env.production.example .env.production   # fill in real secrets
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+name: nextcore-vcms-prod
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vcms
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}
+      POSTGRES_DB: vcms
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vcms -d vcms"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    image: nextcore-vcms-api:${APP_VERSION:-latest}
+    restart: unless-stopped
+    env_file: ${ENV_FILE:-.env.production}
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://vcms:${POSTGRES_PASSWORD}@db:5432/vcms
+      STORAGE_LOCAL_DIR: /data/storage
+      APP_VERSION: ${APP_VERSION:-latest}
+    volumes:
+      - storage:/data/storage
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+      args:
+        API_URL: http://api:4000
+        CLIENT_PORTAL_ENABLED: ${CLIENT_PORTAL_ENABLED:-false}
+    image: nextcore-vcms-web:${APP_VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  db-data:
+  storage:

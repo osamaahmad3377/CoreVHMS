@@ -1,0 +1,4359 @@
+// NextCore VCMS — relational schema.
+// Conventions:
+//  * UUID primary keys.
+//  * Every tenant-owned table carries `organizationId` (enforced by the tenant Prisma extension).
+//  * Timestamps are timestamptz (UTC). Money is integer minor units.
+//  * Clinical and financial rows are never hard-deleted by application code.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────────── Tenancy & identity ─────────────────────────────
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+model Organization {
+  id                 String             @id @default(uuid()) @db.Uuid
+  name               String
+  legalName          String?
+  registrationNumber String?
+  taxNumber          String?
+  country            String             @db.Char(2)
+  currency           String             @db.Char(3)
+  defaultTimezone    String
+  locale             String             @default("en")
+  email              String?
+  phone              String?
+  website            String?
+  addressLine1       String?
+  addressLine2       String?
+  city               String?
+  state              String?
+  postcode           String?
+  logoAttachmentId   String?            @db.Uuid
+  primaryColor       String?
+  dateFormat         String             @default("dd/MM/yyyy")
+  weightUnit         String             @default("kg")
+  temperatureUnit    String             @default("C")
+  disabledModules    String[]           @default([])
+  status             OrganizationStatus @default(ACTIVE)
+  createdAt          DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
+
+  branches                 Branch[]
+  memberships              Membership[]
+  roles                    Role[]
+  counters                 Counter[]
+  species                  Species[]
+  breeds                   Breed[]
+  clients                  Client[]
+  addresses                Address[]
+  clientContacts           ClientContact[]
+  clientNotes              ClientNote[]
+  patients                 Patient[]
+  patientOwnerships        PatientOwnership[]
+  patientIds               PatientIdentifier[]
+  weightRecords            WeightRecord[]
+  patientAlerts            PatientAlert[]
+  attachments              Attachment[]
+  appointmentTypes         AppointmentType[]
+  resources                Resource[]
+  workingHours             WorkingHours[]
+  staffLeave               StaffLeave[]
+  appointments             Appointment[]
+  waitlist                 WaitlistEntry[]
+  triage                   TriageAssessment[]
+  encounters               Encounter[]
+  clinicalNotes            ClinicalNote[]
+  vitals                   VitalSign[]
+  vitalReferences          VitalReference[]
+  diagnoses                Diagnosis[]
+  problems                 ProblemListItem[]
+  clinicalTemplates        ClinicalTemplate[]
+  tasks                    Task[]
+  products                 Product[]
+  productWithdrawals       ProductWithdrawal[]
+  doseReferences           DoseReference[]
+  prescriptions            Prescription[]
+  prescriptionItems        PrescriptionItem[]
+  dispensations            Dispensation[]
+  administrations          MedicationAdministration[]
+  withdrawals              PatientWithdrawal[]
+  labTests                 LabTest[]
+  labAnalytes              LabAnalyte[]
+  referenceIntervals       ReferenceInterval[]
+  diagnosticOrders         DiagnosticOrder[]
+  diagnosticItems          DiagnosticOrderItem[]
+  samples                  Sample[]
+  sampleEvents             SampleEvent[]
+  labResults               LabResult[]
+  imagingReports           ImagingReport[]
+  allowNegativeStock       Boolean                    @default(false)
+  pricesIncludeTax         Boolean                    @default(false)
+  paymentTermsDays         Int                        @default(0)
+  requireCashSession       Boolean                    @default(true)
+  stockLocations           StockLocation[]
+  stockBatches             StockBatch[]
+  stockLevels              StockLevel[]
+  stockMovements           StockMovement[]
+  stockCounts              StockCount[]
+  stockCountLines          StockCountLine[]
+  suppliers                Supplier[]
+  purchaseOrders           PurchaseOrder[]
+  purchaseOrderLines       PurchaseOrderLine[]
+  goodsReceipts            GoodsReceipt[]
+  goodsReceiptLines        GoodsReceiptLine[]
+  taxRates                 TaxRate[]
+  services                 Service[]
+  charges                  Charge[]
+  invoices                 Invoice[]
+  invoiceLines             InvoiceLine[]
+  payments                 Payment[]
+  paymentAllocations       PaymentAllocation[]
+  refunds                  Refund[]
+  creditNotes              CreditNote[]
+  estimates                Estimate[]
+  estimateLines            EstimateLine[]
+  cashRegisters            CashRegister[]
+  cashSessions             CashSession[]
+  expenses                 Expense[]
+  wards                    Ward[]
+  cages                    Cage[]
+  admissions               Admission[]
+  treatmentOrders          TreatmentOrder[]
+  treatmentTasks           TreatmentTask[]
+  hospitalNotes            HospitalNote[]
+  surgeries                Surgery[]
+  surgeryTeamMembers       SurgeryTeamMember[]
+  anaesthesiaReadings      AnaesthesiaReading[]
+  surgeryItems             SurgeryItem[]
+  surgeryAddenda           SurgeryAddendum[]
+  surgeryChecklistItems    SurgeryChecklistItem[]
+  reminderLeadDays         Int                        @default(14)
+  overdueReminderDays      Int                        @default(7)
+  appointmentReminderHours Int                        @default(24)
+  portalEnabled            Boolean                    @default(true)
+  portalCancelHours        Int                        @default(24)
+  careProtocols            CareProtocol[]
+  careItems                CareItem[]
+  messageTemplates         MessageTemplate[]
+  outboundMessages         OutboundMessage[]
+  clientMessages           ClientMessage[]
+  portalAccesses           PortalAccess[]
+  appointmentRequests      AppointmentRequest[]
+
+  farms                  Farm[]
+  animalGroups           AnimalGroup[]
+  livestockMovements     LivestockMovement[]
+  breedingEvents         BreedingEvent[]
+  productionRecords      ProductionRecord[]
+  groupTreatments        GroupTreatment[]
+  diseaseOutbreaks       DiseaseOutbreak[]
+  fieldVisits            FieldVisit[]
+  fieldVisitItems        FieldVisitItem[]
+  boardingUnits          BoardingUnit[]
+  boardingStays          BoardingStay[]
+  boardingLogs           BoardingLog[]
+  groomingJobs           GroomingJob[]
+  groomingJobServices    GroomingJobService[]
+  insuranceProviders     InsuranceProvider[]
+  insurancePolicies      InsurancePolicy[]
+  preAuthorizations      PreAuthorization[]
+  insuranceClaims        InsuranceClaim[]
+  insuranceClaimInvoices InsuranceClaimInvoice[]
+  referralContacts       ReferralContact[]
+  referrals              Referral[]
+  purchaseRequests       PurchaseRequest[]
+  supplierReturns        SupplierReturn[]
+  supplierReturnLines    SupplierReturnLine[]
+}
+
+model Branch {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  name           String
+  code           String
+  timezone       String
+  email          String?
+  phone          String?
+  addressLine1   String?
+  addressLine2   String?
+  city           String?
+  state          String?
+  postcode       String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  organization     Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  members          MembershipBranch[]
+  resources        Resource[]
+  appointments     Appointment[]
+  encounters       Encounter[]
+  prescriptions    Prescription[]
+  diagnosticOrders DiagnosticOrder[]
+
+  stockLocations StockLocation[]
+  invoices       Invoice[]
+  cashRegisters  CashRegister[]
+
+  wards      Ward[]
+  admissions Admission[]
+  surgeries  Surgery[]
+
+  fieldVisits   FieldVisit[]
+  boardingUnits BoardingUnit[]
+  boardingStays BoardingStay[]
+  groomingJobs  GroomingJob[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+model User {
+  id                         String     @id @default(uuid()) @db.Uuid
+  email                      String     @unique
+  name                       String
+  passwordHash               String?
+  isPlatformAdmin            Boolean    @default(false)
+  status                     UserStatus @default(ACTIVE)
+  mfaEnabled                 Boolean    @default(false)
+  mfaSecretEnc               String?
+  mfaPendingSecret           String?
+  mfaRecoveryHashes          String[]   @default([])
+  failedLoginCount           Int        @default(0)
+  lockedUntil                DateTime?  @db.Timestamptz(3)
+  lastLoginAt                DateTime?  @db.Timestamptz(3)
+  passwordChangedAt          DateTime?  @db.Timestamptz(3)
+  /// Set when an administrator issues a temporary password: the user must choose their own before doing anything else.
+  mustChangePassword         Boolean    @default(false)
+  /// A temporary password stops working after this time if it has not been changed.
+  temporaryPasswordExpiresAt DateTime?  @db.Timestamptz(3)
+  createdAt                  DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt                  DateTime   @updatedAt @db.Timestamptz(3)
+
+  memberships   Membership[]
+  sessions      Session[]
+  authTokens    AuthToken[]
+  mfaChallenges MfaChallenge[]
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+}
+
+model Membership {
+  id                       String           @id @default(uuid()) @db.Uuid
+  organizationId           String           @db.Uuid
+  userId                   String           @db.Uuid
+  status                   MembershipStatus @default(INVITED)
+  jobTitle                 String?
+  isClinician              Boolean          @default(false)
+  professionalRegistration String?
+  invitedById              String?          @db.Uuid
+  joinedAt                 DateTime?        @db.Timestamptz(3)
+  createdAt                DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime         @updatedAt @db.Timestamptz(3)
+
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user          User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  roles         MembershipRole[]
+  branches      MembershipBranch[]
+  workingHours  WorkingHours[]
+  leave         StaffLeave[]
+  appointments  Appointment[]      @relation("AppointmentClinician")
+  encounters    Encounter[]        @relation("EncounterClinician")
+  tasks         Task[]             @relation("TaskAssignee")
+  prescriptions Prescription[]     @relation("Prescriber")
+
+  responsibleAdmissions Admission[]         @relation("AdmissionClinician")
+  surgeryRoles          SurgeryTeamMember[] @relation("SurgeryTeam")
+
+  fieldVisits  FieldVisit[]  @relation("FieldVisitClinician")
+  groomingJobs GroomingJob[] @relation("Groomer")
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+model Role {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  key            String?
+  name           String
+  description    String?
+  isSystem       Boolean  @default(false)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  permissions  RolePermission[]
+  memberships  MembershipRole[]
+
+  @@unique([organizationId, name])
+  @@unique([organizationId, key])
+}
+
+model RolePermission {
+  roleId     String @db.Uuid
+  permission String
+
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permission])
+}
+
+model MembershipRole {
+  membershipId String @db.Uuid
+  roleId       String @db.Uuid
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@id([membershipId, roleId])
+  @@index([roleId])
+}
+
+model MembershipBranch {
+  membershipId String @db.Uuid
+  branchId     String @db.Uuid
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  branch     Branch     @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  @@id([membershipId, branchId])
+  @@index([branchId])
+}
+
+model Session {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @db.Uuid
+  tokenHash      String    @unique
+  csrfToken      String
+  organizationId String?   @db.Uuid
+  branchId       String?   @db.Uuid
+  ip             String?
+  userAgent      String?
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  lastSeenAt     DateTime  @default(now()) @db.Timestamptz(3)
+  idleExpiresAt  DateTime  @db.Timestamptz(3)
+  expiresAt      DateTime  @db.Timestamptz(3)
+  revokedAt      DateTime? @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model MfaChallenge {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  attempts   Int       @default(0)
+  ip         String?
+  expiresAt  DateTime  @db.Timestamptz(3)
+  consumedAt DateTime? @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum AuthTokenType {
+  PASSWORD_RESET
+  INVITATION
+}
+
+model AuthToken {
+  id             String        @id @default(uuid()) @db.Uuid
+  type           AuthTokenType
+  tokenHash      String        @unique
+  userId         String        @db.Uuid
+  organizationId String?       @db.Uuid
+  membershipId   String?       @db.Uuid
+  expiresAt      DateTime      @db.Timestamptz(3)
+  consumedAt     DateTime?     @db.Timestamptz(3)
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+}
+
+model AuditEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String?  @db.Uuid
+  branchId       String?  @db.Uuid
+  actorUserId    String?  @db.Uuid
+  actorName      String?
+  action         String
+  entityType     String
+  entityId       String?
+  summary        String?
+  changes        Json?
+  ip             String?
+  userAgent      String?
+  requestId      String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([organizationId, entityType, entityId])
+  @@index([organizationId, actorUserId])
+}
+
+/// Per-organization sequence numbers (client no., patient no., invoice no. …).
+model Counter {
+  organizationId String @db.Uuid
+  key            String
+  value          Int    @default(0)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@id([organizationId, key])
+}
+
+// ───────────────────────────── Species catalogue ─────────────────────────────
+
+enum SpeciesCategory {
+  COMPANION
+  LIVESTOCK
+  POULTRY
+  EQUINE
+  EXOTIC
+  WILDLIFE
+}
+
+model Species {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  name           String
+  category       SpeciesCategory
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime        @updatedAt @db.Timestamptz(3)
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  breeds             Breed[]
+  patients           Patient[]
+  vitalRefs          VitalReference[]
+  productWithdrawals ProductWithdrawal[]
+  doseReferences     DoseReference[]
+  referenceIntervals ReferenceInterval[]
+
+  careProtocols CareProtocol[]
+
+  gestationDays   Int?
+  gestationSource String?
+  animalGroups    AnimalGroup[]
+
+  @@unique([organizationId, name])
+}
+
+model Breed {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  speciesId      String   @db.Uuid
+  name           String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  species      Species      @relation(fields: [speciesId], references: [id], onDelete: Restrict)
+  patients     Patient[]
+
+  @@unique([speciesId, name])
+  @@index([organizationId])
+}
+
+// ───────────────────────────── Clients ─────────────────────────────
+
+enum ClientType {
+  INDIVIDUAL
+  FAMILY
+  FARM
+  BREEDER
+  COMPANY
+  SHELTER
+  OTHER
+}
+
+enum ClientStatus {
+  ACTIVE
+  ARCHIVED
+  MERGED
+}
+
+enum ContactChannel {
+  EMAIL
+  SMS
+  WHATSAPP
+  PHONE
+  POST
+}
+
+enum ContactRole {
+  CO_OWNER
+  AUTHORIZED
+  EMERGENCY
+  BILLING
+  OTHER
+}
+
+model Client {
+  id                String         @id @default(uuid()) @db.Uuid
+  organizationId    String         @db.Uuid
+  number            Int
+  type              ClientType     @default(INDIVIDUAL)
+  status            ClientStatus   @default(ACTIVE)
+  title             String?
+  firstName         String?
+  lastName          String?
+  organizationName  String?
+  /// Denormalised display/sort name ("Surname, First" or business name).
+  displayName       String
+  email             String?
+  mobilePhone       String?
+  homePhone         String?
+  workPhone         String?
+  /// Digits-only copy of mobile phone for duplicate detection and search.
+  phoneDigits       String?
+  nationalId        String?
+  taxNumber         String?
+  preferredChannel  ContactChannel @default(SMS)
+  preferredLanguage String?
+  marketingConsent  Boolean        @default(false)
+  remindersConsent  Boolean        @default(true)
+  consentUpdatedAt  DateTime?      @db.Timestamptz(3)
+  notes             String?
+  referralSource    String?
+  primaryBranchId   String?        @db.Uuid
+  balanceMinor      Int            @default(0)
+  mergedIntoId      String?        @db.Uuid
+  archivedAt        DateTime?      @db.Timestamptz(3)
+  archivedReason    String?
+  anonymisedAt      DateTime?      @db.Timestamptz(3)
+  createdById       String?        @db.Uuid
+  createdAt         DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime       @updatedAt @db.Timestamptz(3)
+
+  organization     Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  addresses        Address[]
+  contacts         ClientContact[]
+  clientNotes      ClientNote[]
+  ownerships       PatientOwnership[]
+  appointments     Appointment[]
+  waitlist         WaitlistEntry[]
+  encounters       Encounter[]
+  prescriptions    Prescription[]
+  diagnosticOrders DiagnosticOrder[]
+
+  charges   Charge[]
+  invoices  Invoice[]
+  payments  Payment[]
+  estimates Estimate[]
+
+  admissions Admission[]
+  surgeries  Surgery[]
+
+  clientMessages      ClientMessage[]
+  portalAccesses      PortalAccess[]
+  appointmentRequests AppointmentRequest[]
+
+  farms             Farm[]
+  fieldVisits       FieldVisit[]
+  boardingStays     BoardingStay[]
+  groomingJobs      GroomingJob[]
+  insurancePolicies InsurancePolicy[]
+  insuranceClaims   InsuranceClaim[]
+  referrals         Referral[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status, displayName])
+  @@index([organizationId, phoneDigits])
+  @@index([organizationId, email])
+}
+
+model Address {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  clientId       String   @db.Uuid
+  label          String?
+  line1          String
+  line2          String?
+  city           String?
+  state          String?
+  postcode       String?
+  country        String   @db.Char(2)
+  isPrimary      Boolean  @default(false)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  client       Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+}
+
+model ClientContact {
+  id                    String      @id @default(uuid()) @db.Uuid
+  organizationId        String      @db.Uuid
+  clientId              String      @db.Uuid
+  role                  ContactRole
+  name                  String
+  relationship          String?
+  email                 String?
+  phone                 String?
+  canAuthorizeTreatment Boolean     @default(false)
+  canCollectAnimal      Boolean     @default(false)
+  notes                 String?
+  createdAt             DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime    @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  client       Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+}
+
+enum NoteCategory {
+  GENERAL
+  COMPLAINT
+  FINANCIAL
+  COMMUNICATION
+}
+
+model ClientNote {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  clientId       String       @db.Uuid
+  category       NoteCategory @default(GENERAL)
+  body           String
+  isPinned       Boolean      @default(false)
+  authorId       String       @db.Uuid
+  authorName     String
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  client       Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, createdAt(sort: Desc)])
+}
+
+// ───────────────────────────── Patients ─────────────────────────────
+
+enum PatientSex {
+  MALE
+  FEMALE
+  MALE_NEUTERED
+  FEMALE_SPAYED
+  UNKNOWN
+}
+
+enum PatientStatus {
+  ACTIVE
+  DECEASED
+  TRANSFERRED
+  ARCHIVED
+  MERGED
+}
+
+enum IdentifierType {
+  MICROCHIP
+  EAR_TAG
+  RFID
+  TATTOO
+  BRAND
+  REGISTRATION
+  OTHER
+}
+
+enum AlertType {
+  ALLERGY
+  CONDITION
+  BEHAVIOUR
+  MEDICATION
+  OTHER
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+model Patient {
+  id                    String        @id @default(uuid()) @db.Uuid
+  organizationId        String        @db.Uuid
+  number                Int
+  name                  String
+  speciesId             String        @db.Uuid
+  breedId               String?       @db.Uuid
+  breedText             String?
+  sex                   PatientSex    @default(UNKNOWN)
+  colour                String?
+  markings              String?
+  dateOfBirth           DateTime?     @db.Date
+  dobEstimated          Boolean       @default(false)
+  status                PatientStatus @default(ACTIVE)
+  deceasedAt            DateTime?     @db.Timestamptz(3)
+  causeOfDeath          String?
+  euthanasia            Boolean?
+  aftercare             String?
+  bloodType             String?
+  insuranceProvider     String?
+  insurancePolicyNumber String?
+  notes                 String?
+  photoAttachmentId     String?       @db.Uuid
+  primaryBranchId       String?       @db.Uuid
+  latestWeightKg        Decimal?      @db.Decimal(9, 3)
+  mergedIntoId          String?       @db.Uuid
+  archivedAt            DateTime?     @db.Timestamptz(3)
+  archivedReason        String?
+  createdById           String?       @db.Uuid
+  createdAt             DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime      @updatedAt @db.Timestamptz(3)
+
+  organization     Organization               @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  species          Species                    @relation(fields: [speciesId], references: [id], onDelete: Restrict)
+  breed            Breed?                     @relation(fields: [breedId], references: [id], onDelete: SetNull)
+  ownerships       PatientOwnership[]
+  identifiers      PatientIdentifier[]
+  weights          WeightRecord[]
+  alerts           PatientAlert[]
+  appointments     Appointment[]
+  waitlist         WaitlistEntry[]
+  triage           TriageAssessment[]
+  encounters       Encounter[]
+  clinicalNotes    ClinicalNote[]
+  vitals           VitalSign[]
+  diagnoses        Diagnosis[]
+  problems         ProblemListItem[]
+  tasks            Task[]
+  prescriptions    Prescription[]
+  administrations  MedicationAdministration[]
+  withdrawals      PatientWithdrawal[]
+  diagnosticOrders DiagnosticOrder[]
+
+  admissions Admission[]
+  surgeries  Surgery[]
+
+  careItems CareItem[]
+
+  farmId  String?      @db.Uuid
+  groupId String?      @db.Uuid
+  sireId  String?      @db.Uuid
+  damId   String?      @db.Uuid
+  farm    Farm?        @relation(fields: [farmId], references: [id], onDelete: SetNull)
+  group   AnimalGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  sire    Patient?     @relation("Sire", fields: [sireId], references: [id], onDelete: SetNull)
+  dam     Patient?     @relation("Dam", fields: [damId], references: [id], onDelete: SetNull)
+  sireOf  Patient[]    @relation("Sire")
+  damOf   Patient[]    @relation("Dam")
+
+  livestockMovements LivestockMovement[]
+  breedingEvents     BreedingEvent[]     @relation("BreedingFemale")
+  sireEvents         BreedingEvent[]     @relation("BreedingSire")
+  productionRecords  ProductionRecord[]
+  boardingStays      BoardingStay[]
+  groomingJobs       GroomingJob[]
+  insurancePolicies  InsurancePolicy[]
+  insuranceClaims    InsuranceClaim[]
+  referrals          Referral[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status, name])
+  @@index([speciesId])
+  @@index([farmId])
+  @@index([groupId])
+}
+
+/// Ownership history. The current legal owner is the row with isPrimary = true and endedAt = null.
+/// Co-owners are rows with isPrimary = false and endedAt = null.
+model PatientOwnership {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  patientId      String    @db.Uuid
+  clientId       String    @db.Uuid
+  isPrimary      Boolean   @default(true)
+  startedAt      DateTime  @default(now()) @db.Timestamptz(3)
+  endedAt        DateTime? @db.Timestamptz(3)
+  endReason      String?
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  patient      Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  client       Client       @relation(fields: [clientId], references: [id], onDelete: Restrict)
+
+  @@index([patientId, endedAt])
+  @@index([clientId, endedAt])
+}
+
+model PatientIdentifier {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @db.Uuid
+  patientId      String         @db.Uuid
+  type           IdentifierType
+  value          String
+  issuedAt       DateTime?      @db.Date
+  notes          String?
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  patient      Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, type, value])
+  @@index([patientId])
+  @@index([organizationId, value])
+}
+
+model WeightRecord {
+  id                 String   @id @default(uuid()) @db.Uuid
+  organizationId     String   @db.Uuid
+  patientId          String   @db.Uuid
+  weightKg           Decimal  @db.Decimal(9, 3)
+  bodyConditionScore Int?
+  bcsScale           Int      @default(9)
+  measuredAt         DateTime @default(now()) @db.Timestamptz(3)
+  notes              String?
+  recordedById       String?  @db.Uuid
+  recordedByName     String?
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  patient      Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, measuredAt(sort: Desc)])
+}
+
+model PatientAlert {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @db.Uuid
+  patientId      String        @db.Uuid
+  type           AlertType
+  severity       AlertSeverity @default(WARNING)
+  title          String
+  details        String?
+  substance      String?
+  reaction       String?
+  isActive       Boolean       @default(true)
+  createdById    String?       @db.Uuid
+  createdByName  String?
+  resolvedAt     DateTime?     @db.Timestamptz(3)
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime      @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  patient      Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, isActive])
+}
+
+// ───────────────────────────── Files ─────────────────────────────
+
+/// File metadata. Bytes live in the storage adapter (local disk / object storage), never in the database.
+model Attachment {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  entityType     String
+  entityId       String    @db.Uuid
+  category       String?
+  description    String?
+  fileName       String
+  mimeType       String
+  sizeBytes      Int
+  sha256         String
+  storageKey     String    @unique
+  uploadedById   String?   @db.Uuid
+  uploadedByName String?
+  deletedAt      DateTime? @db.Timestamptz(3)
+  deletedById    String?   @db.Uuid
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  sharedWithClient Boolean   @default(false)
+  sharedAt         DateTime? @db.Timestamptz(3)
+  sharedByName     String?
+
+  @@index([organizationId, entityType, entityId])
+}
+
+// ───────────────────────────── Scheduling ─────────────────────────────
+
+enum AppointmentCategory {
+  CONSULTATION
+  VACCINATION
+  FOLLOW_UP
+  SURGERY
+  DENTAL
+  DIAGNOSTICS
+  GROOMING
+  EMERGENCY
+  FIELD_VISIT
+  OTHER
+}
+
+model AppointmentType {
+  id                 String              @id @default(uuid()) @db.Uuid
+  organizationId     String              @db.Uuid
+  name               String
+  category           AppointmentCategory @default(CONSULTATION)
+  durationMinutes    Int                 @default(15)
+  color              String              @default("#0d7a70")
+  /// Indicative price shown when booking; invoicing uses the service catalogue.
+  priceMinor         Int?
+  requiresClinician  Boolean             @default(true)
+  allowOnlineBooking Boolean             @default(false)
+  isActive           Boolean             @default(true)
+  createdAt          DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime            @updatedAt @db.Timestamptz(3)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  appointments Appointment[]
+  waitlist     WaitlistEntry[]
+
+  serviceId String?  @db.Uuid
+  service   Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, name])
+}
+
+enum ResourceType {
+  ROOM
+  THEATRE
+  EQUIPMENT
+  KENNEL
+  VEHICLE
+  OTHER
+}
+
+model Resource {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  branchId       String       @db.Uuid
+  name           String
+  type           ResourceType @default(ROOM)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @db.Timestamptz(3)
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch       Branch                @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  bookings     AppointmentResource[]
+
+  surgeries Surgery[]
+
+  @@unique([branchId, name])
+  @@index([organizationId])
+}
+
+/// Weekly working pattern. Times are minutes after midnight in the branch's local time.
+model WorkingHours {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  membershipId   String   @db.Uuid
+  branchId       String   @db.Uuid
+  dayOfWeek      Int
+  startMinute    Int
+  endMinute      Int
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  membership   Membership   @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([membershipId, dayOfWeek])
+}
+
+enum LeaveType {
+  ANNUAL
+  SICK
+  TRAINING
+  PUBLIC_HOLIDAY
+  OTHER
+}
+
+model StaffLeave {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  membershipId   String    @db.Uuid
+  type           LeaveType @default(ANNUAL)
+  startsAt       DateTime  @db.Timestamptz(3)
+  endsAt         DateTime  @db.Timestamptz(3)
+  reason         String?
+  createdById    String?   @db.Uuid
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  membership   Membership   @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([membershipId, startsAt])
+}
+
+enum AppointmentStatus {
+  BOOKED
+  CONFIRMED
+  CHECKED_IN
+  IN_CONSULTATION
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum AppointmentSource {
+  RECEPTION
+  PHONE
+  ONLINE
+  WALK_IN
+  FOLLOW_UP
+}
+
+enum TriagePriority {
+  RESUSCITATION
+  EMERGENT
+  URGENT
+  LESS_URGENT
+  NON_URGENT
+}
+
+model Appointment {
+  id                String            @id @default(uuid()) @db.Uuid
+  organizationId    String            @db.Uuid
+  branchId          String            @db.Uuid
+  number            Int
+  clientId          String            @db.Uuid
+  patientId         String?           @db.Uuid
+  appointmentTypeId String            @db.Uuid
+  clinicianId       String?           @db.Uuid
+  startsAt          DateTime          @db.Timestamptz(3)
+  endsAt            DateTime          @db.Timestamptz(3)
+  status            AppointmentStatus @default(BOOKED)
+  source            AppointmentSource @default(RECEPTION)
+  priority          TriagePriority?
+  reason            String?
+  notes             String?
+  /// Explicitly permitted double-booking (excluded from the overlap constraint).
+  isOverbooked      Boolean           @default(false)
+  recurrenceGroupId String?           @db.Uuid
+  followUpOfId      String?           @db.Uuid
+  confirmedAt       DateTime?         @db.Timestamptz(3)
+  checkedInAt       DateTime?         @db.Timestamptz(3)
+  startedAt         DateTime?         @db.Timestamptz(3)
+  completedAt       DateTime?         @db.Timestamptz(3)
+  cancelledAt       DateTime?         @db.Timestamptz(3)
+  cancelReason      String?
+  createdById       String?           @db.Uuid
+  createdAt         DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime          @updatedAt @db.Timestamptz(3)
+
+  organization    Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch          Branch                @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  client          Client                @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  patient         Patient?              @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  appointmentType AppointmentType       @relation(fields: [appointmentTypeId], references: [id], onDelete: Restrict)
+  clinician       Membership?           @relation("AppointmentClinician", fields: [clinicianId], references: [id], onDelete: Restrict)
+  resources       AppointmentResource[]
+  triage          TriageAssessment[]
+  encounter       Encounter?
+
+  reminderSentAt DateTime? @db.Timestamptz(3)
+
+  fieldVisit  FieldVisit?
+  groomingJob GroomingJob?
+
+  @@unique([organizationId, number])
+  @@index([organizationId, branchId, startsAt])
+  @@index([clinicianId, startsAt])
+  @@index([patientId, startsAt])
+  @@index([clientId])
+}
+
+/// Resource booking. Times are copied from the appointment so the database can reject overlaps.
+model AppointmentResource {
+  appointmentId String   @db.Uuid
+  resourceId    String   @db.Uuid
+  startsAt      DateTime @db.Timestamptz(3)
+  endsAt        DateTime @db.Timestamptz(3)
+  active        Boolean  @default(true)
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  resource    Resource    @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+
+  @@id([appointmentId, resourceId])
+  @@index([resourceId, startsAt])
+}
+
+enum WaitlistStatus {
+  WAITING
+  BOOKED
+  REMOVED
+}
+
+model WaitlistEntry {
+  id                   String         @id @default(uuid()) @db.Uuid
+  organizationId       String         @db.Uuid
+  branchId             String         @db.Uuid
+  clientId             String         @db.Uuid
+  patientId            String?        @db.Uuid
+  appointmentTypeId    String?        @db.Uuid
+  preferredClinicianId String?        @db.Uuid
+  earliestDate         DateTime?      @db.Date
+  latestDate           DateTime?      @db.Date
+  notes                String?
+  status               WaitlistStatus @default(WAITING)
+  createdById          String?        @db.Uuid
+  createdAt            DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime       @updatedAt @db.Timestamptz(3)
+
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  client          Client           @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  patient         Patient?         @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  appointmentType AppointmentType? @relation(fields: [appointmentTypeId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, branchId, status])
+}
+
+model TriageAssessment {
+  id                  String         @id @default(uuid()) @db.Uuid
+  organizationId      String         @db.Uuid
+  patientId           String         @db.Uuid
+  appointmentId       String?        @db.Uuid
+  priority            TriagePriority
+  presentingComplaint String
+  temperatureC        Decimal?       @db.Decimal(4, 1)
+  heartRate           Int?
+  respiratoryRate     Int?
+  mucousMembranes     String?
+  capillaryRefillSec  Decimal?       @db.Decimal(3, 1)
+  painScore           Int?
+  mentation           String?
+  notes               String?
+  assessedById        String         @db.Uuid
+  assessedByName      String
+  assessedAt          DateTime       @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  patient      Patient      @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  appointment  Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  @@index([patientId, assessedAt(sort: Desc)])
+  @@index([appointmentId])
+}
+
+// ───────────────────────────── Clinical records ─────────────────────────────
+
+enum EncounterType {
+  CONSULTATION
+  EMERGENCY
+  FOLLOW_UP
+  VACCINATION
+  FIELD_VISIT
+  TELEHEALTH
+  HOSPITAL_ROUND
+  OTHER
+}
+
+enum EncounterStatus {
+  OPEN
+  COMPLETED
+  CANCELLED
+}
+
+model Encounter {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  branchId       String          @db.Uuid
+  number         Int
+  patientId      String          @db.Uuid
+  clientId       String          @db.Uuid
+  appointmentId  String?         @unique @db.Uuid
+  clinicianId    String?         @db.Uuid
+  type           EncounterType   @default(CONSULTATION)
+  status         EncounterStatus @default(OPEN)
+  chiefComplaint String?
+  startedAt      DateTime        @default(now()) @db.Timestamptz(3)
+  completedAt    DateTime?       @db.Timestamptz(3)
+  createdById    String?         @db.Uuid
+  createdAt      DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime        @updatedAt @db.Timestamptz(3)
+
+  organization     Organization               @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch           Branch                     @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  patient          Patient                    @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  client           Client                     @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  appointment      Appointment?               @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  clinician        Membership?                @relation("EncounterClinician", fields: [clinicianId], references: [id], onDelete: Restrict)
+  notes            ClinicalNote[]
+  vitals           VitalSign[]
+  diagnoses        Diagnosis[]
+  tasks            Task[]
+  prescriptions    Prescription[]
+  administrations  MedicationAdministration[]
+  diagnosticOrders DiagnosticOrder[]
+
+  @@unique([organizationId, number])
+  @@index([patientId, startedAt(sort: Desc)])
+  @@index([organizationId, status, startedAt])
+}
+
+enum NoteStatus {
+  DRAFT
+  REVIEWED
+  SIGNED
+  SUPERSEDED
+}
+
+/// SOAP clinical note. Signed notes are immutable; an amendment creates a new version
+/// (amendsId → previous) and marks the previous one SUPERSEDED without changing its content.
+model ClinicalNote {
+  id                   String     @id @default(uuid()) @db.Uuid
+  organizationId       String     @db.Uuid
+  encounterId          String     @db.Uuid
+  patientId            String     @db.Uuid
+  version              Int        @default(1)
+  status               NoteStatus @default(DRAFT)
+  presentingComplaint  String?
+  history              String?
+  subjective           String?
+  objective            String?
+  assessment           String?
+  plan                 String?
+  followUpInstructions String?
+  /// Structured physical examination findings: [{ system, status: NORMAL|ABNORMAL|NOT_EXAMINED, notes }].
+  examFindings         Json?
+  templateId           String?    @db.Uuid
+  aiAssisted           Boolean    @default(false)
+  authorId             String     @db.Uuid
+  authorName           String
+  reviewedById         String?    @db.Uuid
+  reviewedByName       String?
+  reviewedAt           DateTime?  @db.Timestamptz(3)
+  signedById           String?    @db.Uuid
+  signedByName         String?
+  signedAt             DateTime?  @db.Timestamptz(3)
+  /// SHA-256 of the signed content, so later tampering is detectable.
+  contentHash          String?
+  amendsId             String?    @unique @db.Uuid
+  amendmentReason      String?
+  createdAt            DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime   @updatedAt @db.Timestamptz(3)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  encounter    Encounter     @relation(fields: [encounterId], references: [id], onDelete: Restrict)
+  patient      Patient       @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  amends       ClinicalNote? @relation("NoteAmendment", fields: [amendsId], references: [id], onDelete: Restrict)
+  amendedBy    ClinicalNote? @relation("NoteAmendment")
+
+  @@index([encounterId])
+  @@index([patientId, createdAt(sort: Desc)])
+}
+
+model VitalSign {
+  id                 String   @id @default(uuid()) @db.Uuid
+  organizationId     String   @db.Uuid
+  patientId          String   @db.Uuid
+  encounterId        String?  @db.Uuid
+  recordedAt         DateTime @default(now()) @db.Timestamptz(3)
+  temperatureC       Decimal? @db.Decimal(4, 1)
+  heartRate          Int?
+  respiratoryRate    Int?
+  weightKg           Decimal? @db.Decimal(9, 3)
+  mucousMembranes    String?
+  capillaryRefillSec Decimal? @db.Decimal(3, 1)
+  painScore          Int?
+  systolicBp         Int?
+  diastolicBp        Int?
+  meanBp             Int?
+  spo2               Int?
+  hydrationPercent   Decimal? @db.Decimal(4, 1)
+  notes              String?
+  recordedById       String?  @db.Uuid
+  recordedByName     String?
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  patient      Patient      @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  encounter    Encounter?   @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+
+  admissionId String? @db.Uuid
+
+  @@index([patientId, recordedAt(sort: Desc)])
+}
+
+/// Species-specific reference interval for a vital parameter. Must cite a source and be reviewed by a veterinarian.
+model VitalReference {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  speciesId      String    @db.Uuid
+  parameter      String
+  low            Decimal   @db.Decimal(8, 2)
+  high           Decimal   @db.Decimal(8, 2)
+  unit           String
+  source         String
+  reviewedByName String?
+  reviewedAt     DateTime? @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  species      Species      @relation(fields: [speciesId], references: [id], onDelete: Cascade)
+
+  @@unique([speciesId, parameter])
+  @@index([organizationId])
+}
+
+enum DiagnosisType {
+  DIFFERENTIAL
+  PROVISIONAL
+  CONFIRMED
+}
+
+enum DiagnosisStatus {
+  ACTIVE
+  RESOLVED
+  RULED_OUT
+}
+
+model Diagnosis {
+  id              String          @id @default(uuid()) @db.Uuid
+  organizationId  String          @db.Uuid
+  encounterId     String          @db.Uuid
+  patientId       String          @db.Uuid
+  term            String
+  codeSystem      String?
+  code            String?
+  type            DiagnosisType   @default(PROVISIONAL)
+  status          DiagnosisStatus @default(ACTIVE)
+  notes           String?
+  diagnosedById   String?         @db.Uuid
+  diagnosedByName String?
+  createdAt       DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime        @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  encounter    Encounter    @relation(fields: [encounterId], references: [id], onDelete: Restrict)
+  patient      Patient      @relation(fields: [patientId], references: [id], onDelete: Restrict)
+
+  @@index([patientId, createdAt(sort: Desc)])
+  @@index([encounterId])
+}
+
+enum ProblemStatus {
+  ACTIVE
+  INACTIVE
+  RESOLVED
+}
+
+model ProblemListItem {
+  id                String        @id @default(uuid()) @db.Uuid
+  organizationId    String        @db.Uuid
+  patientId         String        @db.Uuid
+  term              String
+  status            ProblemStatus @default(ACTIVE)
+  onsetDate         DateTime?     @db.Date
+  resolvedDate      DateTime?     @db.Date
+  notes             String?
+  isChronic         Boolean       @default(false)
+  sourceDiagnosisId String?       @db.Uuid
+  createdByName     String?
+  createdAt         DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime      @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  patient      Patient      @relation(fields: [patientId], references: [id], onDelete: Restrict)
+
+  @@index([patientId, status])
+}
+
+model ClinicalTemplate {
+  id                  String           @id @default(uuid()) @db.Uuid
+  organizationId      String           @db.Uuid
+  name                String
+  speciesCategory     SpeciesCategory?
+  presentingComplaint String?
+  subjective          String?
+  objective           String?
+  assessment          String?
+  plan                String?
+  examSystems         String[]         @default([])
+  isActive            Boolean          @default(true)
+  createdAt           DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime         @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, name])
+}
+
+enum TaskType {
+  HOSPITAL_ALERT
+  FOLLOW_UP_CALL
+  RECHECK
+  RESULT_REVIEW
+  CLIENT_CALLBACK
+  ADMIN
+  OTHER
+}
+
+enum TaskStatus {
+  OPEN
+  DONE
+  CANCELLED
+}
+
+model Task {
+  id              String     @id @default(uuid()) @db.Uuid
+  organizationId  String     @db.Uuid
+  branchId        String?    @db.Uuid
+  type            TaskType   @default(FOLLOW_UP_CALL)
+  status          TaskStatus @default(OPEN)
+  title           String
+  details         String?
+  dueAt           DateTime   @db.Timestamptz(3)
+  patientId       String?    @db.Uuid
+  clientId        String?    @db.Uuid
+  encounterId     String?    @db.Uuid
+  assigneeId      String?    @db.Uuid
+  completedAt     DateTime?  @db.Timestamptz(3)
+  completedByName String?
+  createdById     String?    @db.Uuid
+  createdByName   String?
+  createdAt       DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime   @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  patient      Patient?     @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  encounter    Encounter?   @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+  assignee     Membership?  @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status, dueAt])
+  @@index([assigneeId, status])
+}
+
+// ───────────────────────────── Formulary ─────────────────────────────
+
+enum ProductType {
+  MEDICINE
+  VACCINE
+  CONSUMABLE
+  RETAIL
+  FOOD
+  EQUIPMENT
+}
+
+enum DosageForm {
+  TABLET
+  CAPSULE
+  ORAL_LIQUID
+  ORAL_PASTE
+  INJECTION
+  INFUSION
+  TOPICAL
+  OPHTHALMIC
+  OTIC
+  SPOT_ON
+  POUR_ON
+  BOLUS
+  INTRAMAMMARY
+  POWDER
+  IMPLANT
+  INHALANT
+  OTHER
+}
+
+/// Catalogue item. Strength is expressed per ONE dispensing unit (e.g. 50 mg per tablet, 10 mg per mL).
+model Product {
+  id                   String            @id @default(uuid()) @db.Uuid
+  organizationId       String            @db.Uuid
+  sku                  String?
+  barcode              String?
+  name                 String
+  genericName          String?
+  type                 ProductType       @default(MEDICINE)
+  category             String?
+  form                 DosageForm?
+  strengthValue        Decimal?          @db.Decimal(14, 4)
+  strengthUnit         String?
+  dispensingUnit       String            @default("unit")
+  minDispenseIncrement Decimal           @default(1) @db.Decimal(10, 4)
+  activeIngredients    String[]          @default([])
+  manufacturer         String?
+  requiresPrescription Boolean           @default(true)
+  isControlled         Boolean           @default(false)
+  controlledSchedule   String?
+  targetSpecies        SpeciesCategory[] @default([])
+  sellPriceMinor       Int?
+  notes                String?
+  isActive             Boolean           @default(true)
+  createdAt            DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime          @updatedAt @db.Timestamptz(3)
+
+  organization       Organization               @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  withdrawals        ProductWithdrawal[]
+  doseReferences     DoseReference[]
+  prescriptionItems  PrescriptionItem[]
+  administrations    MedicationAdministration[]
+  patientWithdrawals PatientWithdrawal[]
+
+  trackStock      Boolean             @default(true)
+  reorderLevel    Decimal?            @db.Decimal(14, 4)
+  reorderQuantity Decimal?            @db.Decimal(14, 4)
+  taxRateId       String?             @db.Uuid
+  taxRate         TaxRate?            @relation(fields: [taxRateId], references: [id], onDelete: SetNull)
+  batches         StockBatch[]
+  stockLevels     StockLevel[]
+  movements       StockMovement[]
+  poLines         PurchaseOrderLine[]
+  receiptLines    GoodsReceiptLine[]
+  countLines      StockCountLine[]
+
+  treatmentOrders TreatmentOrder[]
+  surgeryItems    SurgeryItem[]
+
+  careProtocols CareProtocol[]
+
+  groupTreatments GroupTreatment[]
+  fieldVisitItems FieldVisitItem[]
+
+  purchaseRequests    PurchaseRequest[]
+  supplierReturnLines SupplierReturnLine[]
+
+  @@unique([organizationId, sku])
+  @@index([organizationId, type, name])
+}
+
+/// Withdrawal period for a food-producing species. Must cite the product label or regulatory source.
+model ProductWithdrawal {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  productId      String   @db.Uuid
+  speciesId      String   @db.Uuid
+  meatDays       Int?
+  milkHours      Int?
+  eggDays        Int?
+  source         String
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  species      Species      @relation(fields: [speciesId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, speciesId])
+}
+
+enum DoseReferenceStatus {
+  DRAFT
+  APPROVED
+  RETIRED
+}
+
+/// Clinic-maintained dose guidance. Never seeded with clinical values; must cite a source and be
+/// approved by a veterinarian before the calculator uses it.
+model DoseReference {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @db.Uuid
+  productId      String              @db.Uuid
+  speciesId      String              @db.Uuid
+  indication     String?
+  route          String
+  doseMin        Decimal             @db.Decimal(14, 4)
+  doseMax        Decimal             @db.Decimal(14, 4)
+  /// e.g. mg/kg, mL/kg, IU/kg, mg/animal
+  doseUnit       String
+  frequency      String?
+  maxPerDose     Decimal?            @db.Decimal(14, 4)
+  notes          String?
+  source         String
+  status         DoseReferenceStatus @default(DRAFT)
+  createdByName  String?
+  approvedById   String?             @db.Uuid
+  approvedByName String?
+  approvedAt     DateTime?           @db.Timestamptz(3)
+  createdAt      DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime            @updatedAt @db.Timestamptz(3)
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  product      Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  species      Species            @relation(fields: [speciesId], references: [id], onDelete: Cascade)
+  items        PrescriptionItem[]
+
+  @@index([productId, speciesId, status])
+}
+
+// ───────────────────────────── Prescriptions ─────────────────────────────
+
+enum PrescriptionStatus {
+  DRAFT
+  AUTHORIZED
+  PARTIALLY_DISPENSED
+  DISPENSED
+  CANCELLED
+}
+
+model Prescription {
+  id               String             @id @default(uuid()) @db.Uuid
+  organizationId   String             @db.Uuid
+  branchId         String             @db.Uuid
+  number           Int
+  patientId        String             @db.Uuid
+  clientId         String             @db.Uuid
+  encounterId      String?            @db.Uuid
+  prescriberId     String?            @db.Uuid
+  status           PrescriptionStatus @default(DRAFT)
+  weightKg         Decimal?           @db.Decimal(9, 3)
+  notes            String?
+  validUntil       DateTime?          @db.Date
+  repeatOfId       String?            @db.Uuid
+  authorizedById   String?            @db.Uuid
+  authorizedByName String?
+  authorizedAt     DateTime?          @db.Timestamptz(3)
+  contentHash      String?
+  cancelledAt      DateTime?          @db.Timestamptz(3)
+  cancelReason     String?
+  createdById      String?            @db.Uuid
+  createdByName    String?
+  createdAt        DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime           @updatedAt @db.Timestamptz(3)
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch       Branch             @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  patient      Patient            @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  client       Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  encounter    Encounter?         @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+  prescriber   Membership?        @relation("Prescriber", fields: [prescriberId], references: [id], onDelete: Restrict)
+  items        PrescriptionItem[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status, createdAt])
+  @@index([patientId, createdAt(sort: Desc)])
+}
+
+model PrescriptionItem {
+  id                String   @id @default(uuid()) @db.Uuid
+  organizationId    String   @db.Uuid
+  prescriptionId    String   @db.Uuid
+  productId         String   @db.Uuid
+  route             String
+  doseValue         Decimal  @db.Decimal(14, 4)
+  doseUnit          String
+  weightKgUsed      Decimal? @db.Decimal(9, 3)
+  /// Amount per administration in dispensing units, after rounding to the product's increment.
+  amountPerDose     Decimal  @db.Decimal(14, 4)
+  frequencyPerDay   Decimal? @db.Decimal(6, 3)
+  frequencyText     String
+  durationDays      Int?
+  quantity          Decimal  @db.Decimal(14, 4)
+  quantityDispensed Decimal  @default(0) @db.Decimal(14, 4)
+  repeats           Int      @default(0)
+  instructions      String
+  doseReferenceId   String?  @db.Uuid
+  /// Safety warnings shown and acknowledged at prescribing time.
+  warnings          Json?
+  overrideReason    String?
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+
+  organization    Organization               @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  prescription    Prescription               @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  product         Product                    @relation(fields: [productId], references: [id], onDelete: Restrict)
+  doseReference   DoseReference?             @relation(fields: [doseReferenceId], references: [id], onDelete: SetNull)
+  dispensations   Dispensation[]
+  administrations MedicationAdministration[]
+
+  @@index([prescriptionId])
+}
+
+model Dispensation {
+  id                 String    @id @default(uuid()) @db.Uuid
+  organizationId     String    @db.Uuid
+  prescriptionItemId String    @db.Uuid
+  quantity           Decimal   @db.Decimal(14, 4)
+  batchNumber        String?
+  expiryDate         DateTime? @db.Date
+  notes              String?
+  dispensedById      String    @db.Uuid
+  dispensedByName    String
+  dispensedAt        DateTime  @default(now()) @db.Timestamptz(3)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  item         PrescriptionItem @relation(fields: [prescriptionItemId], references: [id], onDelete: Restrict)
+
+  @@index([prescriptionItemId])
+  @@index([organizationId, dispensedAt])
+}
+
+enum AdministrationStatus {
+  GIVEN
+  NOT_GIVEN
+}
+
+model MedicationAdministration {
+  id                 String               @id @default(uuid()) @db.Uuid
+  organizationId     String               @db.Uuid
+  patientId          String               @db.Uuid
+  encounterId        String?              @db.Uuid
+  productId          String               @db.Uuid
+  prescriptionItemId String?              @db.Uuid
+  status             AdministrationStatus @default(GIVEN)
+  dose               Decimal              @db.Decimal(14, 4)
+  doseUnit           String
+  route              String
+  site               String?
+  batchNumber        String?
+  expiryDate         DateTime?            @db.Date
+  reasonNotGiven     String?
+  notes              String?
+  administeredAt     DateTime             @default(now()) @db.Timestamptz(3)
+  administeredById   String               @db.Uuid
+  administeredByName String
+  createdAt          DateTime             @default(now()) @db.Timestamptz(3)
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  patient      Patient           @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  encounter    Encounter?        @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+  product      Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  item         PrescriptionItem? @relation(fields: [prescriptionItemId], references: [id], onDelete: SetNull)
+
+  @@index([patientId, administeredAt(sort: Desc)])
+}
+
+/// Food-safety withdrawal period started by a treatment of a food-producing animal.
+model PatientWithdrawal {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  patientId      String    @db.Uuid
+  productId      String    @db.Uuid
+  sourceType     String
+  sourceId       String    @db.Uuid
+  treatedAt      DateTime  @db.Timestamptz(3)
+  meatClearAt    DateTime? @db.Timestamptz(3)
+  milkClearAt    DateTime? @db.Timestamptz(3)
+  eggClearAt     DateTime? @db.Timestamptz(3)
+  source         String
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  patient      Patient      @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([patientId, treatedAt(sort: Desc)])
+}
+
+// ───────────────────────────── Laboratory & imaging ─────────────────────────────
+
+enum LabCategory {
+  HAEMATOLOGY
+  BIOCHEMISTRY
+  URINALYSIS
+  PARASITOLOGY
+  MICROBIOLOGY
+  CYTOLOGY
+  HISTOPATHOLOGY
+  SEROLOGY
+  ENDOCRINOLOGY
+  MOLECULAR
+  IMAGING
+  OTHER
+}
+
+enum SampleType {
+  WHOLE_BLOOD_EDTA
+  SERUM
+  PLASMA
+  URINE
+  FAECES
+  SWAB
+  TISSUE
+  MILK
+  SKIN_SCRAPING
+  FLUID
+  OTHER
+  NONE
+}
+
+enum ResultType {
+  NUMERIC
+  TEXT
+  OPTION
+}
+
+model LabTest {
+  id              String      @id @default(uuid()) @db.Uuid
+  organizationId  String      @db.Uuid
+  code            String
+  name            String
+  category        LabCategory
+  sampleType      SampleType  @default(NONE)
+  /// IN_HOUSE or EXTERNAL
+  performedBy     String      @default("IN_HOUSE")
+  externalLabName String?
+  /// Imaging modality (XRAY, ULTRASOUND, CT, MRI, ENDOSCOPY) for IMAGING tests.
+  modality        String?
+  priceMinor      Int?
+  turnaroundHours Int?
+  instructions    String?
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime    @updatedAt @db.Timestamptz(3)
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  analytes     LabAnalyte[]
+  orderItems   DiagnosticOrderItem[]
+
+  @@unique([organizationId, code])
+}
+
+model LabAnalyte {
+  id             String     @id @default(uuid()) @db.Uuid
+  organizationId String     @db.Uuid
+  testId         String     @db.Uuid
+  code           String
+  name           String
+  unit           String?
+  resultType     ResultType @default(NUMERIC)
+  options        String[]   @default([])
+  decimals       Int        @default(1)
+  sortOrder      Int        @default(0)
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  test         LabTest             @relation(fields: [testId], references: [id], onDelete: Cascade)
+  intervals    ReferenceInterval[]
+  results      LabResult[]
+
+  @@unique([testId, code])
+}
+
+/// Species-specific reference interval. Must cite a source (analyser/laboratory/publication).
+model ReferenceInterval {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @db.Uuid
+  analyteId      String      @db.Uuid
+  speciesId      String      @db.Uuid
+  sex            PatientSex?
+  ageMinMonths   Int?
+  ageMaxMonths   Int?
+  low            Decimal?    @db.Decimal(14, 4)
+  high           Decimal?    @db.Decimal(14, 4)
+  criticalLow    Decimal?    @db.Decimal(14, 4)
+  criticalHigh   Decimal?    @db.Decimal(14, 4)
+  source         String
+  reviewedByName String?
+  reviewedAt     DateTime?   @db.Timestamptz(3)
+  createdAt      DateTime    @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  analyte      LabAnalyte   @relation(fields: [analyteId], references: [id], onDelete: Cascade)
+  species      Species      @relation(fields: [speciesId], references: [id], onDelete: Cascade)
+
+  @@index([analyteId, speciesId])
+}
+
+enum OrderPriority {
+  ROUTINE
+  URGENT
+  STAT
+}
+
+enum DiagnosticOrderStatus {
+  ORDERED
+  COLLECTED
+  IN_PROGRESS
+  AWAITING_VALIDATION
+  RELEASED
+  CANCELLED
+}
+
+model DiagnosticOrder {
+  id                   String                @id @default(uuid()) @db.Uuid
+  organizationId       String                @db.Uuid
+  branchId             String                @db.Uuid
+  number               Int
+  patientId            String                @db.Uuid
+  clientId             String                @db.Uuid
+  encounterId          String?               @db.Uuid
+  priority             OrderPriority         @default(ROUTINE)
+  status               DiagnosticOrderStatus @default(ORDERED)
+  clinicalNotes        String?
+  externalReference    String?
+  hasCritical          Boolean               @default(false)
+  orderedById          String                @db.Uuid
+  orderedByName        String
+  orderingMembershipId String?               @db.Uuid
+  releasedById         String?               @db.Uuid
+  releasedByName       String?
+  releasedAt           DateTime?             @db.Timestamptz(3)
+  cancelledAt          DateTime?             @db.Timestamptz(3)
+  cancelReason         String?
+  createdAt            DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime              @updatedAt @db.Timestamptz(3)
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch       Branch                @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  patient      Patient               @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  client       Client                @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  encounter    Encounter?            @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+  items        DiagnosticOrderItem[]
+  samples      Sample[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status, createdAt])
+  @@index([patientId, createdAt(sort: Desc)])
+}
+
+enum OrderItemStatus {
+  PENDING
+  RESULTED
+  CANCELLED
+}
+
+model DiagnosticOrderItem {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  orderId        String          @db.Uuid
+  testId         String          @db.Uuid
+  status         OrderItemStatus @default(PENDING)
+  createdAt      DateTime        @default(now()) @db.Timestamptz(3)
+
+  organization  Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  order         DiagnosticOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  test          LabTest         @relation(fields: [testId], references: [id], onDelete: Restrict)
+  results       LabResult[]
+  imagingReport ImagingReport?
+
+  @@index([orderId])
+}
+
+enum SampleStatus {
+  COLLECTED
+  RECEIVED
+  IN_ANALYSIS
+  REJECTED
+  DISPOSED
+}
+
+model Sample {
+  id              String       @id @default(uuid()) @db.Uuid
+  organizationId  String       @db.Uuid
+  orderId         String       @db.Uuid
+  barcode         String
+  sampleType      SampleType
+  status          SampleStatus @default(COLLECTED)
+  collectedAt     DateTime     @default(now()) @db.Timestamptz(3)
+  collectedById   String       @db.Uuid
+  collectedByName String
+  rejectionReason String?
+  notes           String?
+  createdAt       DateTime     @default(now()) @db.Timestamptz(3)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  order        DiagnosticOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  events       SampleEvent[]
+
+  @@unique([organizationId, barcode])
+  @@index([orderId])
+}
+
+/// Chain-of-custody log for a sample.
+model SampleEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  sampleId       String   @db.Uuid
+  action         String
+  notes          String?
+  byId           String   @db.Uuid
+  byName         String
+  at             DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  sample       Sample       @relation(fields: [sampleId], references: [id], onDelete: Cascade)
+
+  @@index([sampleId, at])
+}
+
+enum ResultFlag {
+  NORMAL
+  LOW
+  HIGH
+  CRITICAL_LOW
+  CRITICAL_HIGH
+  ABNORMAL
+}
+
+enum ResultStatus {
+  PRELIMINARY
+  FINAL
+  SUPERSEDED
+}
+
+/// One analyte value. Reference interval and source are snapshotted at entry time.
+/// FINAL results are immutable (DB trigger); corrections create a new row with supersedesId.
+model LabResult {
+  id              String       @id @default(uuid()) @db.Uuid
+  organizationId  String       @db.Uuid
+  orderItemId     String       @db.Uuid
+  analyteId       String       @db.Uuid
+  valueNumeric    Decimal?     @db.Decimal(14, 4)
+  valueText       String?
+  unit            String?
+  refLow          Decimal?     @db.Decimal(14, 4)
+  refHigh         Decimal?     @db.Decimal(14, 4)
+  refSource       String?
+  flag            ResultFlag?
+  status          ResultStatus @default(PRELIMINARY)
+  comment         String?
+  enteredById     String       @db.Uuid
+  enteredByName   String
+  enteredAt       DateTime     @default(now()) @db.Timestamptz(3)
+  supersedesId    String?      @unique @db.Uuid
+  amendmentReason String?
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  item         DiagnosticOrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  analyte      LabAnalyte          @relation(fields: [analyteId], references: [id], onDelete: Restrict)
+  supersedes   LabResult?          @relation("ResultAmendment", fields: [supersedesId], references: [id], onDelete: Restrict)
+  supersededBy LabResult?          @relation("ResultAmendment")
+
+  @@index([orderItemId, analyteId])
+}
+
+model ImagingReport {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String   @db.Uuid
+  orderItemId      String   @unique @db.Uuid
+  modality         String
+  bodyRegion       String?
+  views            String?
+  findings         String
+  conclusion       String
+  recommendations  String?
+  studyInstanceUid String?
+  reportedById     String   @db.Uuid
+  reportedByName   String
+  reportedAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  item         DiagnosticOrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+}
+
+// ───────────────────────────── Inventory ─────────────────────────────
+
+enum LocationType {
+  PHARMACY
+  STORE
+  WARD
+  THEATRE
+  VEHICLE
+  OTHER
+}
+
+model StockLocation {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  branchId       String       @db.Uuid
+  name           String
+  type           LocationType @default(STORE)
+  isDefault      Boolean      @default(false)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @db.Timestamptz(3)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch       Branch          @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  levels       StockLevel[]
+  movements    StockMovement[]
+  counts       StockCount[]
+
+  @@unique([branchId, name])
+  @@index([organizationId])
+}
+
+enum BatchStatus {
+  AVAILABLE
+  QUARANTINED
+  RECALLED
+}
+
+model StockBatch {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @db.Uuid
+  productId      String      @db.Uuid
+  batchNumber    String
+  expiryDate     DateTime?   @db.Date
+  /// Cost per dispensing unit (weighted average across receipts of the same batch).
+  unitCostMinor  Int         @default(0)
+  supplierId     String?     @db.Uuid
+  status         BatchStatus @default(AVAILABLE)
+  statusReason   String?
+  receivedAt     DateTime    @default(now()) @db.Timestamptz(3)
+  createdAt      DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime    @updatedAt @db.Timestamptz(3)
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  product      Product            @relation(fields: [productId], references: [id], onDelete: Restrict)
+  supplier     Supplier?          @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  levels       StockLevel[]
+  movements    StockMovement[]
+  receiptLines GoodsReceiptLine[]
+  countLines   StockCountLine[]
+
+  supplierReturnLines SupplierReturnLine[]
+
+  @@unique([productId, batchNumber])
+  @@index([organizationId, expiryDate])
+}
+
+/// Current quantity of a batch at a location. Always changed together with a StockMovement row.
+model StockLevel {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  productId      String   @db.Uuid
+  batchId        String   @db.Uuid
+  locationId     String   @db.Uuid
+  quantity       Decimal  @default(0) @db.Decimal(14, 4)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  product      Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  batch        StockBatch    @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  location     StockLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, locationId])
+  @@index([productId, locationId])
+}
+
+enum MovementType {
+  RECEIPT
+  DISPENSE
+  ADMINISTER
+  SALE
+  ADJUSTMENT
+  TRANSFER_OUT
+  TRANSFER_IN
+  COUNT
+  WRITE_OFF
+  RETURN_TO_SUPPLIER
+  RETURN_FROM_CLIENT
+}
+
+/// Append-only stock ledger (DB trigger). Quantity is signed: + in, − out.
+model StockMovement {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  branchId       String       @db.Uuid
+  productId      String       @db.Uuid
+  batchId        String       @db.Uuid
+  locationId     String       @db.Uuid
+  type           MovementType
+  quantity       Decimal      @db.Decimal(14, 4)
+  balanceAfter   Decimal      @db.Decimal(14, 4)
+  unitCostMinor  Int          @default(0)
+  reason         String?
+  referenceType  String?
+  referenceId    String?      @db.Uuid
+  createdById    String?      @db.Uuid
+  createdByName  String?
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  product      Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  batch        StockBatch    @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  location     StockLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, createdAt])
+  @@index([productId, createdAt])
+  @@index([referenceType, referenceId])
+}
+
+enum CountStatus {
+  OPEN
+  COMPLETED
+  CANCELLED
+}
+
+model StockCount {
+  id              String      @id @default(uuid()) @db.Uuid
+  organizationId  String      @db.Uuid
+  locationId      String      @db.Uuid
+  number          Int
+  status          CountStatus @default(OPEN)
+  notes           String?
+  startedById     String      @db.Uuid
+  startedByName   String
+  completedById   String?     @db.Uuid
+  completedByName String?
+  completedAt     DateTime?   @db.Timestamptz(3)
+  createdAt       DateTime    @default(now()) @db.Timestamptz(3)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  location     StockLocation    @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  lines        StockCountLine[]
+
+  @@unique([organizationId, number])
+}
+
+model StockCountLine {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  countId        String   @db.Uuid
+  productId      String   @db.Uuid
+  batchId        String   @db.Uuid
+  expectedQty    Decimal  @db.Decimal(14, 4)
+  countedQty     Decimal? @db.Decimal(14, 4)
+  notes          String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  count        StockCount   @relation(fields: [countId], references: [id], onDelete: Cascade)
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  batch        StockBatch   @relation(fields: [batchId], references: [id], onDelete: Restrict)
+
+  @@unique([countId, batchId])
+}
+
+// ───────────────────────────── Procurement ─────────────────────────────
+
+model Supplier {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String   @db.Uuid
+  name             String
+  contactName      String?
+  email            String?
+  phone            String?
+  address          String?
+  taxNumber        String?
+  paymentTermsDays Int      @default(30)
+  notes            String?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(3)
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  batches        StockBatch[]
+  purchaseOrders PurchaseOrder[]
+  receipts       GoodsReceipt[]
+  expenses       Expense[]
+
+  returns SupplierReturn[]
+
+  @@unique([organizationId, name])
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+model PurchaseOrder {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @db.Uuid
+  branchId       String              @db.Uuid
+  number         Int
+  supplierId     String              @db.Uuid
+  locationId     String              @db.Uuid
+  status         PurchaseOrderStatus @default(DRAFT)
+  expectedAt     DateTime?           @db.Date
+  notes          String?
+  totalMinor     Int                 @default(0)
+  createdById    String              @db.Uuid
+  createdByName  String
+  submittedAt    DateTime?           @db.Timestamptz(3)
+  approvedById   String?             @db.Uuid
+  approvedByName String?
+  approvedAt     DateTime?           @db.Timestamptz(3)
+  cancelledAt    DateTime?           @db.Timestamptz(3)
+  cancelReason   String?
+  createdAt      DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime            @updatedAt @db.Timestamptz(3)
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  supplier     Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  lines        PurchaseOrderLine[]
+  receipts     GoodsReceipt[]
+
+  requests PurchaseRequest[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status])
+}
+
+model PurchaseOrderLine {
+  id               String  @id @default(uuid()) @db.Uuid
+  organizationId   String  @db.Uuid
+  purchaseOrderId  String  @db.Uuid
+  productId        String  @db.Uuid
+  quantity         Decimal @db.Decimal(14, 4)
+  unitCostMinor    Int
+  quantityReceived Decimal @default(0) @db.Decimal(14, 4)
+
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  purchaseOrder PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product       Product            @relation(fields: [productId], references: [id], onDelete: Restrict)
+  receiptLines  GoodsReceiptLine[]
+}
+
+model GoodsReceipt {
+  id                String   @id @default(uuid()) @db.Uuid
+  organizationId    String   @db.Uuid
+  branchId          String   @db.Uuid
+  number            Int
+  supplierId        String   @db.Uuid
+  purchaseOrderId   String?  @db.Uuid
+  locationId        String   @db.Uuid
+  supplierInvoiceNo String?
+  totalMinor        Int      @default(0)
+  notes             String?
+  receivedById      String   @db.Uuid
+  receivedByName    String
+  receivedAt        DateTime @default(now()) @db.Timestamptz(3)
+
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  supplier      Supplier           @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  purchaseOrder PurchaseOrder?     @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
+  lines         GoodsReceiptLine[]
+
+  @@unique([organizationId, number])
+}
+
+model GoodsReceiptLine {
+  id                  String  @id @default(uuid()) @db.Uuid
+  organizationId      String  @db.Uuid
+  goodsReceiptId      String  @db.Uuid
+  productId           String  @db.Uuid
+  purchaseOrderLineId String? @db.Uuid
+  batchId             String  @db.Uuid
+  quantity            Decimal @db.Decimal(14, 4)
+  unitCostMinor       Int
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  receipt      GoodsReceipt       @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+  product      Product            @relation(fields: [productId], references: [id], onDelete: Restrict)
+  poLine       PurchaseOrderLine? @relation(fields: [purchaseOrderLineId], references: [id], onDelete: SetNull)
+  batch        StockBatch         @relation(fields: [batchId], references: [id], onDelete: Restrict)
+}
+
+// ───────────────────────────── Billing & finance ─────────────────────────────
+
+model TaxRate {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @db.Uuid
+  name            String
+  /// Rate × 100 (10% = 1000)
+  rateBasisPoints Int
+  isDefault       Boolean  @default(false)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  services     Service[]
+  products     Product[]
+
+  @@unique([organizationId, name])
+}
+
+enum ServiceCategory {
+  CONSULTATION
+  PROCEDURE
+  SURGERY
+  DIAGNOSTIC
+  HOSPITALISATION
+  VACCINATION
+  DENTAL
+  GROOMING
+  BOARDING
+  FIELD_VISIT
+  OTHER
+}
+
+model Service {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  code           String
+  name           String
+  category       ServiceCategory @default(OTHER)
+  priceMinor     Int
+  taxRateId      String?         @db.Uuid
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime        @updatedAt @db.Timestamptz(3)
+
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  taxRate          TaxRate?          @relation(fields: [taxRateId], references: [id], onDelete: SetNull)
+  appointmentTypes AppointmentType[]
+
+  wards     Ward[]
+  surgeries Surgery[]
+
+  fieldVisitItems     FieldVisitItem[]
+  boardingUnits       BoardingUnit[]
+  groomingJobServices GroomingJobService[]
+
+  @@unique([organizationId, code])
+}
+
+enum ChargeStatus {
+  PENDING
+  INVOICED
+  WAIVED
+}
+
+enum LineKind {
+  SERVICE
+  PRODUCT
+  LAB
+  CUSTOM
+}
+
+/// A billable event captured once at its source (dispensing, lab order, consultation…).
+/// Unique per source so the same event can never be charged twice.
+model Charge {
+  id                 String       @id @default(uuid()) @db.Uuid
+  organizationId     String       @db.Uuid
+  branchId           String       @db.Uuid
+  clientId           String       @db.Uuid
+  patientId          String?      @db.Uuid
+  encounterId        String?      @db.Uuid
+  sourceType         String
+  sourceId           String       @db.Uuid
+  kind               LineKind
+  serviceId          String?      @db.Uuid
+  productId          String?      @db.Uuid
+  labTestId          String?      @db.Uuid
+  description        String
+  quantity           Decimal      @db.Decimal(14, 4)
+  unitPriceMinor     Int
+  taxRateBasisPoints Int          @default(0)
+  status             ChargeStatus @default(PENDING)
+  invoiceLineId      String?      @unique @db.Uuid
+  waivedReason       String?
+  createdByName      String?
+  createdAt          DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime     @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  client       Client       @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  invoiceLine  InvoiceLine? @relation(fields: [invoiceLineId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, sourceType, sourceId])
+  @@index([organizationId, clientId, status])
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  VOID
+}
+
+model Invoice {
+  id               String        @id @default(uuid()) @db.Uuid
+  organizationId   String        @db.Uuid
+  branchId         String        @db.Uuid
+  /// Assigned when issued so issued invoice numbers are gap-free.
+  number           Int?
+  clientId         String?       @db.Uuid
+  patientId        String?       @db.Uuid
+  encounterId      String?       @db.Uuid
+  status           InvoiceStatus @default(DRAFT)
+  currency         String        @db.Char(3)
+  pricesIncludeTax Boolean       @default(false)
+  isPos            Boolean       @default(false)
+  subtotalMinor    Int           @default(0)
+  discountMinor    Int           @default(0)
+  taxMinor         Int           @default(0)
+  totalMinor       Int           @default(0)
+  creditedMinor    Int           @default(0)
+  paidMinor        Int           @default(0)
+  balanceMinor     Int           @default(0)
+  issuedAt         DateTime?     @db.Timestamptz(3)
+  dueAt            DateTime?     @db.Timestamptz(3)
+  notes            String?
+  createdById      String        @db.Uuid
+  createdByName    String
+  issuedByName     String?
+  voidedAt         DateTime?     @db.Timestamptz(3)
+  voidedByName     String?
+  voidReason       String?
+  createdAt        DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime      @updatedAt @db.Timestamptz(3)
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch       Branch              @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  client       Client?             @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  lines        InvoiceLine[]
+  allocations  PaymentAllocation[]
+  creditNotes  CreditNote[]
+
+  claimInvoices InsuranceClaimInvoice[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status, issuedAt])
+  @@index([clientId, status])
+}
+
+model InvoiceLine {
+  id                 String   @id @default(uuid()) @db.Uuid
+  organizationId     String   @db.Uuid
+  invoiceId          String   @db.Uuid
+  kind               LineKind
+  description        String
+  serviceId          String?  @db.Uuid
+  productId          String?  @db.Uuid
+  labTestId          String?  @db.Uuid
+  quantity           Decimal  @db.Decimal(14, 4)
+  unitPriceMinor     Int
+  discountMinor      Int      @default(0)
+  taxRateBasisPoints Int      @default(0)
+  netMinor           Int
+  taxMinor           Int
+  grossMinor         Int
+  sortOrder          Int      @default(0)
+  /// POS/direct product sale: stock is issued when the invoice is issued.
+  stockIssued        Boolean  @default(false)
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  invoice      Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  charge       Charge?
+
+  @@index([invoiceId])
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  BANK_TRANSFER
+  MOBILE_WALLET
+  CHEQUE
+  ONLINE
+  OTHER
+  INSURANCE
+}
+
+model Payment {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @db.Uuid
+  branchId       String        @db.Uuid
+  number         Int
+  clientId       String?       @db.Uuid
+  amountMinor    Int
+  method         PaymentMethod
+  reference      String?
+  idempotencyKey String?
+  cashSessionId  String?       @db.Uuid
+  refundedMinor  Int           @default(0)
+  notes          String?
+  receivedById   String        @db.Uuid
+  receivedByName String
+  receivedAt     DateTime      @default(now()) @db.Timestamptz(3)
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  client       Client?             @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  cashSession  CashSession?        @relation(fields: [cashSessionId], references: [id], onDelete: Restrict)
+  allocations  PaymentAllocation[]
+  refunds      Refund[]
+
+  @@unique([organizationId, number])
+  @@unique([organizationId, idempotencyKey])
+  @@index([clientId, receivedAt])
+}
+
+model PaymentAllocation {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  paymentId      String   @db.Uuid
+  invoiceId      String   @db.Uuid
+  amountMinor    Int
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  payment      Payment      @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  invoice      Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  @@index([invoiceId])
+  @@index([paymentId])
+}
+
+model Refund {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @db.Uuid
+  number         Int
+  paymentId      String        @db.Uuid
+  amountMinor    Int
+  method         PaymentMethod
+  reason         String
+  cashSessionId  String?       @db.Uuid
+  refundedById   String        @db.Uuid
+  refundedByName String
+  refundedAt     DateTime      @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  payment      Payment      @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  cashSession  CashSession? @relation(fields: [cashSessionId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, number])
+}
+
+model CreditNote {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  number         Int
+  invoiceId      String   @db.Uuid
+  amountMinor    Int
+  reason         String
+  createdById    String   @db.Uuid
+  createdByName  String
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  invoice      Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, number])
+}
+
+enum EstimateStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  DECLINED
+  CONVERTED
+}
+
+model Estimate {
+  id                 String         @id @default(uuid()) @db.Uuid
+  organizationId     String         @db.Uuid
+  branchId           String         @db.Uuid
+  number             Int
+  clientId           String         @db.Uuid
+  patientId          String?        @db.Uuid
+  status             EstimateStatus @default(DRAFT)
+  validUntil         DateTime?      @db.Date
+  notes              String?
+  subtotalMinor      Int            @default(0)
+  taxMinor           Int            @default(0)
+  totalMinor         Int            @default(0)
+  convertedInvoiceId String?        @db.Uuid
+  createdById        String         @db.Uuid
+  createdByName      String
+  createdAt          DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime       @updatedAt @db.Timestamptz(3)
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  client       Client         @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  lines        EstimateLine[]
+
+  @@unique([organizationId, number])
+}
+
+model EstimateLine {
+  id                 String   @id @default(uuid()) @db.Uuid
+  organizationId     String   @db.Uuid
+  estimateId         String   @db.Uuid
+  kind               LineKind
+  description        String
+  serviceId          String?  @db.Uuid
+  productId          String?  @db.Uuid
+  labTestId          String?  @db.Uuid
+  quantity           Decimal  @db.Decimal(14, 4)
+  unitPriceMinor     Int
+  discountMinor      Int      @default(0)
+  taxRateBasisPoints Int      @default(0)
+  netMinor           Int
+  taxMinor           Int
+  grossMinor         Int
+  sortOrder          Int      @default(0)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  estimate     Estimate     @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+}
+
+model CashRegister {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  branchId       String   @db.Uuid
+  name           String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch       Branch        @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  sessions     CashSession[]
+
+  @@unique([branchId, name])
+}
+
+enum CashSessionStatus {
+  OPEN
+  CLOSED
+}
+
+model CashSession {
+  id                String            @id @default(uuid()) @db.Uuid
+  organizationId    String            @db.Uuid
+  registerId        String            @db.Uuid
+  branchId          String            @db.Uuid
+  status            CashSessionStatus @default(OPEN)
+  openingFloatMinor Int
+  openedById        String            @db.Uuid
+  openedByName      String
+  openedAt          DateTime          @default(now()) @db.Timestamptz(3)
+  expectedCashMinor Int?
+  countedCashMinor  Int?
+  varianceMinor     Int?
+  closedById        String?           @db.Uuid
+  closedByName      String?
+  closedAt          DateTime?         @db.Timestamptz(3)
+  notes             String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  register     CashRegister @relation(fields: [registerId], references: [id], onDelete: Restrict)
+  payments     Payment[]
+  refunds      Refund[]
+  expenses     Expense[]
+
+  @@index([branchId, status])
+}
+
+model Expense {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @db.Uuid
+  branchId       String        @db.Uuid
+  date           DateTime      @db.Date
+  category       String
+  description    String
+  amountMinor    Int
+  taxMinor       Int           @default(0)
+  supplierId     String?       @db.Uuid
+  method         PaymentMethod
+  reference      String?
+  cashSessionId  String?       @db.Uuid
+  createdById    String        @db.Uuid
+  createdByName  String
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  supplier     Supplier?    @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  cashSession  CashSession? @relation(fields: [cashSessionId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, date])
+}
+
+// ───────────────────────────── Hospitalisation (Milestone 6) ─────────────────────────────
+
+enum WardType {
+  GENERAL
+  ICU
+  ISOLATION
+  CATTERY
+  KENNEL
+  LARGE_ANIMAL
+  EXOTICS
+  OTHER
+}
+
+/// A ward groups cages/kennels/stalls. The optional daily service is charged per started 24 hours of stay.
+model Ward {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  branchId       String   @db.Uuid
+  name           String
+  type           WardType @default(GENERAL)
+  dailyServiceId String?  @db.Uuid
+  isActive       Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  dailyService Service?     @relation(fields: [dailyServiceId], references: [id], onDelete: SetNull)
+  cages        Cage[]
+  admissions   Admission[]
+
+  @@unique([organizationId, branchId, name])
+}
+
+model Cage {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  wardId         String   @db.Uuid
+  name           String
+  notes          String?
+  isActive       Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  ward         Ward         @relation(fields: [wardId], references: [id], onDelete: Cascade)
+  admissions   Admission[]
+
+  @@unique([wardId, name])
+}
+
+enum AdmissionStatus {
+  ADMITTED
+  DISCHARGED
+  CANCELLED
+}
+
+enum AdmissionOutcome {
+  DISCHARGED_HOME
+  TRANSFERRED
+  DECEASED
+  EUTHANASED
+}
+
+enum PatientCondition {
+  STABLE
+  FAIR
+  GUARDED
+  CRITICAL
+}
+
+enum CprStatus {
+  UNDECIDED
+  CPR
+  DNR
+}
+
+/// A hospital stay. One active admission per patient and per cage (partial unique indexes).
+model Admission {
+  id                     String            @id @default(uuid()) @db.Uuid
+  organizationId         String            @db.Uuid
+  branchId               String            @db.Uuid
+  number                 Int
+  patientId              String            @db.Uuid
+  clientId               String            @db.Uuid
+  encounterId            String?           @db.Uuid
+  wardId                 String?           @db.Uuid
+  cageId                 String?           @db.Uuid
+  status                 AdmissionStatus   @default(ADMITTED)
+  condition              PatientCondition  @default(STABLE)
+  cprStatus              CprStatus         @default(UNDECIDED)
+  reason                 String
+  diagnosis              String?
+  isolation              Boolean           @default(false)
+  feedingInstructions    String?
+  responsibleClinicianId String?           @db.Uuid
+  expectedDischargeAt    DateTime?         @db.Timestamptz(3)
+  admittedAt             DateTime          @default(now()) @db.Timestamptz(3)
+  admittedById           String            @db.Uuid
+  admittedByName         String
+  dischargedAt           DateTime?         @db.Timestamptz(3)
+  dischargedById         String?           @db.Uuid
+  dischargedByName       String?
+  outcome                AdmissionOutcome?
+  dischargeSummary       String?
+  homeCareInstructions   String?
+  followUpAt             DateTime?         @db.Timestamptz(3)
+  cancelReason           String?
+  createdAt              DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime          @updatedAt @db.Timestamptz(3)
+
+  organization         Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch               Branch           @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  patient              Patient          @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  client               Client           @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  ward                 Ward?            @relation(fields: [wardId], references: [id], onDelete: SetNull)
+  cage                 Cage?            @relation(fields: [cageId], references: [id], onDelete: SetNull)
+  responsibleClinician Membership?      @relation("AdmissionClinician", fields: [responsibleClinicianId], references: [id], onDelete: SetNull)
+  orders               TreatmentOrder[]
+  tasks                TreatmentTask[]
+  notes                HospitalNote[]
+  surgeries            Surgery[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status, branchId])
+  @@index([patientId, admittedAt(sort: Desc)])
+}
+
+enum TreatmentKind {
+  MEDICATION
+  FLUID
+  FEEDING
+  NURSING
+  OBSERVATION
+  OTHER
+}
+
+enum TreatmentSchedule {
+  INTERVAL
+  ONCE
+  AS_NEEDED
+  CONTINUOUS
+}
+
+enum TreatmentOrderStatus {
+  ACTIVE
+  STOPPED
+  COMPLETED
+}
+
+/// A treatment-sheet order. Doses and rates are entered by the clinician; none are suggested by the system.
+model TreatmentOrder {
+  id                 String               @id @default(uuid()) @db.Uuid
+  organizationId     String               @db.Uuid
+  admissionId        String               @db.Uuid
+  kind               TreatmentKind
+  schedule           TreatmentSchedule    @default(INTERVAL)
+  description        String
+  productId          String?              @db.Uuid
+  dose               Decimal?             @db.Decimal(14, 4)
+  doseUnit           String?
+  route              String?
+  fluidRateMlPerHour Decimal?             @db.Decimal(10, 2)
+  intervalHours      Int?
+  instructions       String?
+  startAt            DateTime             @db.Timestamptz(3)
+  endAt              DateTime?            @db.Timestamptz(3)
+  status             TreatmentOrderStatus @default(ACTIVE)
+  orderedById        String               @db.Uuid
+  orderedByName      String
+  stoppedAt          DateTime?            @db.Timestamptz(3)
+  stoppedByName      String?
+  stopReason         String?
+  createdAt          DateTime             @default(now()) @db.Timestamptz(3)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  admission    Admission       @relation(fields: [admissionId], references: [id], onDelete: Restrict)
+  product      Product?        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  tasks        TreatmentTask[]
+
+  @@index([admissionId, status])
+}
+
+enum TreatmentTaskStatus {
+  DUE
+  DONE
+  SKIPPED
+  CANCELLED
+}
+
+/// One scheduled (or as-needed) occurrence of a treatment order, ticked off on the treatment sheet.
+model TreatmentTask {
+  id               String              @id @default(uuid()) @db.Uuid
+  organizationId   String              @db.Uuid
+  admissionId      String              @db.Uuid
+  orderId          String              @db.Uuid
+  dueAt            DateTime            @db.Timestamptz(3)
+  status           TreatmentTaskStatus @default(DUE)
+  doneAt           DateTime?           @db.Timestamptz(3)
+  doneById         String?             @db.Uuid
+  doneByName       String?
+  value            String?
+  notes            String?
+  skipReason       String?
+  administrationId String?             @db.Uuid
+  createdAt        DateTime            @default(now()) @db.Timestamptz(3)
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  admission    Admission      @relation(fields: [admissionId], references: [id], onDelete: Restrict)
+  order        TreatmentOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@unique([orderId, dueAt])
+  @@index([admissionId, dueAt])
+  @@index([organizationId, status, dueAt])
+}
+
+enum HospitalNoteType {
+  PROGRESS
+  HANDOVER
+  ALERT
+}
+
+/// Append-only progress, handover and escalation notes.
+model HospitalNote {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  admissionId    String           @db.Uuid
+  type           HospitalNoteType @default(PROGRESS)
+  text           String
+  authorId       String           @db.Uuid
+  authorName     String
+  createdAt      DateTime         @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  admission    Admission    @relation(fields: [admissionId], references: [id], onDelete: Restrict)
+
+  @@index([admissionId, createdAt])
+}
+
+// ───────────────────────────── Surgery & anaesthesia (Milestone 6) ─────────────────────────────
+
+enum SurgeryStatus {
+  SCHEDULED
+  PRE_OP
+  IN_PROGRESS
+  RECOVERY
+  COMPLETED
+  CANCELLED
+}
+
+enum SurgeryPriority {
+  ELECTIVE
+  URGENT
+  EMERGENCY
+}
+
+enum AsaGrade {
+  I
+  II
+  III
+  IV
+  V
+}
+
+/// Surgical case. Scheduling uses an Appointment (clinician + theatre overlap protection).
+/// Once COMPLETED the record is locked by trigger; later corrections are addenda.
+model Surgery {
+  id                 String          @id @default(uuid()) @db.Uuid
+  organizationId     String          @db.Uuid
+  branchId           String          @db.Uuid
+  number             Int
+  patientId          String          @db.Uuid
+  clientId           String          @db.Uuid
+  appointmentId      String?         @unique @db.Uuid
+  admissionId        String?         @db.Uuid
+  encounterId        String?         @db.Uuid
+  procedure          String
+  serviceId          String?         @db.Uuid
+  theatreId          String?         @db.Uuid
+  scheduledAt        DateTime        @db.Timestamptz(3)
+  durationMinutes    Int
+  priority           SurgeryPriority @default(ELECTIVE)
+  status             SurgeryStatus   @default(SCHEDULED)
+  asaGrade           AsaGrade?
+  asaEmergency       Boolean         @default(false)
+  preOpAssessment    String?
+  fastingConfirmed   Boolean         @default(false)
+  consentObtained    Boolean         @default(false)
+  consentGivenBy     String?
+  consentAt          DateTime?       @db.Timestamptz(3)
+  consentRecordedBy  String?
+  estimateMinor      Int?
+  checklist          Json            @default("[]")
+  anaesthesiaPlan    String?
+  airway             String?
+  anaesthesiaStartAt DateTime?       @db.Timestamptz(3)
+  anaesthesiaEndAt   DateTime?       @db.Timestamptz(3)
+  startedAt          DateTime?       @db.Timestamptz(3)
+  endedAt            DateTime?       @db.Timestamptz(3)
+  recoveryStartedAt  DateTime?       @db.Timestamptz(3)
+  completedAt        DateTime?       @db.Timestamptz(3)
+  completedById      String?         @db.Uuid
+  completedByName    String?
+  surgicalNotes      String?
+  findings           String?
+  complications      String?
+  postOpInstructions String?
+  followUpAt         DateTime?       @db.Timestamptz(3)
+  cancelledAt        DateTime?       @db.Timestamptz(3)
+  cancelReason       String?
+  createdById        String          @db.Uuid
+  createdByName      String
+  createdAt          DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime        @updatedAt @db.Timestamptz(3)
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch       Branch               @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  patient      Patient              @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  client       Client               @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  admission    Admission?           @relation(fields: [admissionId], references: [id], onDelete: SetNull)
+  service      Service?             @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  theatre      Resource?            @relation(fields: [theatreId], references: [id], onDelete: SetNull)
+  team         SurgeryTeamMember[]
+  readings     AnaesthesiaReading[]
+  items        SurgeryItem[]
+  addenda      SurgeryAddendum[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, branchId, scheduledAt])
+  @@index([patientId, scheduledAt(sort: Desc)])
+}
+
+enum SurgeryRole {
+  SURGEON
+  ASSISTANT
+  ANAESTHETIST
+  NURSE
+  OTHER
+}
+
+model SurgeryTeamMember {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @db.Uuid
+  surgeryId      String      @db.Uuid
+  membershipId   String      @db.Uuid
+  role           SurgeryRole
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  surgery      Surgery      @relation(fields: [surgeryId], references: [id], onDelete: Cascade)
+  membership   Membership   @relation("SurgeryTeam", fields: [membershipId], references: [id], onDelete: Restrict)
+
+  @@unique([surgeryId, membershipId, role])
+}
+
+enum ReadingPhase {
+  INTRA_OP
+  RECOVERY
+}
+
+/// Anaesthesia monitoring and recovery readings. Append-only (trigger); corrections are new readings.
+model AnaesthesiaReading {
+  id              String       @id @default(uuid()) @db.Uuid
+  organizationId  String       @db.Uuid
+  surgeryId       String       @db.Uuid
+  phase           ReadingPhase @default(INTRA_OP)
+  recordedAt      DateTime     @default(now()) @db.Timestamptz(3)
+  heartRate       Int?
+  respiratoryRate Int?
+  spo2            Int?
+  etco2           Int?
+  systolicBp      Int?
+  diastolicBp     Int?
+  meanBp          Int?
+  temperatureC    Decimal?     @db.Decimal(4, 1)
+  agentPercent    Decimal?     @db.Decimal(4, 2)
+  oxygenLpm       Decimal?     @db.Decimal(5, 2)
+  painScore       Int?
+  notes           String?
+  recordedById    String       @db.Uuid
+  recordedByName  String
+  createdAt       DateTime     @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  surgery      Surgery      @relation(fields: [surgeryId], references: [id], onDelete: Restrict)
+
+  @@index([surgeryId, recordedAt])
+}
+
+/// Consumables and implants used during surgery: deducted from stock and charged once.
+model SurgeryItem {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  surgeryId      String   @db.Uuid
+  productId      String   @db.Uuid
+  quantity       Decimal  @db.Decimal(14, 4)
+  notes          String?
+  recordedByName String
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  surgery      Surgery      @relation(fields: [surgeryId], references: [id], onDelete: Restrict)
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([surgeryId])
+}
+
+model SurgeryAddendum {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  surgeryId      String   @db.Uuid
+  text           String
+  authorId       String   @db.Uuid
+  authorName     String
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  surgery      Surgery      @relation(fields: [surgeryId], references: [id], onDelete: Restrict)
+
+  @@index([surgeryId])
+}
+
+enum ChecklistPhase {
+  SIGN_IN
+  TIME_OUT
+  SIGN_OUT
+}
+
+/// Organisation's surgical safety checklist (procedural items; editable in settings).
+model SurgeryChecklistItem {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @db.Uuid
+  phase          ChecklistPhase
+  label          String
+  sortOrder      Int            @default(0)
+  isActive       Boolean        @default(true)
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, phase])
+}
+
+// ───────────────────────────── Preventive care (Milestone 7) ─────────────────────────────
+
+enum CareKind {
+  VACCINATION
+  DEWORMING
+  PARASITE_PREVENTION
+  HEALTH_CHECK
+  DENTAL
+  OTHER
+}
+
+enum CareProtocolStatus {
+  DRAFT
+  APPROVED
+  RETIRED
+}
+
+/// Configurable preventive-care schedule. Only APPROVED protocols (with a recorded source and reviewer)
+/// generate care items; nothing is shipped as a default.
+model CareProtocol {
+  id               String             @id @default(uuid()) @db.Uuid
+  organizationId   String             @db.Uuid
+  name             String
+  kind             CareKind
+  speciesId        String?            @db.Uuid
+  productId        String?            @db.Uuid
+  firstDueAgeWeeks Int?
+  intervalDays     Int?
+  source           String
+  notes            String?
+  status           CareProtocolStatus @default(DRAFT)
+  reviewedByName   String?
+  reviewedAt       DateTime?          @db.Timestamptz(3)
+  createdByName    String?
+  createdAt        DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime           @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  species      Species?     @relation(fields: [speciesId], references: [id], onDelete: Restrict)
+  product      Product?     @relation(fields: [productId], references: [id], onDelete: SetNull)
+  items        CareItem[]
+
+  @@index([organizationId, status])
+}
+
+enum CareItemStatus {
+  DUE
+  COMPLETED
+  CANCELLED
+  DEFERRED
+}
+
+/// One entry in a patient's care plan (e.g. "Rabies booster due 1 Mar"). Completing a recurring item
+/// schedules the next one.
+model CareItem {
+  id                String         @id @default(uuid()) @db.Uuid
+  organizationId    String         @db.Uuid
+  patientId         String         @db.Uuid
+  protocolId        String?        @db.Uuid
+  kind              CareKind
+  title             String
+  dueDate           DateTime       @db.Date
+  status            CareItemStatus @default(DUE)
+  deferredUntil     DateTime?      @db.Date
+  deferReason       String?
+  cancelReason      String?
+  completedAt       DateTime?      @db.Timestamptz(3)
+  completedByName   String?
+  administrationId  String?        @unique @db.Uuid
+  givenElsewhere    Boolean        @default(false)
+  productName       String?
+  batchNumber       String?
+  notes             String?
+  previousItemId    String?        @db.Uuid
+  remindedAt        DateTime?      @db.Timestamptz(3)
+  overdueRemindedAt DateTime?      @db.Timestamptz(3)
+  createdByName     String?
+  createdAt         DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime       @updatedAt @db.Timestamptz(3)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  patient      Patient       @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  protocol     CareProtocol? @relation(fields: [protocolId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status, dueDate])
+  @@index([patientId, dueDate])
+}
+
+// ───────────────────────────── Communications (Milestone 7) ─────────────────────────────
+
+enum MessageChannel {
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+enum MessageStatus {
+  QUEUED
+  SENDING
+  SENT
+  FAILED
+  CANCELLED
+  SKIPPED
+}
+
+/// Editable message wording per purpose and channel ({{placeholders}} are filled at send time).
+model MessageTemplate {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @db.Uuid
+  purpose        String
+  channel        MessageChannel
+  subject        String?
+  body           String
+  isActive       Boolean        @default(true)
+  updatedByName  String?
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime       @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, purpose, channel])
+}
+
+/// Delivery log and queue for every outgoing client message. dedupeKey prevents duplicate notifications.
+model OutboundMessage {
+  id                String         @id @default(uuid()) @db.Uuid
+  organizationId    String         @db.Uuid
+  clientId          String?        @db.Uuid
+  patientId         String?        @db.Uuid
+  channel           MessageChannel
+  recipient         String
+  subject           String?
+  body              String
+  purpose           String
+  status            MessageStatus  @default(QUEUED)
+  attempts          Int            @default(0)
+  nextAttemptAt     DateTime       @default(now()) @db.Timestamptz(3)
+  lastError         String?
+  providerMessageId String?
+  sentAt            DateTime?      @db.Timestamptz(3)
+  dedupeKey         String?
+  sourceType        String?
+  sourceId          String?
+  createdByName     String?
+  createdAt         DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime       @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, dedupeKey])
+  @@index([status, nextAttemptAt])
+  @@index([organizationId, clientId, createdAt])
+  @@index([organizationId, createdAt])
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+/// Secure messages between a client (portal) and the clinic.
+model ClientMessage {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  clientId       String           @db.Uuid
+  patientId      String?          @db.Uuid
+  direction      MessageDirection
+  kind           String           @default("MESSAGE")
+  subject        String?
+  body           String
+  authorName     String
+  staffUserId    String?          @db.Uuid
+  readAt         DateTime?        @db.Timestamptz(3)
+  createdAt      DateTime         @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  client       Client       @relation(fields: [clientId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, clientId, createdAt])
+  @@index([organizationId, direction, readAt])
+}
+
+// ───────────────────────────── Client portal (Milestone 7) ─────────────────────────────
+
+enum PortalUserStatus {
+  INVITED
+  ACTIVE
+  DISABLED
+}
+
+/// A client's portal login. One login can be linked to client records at several clinics.
+model PortalUser {
+  id               String           @id @default(uuid()) @db.Uuid
+  email            String           @unique
+  name             String
+  passwordHash     String?
+  status           PortalUserStatus @default(INVITED)
+  failedLoginCount Int              @default(0)
+  lockedUntil      DateTime?        @db.Timestamptz(3)
+  lastLoginAt      DateTime?        @db.Timestamptz(3)
+  createdAt        DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime         @updatedAt @db.Timestamptz(3)
+
+  accesses PortalAccess[]
+  sessions PortalSession[]
+  tokens   PortalToken[]
+}
+
+model PortalAccess {
+  id             String   @id @default(uuid()) @db.Uuid
+  portalUserId   String   @db.Uuid
+  organizationId String   @db.Uuid
+  clientId       String   @db.Uuid
+  isActive       Boolean  @default(true)
+  invitedByName  String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  portalUser   PortalUser   @relation(fields: [portalUserId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  client       Client       @relation(fields: [clientId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, clientId])
+  @@unique([portalUserId, organizationId])
+}
+
+model PortalSession {
+  id           String    @id @default(uuid()) @db.Uuid
+  portalUserId String    @db.Uuid
+  accessId     String    @db.Uuid
+  tokenHash    String    @unique
+  csrfToken    String
+  ip           String?
+  userAgent    String?
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  lastSeenAt   DateTime  @default(now()) @db.Timestamptz(3)
+  expiresAt    DateTime  @db.Timestamptz(3)
+  revokedAt    DateTime? @db.Timestamptz(3)
+
+  portalUser PortalUser @relation(fields: [portalUserId], references: [id], onDelete: Cascade)
+
+  @@index([portalUserId])
+}
+
+enum PortalTokenType {
+  INVITE
+  RESET
+}
+
+model PortalToken {
+  id           String          @id @default(uuid()) @db.Uuid
+  portalUserId String          @db.Uuid
+  type         PortalTokenType
+  tokenHash    String          @unique
+  expiresAt    DateTime        @db.Timestamptz(3)
+  consumedAt   DateTime?       @db.Timestamptz(3)
+  createdAt    DateTime        @default(now()) @db.Timestamptz(3)
+
+  portalUser PortalUser @relation(fields: [portalUserId], references: [id], onDelete: Cascade)
+
+  @@index([portalUserId, type])
+}
+
+enum AppointmentRequestStatus {
+  PENDING
+  BOOKED
+  DECLINED
+  CANCELLED
+}
+
+/// Appointment requested by a client through the portal; staff book it into the calendar or decline.
+model AppointmentRequest {
+  id             String                   @id @default(uuid()) @db.Uuid
+  organizationId String                   @db.Uuid
+  clientId       String                   @db.Uuid
+  patientId      String?                  @db.Uuid
+  reason         String
+  preferredDate  DateTime                 @db.Date
+  preferredTime  String                   @default("ANY")
+  notes          String?
+  status         AppointmentRequestStatus @default(PENDING)
+  appointmentId  String?                  @db.Uuid
+  handledByName  String?
+  handledAt      DateTime?                @db.Timestamptz(3)
+  declineReason  String?
+  createdAt      DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime                 @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  client       Client       @relation(fields: [clientId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, status, createdAt])
+}
+
+// ───────────────────────── Milestone 8: livestock & farms ─────────────────────────
+
+enum FarmStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum AnimalGroupKind {
+  HERD
+  FLOCK
+  PEN
+  BATCH
+}
+
+enum ProductionPurpose {
+  DAIRY
+  BEEF
+  BREEDING
+  LAYER
+  BROILER
+  MEAT
+  WOOL
+  MIXED
+  OTHER
+}
+
+enum AnimalGroupStatus {
+  ACTIVE
+  CLOSED
+}
+
+enum LivestockEventType {
+  MOVE
+  PURCHASE
+  SALE
+  TRANSFER
+  DEATH
+  CULL
+  BIRTH
+  PLACEMENT
+}
+
+enum BreedingEventType {
+  HEAT
+  SERVICE
+  INSEMINATION
+  PREGNANCY_CHECK
+  BIRTH
+  ABORTION
+  DRY_OFF
+}
+
+enum PregnancyResult {
+  PREGNANT
+  NOT_PREGNANT
+  INCONCLUSIVE
+}
+
+enum ProductionKind {
+  MILK
+  EGGS
+  FEED
+  BATCH_WEIGHT
+  MORTALITY
+  WATER
+}
+
+enum GroupTreatmentKind {
+  VACCINATION
+  PARASITE_CONTROL
+  TREATMENT
+  OTHER
+}
+
+enum OutbreakStatus {
+  SUSPECTED
+  CONFIRMED
+  CONTROLLED
+  CLOSED
+}
+
+enum FieldVisitStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model Farm {
+  id                 String     @id @default(uuid()) @db.Uuid
+  organizationId     String     @db.Uuid
+  number             Int
+  clientId           String     @db.Uuid
+  name               String
+  registrationNumber String?
+  address            String?
+  district           String?
+  latitude           Decimal?   @db.Decimal(9, 6)
+  longitude          Decimal?   @db.Decimal(9, 6)
+  areaHectares       Decimal?   @db.Decimal(10, 2)
+  notes              String?
+  status             FarmStatus @default(ACTIVE)
+  createdByName      String?
+  createdAt          DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime   @updatedAt @db.Timestamptz(3)
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  client       Client              @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  groups       AnimalGroup[]
+  animals      Patient[]
+  movementsOut LivestockMovement[] @relation("MovementFromFarm")
+  movementsIn  LivestockMovement[] @relation("MovementToFarm")
+  production   ProductionRecord[]
+  treatments   GroupTreatment[]
+  outbreaks    DiseaseOutbreak[]
+  visits       FieldVisit[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status, name])
+  @@index([clientId])
+}
+
+model AnimalGroup {
+  id                String            @id @default(uuid()) @db.Uuid
+  organizationId    String            @db.Uuid
+  farmId            String            @db.Uuid
+  name              String
+  kind              AnimalGroupKind
+  speciesId         String            @db.Uuid
+  purpose           ProductionPurpose @default(MIXED)
+  /// Batch-level groups (e.g. a poultry flock) track a head count instead of individual animals.
+  tracksIndividuals Boolean           @default(true)
+  headCount         Int               @default(0)
+  initialCount      Int?
+  placedOn          DateTime?         @db.Date
+  breedText         String?
+  location          String?
+  notes             String?
+  status            AnimalGroupStatus @default(ACTIVE)
+  closedAt          DateTime?         @db.Timestamptz(3)
+  closedReason      String?
+  createdAt         DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime          @updatedAt @db.Timestamptz(3)
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  farm         Farm                @relation(fields: [farmId], references: [id], onDelete: Restrict)
+  species      Species             @relation(fields: [speciesId], references: [id], onDelete: Restrict)
+  animals      Patient[]
+  movementsOut LivestockMovement[] @relation("MovementFromGroup")
+  movementsIn  LivestockMovement[] @relation("MovementToGroup")
+  production   ProductionRecord[]
+  treatments   GroupTreatment[]
+  outbreaks    DiseaseOutbreak[]
+
+  @@unique([farmId, name])
+  @@index([organizationId, status])
+}
+
+/// Append-only movement and ownership-change history (moves, purchases, sales, deaths, culls, births).
+model LivestockMovement {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @db.Uuid
+  type           LivestockEventType
+  patientId      String?            @db.Uuid
+  fromFarmId     String?            @db.Uuid
+  toFarmId       String?            @db.Uuid
+  fromGroupId    String?            @db.Uuid
+  toGroupId      String?            @db.Uuid
+  headCount      Int                @default(1)
+  occurredAt     DateTime           @db.Timestamptz(3)
+  counterparty   String?
+  priceMinor     Int?
+  reason         String?
+  recordedById   String?            @db.Uuid
+  recordedByName String
+  createdAt      DateTime           @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  patient      Patient?     @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  fromFarm     Farm?        @relation("MovementFromFarm", fields: [fromFarmId], references: [id], onDelete: Restrict)
+  toFarm       Farm?        @relation("MovementToFarm", fields: [toFarmId], references: [id], onDelete: Restrict)
+  fromGroup    AnimalGroup? @relation("MovementFromGroup", fields: [fromGroupId], references: [id], onDelete: Restrict)
+  toGroup      AnimalGroup? @relation("MovementToGroup", fields: [toGroupId], references: [id], onDelete: Restrict)
+
+  @@index([patientId, occurredAt(sort: Desc)])
+  @@index([organizationId, occurredAt])
+  @@index([fromFarmId])
+  @@index([toFarmId])
+}
+
+/// Breeding and reproduction records. Never edited; a mistaken entry is voided with a reason.
+model BreedingEvent {
+  id              String            @id @default(uuid()) @db.Uuid
+  organizationId  String            @db.Uuid
+  patientId       String            @db.Uuid
+  type            BreedingEventType
+  occurredAt      DateTime          @db.Timestamptz(3)
+  sireId          String?           @db.Uuid
+  sireText        String?
+  semenBatch      String?
+  technician      String?
+  method          String?
+  result          PregnancyResult?
+  expectedDueDate DateTime?         @db.Date
+  dueDateSource   String?
+  offspringCount  Int?
+  liveCount       Int?
+  notes           String?
+  voidedAt        DateTime?         @db.Timestamptz(3)
+  voidReason      String?
+  voidedByName    String?
+  recordedById    String?           @db.Uuid
+  recordedByName  String
+  createdAt       DateTime          @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  patient      Patient      @relation("BreedingFemale", fields: [patientId], references: [id], onDelete: Restrict)
+  sire         Patient?     @relation("BreedingSire", fields: [sireId], references: [id], onDelete: Restrict)
+
+  @@index([patientId, occurredAt(sort: Desc)])
+  @@index([organizationId, type, occurredAt])
+}
+
+/// Milk, eggs, feed, batch weights and batch mortality. Never edited; corrections void and re-enter.
+model ProductionRecord {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @db.Uuid
+  farmId         String         @db.Uuid
+  patientId      String?        @db.Uuid
+  groupId        String?        @db.Uuid
+  kind           ProductionKind
+  recordedOn     DateTime       @db.Date
+  quantity       Decimal        @db.Decimal(14, 3)
+  unit           String
+  session        String?
+  notes          String?
+  voidedAt       DateTime?      @db.Timestamptz(3)
+  voidReason     String?
+  voidedByName   String?
+  recordedById   String?        @db.Uuid
+  recordedByName String
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  farm         Farm         @relation(fields: [farmId], references: [id], onDelete: Restrict)
+  patient      Patient?     @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  group        AnimalGroup? @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  @@index([farmId, kind, recordedOn])
+  @@index([patientId, recordedOn])
+  @@index([groupId, recordedOn])
+}
+
+/// Vaccination, parasite-control and treatment campaigns applied to a whole group.
+model GroupTreatment {
+  id                 String             @id @default(uuid()) @db.Uuid
+  organizationId     String             @db.Uuid
+  farmId             String             @db.Uuid
+  groupId            String?            @db.Uuid
+  fieldVisitId       String?            @db.Uuid
+  kind               GroupTreatmentKind
+  productId          String?            @db.Uuid
+  productName        String
+  batchNumber        String?
+  route              String?
+  dosePerHead        String?
+  headCount          Int
+  quantityIssued     Decimal?           @db.Decimal(14, 4)
+  administeredAt     DateTime           @db.Timestamptz(3)
+  meatClearAt        DateTime?          @db.Timestamptz(3)
+  milkClearAt        DateTime?          @db.Timestamptz(3)
+  eggClearAt         DateTime?          @db.Timestamptz(3)
+  withdrawalSource   String?
+  animalsRecorded    Int                @default(0)
+  notes              String?
+  administeredById   String?            @db.Uuid
+  administeredByName String
+  createdAt          DateTime           @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  farm         Farm         @relation(fields: [farmId], references: [id], onDelete: Restrict)
+  group        AnimalGroup? @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  product      Product?     @relation(fields: [productId], references: [id], onDelete: Restrict)
+  fieldVisit   FieldVisit?  @relation(fields: [fieldVisitId], references: [id], onDelete: Restrict)
+
+  @@index([farmId, administeredAt(sort: Desc)])
+  @@index([groupId])
+}
+
+model DiseaseOutbreak {
+  id                    String         @id @default(uuid()) @db.Uuid
+  organizationId        String         @db.Uuid
+  number                Int
+  farmId                String         @db.Uuid
+  groupId               String?        @db.Uuid
+  disease               String
+  notifiable            Boolean        @default(false)
+  status                OutbreakStatus @default(SUSPECTED)
+  firstSeenOn           DateTime       @db.Date
+  confirmedOn           DateTime?      @db.Date
+  closedOn              DateTime?      @db.Date
+  diagnosisMethod       String?
+  populationAtRisk      Int?
+  affectedCount         Int            @default(0)
+  deathCount            Int            @default(0)
+  controlMeasures       String?
+  reportedToAuthorityOn DateTime?      @db.Date
+  authorityReference    String?
+  notes                 String?
+  createdByName         String?
+  createdAt             DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime       @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  farm         Farm         @relation(fields: [farmId], references: [id], onDelete: Restrict)
+  group        AnimalGroup? @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status])
+  @@index([farmId])
+}
+
+model FieldVisit {
+  id               String           @id @default(uuid()) @db.Uuid
+  organizationId   String           @db.Uuid
+  branchId         String           @db.Uuid
+  number           Int
+  farmId           String           @db.Uuid
+  clientId         String           @db.Uuid
+  appointmentId    String?          @unique @db.Uuid
+  clinicianId      String?          @db.Uuid
+  scheduledAt      DateTime         @db.Timestamptz(3)
+  purpose          String
+  status           FieldVisitStatus @default(SCHEDULED)
+  calloutServiceId String?          @db.Uuid
+  distanceKm       Decimal?         @db.Decimal(8, 1)
+  findings         String?
+  recommendations  String?
+  startedAt        DateTime?        @db.Timestamptz(3)
+  completedAt      DateTime?        @db.Timestamptz(3)
+  completedByName  String?
+  cancelledAt      DateTime?        @db.Timestamptz(3)
+  cancelReason     String?
+  createdByName    String?
+  createdAt        DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime         @updatedAt @db.Timestamptz(3)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch       Branch           @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  farm         Farm             @relation(fields: [farmId], references: [id], onDelete: Restrict)
+  client       Client           @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  appointment  Appointment?     @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  clinician    Membership?      @relation("FieldVisitClinician", fields: [clinicianId], references: [id], onDelete: Restrict)
+  items        FieldVisitItem[]
+  treatments   GroupTreatment[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, scheduledAt])
+  @@index([farmId, scheduledAt])
+}
+
+/// Services and products supplied on a field visit; each one is billed as a charge to the farm owner.
+model FieldVisitItem {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  visitId        String   @db.Uuid
+  kind           LineKind
+  serviceId      String?  @db.Uuid
+  productId      String?  @db.Uuid
+  patientId      String?  @db.Uuid
+  description    String
+  quantity       Decimal  @db.Decimal(14, 4)
+  unitPriceMinor Int
+  recordedByName String
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  visit        FieldVisit   @relation(fields: [visitId], references: [id], onDelete: Restrict)
+  service      Service?     @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  product      Product?     @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([visitId])
+}
+
+// ───────────────────────── Milestone 8: boarding & grooming ─────────────────────────
+
+enum BoardingUnitType {
+  KENNEL
+  CATTERY
+  SUITE
+  STABLE
+  OTHER
+}
+
+enum BoardingStatus {
+  RESERVED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+  NO_SHOW
+}
+
+enum BoardingLogKind {
+  FEEDING
+  WALK
+  MEDICATION
+  NOTE
+  INCIDENT
+}
+
+enum GroomingStatus {
+  WAITING
+  IN_PROGRESS
+  READY
+  COLLECTED
+  CANCELLED
+}
+
+model BoardingUnit {
+  id               String           @id @default(uuid()) @db.Uuid
+  organizationId   String           @db.Uuid
+  branchId         String           @db.Uuid
+  name             String
+  type             BoardingUnitType @default(KENNEL)
+  nightlyServiceId String?          @db.Uuid
+  notes            String?
+  sortOrder        Int              @default(0)
+  isActive         Boolean          @default(true)
+  createdAt        DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime         @updatedAt @db.Timestamptz(3)
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch         Branch         @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  nightlyService Service?       @relation(fields: [nightlyServiceId], references: [id], onDelete: SetNull)
+  stays          BoardingStay[]
+
+  @@unique([branchId, name])
+}
+
+model BoardingStay {
+  id                     String         @id @default(uuid()) @db.Uuid
+  organizationId         String         @db.Uuid
+  branchId               String         @db.Uuid
+  number                 Int
+  patientId              String         @db.Uuid
+  clientId               String         @db.Uuid
+  unitId                 String?        @db.Uuid
+  status                 BoardingStatus @default(RESERVED)
+  startDate              DateTime       @db.Date
+  endDate                DateTime       @db.Date
+  nightlyRateMinor       Int            @default(0)
+  nightlyServiceId       String?        @db.Uuid
+  feedingInstructions    String?
+  medicationInstructions String?
+  belongings             String?
+  behaviourNotes         String?
+  emergencyContact       String?
+  vaccinationOverride    String?
+  checkedInAt            DateTime?      @db.Timestamptz(3)
+  checkedInByName        String?
+  checkedOutAt           DateTime?      @db.Timestamptz(3)
+  checkedOutByName       String?
+  nightsCharged          Int?
+  cancelledAt            DateTime?      @db.Timestamptz(3)
+  cancelReason           String?
+  createdByName          String?
+  createdAt              DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime       @updatedAt @db.Timestamptz(3)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch       Branch        @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  patient      Patient       @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  client       Client        @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  unit         BoardingUnit? @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  logs         BoardingLog[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, branchId, startDate, endDate])
+  @@index([unitId, startDate])
+  @@index([patientId])
+}
+
+/// Daily care log for boarders (feeding, walks, medication, incidents). Append-only.
+model BoardingLog {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  stayId         String          @db.Uuid
+  kind           BoardingLogKind
+  text           String
+  recordedAt     DateTime        @default(now()) @db.Timestamptz(3)
+  recordedById   String?         @db.Uuid
+  recordedByName String
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  stay         BoardingStay @relation(fields: [stayId], references: [id], onDelete: Restrict)
+
+  @@index([stayId, recordedAt])
+}
+
+model GroomingJob {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @db.Uuid
+  branchId       String         @db.Uuid
+  number         Int
+  patientId      String         @db.Uuid
+  clientId       String         @db.Uuid
+  appointmentId  String?        @unique @db.Uuid
+  groomerId      String?        @db.Uuid
+  status         GroomingStatus @default(WAITING)
+  instructions   String?
+  coatCondition  String?
+  behaviour      String?
+  groomerNotes   String?
+  startedAt      DateTime?      @db.Timestamptz(3)
+  readyAt        DateTime?      @db.Timestamptz(3)
+  collectedAt    DateTime?      @db.Timestamptz(3)
+  cancelledAt    DateTime?      @db.Timestamptz(3)
+  cancelReason   String?
+  createdByName  String?
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime       @updatedAt @db.Timestamptz(3)
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch       Branch               @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  patient      Patient              @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  client       Client               @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  appointment  Appointment?         @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  groomer      Membership?          @relation("Groomer", fields: [groomerId], references: [id], onDelete: Restrict)
+  services     GroomingJobService[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, branchId, createdAt])
+  @@index([patientId])
+}
+
+model GroomingJobService {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  jobId          String   @db.Uuid
+  serviceId      String   @db.Uuid
+  description    String
+  priceMinor     Int
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  job          GroomingJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  service      Service      @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  @@index([jobId])
+}
+
+// ───────────────────────── Milestone 8: insurance & referrals ─────────────────────────
+
+enum PolicyStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum PreAuthStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  PARTIALLY_APPROVED
+  DECLINED
+}
+
+enum ClaimStatus {
+  DRAFT
+  SUBMITTED
+  QUERIED
+  APPROVED
+  PARTIALLY_APPROVED
+  REJECTED
+  PAID
+  CLOSED
+}
+
+enum ClaimPayee {
+  CLINIC
+  CLIENT
+}
+
+enum ReferralDirection {
+  OUTGOING
+  INCOMING
+}
+
+enum ReferralStatus {
+  DRAFT
+  SENT
+  RECEIVED
+  ACCEPTED
+  COMPLETED
+  DECLINED
+  CANCELLED
+}
+
+enum ReferralUrgency {
+  ROUTINE
+  URGENT
+  EMERGENCY
+}
+
+model InsuranceProvider {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  name           String
+  phone          String?
+  email          String?
+  claimsEmail    String?
+  website        String?
+  notes          String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  policies     InsurancePolicy[]
+
+  @@unique([organizationId, name])
+}
+
+model InsurancePolicy {
+  id              String       @id @default(uuid()) @db.Uuid
+  organizationId  String       @db.Uuid
+  providerId      String       @db.Uuid
+  patientId       String       @db.Uuid
+  clientId        String       @db.Uuid
+  policyNumber    String
+  planName        String?
+  startDate       DateTime     @db.Date
+  endDate         DateTime?    @db.Date
+  excessMinor     Int?
+  coverLimitMinor Int?
+  coPayPercent    Int?
+  exclusions      String?
+  notes           String?
+  status          PolicyStatus @default(ACTIVE)
+  createdByName   String?
+  createdAt       DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime     @updatedAt @db.Timestamptz(3)
+
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  provider          InsuranceProvider  @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  patient           Patient            @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  client            Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  preAuthorizations PreAuthorization[]
+  claims            InsuranceClaim[]
+
+  @@unique([organizationId, providerId, policyNumber])
+  @@index([patientId])
+}
+
+model PreAuthorization {
+  id               String        @id @default(uuid()) @db.Uuid
+  organizationId   String        @db.Uuid
+  number           Int
+  policyId         String        @db.Uuid
+  procedure        String
+  estimateMinor    Int
+  estimateId       String?       @db.Uuid
+  status           PreAuthStatus @default(DRAFT)
+  submittedAt      DateTime?     @db.Timestamptz(3)
+  decidedAt        DateTime?     @db.Timestamptz(3)
+  approvedMinor    Int?
+  insurerReference String?
+  decisionNotes    String?
+  notes            String?
+  createdByName    String?
+  createdAt        DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime      @updatedAt @db.Timestamptz(3)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  policy       InsurancePolicy @relation(fields: [policyId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, number])
+  @@index([policyId])
+}
+
+model InsuranceClaim {
+  id               String      @id @default(uuid()) @db.Uuid
+  organizationId   String      @db.Uuid
+  number           Int
+  policyId         String      @db.Uuid
+  patientId        String      @db.Uuid
+  clientId         String      @db.Uuid
+  condition        String
+  treatmentFrom    DateTime    @db.Date
+  treatmentTo      DateTime    @db.Date
+  payee            ClaimPayee  @default(CLINIC)
+  claimedMinor     Int         @default(0)
+  approvedMinor    Int?
+  paidMinor        Int         @default(0)
+  status           ClaimStatus @default(DRAFT)
+  clinicalSummary  String?
+  submittedAt      DateTime?   @db.Timestamptz(3)
+  submittedByName  String?
+  decidedAt        DateTime?   @db.Timestamptz(3)
+  insurerReference String?
+  decisionNotes    String?
+  paidAt           DateTime?   @db.Timestamptz(3)
+  notes            String?
+  createdByName    String?
+  createdAt        DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime    @updatedAt @db.Timestamptz(3)
+
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  policy       InsurancePolicy         @relation(fields: [policyId], references: [id], onDelete: Restrict)
+  patient      Patient                 @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  client       Client                  @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  invoices     InsuranceClaimInvoice[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status])
+  @@index([patientId])
+}
+
+model InsuranceClaimInvoice {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  claimId        String   @db.Uuid
+  invoiceId      String   @db.Uuid
+  amountMinor    Int
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  claim        InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  invoice      Invoice        @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  @@unique([claimId, invoiceId])
+  @@index([invoiceId])
+}
+
+model ReferralContact {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  name           String
+  practice       String?
+  specialty      String?
+  email          String?
+  phone          String?
+  address        String?
+  notes          String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  referrals    Referral[]
+
+  @@index([organizationId, name])
+}
+
+model Referral {
+  id              String            @id @default(uuid()) @db.Uuid
+  organizationId  String            @db.Uuid
+  number          Int
+  direction       ReferralDirection
+  patientId       String            @db.Uuid
+  clientId        String            @db.Uuid
+  contactId       String?           @db.Uuid
+  externalVet     String?
+  urgency         ReferralUrgency   @default(ROUTINE)
+  reason          String
+  clinicalSummary String?
+  questions       String?
+  status          ReferralStatus    @default(DRAFT)
+  sentAt          DateTime?         @db.Timestamptz(3)
+  sentByName      String?
+  acceptedAt      DateTime?         @db.Timestamptz(3)
+  appointmentAt   DateTime?         @db.Timestamptz(3)
+  completedAt     DateTime?         @db.Timestamptz(3)
+  outcome         String?
+  declineReason   String?
+  createdByName   String?
+  createdAt       DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime          @updatedAt @db.Timestamptz(3)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  patient      Patient          @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  client       Client           @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  contact      ReferralContact? @relation(fields: [contactId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status])
+  @@index([patientId])
+}
+
+enum PurchaseRequestStatus {
+  OPEN
+  ORDERED
+  REJECTED
+  CANCELLED
+}
+
+/// A member of staff asks for a product to be ordered; procurement turns open requests into a draft purchase order.
+model PurchaseRequest {
+  id              String                @id @default(uuid()) @db.Uuid
+  organizationId  String                @db.Uuid
+  branchId        String                @db.Uuid
+  number          Int
+  productId       String                @db.Uuid
+  quantity        Decimal               @db.Decimal(14, 4)
+  reason          String?
+  neededBy        DateTime?             @db.Date
+  status          PurchaseRequestStatus @default(OPEN)
+  requestedById   String                @db.Uuid
+  requestedByName String
+  purchaseOrderId String?               @db.Uuid
+  decidedById     String?               @db.Uuid
+  decidedByName   String?
+  decidedAt       DateTime?             @db.Timestamptz(3)
+  decisionNote    String?
+  createdAt       DateTime              @default(now()) @db.Timestamptz(3)
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  product       Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status])
+}
+
+/// Stock sent back to the supplier (damaged, recalled, short-dated, wrong item). Append-only (DB trigger):
+/// it takes the batch out of stock at its cost and reduces the amount owed to the supplier.
+model SupplierReturn {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  branchId       String   @db.Uuid
+  number         Int
+  supplierId     String   @db.Uuid
+  locationId     String   @db.Uuid
+  reason         String
+  reference      String?
+  totalMinor     Int
+  createdById    String   @db.Uuid
+  createdByName  String
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  supplier     Supplier             @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  lines        SupplierReturnLine[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, supplierId])
+}
+
+model SupplierReturnLine {
+  id               String  @id @default(uuid()) @db.Uuid
+  organizationId   String  @db.Uuid
+  supplierReturnId String  @db.Uuid
+  productId        String  @db.Uuid
+  batchId          String  @db.Uuid
+  quantity         Decimal @db.Decimal(14, 4)
+  unitCostMinor    Int
+  totalMinor       Int
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  supplierReturn SupplierReturn @relation(fields: [supplierReturnId], references: [id], onDelete: Restrict)
+  product        Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  batch          StockBatch     @relation(fields: [batchId], references: [id], onDelete: Restrict)
+
+  @@index([supplierReturnId])
+}

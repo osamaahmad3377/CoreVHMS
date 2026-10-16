@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 200 20% 98%;
+    --foreground: 200 30% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 200 30% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 200 30% 11%;
+    --primary: 174 78% 26%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 200 18% 94%;
+    --secondary-foreground: 200 30% 15%;
+    --muted: 200 18% 95%;
+    --muted-foreground: 200 10% 40%;
+    --accent: 174 40% 93%;
+    --accent-foreground: 174 80% 18%;
+    --destructive: 0 72% 46%;
+    --destructive-foreground: 0 0% 100%;
+    --warning: 35 92% 42%;
+    --warning-foreground: 0 0% 100%;
+    --success: 152 62% 32%;
+    --success-foreground: 0 0% 100%;
+    --info: 211 80% 44%;
+    --info-foreground: 0 0% 100%;
+    --border: 200 16% 87%;
+    --input: 200 16% 82%;
+    --ring: 174 78% 30%;
+    --radius: 0.5rem;
+    --sidebar: 200 28% 12%;
+    --sidebar-foreground: 200 15% 82%;
+    --sidebar-border: 200 20% 20%;
+    --sidebar-active: 174 60% 32%;
+  }
+
+  .dark {
+    --background: 200 28% 7%;
+    --foreground: 200 15% 92%;
+    --card: 200 26% 10%;
+    --card-foreground: 200 15% 92%;
+    --popover: 200 26% 10%;
+    --popover-foreground: 200 15% 92%;
+    --primary: 174 62% 42%;
+    --primary-foreground: 200 30% 6%;
+    --secondary: 200 20% 15%;
+    --secondary-foreground: 200 15% 90%;
+    --muted: 200 20% 14%;
+    --muted-foreground: 200 10% 62%;
+    --accent: 174 40% 16%;
+    --accent-foreground: 174 50% 80%;
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --warning: 38 92% 52%;
+    --warning-foreground: 200 30% 6%;
+    --success: 152 55% 45%;
+    --success-foreground: 200 30% 6%;
+    --info: 211 80% 60%;
+    --info-foreground: 200 30% 6%;
+    --border: 200 18% 20%;
+    --input: 200 18% 24%;
+    --ring: 174 62% 42%;
+    --sidebar: 200 30% 5%;
+    --sidebar-foreground: 200 12% 78%;
+    --sidebar-border: 200 20% 14%;
+    --sidebar-active: 174 55% 30%;
+  }
+
+  * {
+    @apply border-border;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'cv11', 'ss01', 'tnum';
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+}
+
+@layer utilities {
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: white;
+  }
+}

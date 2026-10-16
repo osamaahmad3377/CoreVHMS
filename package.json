@@ -1,0 +1,41 @@
+{
+  "name": "nextcore-vcms",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NextCore Veterinary Clinic Management System",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20.10"
+  },
+  "scripts": {
+    "build:shared": "npm run build -w @vcms/shared",
+    "dev:api": "npm run dev -w @vcms/api",
+    "dev:web": "npm run dev -w @vcms/web",
+    "db:up": "docker compose up -d postgres mailpit",
+    "db:migrate": "npm run db:migrate -w @vcms/api",
+    "db:seed": "npm run db:seed -w @vcms/api --",
+    "typecheck": "npm run build:shared && npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run build:shared && npm run test --workspaces --if-present"
+  },
+  "overrides": {
+    "multer": "^2.4.0",
+    "body-parser": "^1.20.8",
+    "lodash": "^4.18.1",
+    "js-yaml": "^4.3.2",
+    "uuid": "^11.1.1",
+    "qs": "^6.16.1",
+    "postcss": "^8.5.30",
+    "react": "19.1.10",
+    "react-dom": "19.1.10",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "picomatch@^4": "^4.0.4",
+    "next": {
+      "postcss": "^8.5.30"
+    }
+  }
+}

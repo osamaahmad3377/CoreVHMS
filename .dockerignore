@@ -1,0 +1,16 @@
+# Keep images small and free of local state and secrets.
+**/node_modules
+**/dist
+**/.next
+**/coverage
+**/*.tsbuildinfo
+**/.env
+**/.env.*
+!**/.env.example
+apps/api/storage
+apps/api/storage-test
+apps/web/test-results
+apps/web/playwright-report
+backups
+.git
+.DS_Store
