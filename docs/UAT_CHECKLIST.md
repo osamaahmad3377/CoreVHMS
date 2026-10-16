@@ -36,6 +36,14 @@ has an agreed workaround and fix date.
 | 5 | C | Owner | Suspend a staff account while that person is signed in | Their next action signs them out; they cannot sign in again | | |
 | 6 | | Owner | Open Audit log, filter by a user and by **Exports (all)**, export CSV | Shows sign-ins, record views, changes with old/new values, and every download of client data or reports; CSV opens in a spreadsheet | | |
 
+### Everyday flow
+
+| # | C | Role | Scenario | Expected result | Result | Initials / date |
+|---|---|---|---|---|---|---|
+| 6a | C | Each role | Sign in and look at the dashboard | “Needs your attention” lists only what that person has to do, most urgent first; every button opens the right page | | |
+| 6b | | Vet | Complete a consultation | “Next steps” offers Bill this visit, Book a recheck and Back to the waiting list; Bill this visit opens an invoice with the client’s charges selected | | |
+| 6c | | Any | Press ⌘K / Ctrl K and type “sale”, “book” or “invoice” | The matching action appears and opens the right screen | | |
+
 ### Clients, animals and front desk
 
 | # | C | Role | Scenario | Expected result | Result | Initials / date |

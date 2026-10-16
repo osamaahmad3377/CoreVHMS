@@ -1,9 +1,9 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { enumLabel } from '@vcms/shared';
-import { CheckCircle2, FilePlus, Paperclip, XCircle } from 'lucide-react';
+import { ArrowRight, CalendarPlus, CheckCircle2, ClipboardList, FilePlus, Paperclip, Receipt, XCircle } from 'lucide-react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { DiagnosesPanel } from '@/components/clinical/diagnoses-panel';
@@ -30,6 +30,7 @@ import type { ClinicalNote, Encounter } from '@/lib/types';
 function Workspace() {
   const { id } = useParams<{ id: string }>();
   const { can } = useSession();
+  const router = useRouter();
   const qc = useQueryClient();
   const confirm = useConfirm();
   const key = ['encounter', id];
@@ -42,7 +43,10 @@ function Workspace() {
   const close = useMutation({
     mutationFn: () => api.post<{ unsignedNotes: number }>(`/encounters/${id}/complete`),
     onSuccess: (r) => {
-      toast.success(r.unsignedNotes ? `Consultation completed — ${r.unsignedNotes} note(s) still need signing` : 'Consultation completed');
+      const clientId = q.data?.client.id;
+      toast.success(r.unsignedNotes ? `Consultation completed — ${r.unsignedNotes} note(s) still need signing` : 'Consultation completed', {
+        action: clientId && can('billing.write') ? { label: 'Bill this visit', onClick: () => router.push(`/billing/invoices/new?clientId=${clientId}`) } : undefined,
+      });
       refresh();
       qc.invalidateQueries({ queryKey: ['queue'] });
     },
@@ -108,6 +112,16 @@ function Workspace() {
           )}
         </div>
       </div>
+
+      {e.status === 'COMPLETED' && (
+        <NextSteps
+          steps={[
+            can('billing.write') && { icon: Receipt, title: 'Bill this visit', text: 'Charges from this consultation are ready to invoice', href: `/billing/invoices/new?clientId=${e.client.id}`, primary: true },
+            can('appointments.write') && { icon: CalendarPlus, title: 'Book a recheck', text: 'Find a free slot for the follow-up visit', onClick: () => setFollowUp(true) },
+            can('appointments.checkin') ? { icon: ClipboardList, title: 'Back to the waiting list', text: 'See who is next', href: '/front-desk' } : { icon: ClipboardList, title: 'Next consultation', text: 'Open consultations', href: '/consultations' },
+          ]}
+        />
+      )}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="grid content-start gap-4">
@@ -221,5 +235,31 @@ export default function ConsultationPage() {
     <RequirePermission anyOf={['clinical.read']}>
       <Workspace />
     </RequirePermission>
+  );
+}
+
+interface Step { icon: React.ComponentType<{ className?: string }>; title: string; text: string; href?: string; onClick?: () => void; primary?: boolean }
+
+/** What to do once a consultation is finished, so the visit flows on to billing and follow-up. */
+function NextSteps({ steps }: { steps: (Step | false)[] }) {
+  const list = steps.filter(Boolean) as Step[];
+  if (!list.length) return null;
+  return (
+    <section aria-label="Next steps" className="mb-4 rounded-lg border border-success/30 bg-success/5 p-3">
+      <p className="mb-2 flex items-center gap-2 text-sm font-medium"><CheckCircle2 className="h-4 w-4 text-success" /> Consultation completed — next steps</p>
+      <div className="grid gap-2 sm:grid-cols-3">
+        {list.map((st) => {
+          const inner = (
+            <>
+              <span className={`rounded-md p-1.5 ${st.primary ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary'}`}><st.icon className="h-4 w-4" /></span>
+              <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{st.title}</span><span className="block truncate text-xs text-muted-foreground">{st.text}</span></span>
+              <ArrowRight className="h-4 w-4 text-muted-foreground" />
+            </>
+          );
+          const cls = 'flex items-center gap-3 rounded-md border bg-card px-3 py-2.5 text-left shadow-sm transition-colors hover:border-primary/50 hover:bg-primary/5';
+          return st.href ? <Link key={st.title} href={st.href} className={cls}>{inner}</Link> : <button key={st.title} type="button" onClick={st.onClick} className={cls}>{inner}</button>;
+        })}
+      </div>
+    </section>
   );
 }

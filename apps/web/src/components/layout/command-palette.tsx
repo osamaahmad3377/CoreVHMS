@@ -8,6 +8,7 @@ import { useDebounce } from '@/hooks/use-debounce';
 import { api, qs } from '@/lib/api';
 import { visibleNav } from '@/lib/navigation';
 import { useSession } from '@/lib/session';
+import { useCreateActions } from './create-actions';
 import { Dialog, DialogContent, DialogTitle } from '../ui/dialog';
 import { Badge } from '../ui/badge';
 import { Kbd } from '../ui/misc';
@@ -54,6 +55,8 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   const results = search.data?.results ?? [];
   const grouped = results.reduce<Record<string, Hit[]>>((acc, h) => ((acc[h.type] ??= []).push(h), acc), {});
   const pages = visibleNav(canAny).flatMap((s) => s.items);
+  const needle = term.trim().toLowerCase();
+  const actions = useCreateActions().filter((a) => !needle || `${a.label} ${a.keywords}`.toLowerCase().includes(needle));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -97,6 +100,16 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
                 </Command.Group>
               );
             })}
+            {actions.length > 0 && (
+              <Command.Group heading="Actions" className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1 [&_[cmdk-group-heading]]:text-2xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:text-muted-foreground">
+                {actions.map((a) => (
+                  <Command.Item key={a.href} value={`action-${a.href}`} onSelect={() => go(a.href)} className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm aria-selected:bg-muted">
+                    <a.icon className="h-4 w-4 text-primary" />
+                    {a.label}
+                  </Command.Item>
+                ))}
+              </Command.Group>
+            )}
             {q.length < 2 && (
               <Command.Group heading="Go to" className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1 [&_[cmdk-group-heading]]:text-2xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:text-muted-foreground">
                 {pages.map((p) => (

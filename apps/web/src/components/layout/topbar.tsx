@@ -1,12 +1,13 @@
 'use client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Boxes, Building2, CalendarPlus, Check, ChevronDown, CircleHelp, ClipboardList, LogOut, Menu, Moon, Plus, Receipt, Search, Shield, ShoppingCart, Stethoscope, Sun, UserPlus, PawPrint } from 'lucide-react';
+import { Building2, Check, ChevronDown, CircleHelp, LogOut, Menu, Moon, Plus, Search, Shield, Sun } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
+import { useCreateActions } from './create-actions';
 import { Button } from '../ui/button';
 import {
   DropdownMenu,
@@ -39,17 +40,7 @@ export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () 
     window.location.href = '/login';
   };
 
-  const quick = [
-    can('clients.write') && { label: 'New client', href: '/clients/new', icon: UserPlus },
-    can('patients.write') && { label: 'Register patient', href: '/patients/new', icon: PawPrint },
-    can('appointments.write') && { label: 'New appointment', href: '/calendar', icon: CalendarPlus },
-    can('appointments.checkin') && { label: 'Walk-in / emergency', href: '/front-desk', icon: ClipboardList },
-    can('clinical.write') && { label: 'Consultations', href: '/consultations', icon: Stethoscope },
-    can('pos.use') && { label: 'Counter sale', href: '/pos', icon: ShoppingCart },
-    can('billing.write') && { label: 'New invoice', href: '/billing/invoices/new', icon: Receipt },
-    can('inventory.write') && { label: 'Receive stock', href: '/inventory?receive=1', icon: Boxes },
-    can('procurement.request') && { label: 'Request an item', href: '/inventory/requests?new=1', icon: Boxes },
-  ].filter(Boolean) as { label: string; href: string; icon: React.ComponentType }[];
+  const quick = useCreateActions();
 
   return (
     <header className="no-print sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-card/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-card/80 sm:px-4">

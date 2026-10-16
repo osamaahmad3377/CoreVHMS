@@ -48,7 +48,7 @@ export const GUIDES: HelpGuide[] = [
     area: 'Getting started',
     anyOf: ['org.manage', 'settings.manage'],
     steps: [
-      'Open Dashboard — the "Set up your clinic" checklist shows what is still missing and ticks itself off as you go.',
+      'Open Dashboard — the "Set up your clinic" checklist shows what is still missing and ticks itself off as you go. Day to day, start with "Needs your attention": it lists what to do next, most urgent first.',
       'Settings → Organization: add your address, phone and tax number (they print on invoices and receipts).',
       'Settings → Staff accounts: add each team member (by email invitation or with a temporary password) and choose the role that matches their job.',
       'Staff & rosters: enter working hours, so clinicians can be booked only when they are on duty.',

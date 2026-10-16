@@ -36,6 +36,9 @@ function Invoices() {
   const tab = TABS.find((t) => t.key === url.get('tab', 'open')) ?? TABS[0];
   const params = { ...tab.params, q: url.get('q'), page: Number(url.get('page', '1')), pageSize: 25 };
   const query = useQuery({ queryKey: ['invoices', params], queryFn: () => api.get<Paginated<Invoice>>(`/invoices${qs(params)}`), placeholderData: (p) => p });
+  // Guide the user to the next step when nothing is invoiced yet but work is waiting to be billed.
+  const unbilled = useQuery({ queryKey: ['charges', 'pending-count'], queryFn: () => api.get<Paginated<unknown> & { totalMinor: number }>(`/charges${qs({ status: 'PENDING', pageSize: 1 })}`), enabled: can('billing.read') });
+  const waiting = unbilled.data?.meta.total ?? 0;
   return (
     <>
       <PageHeader
@@ -62,7 +65,18 @@ function Invoices() {
           onRowClick={(r) => router.push(`/billing/invoices/${r.id}`)}
           page={params.page}
           onPage={(page) => url.set({ page })}
-          empty={<EmptyState icon={Receipt} title="No invoices here" />}
+          empty={
+            waiting > 0 && (tab.key === 'open' || tab.key === 'draft') ? (
+              <EmptyState
+                icon={Receipt}
+                title={`No ${tab.key === 'open' ? 'outstanding' : 'draft'} invoices — but ${waiting} charge${waiting === 1 ? ' is' : 's are'} waiting to be billed`}
+                description={`${fmtMoney(unbilled.data?.totalMinor ?? 0, currency)} of work from consultations, pharmacy, lab and other services.`}
+                action={can('billing.write') ? <Button size="sm" asChild><Link href="/billing/charges">Invoice unbilled charges</Link></Button> : undefined}
+              />
+            ) : (
+              <EmptyState icon={Receipt} title={tab.key === 'open' ? 'Nothing outstanding — every issued invoice is paid' : 'No invoices here'} />
+            )
+          }
           columns={[
             { key: 'no', header: 'Invoice', cell: (r) => <Link href={`/billing/invoices/${r.id}`} className="font-medium hover:underline">{r.invoiceNo}</Link> },
             { key: 'client', header: 'Client', cell: (r) => <span className="text-sm">{r.client?.displayName ?? <span className="text-muted-foreground">Counter sale</span>}</span> },

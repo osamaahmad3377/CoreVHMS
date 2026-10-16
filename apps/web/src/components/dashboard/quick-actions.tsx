@@ -26,13 +26,12 @@ export function QuickActions() {
   const actions = ACTIONS.filter((a) => canAny(...a.anyOf)).slice(0, 6);
   if (!actions.length) return null;
   return (
-    <nav aria-label="Quick actions" className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-6">
+    <nav aria-label="Quick actions" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
       {actions.map((a) => (
-        <Link key={a.href} href={a.href} className="group flex items-center gap-3 rounded-lg border bg-card p-3 shadow-sm transition-colors hover:border-primary/50 hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-ring">
-          <span className="rounded-md bg-primary/10 p-2 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground"><a.icon className="h-5 w-5" /></span>
+        <Link key={a.href} href={a.href} title={a.hint} className="group flex items-center gap-2.5 rounded-lg border bg-card px-3 py-2.5 shadow-sm transition-colors hover:border-primary/50 hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-ring">
+          <span className="rounded-md bg-primary/10 p-1.5 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground"><a.icon className="h-4 w-4" /></span>
           <span className="min-w-0">
-            <span className="block truncate text-sm font-semibold">{a.label}</span>
-            <span className="block truncate text-xs text-muted-foreground">{a.hint}</span>
+            <span className="block text-sm font-semibold leading-tight">{a.label}</span>
           </span>
         </Link>
       ))}

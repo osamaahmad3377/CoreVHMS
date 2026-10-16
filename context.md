@@ -759,6 +759,7 @@ _Last updated: 2026-10-16. The detailed status is kept in `docs/FEATURE_MATRIX.m
   - Prescription search.
   - Redaction of portal messages when a client is anonymised.
   - Temporary passwords for staff.
+  - Easier everyday flow: a Today dashboard with “Needs your attention”, next-step prompts after consultations and in billing, ⌘K actions and foldable navigation.
   - Receipt printing on 80/58 mm thermal paper with the clinic logo, configured in Settings → Receipts & printing.
   - Shop products: food, grooming, accessories and supplements, with clinic-managed categories, brand, pack size and photos at the shop counter, and a sales-by-category report.
 - **Not yet built because they need outside parts:**
