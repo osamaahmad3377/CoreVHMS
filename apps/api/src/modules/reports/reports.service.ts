@@ -1,3 +1,4 @@
+import { PRODUCT_TYPE_LABELS } from '@vcms/shared';
 import { csvRow } from '../../common/util/csv';
 import { Injectable } from '@nestjs/common';
 import { RequestContext } from '../../common/context/request-context';
@@ -80,6 +81,31 @@ export class ReportsService {
       map.set(key, r);
     }
     return [...map.values()].sort((a, b) => b.netMinor - a.netMinor);
+  }
+
+  /** Net sales grouped by product type and shop category (e.g. "Food & treats › Dry food"); services and tests as their own groups. */
+  async salesByCategory(from: Date, to: Date, branchId?: string) {
+    const lines = await this.prisma.db.invoiceLine.findMany({
+      where: { invoice: { ...this.branch(branchId), issuedAt: { gte: from, lt: to }, status: { notIn: ['DRAFT', 'VOID'] } } },
+      select: { kind: true, productId: true, serviceId: true, labTestId: true, quantity: true, netMinor: true, taxMinor: true, grossMinor: true },
+    });
+    const productIds = [...new Set(lines.map((l) => l.productId).filter((x): x is string => !!x))];
+    const products = await this.prisma.db.product.findMany({ where: { id: { in: productIds } }, select: { id: true, type: true, productCategory: { select: { name: true } } } });
+    const byId = new Map(products.map((p) => [p.id, p]));
+    const map = new Map<string, { group: string; lines: number; quantity: number; netMinor: number; taxMinor: number; grossMinor: number }>();
+    for (const l of lines) {
+      const p = l.productId ? byId.get(l.productId) : undefined;
+      const group = p ? `${PRODUCT_TYPE_LABELS[p.type]} › ${p.productCategory?.name ?? 'No category'}` : l.serviceId ? 'Services' : l.labTestId ? 'Laboratory tests' : 'Other lines';
+      const r = map.get(group) ?? { group, lines: 0, quantity: 0, netMinor: 0, taxMinor: 0, grossMinor: 0 };
+      r.lines += 1;
+      r.quantity += Number(l.quantity);
+      r.netMinor += l.netMinor;
+      r.taxMinor += l.taxMinor;
+      r.grossMinor += l.grossMinor;
+      map.set(group, r);
+    }
+    const rows = [...map.values()].sort((a, b) => b.netMinor - a.netMinor);
+    return { totalMinor: rows.reduce((n, r) => n + r.netMinor, 0), rows };
   }
 
   /** Aged receivables by days past due date. */

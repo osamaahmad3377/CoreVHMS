@@ -417,7 +417,11 @@ export interface Product {
   name: string;
   genericName: string | null;
   type: string;
-  category: string | null;
+  categoryId: string | null;
+  productCategory?: { id: string; name: string } | null;
+  brand: string | null;
+  packSize: string | null;
+  photoAttachmentId: string | null;
   form: string | null;
   strengthValue: number | null;
   strengthUnit: string | null;
@@ -816,6 +820,8 @@ export interface InvoiceLine {
   grossMinor: number;
   chargeId: string | null;
   productId: string | null;
+  /** Product SKU or service code (invoice detail only). */
+  code?: string | null;
 }
 
 export interface Invoice {
@@ -824,6 +830,7 @@ export interface Invoice {
   invoiceNo: string;
   status: 'DRAFT' | 'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'VOID';
   isPos: boolean;
+  branchId?: string;
   currency: string;
   pricesIncludeTax: boolean;
   clientId: string | null;
@@ -947,12 +954,26 @@ export interface PosItem {
   code: string | null;
   barcode: string | null;
   category: string;
+  categoryId: string | null;
+  categoryName: string | null;
+  brand: string | null;
+  packSize: string | null;
+  photoAttachmentId: string | null;
   unit: string;
   priceMinor: number | null;
   taxRateBasisPoints: number;
   trackStock: boolean;
   available: number | null;
   rxOnly: boolean;
+}
+
+export interface ProductCategory {
+  id: string;
+  name: string;
+  productType: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  productCount?: number;
 }
 
 export interface PosCatalog {
@@ -1685,4 +1706,45 @@ export interface Referral {
   patient: { id: string; name: string; number: number; sex: string; dateOfBirth: string | null; latestWeightKg: number | null; species: { name: string }; breed: { name: string } | null; breedText: string | null; identifiers: { value: string }[] };
   client: { id: string; displayName: string; mobilePhone: string | null; email: string | null };
   contact: ReferralContact | null;
+}
+
+export interface ReceiptSettings {
+  paperWidthMm: 58 | 80;
+  sideMarginMm: number;
+  fontSize: 'SMALL' | 'NORMAL' | 'LARGE';
+  showLogo: boolean;
+  logoSource: 'BRANDING' | 'CUSTOM';
+  customLogoAttachmentId: string | null;
+  logoWidthPercent: number;
+  logoAlign: 'LEFT' | 'CENTER' | 'RIGHT';
+  logoMonochrome: boolean;
+  title: string;
+  headerText: string | null;
+  footerText: string | null;
+  policyText: string | null;
+  showLegalName: boolean;
+  showBranchAddress: boolean;
+  showPhone: boolean;
+  showEmail: boolean;
+  showTaxNumber: boolean;
+  showServedBy: boolean;
+  showCustomer: boolean;
+  showPatient: boolean;
+  showItemCodes: boolean;
+  showTaxLine: boolean;
+  autoPrint: boolean;
+  copies: number;
+  updatedAt?: string | null;
+  updatedByName?: string | null;
+}
+
+export interface ReceiptBranch { id: string; name: string; phone: string | null; email: string | null; addressLine1: string | null; addressLine2: string | null; city: string | null; postcode: string | null }
+
+/** Everything needed to lay out a receipt (GET /receipt-settings). */
+export interface ReceiptContext {
+  settings: ReceiptSettings;
+  clinic: { name: string; legalName: string | null; taxNumber: string | null; phone: string | null; email: string | null; addressLine1: string | null; addressLine2: string | null; city: string | null; postcode: string | null };
+  branches: ReceiptBranch[];
+  brandingLogo: boolean;
+  logoVersion: string | null;
 }

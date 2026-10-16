@@ -91,7 +91,16 @@ export class InvoicesService {
     const i = await this.prisma.db.invoice.findUnique({ where: { id }, include });
     if (!i) throw notFound('Invoice');
     const patient = i.patientId ? await this.prisma.db.patient.findUnique({ where: { id: i.patientId }, select: { id: true, name: true, number: true } }) : null;
-    return { ...shapeInvoice(i), patient };
+    // Item codes for printed receipts: product SKU or service code.
+    const productIds = i.lines.map((l) => l.productId).filter((x): x is string => !!x);
+    const serviceIds = i.lines.map((l) => l.serviceId).filter((x): x is string => !!x);
+    const [products, services] = await Promise.all([
+      productIds.length ? this.prisma.db.product.findMany({ where: { id: { in: productIds } }, select: { id: true, sku: true } }) : [],
+      serviceIds.length ? this.prisma.db.service.findMany({ where: { id: { in: serviceIds } }, select: { id: true, code: true } }) : [],
+    ]);
+    const code = new Map<string, string | null>([...products.map((p) => [p.id, p.sku] as const), ...services.map((x) => [x.id, x.code] as const)]);
+    const shaped = shapeInvoice(i);
+    return { ...shaped, patient, lines: shaped.lines.map((l) => ({ ...l, code: (l.productId && code.get(l.productId)) || (l.serviceId && code.get(l.serviceId)) || null })) };
   }
 
   /** Resolves a manual line against the catalogue (price, description and tax), allowing explicit overrides. */

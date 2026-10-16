@@ -1,12 +1,13 @@
 'use client';
 import { enumLabel } from '@vcms/shared';
 import { Ban, Loader2, Lock, PackageSearch, ScanBarcode, Scissors } from 'lucide-react';
+import { PRODUCT_TYPE_LABELS } from '@vcms/shared';
 import * as React from 'react';
 import { EmptyState } from '../page';
 import { Kbd } from '../ui/misc';
 import { CATEGORIES, blockReason } from './model';
 import { fmtMoney } from '@/lib/format';
-import type { PosItem } from '@/lib/types';
+import type { PosItem, ProductCategory } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -16,6 +17,10 @@ interface Props {
   onSubmit: (v: string) => void;
   category: string;
   onCategory: (c: string) => void;
+  /** Shop categories within the selected section (e.g. Dry food, Wet food under Food & treats). */
+  shelves: ProductCategory[];
+  shelf: string;
+  onShelf: (id: string) => void;
   items: PosItem[];
   loading: boolean;
   qtyInCart: (item: PosItem) => number;
@@ -64,6 +69,21 @@ export const PosCatalog = React.forwardRef<HTMLInputElement, Props>(function Pos
           </button>
         ))}
       </div>
+      {p.shelves.length > 0 && (
+        <div className="-mt-1 flex gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Shelves">
+          {[{ id: '', name: 'All' }, ...p.shelves].map((s) => (
+            <button
+              key={s.id || 'all'}
+              role="tab"
+              aria-selected={p.shelf === s.id}
+              onClick={() => p.onShelf(s.id)}
+              className={cn('shrink-0 rounded-md border px-2.5 py-1 text-xs transition-colors', p.shelf === s.id ? 'border-primary bg-primary/10 font-medium text-primary' : 'bg-card text-muted-foreground hover:bg-muted hover:text-foreground')}
+            >
+              {s.name}
+            </button>
+          ))}
+        </div>
+      )}
       {!p.loading && !visible.length ? (
         <EmptyState icon={PackageSearch} title={p.search ? `Nothing matches “${p.search}”` : 'No items in this category'} description="Products need a selling price, and services must be active, to appear here." />
       ) : (
@@ -85,13 +105,18 @@ export const PosCatalog = React.forwardRef<HTMLInputElement, Props>(function Pos
                     inCart > 0 && 'border-primary ring-1 ring-primary/40',
                   )}
                 >
-                  {inCart > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground tabular">{inCart}</span>}
+                  {inCart > 0 && <span className="absolute -right-1.5 -top-1.5 z-10 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground tabular">{inCart}</span>}
+                  {item.photoAttachmentId && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={`/api/v1/attachments/${item.photoAttachmentId}/download?inline=1`} alt="" loading="lazy" className="-mx-3 -mt-3 mb-2 h-24 w-[calc(100%+1.5rem)] max-w-none rounded-t-lg object-cover" />
+                  )}
                   <span className="flex items-center gap-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
                     {item.type === 'SERVICE' && <Scissors className="h-3 w-3" />}
-                    {item.type === 'SERVICE' ? 'Service' : enumLabel(item.category)}
+                    <span className="truncate">{item.type === 'SERVICE' ? 'Service' : item.categoryName ?? PRODUCT_TYPE_LABELS[item.category as keyof typeof PRODUCT_TYPE_LABELS] ?? enumLabel(item.category)}</span>
                     {item.code && <span className="truncate font-mono normal-case tracking-normal">· {item.code}</span>}
                   </span>
                   <span className="mt-1 line-clamp-2 text-sm font-medium leading-snug">{item.name}</span>
+                  {(item.brand || item.packSize) && <span className="truncate text-xs text-muted-foreground">{[item.brand, item.packSize].filter(Boolean).join(' · ')}</span>}
                   <span className="mt-auto flex items-end justify-between gap-2 pt-2">
                     <span className="text-base font-semibold tabular">{item.priceMinor !== null ? fmtMoney(item.priceMinor, p.currency) : '—'}</span>
                     {blocked ? (

@@ -300,6 +300,10 @@ async function seedPharmacyLab(
   const orgId = s.org.id;
   const pk = s.org.country === 'PK';
   const P = (name: string, d: Partial<Record<string, unknown>>) => ({ organizationId: orgId, name, ...d });
+  // Shop shelf categories come from the organization's starter set (OrgBootstrapService).
+  const shelf = Object.fromEntries((await prisma.productCategory.findMany({ where: { organizationId: orgId } })).map((c) => [c.name, c.id]));
+  const S = (name: string, type: string, category: string, d: Partial<Record<string, unknown>>) =>
+    P(name, { type, categoryId: shelf[category] ?? null, minDispenseIncrement: 1, requiresPrescription: false, ...d });
   const products = [
     P('Amoxicillin 250 mg tablets', { genericName: 'Amoxicillin', form: 'TABLET', strengthValue: 250, strengthUnit: 'mg', dispensingUnit: 'tablet', minDispenseIncrement: 0.5, activeIngredients: ['amoxicillin'], sellPriceMinor: pk ? 4000 : 120, sku: 'AMX250' }),
     P('Meloxicam 1.5 mg/mL oral suspension', { genericName: 'Meloxicam', form: 'ORAL_LIQUID', strengthValue: 1.5, strengthUnit: 'mg', dispensingUnit: 'mL', minDispenseIncrement: 0.1, activeIngredients: ['meloxicam'], sellPriceMinor: pk ? 3000 : 90, sku: 'MLX15', targetSpecies: ['COMPANION'] }),
@@ -310,7 +314,16 @@ async function seedPharmacyLab(
     P('Rabies vaccine (inactivated)', { type: 'VACCINE', form: 'INJECTION', dispensingUnit: 'dose', minDispenseIncrement: 1, sellPriceMinor: pk ? 150000 : 4500, sku: 'VAC-RAB' }),
     P('Canine DHPPi vaccine', { type: 'VACCINE', form: 'INJECTION', dispensingUnit: 'dose', minDispenseIncrement: 1, sellPriceMinor: pk ? 180000 : 6500, sku: 'VAC-DHP', targetSpecies: ['COMPANION'] }),
     P('Sterile syringe 3 mL', { type: 'CONSUMABLE', dispensingUnit: 'unit', minDispenseIncrement: 1, requiresPrescription: false, sellPriceMinor: pk ? 3000 : 50, sku: 'SYR3' }),
-    P('Elizabethan collar (medium)', { type: 'RETAIL', dispensingUnit: 'unit', minDispenseIncrement: 1, requiresPrescription: false, sellPriceMinor: pk ? 90000 : 1800, sku: 'ECOL-M' }),
+    S('Elizabethan collar (medium)', 'ACCESSORY', 'Clothing & recovery wear', { dispensingUnit: 'unit', packSize: 'Medium', sellPriceMinor: pk ? 90000 : 1800, sku: 'ECOL-M' }),
+    // Demo shop items (brands are labelled “Demo”).
+    S('Adult dog food, chicken & rice', 'FOOD', 'Dry food', { brand: 'Demo Paws', packSize: '3 kg bag', dispensingUnit: 'bag', sellPriceMinor: pk ? 450000 : 3500, sku: 'FD-DOG3', barcode: '2000000000017', targetSpecies: ['COMPANION'] }),
+    S('Cat food, salmon in gravy', 'FOOD', 'Wet food', { brand: 'Demo Whiskers', packSize: '85 g pouch', dispensingUnit: 'pouch', sellPriceMinor: pk ? 25000 : 180, sku: 'FD-CAT85', barcode: '2000000000024', targetSpecies: ['COMPANION'] }),
+    S('Dental chew sticks', 'FOOD', 'Treats & chews', { brand: 'Demo Paws', packSize: '7 sticks', dispensingUnit: 'pack', sellPriceMinor: pk ? 120000 : 1200, sku: 'TR-DENT7' }),
+    S('Oatmeal dog shampoo', 'GROOMING', 'Shampoos & conditioners', { brand: 'Demo Groom', packSize: '250 mL bottle', dispensingUnit: 'bottle', sellPriceMinor: pk ? 90000 : 1600, sku: 'GR-SHMP250' }),
+    S('Slicker brush', 'GROOMING', 'Brushes, combs & clippers', { brand: 'Demo Groom', packSize: 'Medium', dispensingUnit: 'piece', sellPriceMinor: pk ? 70000 : 1400, sku: 'GR-BRUSH' }),
+    S('Nylon dog collar', 'ACCESSORY', 'Collars, leads & harnesses', { brand: 'Demo Paws', packSize: 'Medium, 35–50 cm', dispensingUnit: 'piece', sellPriceMinor: pk ? 60000 : 1200, sku: 'AC-COLLAR-M' }),
+    S('Rubber chew toy', 'ACCESSORY', 'Toys', { brand: 'Demo Paws', packSize: 'Large', dispensingUnit: 'piece', sellPriceMinor: pk ? 50000 : 900, sku: 'AC-TOY-L' }),
+    S('Joint support chews', 'SUPPLEMENT', 'Vitamins & supplements', { brand: 'Demo Vet Nutrition', packSize: '60 chews', dispensingUnit: 'pack', sellPriceMinor: pk ? 350000 : 3200, sku: 'SP-JOINT60' }),
   ];
   const created: Record<string, string> = {};
   for (const p of products) created[(p as any).sku] = (await prisma.product.create({ data: p as any })).id;

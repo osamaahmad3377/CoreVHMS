@@ -93,6 +93,7 @@ function OrgForm({ org }: { org: Org }) {
     onSuccess: () => {
       toast.success('Logo updated');
       setLogoVersion((v) => v + 1);
+      qc.invalidateQueries({ queryKey: ['receipt-settings'] });
       qc.invalidateQueries({ queryKey: ['organization'] });
     },
     onError: (err: Error) => toast.error(err.message),

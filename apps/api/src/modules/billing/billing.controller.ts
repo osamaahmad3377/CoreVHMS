@@ -23,6 +23,7 @@ import {
   updateInvoiceSchema,
   voidSchema,
   waiveSchema,
+  PRODUCT_TYPES,
 } from '@vcms/shared';
 import type { Response } from 'express';
 import { z } from 'zod';
@@ -45,7 +46,8 @@ const paymentListQuery = z.object({
 });
 const posCatalogQuery = z.object({
   q: z.string().trim().max(80).optional(),
-  category: z.enum(['SERVICE', 'MEDICINE', 'VACCINE', 'CONSUMABLE', 'RETAIL', 'FOOD', 'EQUIPMENT']).optional(),
+  category: z.enum(['SERVICE', ...PRODUCT_TYPES]).optional(),
+  categoryId: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(60),
 });
 const settingsSchema = z.object({

@@ -145,7 +145,44 @@ Object.assign(ENUM_LABELS, {
   OPEN: 'Open', DONE: 'Done', WAITING: 'Waiting',
 });
 
-export const PRODUCT_TYPES = ['MEDICINE', 'VACCINE', 'CONSUMABLE', 'RETAIL', 'FOOD', 'EQUIPMENT'] as const;
+export const PRODUCT_TYPES = ['MEDICINE', 'VACCINE', 'CONSUMABLE', 'FOOD', 'GROOMING', 'ACCESSORY', 'SUPPLEMENT', 'RETAIL', 'EQUIPMENT'] as const;
+/** Types that can be prescribed and carry dose, strength, prescription-only and controlled settings. */
+export const PRESCRIBABLE_PRODUCT_TYPES = ['MEDICINE', 'VACCINE'] as const;
+/** Plain-language names used in forms, filters and the shop counter. */
+export const PRODUCT_TYPE_LABELS: Record<(typeof PRODUCT_TYPES)[number], string> = {
+  MEDICINE: 'Medicines',
+  VACCINE: 'Vaccines',
+  CONSUMABLE: 'Clinic consumables',
+  FOOD: 'Food & treats',
+  GROOMING: 'Grooming & hygiene',
+  ACCESSORY: 'Accessories',
+  SUPPLEMENT: 'Supplements',
+  RETAIL: 'Other shop items',
+  EQUIPMENT: 'Equipment',
+};
+/** Units for shop items (medicines use DISPENSING_UNITS). */
+export const RETAIL_UNITS = ['piece', 'pack', 'bag', 'can', 'pouch', 'tin', 'bottle', 'tube', 'box', 'roll', 'pair', 'set', 'kg', 'g', 'L', 'mL', 'unit'] as const;
+/**
+ * Starter shelf categories given to every new organization (also added to existing ones by migration
+ * retail_products). Shop groupings only — no clinical meaning; each clinic can rename, add or hide them.
+ */
+export const DEFAULT_PRODUCT_CATEGORIES: { name: string; productType: (typeof PRODUCT_TYPES)[number]; sortOrder: number }[] = [
+  { name: 'Dry food', productType: 'FOOD', sortOrder: 10 },
+  { name: 'Wet food', productType: 'FOOD', sortOrder: 20 },
+  { name: 'Veterinary diets', productType: 'FOOD', sortOrder: 30 },
+  { name: 'Treats & chews', productType: 'FOOD', sortOrder: 40 },
+  { name: 'Livestock feed & minerals', productType: 'FOOD', sortOrder: 50 },
+  { name: 'Shampoos & conditioners', productType: 'GROOMING', sortOrder: 10 },
+  { name: 'Brushes, combs & clippers', productType: 'GROOMING', sortOrder: 20 },
+  { name: 'Ear, eye & dental care', productType: 'GROOMING', sortOrder: 30 },
+  { name: 'Litter & hygiene', productType: 'GROOMING', sortOrder: 40 },
+  { name: 'Collars, leads & harnesses', productType: 'ACCESSORY', sortOrder: 10 },
+  { name: 'Toys', productType: 'ACCESSORY', sortOrder: 20 },
+  { name: 'Beds, crates & carriers', productType: 'ACCESSORY', sortOrder: 30 },
+  { name: 'Bowls & feeders', productType: 'ACCESSORY', sortOrder: 40 },
+  { name: 'Clothing & recovery wear', productType: 'ACCESSORY', sortOrder: 50 },
+  { name: 'Vitamins & supplements', productType: 'SUPPLEMENT', sortOrder: 10 },
+];
 export const DOSAGE_FORMS = ['TABLET', 'CAPSULE', 'ORAL_LIQUID', 'ORAL_PASTE', 'INJECTION', 'INFUSION', 'TOPICAL', 'OPHTHALMIC', 'OTIC', 'SPOT_ON', 'POUR_ON', 'BOLUS', 'INTRAMAMMARY', 'POWDER', 'IMPLANT', 'INHALANT', 'OTHER'] as const;
 export const ROUTES = ['PO', 'SC', 'IM', 'IV', 'TOPICAL', 'OPHTHALMIC', 'OTIC', 'INTRAMAMMARY', 'INTRANASAL', 'RECTAL', 'TRANSDERMAL', 'INHALED', 'OTHER'] as const;
 export const DISPENSING_UNITS = ['tablet', 'capsule', 'mL', 'g', 'dose', 'vial', 'ampoule', 'tube', 'sachet', 'pipette', 'bolus', 'unit', 'syringe'] as const;

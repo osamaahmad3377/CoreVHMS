@@ -12,7 +12,8 @@ import { PageHeader } from '@/components/page';
 import { PosCart } from '@/components/pos/cart';
 import { PosCatalog } from '@/components/pos/catalog';
 import { blockReason, cartTotals, toInvoiceLines, type CartLine, type Tender } from '@/components/pos/model';
-import { PosReceipt, ReceiptPrintArea, type ReceiptPayment } from '@/components/pos/receipt';
+import { receiptFromInvoice, type ReceiptPayment } from '@/components/receipts/receipt-document';
+import { ReceiptPreview, useReceiptPrinter } from '@/components/receipts/use-receipt';
 import { HeldSalesDialog, TodaySalesDialog, type HeldSale } from '@/components/pos/sales-dialogs';
 import { TenderDialog } from '@/components/pos/tender-dialog';
 import { RequirePermission } from '@/components/require';
@@ -23,7 +24,7 @@ import { useDebounce } from '@/hooks/use-debounce';
 import { ApiError, api, qs } from '@/lib/api';
 import { fmtMoney, fmtTime } from '@/lib/format';
 import { useSession } from '@/lib/session';
-import type { BillingSettings, CashRegister, Invoice, Payment, PosCatalog as Catalog, PosItem } from '@/lib/types';
+import type { BillingSettings, CashRegister, Invoice, Payment, PosCatalog as Catalog, PosItem, ProductCategory } from '@/lib/types';
 
 interface SaleResult {
   invoice: Invoice;
@@ -38,6 +39,7 @@ interface PrintJob {
   payments: ReceiptPayment[];
   tenderedCashMinor?: number;
   changeMinor?: number;
+  servedBy?: string | null;
 }
 
 const readHeld = (key: string): HeldSale[] => {
@@ -59,8 +61,10 @@ function Pos() {
   const qc = useQueryClient();
   const { can, currency, session } = useSession();
   const searchRef = useRef<HTMLInputElement>(null);
+  const receipts = useReceiptPrinter();
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
+  const [categoryId, setCategoryId] = useState('');
   const [lines, setLines] = useState<CartLine[]>([]);
   const [client, setClient] = useState<PickedClient | null>(null);
   const [tendering, setTendering] = useState(false);
@@ -76,10 +80,11 @@ function Pos() {
 
   const q = useDebounce(search.trim(), 200);
   const catalog = useQuery({
-    queryKey: ['pos', 'catalog', category, q],
-    queryFn: () => api.get<Catalog>(`/pos/catalog${qs({ q, category })}`),
+    queryKey: ['pos', 'catalog', category, categoryId, q],
+    queryFn: () => api.get<Catalog>(`/pos/catalog${qs({ q, category, categoryId: categoryId || undefined })}`),
     placeholderData: (p) => p,
   });
+  const shelves = useQuery({ queryKey: ['product-categories'], queryFn: () => api.get<ProductCategory[]>('/product-categories'), staleTime: 60_000 });
   const settings = useQuery({ queryKey: ['billing-settings'], queryFn: () => api.get<BillingSettings>('/billing/settings'), retry: false });
   const registers = useQuery({ queryKey: ['cash', 'registers', session.branch?.id], queryFn: () => api.get<CashRegister[]>(`/cash/registers${qs({ branchId: session.branch?.id })}`), enabled: !!session.branch });
   const org = useQuery({ queryKey: ['organization'], queryFn: () => api.get<ClinicHeader>('/organization'), staleTime: 300_000 });
@@ -191,6 +196,8 @@ function Pos() {
     setBusy(false);
     setTendering(false);
     setResult({ invoice, payments: recorded, tenderedCashMinor: tenderedCash, changeMinor: error ? 0 : changeMinor, error });
+    // Optional automatic print after each counter sale (Settings → Receipts & printing).
+    if (!error && receipts.ctx?.settings.autoPrint) setPrintJob({ invoice, payments: recorded, tenderedCashMinor: tenderedCash, changeMinor, servedBy: session.user.name });
     if (!error) toast.success(`Sale ${invoice.invoiceNo} complete`);
   };
 
@@ -214,13 +221,13 @@ function Pos() {
     return () => window.removeEventListener('keydown', onKey);
   }, [result, lines.length, totals.totalMinor]);
 
-  // Print once the receipt for the job has rendered.
+  // Print in a frame sized to the receipt roll (paper width, logo and copies from the receipt settings).
   useEffect(() => {
     if (!printJob) return;
-    const t = setTimeout(() => window.print(), 50);
-    const done = () => setPrintJob(null);
-    window.addEventListener('afterprint', done, { once: true });
-    return () => clearTimeout(t);
+    receipts
+      .print(receiptFromInvoice(printJob.invoice, printJob.payments, { tenderedMinor: printJob.tenderedCashMinor, changeMinor: printJob.changeMinor, servedBy: printJob.servedBy }))
+      .finally(() => setPrintJob(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [printJob]);
 
   const header = (
@@ -255,11 +262,6 @@ function Pos() {
         }}
       />
       <HeldSalesDialog open={showHeld} onOpenChange={setShowHeld} held={held} currency={currency} onRecall={recall} onDelete={(id) => { const next = held.filter((h) => h.id !== id); setHeld(next); writeHeld(heldKey, next); }} totalOf={(ls) => cartTotals(ls, inclusive).totalMinor} />
-      {printJob && (
-        <ReceiptPrintArea>
-          <PosReceipt invoice={printJob.invoice} clinic={org.data ?? null} payments={printJob.payments} tenderedMinor={printJob.tenderedCashMinor} changeMinor={printJob.changeMinor} />
-        </ReceiptPrintArea>
-      )}
     </>
   );
 
@@ -274,9 +276,7 @@ function Pos() {
           {result.error && <div className="mb-4"><FormError message={result.error} /></div>}
           <div className="mx-auto grid max-w-4xl gap-6 md:grid-cols-[1fr_320px]">
             <div className="rounded-lg border bg-muted/40 p-4">
-              <div className="mx-auto w-fit rounded border bg-white shadow-md">
-                <PosReceipt invoice={inv} clinic={org.data ?? null} payments={result.payments} tenderedMinor={result.tenderedCashMinor} changeMinor={result.changeMinor} cashier={session.user.name} />
-              </div>
+              <ReceiptPreview data={receiptFromInvoice(inv, result.payments, { tenderedMinor: result.tenderedCashMinor, changeMinor: result.changeMinor, servedBy: session.user.name })} />
             </div>
             <div className="grid content-start gap-4 text-center">
               <CheckCircle2 className={`mx-auto h-14 w-14 ${balance > 0 ? 'text-warning' : 'text-success'}`} />
@@ -294,17 +294,12 @@ function Pos() {
               {balance > 0 && can('payments.take') && <Button onClick={() => setPayBalance(true)}>Take remaining payment</Button>}
               <Button size="lg" className="h-12 text-base" autoFocus onClick={newSale}>New sale</Button>
               <div className="grid grid-cols-2 gap-2">
-                <Button variant="outline" onClick={() => setPrintJob({ invoice: inv, payments: result.payments, tenderedCashMinor: result.tenderedCashMinor, changeMinor: result.changeMinor })}><Printer /> Print receipt</Button>
+                <Button variant="outline" loading={!!printJob} onClick={() => setPrintJob({ invoice: inv, payments: result.payments, tenderedCashMinor: result.tenderedCashMinor, changeMinor: result.changeMinor, servedBy: session.user.name })}><Printer /> Print receipt</Button>
                 <Button variant="outline" asChild><Link href={`/billing/invoices/${inv.id}`}><ReceiptText /> Invoice</Link></Button>
               </div>
             </div>
           </div>
         </div>
-        {!printJob && (
-          <ReceiptPrintArea>
-            <PosReceipt invoice={inv} clinic={org.data ?? null} payments={result.payments} tenderedMinor={result.tenderedCashMinor} changeMinor={result.changeMinor} cashier={session.user.name} />
-          </ReceiptPrintArea>
-        )}
         {dialogs}
         <TakePaymentDialog
           open={payBalance}
@@ -328,7 +323,10 @@ function Pos() {
             onSearch={setSearch}
             onSubmit={submitSearch}
             category={category}
-            onCategory={setCategory}
+            onCategory={(c) => { setCategory(c); setCategoryId(''); }}
+            shelves={(shelves.data ?? []).filter((s) => category && category !== 'SERVICE' && s.productType === category)}
+            shelf={categoryId}
+            onShelf={setCategoryId}
             items={catalog.data?.items ?? []}
             loading={catalog.isFetching}
             qtyInCart={qtyInCart}

@@ -14,7 +14,7 @@ test.describe('Preventive care', () => {
     await dlg.locator('#cc-pname').fill('Rabies vaccine (other clinic)');
     await dlg.getByRole('button', { name: 'Record' }).click();
     await expect(page.getByText(/Rabies vaccination .* recorded/)).toBeVisible();
-    await expect(page.getByText('given elsewhere (Rabies vaccine (other clinic))')).toBeVisible();
+    await expect(page.getByText('given elsewhere (Rabies vaccine (other clinic))').first()).toBeVisible(); // earlier runs on the same demo pet leave more
     await expect(page.getByRole('listitem').filter({ hasText: 'Rabies vaccination' }).filter({ has: page.getByRole('button', { name: 'Record' }) })).toHaveCount(1); // next one scheduled
   });
 

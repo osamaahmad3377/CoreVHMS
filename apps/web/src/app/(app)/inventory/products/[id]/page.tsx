@@ -1,7 +1,8 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { enumLabel, type Paginated } from '@vcms/shared';
-import { Lock, MoreHorizontal } from 'lucide-react';
+import { PRESCRIBABLE_PRODUCT_TYPES, PRODUCT_TYPE_LABELS } from '@vcms/shared';
+import { Edit, Lock, MoreHorizontal } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -13,6 +14,7 @@ import { DataTable } from '@/components/data-table';
 import { Field } from '@/components/forms/field';
 import { AdjustDialog, TransferDialog } from '@/components/inventory/batch-dialogs';
 import { MovementsTable } from '@/components/inventory/movements-table';
+import { ProductDialog } from '@/components/pharmacy/product-dialog';
 import { EmptyState, ErrorState, LoadingRows, PageHeader } from '@/components/page';
 import { RequirePermission } from '@/components/require';
 import { Button } from '@/components/ui/button';
@@ -23,7 +25,7 @@ import { Input, NativeSelect } from '@/components/ui/input';
 import { api, qs } from '@/lib/api';
 import { fmtDate, fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
-import type { ProductStock, StockBatch, StockMovement, TaxRate } from '@/lib/types';
+import type { Product, ProductStock, StockBatch, StockMovement, TaxRate } from '@/lib/types';
 
 function Settings({ data }: { data: ProductStock }) {
   const qc = useQueryClient();
@@ -71,7 +73,9 @@ function ProductStockView() {
   const [adjusting, setAdjusting] = useState<StockBatch | null>(null);
   const [moving, setMoving] = useState<StockBatch | null>(null);
   const [page, setPage] = useState(1);
+  const [editing, setEditing] = useState(false);
   const q = useQuery({ queryKey: ['stock-product', id], queryFn: () => api.get<ProductStock>(`/stock/products/${id}`) });
+  const details = useQuery({ queryKey: ['product', id], queryFn: () => api.get<Product>(`/products/${id}`) });
   const ledger = useQuery({ queryKey: ['stock-movements', id, page], queryFn: () => api.get<Paginated<StockMovement>>(`/stock/movements${qs({ productId: id, page, pageSize: 25 })}`), placeholderData: (p) => p });
   const status = useMutation({
     mutationFn: ({ batchId, status, reason }: { batchId: string; status: string; reason?: string }) => api.post(`/stock/batches/${batchId}/status`, { status, reason }),
@@ -93,8 +97,16 @@ function ProductStockView() {
       <PageHeader
         title={<span className="flex items-center gap-2">{p.name}{p.isControlled && <Lock className="h-4 w-4 text-warning" aria-label="Controlled" />}</span>}
         breadcrumbs={[{ label: 'Inventory', href: '/inventory' }, { label: p.name }]}
-        description={<>{onHand} {p.dispensingUnit} on hand{p.sellPriceMinor != null && ` · sells at ${fmtMoney(p.sellPriceMinor, currency)}/${p.dispensingUnit}`} · <Link className="hover:underline" href={`/pharmacy/formulary/${p.id}`}>Formulary record</Link></>}
+        description={
+          <>
+            {details.data && <>{PRODUCT_TYPE_LABELS[details.data.type as keyof typeof PRODUCT_TYPE_LABELS] ?? details.data.type}{details.data.productCategory && ` › ${details.data.productCategory.name}`}{details.data.brand && ` · ${details.data.brand}`}{details.data.packSize && ` · ${details.data.packSize}`} · </>}
+            {onHand} {p.dispensingUnit} on hand{p.sellPriceMinor != null && ` · sells at ${fmtMoney(p.sellPriceMinor, currency)}/${p.dispensingUnit}`}
+            {details.data && (PRESCRIBABLE_PRODUCT_TYPES as readonly string[]).includes(details.data.type) && <> · <Link className="hover:underline" href={`/pharmacy/formulary/${p.id}`}>Formulary record</Link></>}
+          </>
+        }
+        actions={(can('inventory.write') || can('formulary.manage')) && details.data && <Button size="sm" variant="outline" onClick={() => setEditing(true)}><Edit /> Edit product</Button>}
       />
+      {editing && details.data && <ProductDialog product={details.data} open={editing} onOpenChange={setEditing} onSaved={() => qc.invalidateQueries({ queryKey: ['stock-product', id] })} />}
       <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
         <div className="grid content-start gap-4">
           <Card>

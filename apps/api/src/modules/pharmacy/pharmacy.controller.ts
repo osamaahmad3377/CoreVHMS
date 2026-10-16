@@ -7,7 +7,9 @@ import {
   doseReferenceSchema,
   prescriptionItemSchema,
   prescriptionListQuery,
+  productCategorySchema,
   productListQuery,
+  productPhotoSchema,
   productSchema,
   withdrawalSchema,
 } from '@vcms/shared';
@@ -16,6 +18,7 @@ import { RequireAnyPermission, RequirePermissions } from '../../common/auth/deco
 import { ApiZodBody, ApiZodQuery, zp } from '../../common/http/zod';
 import { AdministrationsService } from './administrations.service';
 import { FormularyService } from './formulary.service';
+import { ProductCategoriesService } from './product-categories.service';
 import { PrescriptionsService } from './prescriptions.service';
 import { WithdrawalService } from './withdrawal.service';
 
@@ -31,7 +34,36 @@ export class PharmacyController {
     private readonly prescriptions: PrescriptionsService,
     private readonly administrations: AdministrationsService,
     private readonly withdrawals: WithdrawalService,
+    private readonly categories: ProductCategoriesService,
   ) {}
+
+  // ── Shop categories ──
+  @Get('product-categories')
+  @RequireAnyPermission('inventory.read', 'pos.use', 'formulary.manage', 'prescriptions.read')
+  productCategories(@Query('all') all?: string) {
+    return this.categories.list(all === 'true');
+  }
+
+  @Post('product-categories')
+  @RequireAnyPermission('inventory.write', 'formulary.manage')
+  @ApiZodBody(productCategorySchema)
+  createProductCategory(@Body(zp(productCategorySchema)) body: z.infer<typeof productCategorySchema>) {
+    return this.categories.save(null, body);
+  }
+
+  @Patch('product-categories/:id')
+  @RequireAnyPermission('inventory.write', 'formulary.manage')
+  updateProductCategory(@Param('id', UUID) id: string, @Body(zp(productCategorySchema.partial())) body: Partial<z.infer<typeof productCategorySchema>>) {
+    return this.categories.save(id, body);
+  }
+
+  @Post('products/:id/photo')
+  @HttpCode(200)
+  @RequireAnyPermission('inventory.write', 'formulary.manage')
+  @ApiZodBody(productPhotoSchema)
+  productPhoto(@Param('id', UUID) id: string, @Body(zp(productPhotoSchema)) body: { attachmentId: string | null }) {
+    return this.formulary.setPhoto(id, body.attachmentId);
+  }
 
   // ── Formulary ──
   @Get('products')

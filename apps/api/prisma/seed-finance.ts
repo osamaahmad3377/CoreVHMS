@@ -76,6 +76,14 @@ export async function seedFinance(prisma: PrismaClient, s: SeededOrg) {
     'VAC-DHP': [{ qty: 25, cost: pk ? 75000 : 2600, expiresInDays: 280, reorder: [10, 25] }],
     SYR3: [{ qty: 400, cost: pk ? 800 : 12, expiresInDays: 900 }],
     'ECOL-M': [{ qty: 12, cost: pk ? 40000 : 800, expiresInDays: 3650, reorder: [4, 12] }],
+    'FD-DOG3': [{ qty: 20, cost: pk ? 320000 : 2400, expiresInDays: 300, reorder: [5, 20] }],
+    'FD-CAT85': [{ qty: 96, cost: pk ? 15000 : 110, expiresInDays: 540, reorder: [24, 96] }],
+    'TR-DENT7': [{ qty: 30, cost: pk ? 80000 : 750, expiresInDays: 365 }],
+    'GR-SHMP250': [{ qty: 15, cost: pk ? 55000 : 950, expiresInDays: 900 }],
+    'GR-BRUSH': [{ qty: 10, cost: pk ? 40000 : 800, expiresInDays: 3650 }],
+    'AC-COLLAR-M': [{ qty: 18, cost: pk ? 30000 : 600, expiresInDays: 3650 }],
+    'AC-TOY-L': [{ qty: 25, cost: pk ? 25000 : 450, expiresInDays: 3650 }],
+    'SP-JOINT60': [{ qty: 12, cost: pk ? 230000 : 2100, expiresInDays: 400 }],
   };
   const receipt = await prisma.goodsReceipt.create({
     data: { organizationId: orgId, branchId: branch.id, number: await next('goods_receipt'), supplierId: supplier.id, locationId: locations[branch.id], supplierInvoiceNo: 'DEMO-OPENING', notes: 'Opening stock (demo)', receivedById: owner.id, receivedByName: owner.name },

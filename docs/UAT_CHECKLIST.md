@@ -67,7 +67,9 @@ has an agreed workaround and fix date.
 | 20 | C | Reception | Take a part payment by card and the rest in cash | Invoice paid; receipt prints; client balance is zero | | |
 | 21 | C | Accounts | Refund part of an issued invoice with a credit note | Credit note numbered; the original invoice is unchanged | | |
 | 22 | C | Reception | At the POS, scan a product, take cash, give change | Sale recorded; stock decreases; receipt prints | | |
+| 22a | C | Owner | Settings → Receipts & printing: choose 80 mm, the logo and its size, header and footer text; Print test receipt on the counter printer | Receipt fills the roll width without cut-off edges, logo is sharp, no blank paper after the receipt, settings kept after saving | | |
 | 23 | | Reception | Try to sell a prescription-only medicine at the POS | Refused | | |
+| 23a | C | Inventory / owner | Add a dog food (Inventory → Products → New product → Food & treats) with brand, pack size, category and price; receive stock; sell it at the POS from Food & treats → its shelf | Tile shows brand and pack size; stock falls after the sale; Reports → Sales by category shows the sale under its shelf | | |
 | 24 | C | Accounts | Open the cash drawer with a float; close it at the end of the day | Expected vs. counted amount and any difference are shown | | |
 | 25 | | Manager | Run the financial summary and aged receivables for today; open Reports → Clinical activity | Totals match the invoices and payments made during testing; clinical counts match the consultations and stays recorded | | |
 

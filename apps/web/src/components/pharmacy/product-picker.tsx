@@ -10,8 +10,10 @@ import { api, qs } from '@/lib/api';
 import type { Product } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
-export function productStrength(p: Pick<Product, 'strengthValue' | 'strengthUnit' | 'dispensingUnit'>) {
-  return p.strengthValue ? `${p.strengthValue} ${p.strengthUnit}/${p.dispensingUnit}` : p.dispensingUnit;
+export function productStrength(p: Pick<Product, 'strengthValue' | 'strengthUnit' | 'dispensingUnit'> & Partial<Pick<Product, 'brand' | 'packSize'>>) {
+  if (p.strengthValue) return `${p.strengthValue} ${p.strengthUnit}/${p.dispensingUnit}`;
+  // Shop items: brand and pack size describe them better than a strength.
+  return [p.brand, p.packSize, `per ${p.dispensingUnit}`].filter(Boolean).join(' · ');
 }
 
 export function ProductPicker({
@@ -19,7 +21,7 @@ export function ProductPicker({
   onChange,
   prescribable,
   id,
-  placeholder = 'Search medicine by name, generic name or SKU…',
+  placeholder = 'Search by name, brand, generic name or SKU…',
 }: {
   value: Product | null;
   onChange: (p: Product | null) => void;

@@ -1,7 +1,7 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
 import type { Paginated } from '@vcms/shared';
-import { PRODUCT_TYPES, enumLabel } from '@vcms/shared';
+import { PRODUCT_TYPES, PRODUCT_TYPE_LABELS, enumLabel } from '@vcms/shared';
 import { Lock, Package, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -35,7 +35,7 @@ function Formulary() {
       <PageHeader
         title="Formulary"
         breadcrumbs={[{ label: 'Pharmacy', href: '/pharmacy' }, { label: 'Formulary' }]}
-        description="Medicines, vaccines and consumables. Strength and dispensing units drive the dose calculator."
+        description={<>Medicines, vaccines and consumables. Strength and dispensing units drive the dose calculator. Food, grooming items and accessories are managed under <Link className="underline" href="/inventory/catalog">Inventory → Products</Link>.</>}
         actions={(can('formulary.manage') || can('inventory.write')) && <Button size="sm" onClick={() => setCreate(true)}><Plus /> New product</Button>}
       />
       <Card>
@@ -43,7 +43,7 @@ function Formulary() {
           <SearchInput value={params.q} onChange={(q) => url.set({ q, page: 1 })} placeholder="Name, generic, SKU, ingredient" />
           <NativeSelect aria-label="Type" className="sm:w-40" value={params.type} onChange={(e) => url.set({ type: e.target.value, page: 1 })}>
             <option value="">All types</option>
-            {PRODUCT_TYPES.map((t) => <option key={t} value={t}>{enumLabel(t)}</option>)}
+            {PRODUCT_TYPES.map((t) => <option key={t} value={t}>{PRODUCT_TYPE_LABELS[t]}</option>)}
           </NativeSelect>
           <NativeSelect aria-label="Status" className="sm:w-32" value={params.active} onChange={(e) => url.set({ active: e.target.value, page: 1 })}>
             <option value="true">Active</option>
@@ -60,8 +60,8 @@ function Formulary() {
           empty={<EmptyState icon={Package} title="No products" description="Add medicines with their strength and dispensing unit to enable prescribing." />}
           columns={[
             { key: 'name', header: 'Product', cell: (p) => <div><Link href={`/pharmacy/formulary/${p.id}`} className="flex items-center gap-1 font-medium hover:underline">{p.name}{p.isControlled && <Lock className="h-3 w-3 text-warning" aria-label="Controlled" />}</Link><p className="text-xs text-muted-foreground">{p.genericName}</p></div> },
-            { key: 'type', header: 'Type', cell: (p) => <span className="text-sm">{enumLabel(p.type)}{p.form && ` · ${enumLabel(p.form)}`}</span> },
-            { key: 'str', header: 'Strength', cell: (p) => <span className="text-sm">{productStrength(p)}</span> },
+            { key: 'type', header: 'Type', cell: (p) => <span className="text-sm">{PRODUCT_TYPE_LABELS[p.type as keyof typeof PRODUCT_TYPE_LABELS] ?? enumLabel(p.type)}{p.form && ` · ${enumLabel(p.form)}`}</span> },
+            { key: 'str', header: 'Strength / pack', cell: (p) => <span className="text-sm">{productStrength(p)}</span> },
             { key: 'refs', header: 'Dose refs', cell: (p) => (p._count?.doseReferences ? <Badge variant="success">{p._count.doseReferences} approved</Badge> : <span className="text-xs text-muted-foreground">none</span>) },
             { key: 'price', header: 'Price', cell: (p) => (p.sellPriceMinor != null ? `${fmtMoney(p.sellPriceMinor, currency)}/${p.dispensingUnit}` : '—') },
             { key: 'st', header: 'Status', cell: (p) => <StatusBadge status={p.isActive ? 'ACTIVE' : 'ARCHIVED'} /> },

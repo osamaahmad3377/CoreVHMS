@@ -24,15 +24,17 @@ export class FormularyService {
     private readonly audit: AuditService,
   ) {}
 
-  async list(q: { page: number; pageSize: number; q?: string; sort?: string; type?: ProductType; active: string; prescribable?: boolean }) {
+  async list(q: { page: number; pageSize: number; q?: string; sort?: string; type?: ProductType; kind?: 'clinical' | 'shop'; categoryId?: string; active: string; prescribable?: boolean }) {
     const where: Prisma.ProductWhereInput = {
-      type: q.type ?? (q.prescribable ? { in: PRESCRIBABLE_TYPES } : undefined),
+      type: q.type ?? (q.prescribable || q.kind === 'clinical' ? { in: PRESCRIBABLE_TYPES } : q.kind === 'shop' ? { notIn: PRESCRIBABLE_TYPES } : undefined),
+      categoryId: q.categoryId,
       isActive: q.active === 'all' ? undefined : q.active === 'true',
       ...(q.q
         ? {
             OR: [
               { name: { contains: q.q, mode: 'insensitive' } },
               { genericName: { contains: q.q, mode: 'insensitive' } },
+              { brand: { contains: q.q, mode: 'insensitive' } },
               { sku: { contains: q.q, mode: 'insensitive' } },
               { barcode: q.q },
               { activeIngredients: { has: q.q.toLowerCase() } },
@@ -45,7 +47,7 @@ export class FormularyService {
         where,
         ...pageArgs(q),
         orderBy: orderBy(q.sort, ['name', 'type', 'createdAt'], { name: 'asc' }),
-        include: { _count: { select: { doseReferences: { where: { status: 'APPROVED' } } } } },
+        include: { productCategory: { select: { id: true, name: true } }, _count: { select: { doseReferences: { where: { status: 'APPROVED' } } } } },
       }),
       this.prisma.db.product.count({ where }),
     ]);
@@ -56,6 +58,7 @@ export class FormularyService {
     const p = await this.prisma.db.product.findUnique({
       where: { id },
       include: {
+        productCategory: { select: { id: true, name: true } },
         withdrawals: { include: { species: { select: { id: true, name: true } } } },
         doseReferences: { include: { species: { select: { id: true, name: true } } }, orderBy: [{ status: 'asc' }, { createdAt: 'desc' }] },
       },
@@ -73,8 +76,28 @@ export class FormularyService {
     return data;
   }
 
+  /**
+   * Rules that depend on the product type: only medicines and vaccines can be prescription-only or controlled,
+   * and a shop category must belong to the product's type.
+   */
+  private async applyTypeRules(data: any, before?: { type: ProductType; categoryId: string | null }) {
+    const type: ProductType = data.type ?? before?.type ?? 'MEDICINE';
+    if (!PRESCRIBABLE_TYPES.includes(type)) {
+      data.requiresPrescription = false;
+      data.isControlled = false;
+      data.controlledSchedule = null;
+    }
+    const categoryId = data.categoryId !== undefined ? data.categoryId : before?.categoryId;
+    if (categoryId) {
+      const c = await this.prisma.db.productCategory.findUnique({ where: { id: categoryId } });
+      if (!c || (!c.isActive && categoryId !== before?.categoryId)) throw ruleViolation('INVALID_CATEGORY', 'Category not found');
+      if (c.productType && c.productType !== type) throw ruleViolation('CATEGORY_TYPE_MISMATCH', `“${c.name}” is a category for a different product type`);
+    }
+    return data;
+  }
+
   async create(input: ProductInput) {
-    const data = this.normalise(input);
+    const data = await this.applyTypeRules(this.normalise(input));
     return this.prisma.db.$transaction(async (tx) => {
       const p = await tx.product.create({ data: { ...data, organizationId: RequestContext.orgId() } });
       await this.audit.record({ action: 'product.created', entityType: 'Product', entityId: p.id, summary: p.name }, tx);
@@ -83,7 +106,9 @@ export class FormularyService {
   }
 
   async update(id: string, input: Partial<ProductInput>) {
-    const data = this.normalise(input);
+    const existing = await this.prisma.db.product.findUnique({ where: { id }, select: { type: true, categoryId: true } });
+    if (!existing) throw notFound('Product');
+    const data = await this.applyTypeRules(this.normalise(input), existing);
     return this.prisma.db.$transaction(async (tx) => {
       const before = await tx.product.findUnique({ where: { id } });
       if (!before) throw notFound('Product');
@@ -91,6 +116,23 @@ export class FormularyService {
       await this.audit.record({ action: 'product.updated', entityType: 'Product', entityId: id, summary: after.name, changes: diff(before, after, Object.keys(data)) }, tx);
       return decimalProduct(after);
     });
+  }
+
+  /** Product photo shown on the shop counter: an image already attached to this product, or null to remove it. */
+  async setPhoto(productId: string, attachmentId: string | null) {
+    const p = await this.prisma.db.product.findUnique({ where: { id: productId } });
+    if (!p) throw notFound('Product');
+    if (attachmentId) {
+      const a = await this.prisma.db.attachment.findUnique({ where: { id: attachmentId } });
+      if (!a || a.deletedAt || a.entityType !== 'Product' || a.entityId !== productId || !a.mimeType.startsWith('image/')) {
+        throw ruleViolation('INVALID_PHOTO', 'Upload an image for this product first');
+      }
+    }
+    await this.prisma.db.$transaction(async (tx) => {
+      await tx.product.update({ where: { id: productId }, data: { photoAttachmentId: attachmentId } });
+      await this.audit.record({ action: 'product.photo_updated', entityType: 'Product', entityId: productId, summary: p.name }, tx);
+    });
+    return { photoAttachmentId: attachmentId };
   }
 
   // ── Withdrawal periods ──

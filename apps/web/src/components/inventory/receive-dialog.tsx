@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input, NativeSelect } from '../ui/input';
 import { api } from '@/lib/api';
 import { fmtMoney } from '@/lib/format';
+import { defaultLocation } from '@/lib/locations';
 import { useSession } from '@/lib/session';
 import type { Product, PurchaseOrder, StockLocation, Supplier } from '@/lib/types';
 
@@ -31,7 +32,7 @@ const blank = (): Line => ({ key: crypto.randomUUID(), product: null, batchNumbe
 /** Goods receipt: every line creates or tops up a batch (batch number + expiry) at the chosen location. */
 export function ReceiveStockDialog({ open, onOpenChange, order }: { open: boolean; onOpenChange: (o: boolean) => void; order?: PurchaseOrder }) {
   const qc = useQueryClient();
-  const { currency } = useSession();
+  const { currency, session } = useSession();
   const [supplierId, setSupplierId] = useState('');
   const [locationId, setLocationId] = useState('');
   const [invoiceNo, setInvoiceNo] = useState('');
@@ -57,8 +58,8 @@ export function ReceiveStockDialog({ open, onOpenChange, order }: { open: boolea
     }
   }, [open, order, currency]);
   useEffect(() => {
-    if (!locationId && locations.data?.length) setLocationId((locations.data.find((l) => l.isDefault && l.isActive) ?? locations.data[0]).id);
-  }, [locations.data, locationId]);
+    if (!locationId && locations.data?.length) setLocationId(defaultLocation(locations.data, session.branch?.id)!.id);
+  }, [locations.data, locationId, session.branch?.id]);
 
   const update = (key: string, patch: Partial<Line>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   const payload = lines.filter((l) => l.product && Number(l.quantity) > 0);

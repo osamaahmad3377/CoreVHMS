@@ -175,6 +175,8 @@ model Organization {
   purchaseRequests       PurchaseRequest[]
   supplierReturns        SupplierReturn[]
   supplierReturnLines    SupplierReturnLine[]
+  productCategories      ProductCategory[]
+  receiptSettings        ReceiptSettings?
 }
 
 model Branch {
@@ -1453,6 +1455,9 @@ enum ProductType {
   RETAIL
   FOOD
   EQUIPMENT
+  SUPPLEMENT
+  GROOMING
+  ACCESSORY
 }
 
 enum DosageForm {
@@ -1484,7 +1489,12 @@ model Product {
   name                 String
   genericName          String?
   type                 ProductType       @default(MEDICINE)
-  category             String?
+  /// Shop shelf group (e.g. "Dry food", "Shampoos & conditioners"); configured per organization.
+  categoryId           String?           @db.Uuid
+  brand                String?
+  /// Pack or size as sold, e.g. "3 kg bag", "400 g can", "Medium".
+  packSize             String?
+  photoAttachmentId    String?           @db.Uuid
   form                 DosageForm?
   strengthValue        Decimal?          @db.Decimal(14, 4)
   strengthUnit         String?
@@ -1503,6 +1513,7 @@ model Product {
   updatedAt            DateTime          @updatedAt @db.Timestamptz(3)
 
   organization       Organization               @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  productCategory    ProductCategory?           @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   withdrawals        ProductWithdrawal[]
   doseReferences     DoseReference[]
   prescriptionItems  PrescriptionItem[]
@@ -1534,6 +1545,26 @@ model Product {
 
   @@unique([organizationId, sku])
   @@index([organizationId, type, name])
+  @@index([organizationId, categoryId])
+}
+
+/// Shop categories for products (food, grooming, accessories…). Deactivate instead of deleting.
+model ProductCategory {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  name           String
+  /// The product type this category belongs to; products in it must have that type. Null = any type.
+  productType    ProductType?
+  sortOrder      Int          @default(0)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  products     Product[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, productType, sortOrder])
 }
 
 /// Withdrawal period for a food-producing species. Must cite the product label or regulatory source.
@@ -4356,4 +4387,61 @@ model SupplierReturnLine {
   batch          StockBatch     @relation(fields: [batchId], references: [id], onDelete: Restrict)
 
   @@index([supplierReturnId])
+}
+
+enum ReceiptLogoSource {
+  BRANDING
+  CUSTOM
+}
+
+enum ReceiptAlign {
+  LEFT
+  CENTER
+  RIGHT
+}
+
+enum ReceiptFontSize {
+  SMALL
+  NORMAL
+  LARGE
+}
+
+/// How counter and payment receipts are printed (one row per organization; defaults apply until saved).
+model ReceiptSettings {
+  id                     String            @id @default(uuid()) @db.Uuid
+  organizationId         String            @unique @db.Uuid
+  /// Roll width: 80 mm (standard) or 58 mm.
+  paperWidthMm           Int               @default(80)
+  /// Blank space left and right, for printers that cannot print to the edge.
+  sideMarginMm           Int               @default(3)
+  fontSize               ReceiptFontSize   @default(NORMAL)
+  showLogo               Boolean           @default(true)
+  logoSource             ReceiptLogoSource @default(BRANDING)
+  customLogoAttachmentId String?           @db.Uuid
+  /// Logo width as a percentage of the printable width.
+  logoWidthPercent       Int               @default(55)
+  logoAlign              ReceiptAlign      @default(CENTER)
+  /// Black-and-white, high-contrast logo for thermal printers.
+  logoMonochrome         Boolean           @default(true)
+  title                  String            @default("TAX INVOICE / RECEIPT")
+  headerText             String?
+  footerText             String?           @default("Thank you for caring for your pet with us")
+  policyText             String?
+  showLegalName          Boolean           @default(true)
+  showBranchAddress      Boolean           @default(true)
+  showPhone              Boolean           @default(true)
+  showEmail              Boolean           @default(false)
+  showTaxNumber          Boolean           @default(true)
+  showServedBy           Boolean           @default(true)
+  showCustomer           Boolean           @default(true)
+  showPatient            Boolean           @default(true)
+  showItemCodes          Boolean           @default(false)
+  showTaxLine            Boolean           @default(true)
+  /// Open the print dialog automatically after each counter sale.
+  autoPrint              Boolean           @default(false)
+  copies                 Int               @default(1)
+  updatedAt              DateTime          @updatedAt @db.Timestamptz(3)
+  updatedByName          String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 }

@@ -52,6 +52,10 @@ export class ReportsController {
         const rows = await this.reports.salesByItem(q.from, q.to, q.branchId);
         return this.send(res, q, name, rows);
       }
+      case 'sales-by-category': {
+        const d = await this.reports.salesByCategory(q.from, q.to, q.branchId);
+        return this.send(res, q, name, d, d.rows);
+      }
       case 'aged-receivables': {
         const d = await this.reports.agedReceivables(q.branchId);
         return this.send(res, q, name, d, d.invoices.map((i) => ({ ...i, client: i.client?.displayName })));

@@ -7,6 +7,7 @@ import { PatientTimelineService } from '../patients/patient-timeline.service';
 import { prescriptionNo } from './prescriptions.service';
 import { ClientPrivacyService } from '../clients/client-privacy.service';
 import { SearchService } from '../search/search.service';
+import { AttachmentsService } from '../attachments/attachments.service';
 
 @Injectable()
 export class PharmacyIntegrations implements OnModuleInit {
@@ -18,10 +19,13 @@ export class PharmacyIntegrations implements OnModuleInit {
     private readonly clientMerge: ClientMergeService,
     private readonly dashboard: DashboardService,
     private readonly search: SearchService,
+    private readonly attachments: AttachmentsService,
   ) {}
 
   onModuleInit() {
     const db = () => this.prisma.db;
+    // Product photos for the shop counter: visible to anyone who can see stock, managed by stock staff.
+    this.attachments.registerTarget('Product', { read: 'inventory.read', write: 'inventory.write', exists: async (id) => !!(await db().product.findUnique({ where: { id }, select: { id: true } })), auditDownloads: false });
     // Global search: a prescription number (RX-12, rx12, RX-000012) opens that prescription.
     this.search.register(async (q, perms) => {
       if (!perms.has('prescriptions.read') || !/^rx-?\d+$/i.test(q.trim())) return [];

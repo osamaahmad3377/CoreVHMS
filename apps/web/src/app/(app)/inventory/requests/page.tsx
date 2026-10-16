@@ -23,6 +23,7 @@ import { Input, NativeSelect, Textarea } from '@/components/ui/input';
 import { useUrlState } from '@/hooks/use-url-state';
 import { api, qs } from '@/lib/api';
 import { fmtDate } from '@/lib/format';
+import { defaultLocation } from '@/lib/locations';
 import { useSession } from '@/lib/session';
 import type { Product, StockLocation, Supplier } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -90,7 +91,7 @@ function RequestDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
 function OrderDialog({ requests, open, onOpenChange, onDone }: { requests: PurchaseRequest[]; open: boolean; onOpenChange: (o: boolean) => void; onDone: () => void }) {
   const router = useRouter();
   const qc = useQueryClient();
-  const { currency } = useSession();
+  const { currency, session } = useSession();
   const [supplierId, setSupplierId] = useState('');
   const [locationId, setLocationId] = useState('');
   const [expectedAt, setExpectedAt] = useState('');
@@ -100,8 +101,8 @@ function OrderDialog({ requests, open, onOpenChange, onDone }: { requests: Purch
   const locations = useQuery({ queryKey: ['stock-locations'], queryFn: () => api.get<StockLocation[]>('/stock-locations'), enabled: open });
   useEffect(() => { if (open) { setError(null); setCosts({}); } }, [open]);
   useEffect(() => {
-    if (!locationId && locations.data?.length) setLocationId((locations.data.find((l) => l.isDefault) ?? locations.data[0]).id);
-  }, [locations.data, locationId]);
+    if (!locationId && locations.data?.length) setLocationId(defaultLocation(locations.data, session.branch?.id)!.id);
+  }, [locations.data, locationId, session.branch?.id]);
   const lines = Object.values(
     requests.reduce<Record<string, { product: PurchaseRequest['product']; quantity: number; count: number }>>((acc, r) => {
       const e = (acc[r.product.id] ??= { product: r.product, quantity: 0, count: 0 });

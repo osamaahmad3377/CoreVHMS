@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input, NativeSelect, Textarea } from '@/components/ui/input';
 import { api, qs } from '@/lib/api';
 import { fmtDate, fmtDateTime, fmtMoney } from '@/lib/format';
+import { defaultLocation } from '@/lib/locations';
 import { useSession } from '@/lib/session';
 import type { StockLocation, Supplier } from '@/lib/types';
 
@@ -34,7 +35,7 @@ interface SupplierReturn {
 
 function ReturnDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const qc = useQueryClient();
-  const { currency } = useSession();
+  const { currency, session } = useSession();
   const [supplierId, setSupplierId] = useState('');
   const [locationId, setLocationId] = useState('');
   const [reason, setReason] = useState('');
@@ -51,8 +52,8 @@ function ReturnDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o:
   useEffect(() => { if (open) { setError(null); setQty({}); setReason(''); setReference(''); } }, [open]);
   useEffect(() => { setQty({}); }, [supplierId, locationId]);
   useEffect(() => {
-    if (!locationId && locations.data?.length) setLocationId((locations.data.find((l) => l.isDefault) ?? locations.data[0]).id);
-  }, [locations.data, locationId]);
+    if (!locationId && locations.data?.length) setLocationId(defaultLocation(locations.data, session.branch?.id)!.id);
+  }, [locations.data, locationId, session.branch?.id]);
   const lines = (batches.data ?? []).filter((b) => Number(qty[b.batchId]) > 0).map((b) => ({ b, quantity: Number(qty[b.batchId]) }));
   const tooMuch = lines.some((l) => l.quantity > l.b.onHand);
   const total = lines.reduce((n, l) => n + Math.round(l.quantity * l.b.unitCostMinor), 0);

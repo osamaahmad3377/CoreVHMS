@@ -11,6 +11,12 @@ export interface AttachmentTarget {
   read: string;
   write: string;
   exists(id: string): Promise<boolean>;
+  /**
+   * Downloads are audited by default (clinical and client documents). Set false for non-personal display images
+   * such as logos and product photos, which are fetched on every screen or receipt and would flood the audit log.
+   * Uploads, deletions and sharing are always audited.
+   */
+  auditDownloads?: boolean;
 }
 
 @Injectable()
@@ -36,6 +42,14 @@ export class AttachmentsService {
       read: 'dashboard.view',
       write: 'org.manage',
       exists: async (id) => id === RequestContext.orgId(),
+      auditDownloads: false,
+    });
+    // A separate logo for printed receipts (e.g. a black-and-white version for thermal printers).
+    this.registerTarget('ReceiptLogo', {
+      read: 'dashboard.view',
+      write: 'settings.manage',
+      exists: async (id) => id === RequestContext.orgId(),
+      auditDownloads: false,
     });
   }
 
@@ -111,7 +125,9 @@ export class AttachmentsService {
     const a = await this.prisma.db.attachment.findUnique({ where: { id } });
     if (!a || a.deletedAt) throw notFound('File');
     await this.authorize(a.entityType, a.entityId, 'read');
-    this.audit.recordAsync({ action: 'attachment.downloaded', entityType: a.entityType, entityId: a.entityId, summary: a.fileName });
+    if (this.targets.get(a.entityType)?.auditDownloads !== false) {
+      this.audit.recordAsync({ action: 'attachment.downloaded', entityType: a.entityType, entityId: a.entityId, summary: a.fileName });
+    }
     return { meta: a, stream: this.storage.get(a.storageKey) };
   }
 

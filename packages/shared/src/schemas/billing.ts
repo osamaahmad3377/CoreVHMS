@@ -122,3 +122,33 @@ export const reportQuery = z.object({
   branchId: z.string().uuid().optional(),
   format: z.enum(['json', 'csv']).default('json'),
 });
+
+/** Receipt layout and printing options (Settings → Receipts & printing). */
+export const receiptSettingsSchema = z.object({
+  paperWidthMm: z.union([z.literal(58), z.literal(80)]),
+  sideMarginMm: z.coerce.number().int().min(0).max(8),
+  fontSize: z.enum(['SMALL', 'NORMAL', 'LARGE']),
+  showLogo: z.boolean(),
+  logoSource: z.enum(['BRANDING', 'CUSTOM']),
+  customLogoAttachmentId: z.string().uuid().nullable(),
+  logoWidthPercent: z.coerce.number().int().min(15).max(100),
+  logoAlign: z.enum(['LEFT', 'CENTER', 'RIGHT']),
+  logoMonochrome: z.boolean(),
+  title: z.string().trim().min(1).max(60),
+  headerText: z.string().trim().max(300).nullable(),
+  footerText: z.string().trim().max(300).nullable(),
+  policyText: z.string().trim().max(600).nullable(),
+  showLegalName: z.boolean(),
+  showBranchAddress: z.boolean(),
+  showPhone: z.boolean(),
+  showEmail: z.boolean(),
+  showTaxNumber: z.boolean(),
+  showServedBy: z.boolean(),
+  showCustomer: z.boolean(),
+  showPatient: z.boolean(),
+  showItemCodes: z.boolean(),
+  showTaxLine: z.boolean(),
+  autoPrint: z.boolean(),
+  copies: z.coerce.number().int().min(1).max(3),
+});
+export type ReceiptSettingsInput = z.infer<typeof receiptSettingsSchema>;

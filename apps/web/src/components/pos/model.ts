@@ -18,11 +18,15 @@ export interface Tender {
   reference: string;
 }
 
+/** Shop-counter sections: shop items first, then clinic items. */
 export const CATEGORIES = [
   { key: '', label: 'All' },
   { key: 'SERVICE', label: 'Services' },
-  { key: 'RETAIL', label: 'Retail' },
-  { key: 'FOOD', label: 'Food' },
+  { key: 'FOOD', label: 'Food & treats' },
+  { key: 'GROOMING', label: 'Grooming & hygiene' },
+  { key: 'ACCESSORY', label: 'Accessories' },
+  { key: 'SUPPLEMENT', label: 'Supplements' },
+  { key: 'RETAIL', label: 'Other shop items' },
   { key: 'CONSUMABLE', label: 'Consumables' },
   { key: 'EQUIPMENT', label: 'Equipment' },
   { key: 'MEDICINE', label: 'Medicines' },

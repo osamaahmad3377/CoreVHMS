@@ -20,6 +20,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input, NativeSelect, Textarea } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { fmtDate, fmtMoney } from '@/lib/format';
+import { defaultLocation } from '@/lib/locations';
 import { useSession } from '@/lib/session';
 import type { Product, PurchaseOrder, StockLocation, Supplier } from '@/lib/types';
 
@@ -29,7 +30,7 @@ interface PoLine { key: string; product: Pick<Product, 'id' | 'name' | 'dispensi
 function PoDialog({ open, onOpenChange, seed }: { open: boolean; onOpenChange: (o: boolean) => void; seed: Suggestion[] }) {
   const router = useRouter();
   const qc = useQueryClient();
-  const { currency } = useSession();
+  const { currency, session } = useSession();
   const [supplierId, setSupplierId] = useState('');
   const [locationId, setLocationId] = useState('');
   const [expectedAt, setExpectedAt] = useState('');
@@ -44,8 +45,8 @@ function PoDialog({ open, onOpenChange, seed }: { open: boolean; onOpenChange: (
     setLines(seed.length ? seed.map((s) => ({ key: s.productId, product: { id: s.productId, name: s.name, dispensingUnit: s.dispensingUnit }, quantity: String(s.suggested), cost: '' })) : [{ key: crypto.randomUUID(), product: null, quantity: '', cost: '' }]);
   }, [open, seed]);
   useEffect(() => {
-    if (!locationId && locations.data?.length) setLocationId((locations.data.find((l) => l.isDefault) ?? locations.data[0]).id);
-  }, [locations.data, locationId]);
+    if (!locationId && locations.data?.length) setLocationId(defaultLocation(locations.data, session.branch?.id)!.id);
+  }, [locations.data, locationId, session.branch?.id]);
   const update = (key: string, patch: Partial<PoLine>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   const valid = lines.filter((l) => l.product && Number(l.quantity) > 0 && parseMoney(l.cost, currency) !== null);
   const total = valid.reduce((n, l) => n + Math.round(Number(l.quantity) * (parseMoney(l.cost, currency) ?? 0)), 0);

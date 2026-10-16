@@ -13,6 +13,12 @@ export interface PosItem {
   code: string | null;
   barcode: string | null;
   category: string;
+  /** Shop category (e.g. "Dry food"), brand and pack size for products; null for services. */
+  categoryId: string | null;
+  categoryName: string | null;
+  brand: string | null;
+  packSize: string | null;
+  photoAttachmentId: string | null;
   unit: string;
   priceMinor: number | null;
   taxRateBasisPoints: number;
@@ -31,21 +37,32 @@ export class PosService {
     private readonly inventory: InventoryService,
   ) {}
 
-  async catalog(q: { q?: string; category?: string; limit: number }): Promise<{ items: PosItem[]; exact: PosItem | null; allowNegativeStock: boolean }> {
+  async catalog(q: { q?: string; category?: string; categoryId?: string; limit: number }): Promise<{ items: PosItem[]; exact: PosItem | null; allowNegativeStock: boolean }> {
     const db = this.prisma.db;
     const ctx = RequestContext.require();
     const term = q.q?.trim();
-    const wantServices = !q.category || q.category === 'SERVICE';
+    const wantServices = (!q.category || q.category === 'SERVICE') && !q.categoryId;
     const wantProducts = q.category !== 'SERVICE';
     const productWhere: Prisma.ProductWhereInput = {
       isActive: true,
       type: q.category && q.category !== 'SERVICE' ? (q.category as ProductType) : undefined,
+      categoryId: q.categoryId,
       ...(term
-        ? { OR: [{ name: { contains: term, mode: 'insensitive' } }, { genericName: { contains: term, mode: 'insensitive' } }, { sku: { equals: term, mode: 'insensitive' } }, { barcode: term }] }
+        ? {
+            OR: [
+              { name: { contains: term, mode: 'insensitive' } },
+              { genericName: { contains: term, mode: 'insensitive' } },
+              { brand: { contains: term, mode: 'insensitive' } },
+              { sku: { equals: term, mode: 'insensitive' } },
+              { barcode: term },
+            ],
+          }
         : {}),
     };
     const [products, services, rates, org] = await Promise.all([
-      wantProducts ? db.product.findMany({ where: productWhere, orderBy: { name: 'asc' }, take: q.limit }) : Promise.resolve([]),
+      wantProducts
+        ? db.product.findMany({ where: productWhere, include: { productCategory: { select: { name: true } } }, orderBy: { name: 'asc' }, take: q.limit })
+        : Promise.resolve([]),
       wantServices
         ? db.service.findMany({
             where: { isActive: true, ...(term ? { OR: [{ name: { contains: term, mode: 'insensitive' } }, { code: { equals: term.toUpperCase() } }] } : {}) },
@@ -77,6 +94,11 @@ export class PosService {
         code: p.sku,
         barcode: p.barcode,
         category: p.type,
+        categoryId: p.categoryId,
+        categoryName: p.productCategory?.name ?? null,
+        brand: p.brand,
+        packSize: p.packSize,
+        photoAttachmentId: p.photoAttachmentId,
         unit: p.dispensingUnit,
         priceMinor: p.sellPriceMinor,
         taxRateBasisPoints: bp(p.taxRateId),
@@ -91,6 +113,11 @@ export class PosService {
         code: s.code,
         barcode: null,
         category: 'SERVICE',
+        categoryId: null,
+        categoryName: null,
+        brand: null,
+        packSize: null,
+        photoAttachmentId: null,
         unit: 'service',
         priceMinor: s.priceMinor,
         taxRateBasisPoints: bp(s.taxRateId),

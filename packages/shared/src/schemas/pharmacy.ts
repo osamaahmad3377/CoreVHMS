@@ -11,7 +11,9 @@ export const productSchema = z.object({
   name: reqText(160),
   genericName: optText(160),
   type: z.enum(PRODUCT_TYPES).default('MEDICINE'),
-  category: optText(80),
+  categoryId: optUuid(),
+  brand: optText(80),
+  packSize: optText(40),
   form: z.enum(DOSAGE_FORMS).nullish(),
   strengthValue: optDec(0),
   strengthUnit: optText(20),
@@ -31,6 +33,9 @@ export type ProductInput = z.infer<typeof productSchema>;
 
 export const productListQuery = paginationQuery.extend({
   type: z.enum(PRODUCT_TYPES).optional(),
+  /** clinical = medicines and vaccines; shop = everything else. */
+  kind: z.enum(['clinical', 'shop']).optional(),
+  categoryId: z.string().uuid().optional(),
   active: z.enum(['true', 'false', 'all']).default('true'),
   prescribable: z.coerce.boolean().optional(),
 });
@@ -126,3 +131,12 @@ export const administrationSchema = z.object({
   administeredAt: optDate(),
   overrideReason: optText(500),
 });
+
+export const productCategorySchema = z.object({
+  name: reqText(60),
+  productType: z.enum(PRODUCT_TYPES).nullish(),
+  sortOrder: z.coerce.number().int().min(0).max(10000).default(0),
+  isActive: z.boolean().default(true),
+});
+
+export const productPhotoSchema = z.object({ attachmentId: z.string().uuid().nullable() });

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { COUNTRIES, SYSTEM_ROLE_TEMPLATES } from '@vcms/shared';
+import { COUNTRIES, DEFAULT_PRODUCT_CATEGORIES, SYSTEM_ROLE_TEMPLATES } from '@vcms/shared';
 import { DEFAULT_SPECIES } from '../catalog/default-species';
 
 export interface BootstrapInput {
@@ -69,6 +69,9 @@ export class OrgBootstrapService {
         });
       }
     }
+
+    // Starter shop categories (food, grooming, accessories…); the clinic can rename, add or hide them.
+    await tx.productCategory.createMany({ data: DEFAULT_PRODUCT_CATEGORIES.map((c) => ({ ...c, organizationId: org.id })) });
 
     return { org, branch, membership, roleIds };
   }

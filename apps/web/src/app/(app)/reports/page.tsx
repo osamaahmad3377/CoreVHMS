@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 const REPORTS: { key: string; label: string; perm: Permission[]; ranged: boolean }[] = [
   { key: 'financial-summary', label: 'Financial summary', perm: ['reports.financial'], ranged: true },
   { key: 'sales-by-item', label: 'Sales by item', perm: ['reports.view', 'reports.financial'], ranged: true },
+  { key: 'sales-by-category', label: 'Sales by category', perm: ['reports.view', 'reports.financial'], ranged: true },
   { key: 'aged-receivables', label: 'Aged receivables', perm: ['reports.view', 'reports.financial'], ranged: false },
   { key: 'stock-valuation', label: 'Stock valuation', perm: ['reports.view', 'reports.financial'], ranged: false },
   { key: 'write-offs', label: 'Write-offs', perm: ['reports.view', 'reports.financial'], ranged: true },

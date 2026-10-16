@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { enumLabel, fromMinor } from '@vcms/shared';
-import { Ban, CreditCard, FileMinus, Printer, Send, Trash2 } from 'lucide-react';
+import { Ban, CreditCard, FileMinus, Printer, ReceiptText, Send, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -12,6 +12,8 @@ import { MoneyInput, bpToPct, parseMoney } from '@/components/billing/money';
 import { CommerceBadge } from '@/components/billing/status';
 import { TakePaymentDialog } from '@/components/billing/take-payment-dialog';
 import { useConfirm } from '@/components/confirm';
+import { receiptFromInvoice } from '@/components/receipts/receipt-document';
+import { useReceiptPrinter } from '@/components/receipts/use-receipt';
 import { Field } from '@/components/forms/field';
 import { FormError } from '@/components/forms/form-error';
 import { DescriptionList, ErrorState, LoadingRows, PageHeader } from '@/components/page';
@@ -94,6 +96,8 @@ function InvoiceView() {
   const qc = useQueryClient();
   const confirm = useConfirm();
   const { can } = useSession();
+  const receipts = useReceiptPrinter();
+  const [printing, setPrinting] = useState(false);
   const [paying, setPaying] = useState(false);
   const [crediting, setCrediting] = useState(false);
   const q = useQuery({ queryKey: ['invoice', id], queryFn: () => api.get<Invoice>(`/invoices/${id}`) });
@@ -137,7 +141,14 @@ function InvoiceView() {
                   if (r.confirmed) act.mutate({ path: `/invoices/${i.id}/void`, body: { reason: r.reason } });
                 }}><Ban /> Void</Button>
               )}
-              <Button size="sm" variant="outline" onClick={() => window.print()}><Printer /> Print</Button>
+              {i.status !== 'DRAFT' && can('payments.take') && (
+                <Button size="sm" variant="outline" loading={printing} title="Print on the receipt printer (80 mm / 58 mm roll)" onClick={async () => {
+                  setPrinting(true);
+                  await receipts.print(receiptFromInvoice(i, i.allocations.map((a) => ({ method: a.payment.method, amountMinor: a.amountMinor, receiptNo: a.payment.receiptNo }))));
+                  setPrinting(false);
+                }}><ReceiptText /> Receipt</Button>
+              )}
+              <Button size="sm" variant="outline" onClick={() => window.print()}><Printer /> Print A4</Button>
             </>
           }
         />

@@ -9,7 +9,8 @@ import { CommerceBadge } from '../billing/status';
 import { EmptyState, LoadingRows } from '../page';
 import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog';
-import { PosReceipt } from './receipt';
+import { receiptFromInvoice } from '../receipts/receipt-document';
+import { ReceiptPreview } from '../receipts/use-receipt';
 import type { CartLine } from './model';
 import type { PickedClient } from '../clients/client-picker';
 import { api } from '@/lib/api';
@@ -62,8 +63,8 @@ export function TodaySalesDialog({ open, onOpenChange, clinic, currency, onRepri
           <div className="rounded-md border bg-muted/40 p-3">
             {selected ? (
               <div className="grid gap-3">
-                <div className="max-h-[48vh] overflow-y-auto rounded border bg-white shadow-sm">
-                  <PosReceipt invoice={selected} clinic={clinic} payments={selected.allocations.map((a) => ({ method: a.payment.method, amountMinor: a.amountMinor, receiptNo: a.payment.receiptNo }))} />
+                <div className="max-h-[48vh] overflow-y-auto rounded border bg-muted/40 p-2">
+                  <ReceiptPreview data={receiptFromInvoice(selected, selected.allocations.map((a) => ({ method: a.payment.method, amountMinor: a.amountMinor, receiptNo: a.payment.receiptNo })))} />
                 </div>
                 <div className="flex gap-2">
                   <Button size="sm" className="flex-1" onClick={() => onReprint(selected)}><Printer /> Reprint</Button>

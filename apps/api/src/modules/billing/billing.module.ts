@@ -7,6 +7,8 @@ import { PatientsModule } from '../patients/patients.module';
 import { PharmacyModule } from '../pharmacy/pharmacy.module';
 import { BillingConfigService } from './billing-config.service';
 import { BillingController } from './billing.controller';
+import { ReceiptsController } from './receipts.controller';
+import { ReceiptSettingsService } from './receipt-settings.service';
 import { BillingIntegrations } from './billing-integrations';
 import { ChargeCaptureService } from './charge-capture.service';
 import { InvoicesService } from './invoices.service';
@@ -15,8 +17,8 @@ import { CashService, EstimatesAndExpensesService, PaymentsService } from './pay
 
 @Module({
   imports: [InventoryModule, PharmacyModule, LabModule, ClinicalModule, PatientsModule, ClientsModule],
-  controllers: [BillingController],
-  providers: [BillingConfigService, ChargeCaptureService, InvoicesService, PaymentsService, CashService, EstimatesAndExpensesService, PosService, BillingIntegrations],
+  controllers: [BillingController, ReceiptsController],
+  providers: [BillingConfigService, ChargeCaptureService, InvoicesService, PaymentsService, CashService, EstimatesAndExpensesService, PosService, ReceiptSettingsService, BillingIntegrations],
   exports: [ChargeCaptureService, InvoicesService, PaymentsService],
 })
 export class BillingModule {}
