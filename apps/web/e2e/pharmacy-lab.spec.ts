@@ -37,7 +37,7 @@ test.describe('Prescribing, dispensing and laboratory', () => {
     // Batch left blank: stock is issued first-expiry-first-out and the issued batch is recorded.
     await d.getByRole('button', { name: 'Dispense' }).click();
     await expect(ph.getByText(/fully dispensed/)).toBeVisible();
-    await expect(ph.getByText('batch AMX250-D01')).toBeVisible();
+    await expect(ph.getByText('batch AMX250-D01').first()).toBeVisible();
     await ctx.close();
   });
 
@@ -59,7 +59,8 @@ test.describe('Prescribing, dispensing and laboratory', () => {
     await login(lab, 'lab@demo.pk');
     await lab.goto(href!);
     await lab.getByRole('button', { name: 'Collect' }).click();
-    await expect(lab.getByText(/^S\d{8}$/)).toBeVisible();
+    await lab.getByRole('dialog').getByRole('button', { name: /^Collect samples?$/ }).click(); // confirms which sample types are taken
+    await expect(lab.getByText(/^S\d{8}$/).first()).toBeVisible();
     for (const [name, v] of [['Haematocrit', '42'], ['Haemoglobin', '150'], ['Red blood cells', '6.5'], ['White blood cells', '9.1'], ['Neutrophils', '6.0'], ['Lymphocytes', '2.1'], ['Platelets', '250']]) {
       await lab.getByLabel(name, { exact: true }).fill(v);
     }

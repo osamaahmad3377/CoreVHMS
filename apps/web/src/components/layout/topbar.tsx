@@ -50,7 +50,7 @@ export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () 
 
       <button
         onClick={onSearch}
-        aria-label="Search patients, owners, phone"
+        aria-label="Search everything (⌘K)"
         className="flex h-9 min-w-0 shrink items-center gap-2 rounded-md border bg-muted/50 px-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted sm:w-full sm:max-w-md sm:px-3"
       >
         <Search className="h-4 w-4 shrink-0" />

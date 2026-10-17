@@ -35,7 +35,7 @@ test.describe('Item requests and supplier returns', () => {
     await expect(page.getByText('Draft').first()).toBeVisible();
 
     await page.goto('/inventory/requests?show=all');
-    await expect(page.getByRole('row', { name: new RegExp(reason) }).getByText('Ordered')).toBeVisible();
+    await expect(page.getByRole('row', { name: new RegExp(reason) }).getByText('On draft order')).toBeVisible();
   });
 
   test('the inventory officer returns a syringe batch to its supplier', async ({ page }) => {
@@ -45,7 +45,9 @@ test.describe('Item requests and supplier returns', () => {
     await page.getByRole('button', { name: 'Return to supplier' }).click();
     const dlg = page.getByRole('dialog');
     await dlg.locator('#sr-sup').selectOption({ label: 'Demo Pharma Distributors (Lahore)' });
-    await dlg.locator('#sr-loc').selectOption({ label: 'Main pharmacy' });
+    // Locations show their branch when the clinic has several; the current branch's are listed first.
+    const mainPharmacy = await dlg.locator('#sr-loc option', { hasText: /^Main pharmacy/ }).first().getAttribute('value');
+    await dlg.locator('#sr-loc').selectOption(mainPharmacy!);
     const qty = dlg.getByLabel('Quantity to return of batch SYR3-D01');
     await expect(qty).toBeVisible();
     await qty.fill('100000');
