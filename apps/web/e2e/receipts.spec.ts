@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { login } from './helpers';
+import { ensureStock, login } from './helpers';
 
 interface PrintDetail { paperWidthMm: number; heightMm: number; copies: number; logoLoaded: boolean; text: string }
 
@@ -16,7 +16,8 @@ async function lastPrint(page: Page): Promise<PrintDetail> {
 }
 
 test.describe('Receipts & printing', () => {
-  test('owner sets a 58 mm layout with its own logo and two copies; counter receipts print with it', async ({ page }) => {
+  test('owner sets a 58 mm layout with its own logo and two copies; counter receipts print with it', async ({ page, browser }) => {
+    await ensureStock(browser, 'ECOL-M');
     // A real image to use as the receipt logo.
     await page.setContent('<div id="l" style="display:inline-block;padding:12px 24px;background:#0f766e;color:#fff;font:700 40px Arial">PAWS</div>');
     const logo = await page.locator('#l').screenshot();

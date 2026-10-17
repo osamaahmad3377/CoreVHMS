@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api } from '@/lib/api';
 import { fmtDate, fmtDateTime, fmtWeight } from '@/lib/format';
-import { frequencyLabel, routeLabel } from '@/lib/labels';
+import { frequencyLabel, routeLabel, qtyUnit } from '@/lib/labels';
 import { useSession } from '@/lib/session';
 import type { Prescription } from '@/lib/types';
 
@@ -90,7 +90,7 @@ function Detail() {
                     {i.product.isControlled && <Badge variant="warning">Controlled</Badge>}
                     {rx.status !== 'CANCELLED' && allergyMatches(rx.patient.alerts, i.product).length > 0 && <AllergyConflictChip />}
                   </CardTitle>
-                  <span className="text-xs text-muted-foreground">{i.quantityDispensed} / {i.quantity * (1 + i.repeats)} {i.product.dispensingUnit} dispensed</span>
+                  <span className="text-xs text-muted-foreground">{i.quantityDispensed} of {qtyUnit(i.quantity * (1 + i.repeats), i.product.dispensingUnit)} handed over</span>
                 </CardHeader>
                 <CardContent className="grid gap-3">
                   <p className="text-sm font-medium">{i.instructions}</p>
@@ -99,7 +99,7 @@ function Detail() {
                       { label: 'Dose', value: `${i.doseValue} ${i.doseUnit}${i.weightKgUsed ? ` × ${i.weightKgUsed} kg` : ''}` },
                       { label: 'Per administration', value: `${i.amountPerDose} ${i.product.dispensingUnit} · ${routeLabel(i.route)}` },
                       { label: 'How often', value: `${frequencyLabel(i.frequencyText)}${i.durationDays ? ` for ${i.durationDays} days` : ''}` },
-                      { label: 'Quantity', value: `${i.quantity} ${i.product.dispensingUnit}${i.repeats ? ` + ${i.repeats} repeat(s)` : ''}` },
+                      { label: 'Quantity', value: `${qtyUnit(i.quantity, i.product.dispensingUnit)}${i.repeats ? ` + ${i.repeats} ${i.repeats === 1 ? 'repeat' : 'repeats'}` : ''}` },
                       { label: 'Dose reference', value: i.doseReference ? `${i.doseReference.doseMin}–${i.doseReference.doseMax} ${i.doseReference.doseUnit} (${i.doseReference.source})` : 'None approved for this species' },
                     ]}
                   />

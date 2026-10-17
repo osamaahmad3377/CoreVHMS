@@ -4,7 +4,7 @@ import { fromMinor } from '@vcms/shared';
 import { Plus, ShoppingBag, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { MoneyInput, parseMoney } from '@/components/billing/money';
 import { INVENTORY_LINKS, SectionNav } from '@/components/billing/section-nav';
@@ -151,9 +151,13 @@ function Orders() {
   const rule = useApprovalRule();
   // The Stock page's "Order these" links here with ?new=suggested: open a draft seeded from the reorder suggestions.
   const wantsNew = url.get('new');
+  // Handle each ?new= link once: the URL update lands a render later, and re-running would reset the open dialog in a loop.
+  const handledNew = useRef<string | null>(null);
   useEffect(() => {
-    if (!wantsNew || !can('procurement.write')) return;
+    if (!wantsNew) { handledNew.current = null; return; }
+    if (handledNew.current === wantsNew || !can('procurement.write')) return;
     if (wantsNew === 'suggested' && !suggestions.isSuccess) return;
+    handledNew.current = wantsNew;
     setCreating(wantsNew === 'suggested' ? suggestions.data ?? [] : []);
     url.set({ new: null });
   }, [wantsNew, can, suggestions.isSuccess, suggestions.data, url]);

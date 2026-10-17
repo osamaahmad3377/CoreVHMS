@@ -55,7 +55,7 @@ export function PrescriptionsPanel(props: Ctx) {
             <li key={rx.id}>
               <Link href={`/pharmacy/prescriptions/${rx.id}`} className="flex items-center gap-2 px-3 py-2 hover:bg-muted/50">
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm">{rx.items.map((i) => `${i.product.name} — ${qtyUnit(i.amountPerDose, i.product.dispensingUnit)}, ${frequencyLabel(i.frequencyText).toLowerCase()}`).join('; ')}</span>
+                  <span className="block truncate text-sm">{rx.items.map((i) => `${i.product.name} — ${qtyUnit(i.amountPerDose, i.product.dispensingUnit)}, ${frequencyLabel(i.frequencyText).replace(/^./, (c) => c.toLowerCase())}`).join('; ')}</span>
                   <span className="block text-2xs text-muted-foreground">{rx.prescriptionNo} · {fmtDateTime(rx.createdAt)}</span>
                 </span>
                 <RxStatusBadge status={rx.status} />

@@ -325,5 +325,11 @@ Items from the feature matrix that need no external device, data source or provi
     - pharmacy: drug-family allergies, large-dose prompt;
     - clinical: vital-sign messages.
   - ESLint and `tsc` clean.
-  - E2E specs were updated for the new wording; the browser run is recorded in the next entry.
+  - Playwright full run: 26 passed, 11 failed, 2 skipped (portal off). After fixes, each failing spec was re-run and passes, except the 2 one-off demo-record scenarios (the demo surgery and the demo insurance claim), which need `npm run db:seed -- --reset`. That has not been run because it would remove data added by hand.
+  - Real bug the run found, now fixed: opening "Add order" from a link (`?new=1`) re-ran on every render and crashed with "Maximum update depth exceeded". It is now handled once per link.
+  - Other fixes from the run:
+    - Selectors for renamed labels.
+    - A stock top-up helper (`ensureStock`) so counter-sale tests no longer depend on demo stock that runs out.
+    - The hospital test discharges a stay left over from an interrupted run.
+    - Pharmacy quantities pluralised ("14 tablets", "… handed over").
 

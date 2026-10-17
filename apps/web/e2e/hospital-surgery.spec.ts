@@ -6,6 +6,16 @@ test.describe('Hospital and surgery', () => {
     await login(page, 'vet@demo.pk');
     await page.goto('/patients?q=Rocky');
     await page.getByRole('link', { name: 'Rocky', exact: true }).first().click();
+    // An interrupted earlier run can leave Rocky in hospital (the page then offers "In hospital" instead of Admit): discharge that stay first.
+    const stay = page.getByRole('link', { name: /In hospital · HOSP-/ }).first();
+    await expect(stay.or(page.getByRole('button', { name: 'Admit' })).first()).toBeVisible();
+    if (await stay.isVisible()) {
+      const id = ((await stay.getAttribute('href')) ?? '').split('/').pop();
+      const csrf = (await page.context().cookies()).find((c) => c.name === 'vcms_csrf')?.value ?? '';
+      const res = await page.request.post(`/api/v1/admissions/${id}/discharge`, { headers: { 'X-CSRF-Token': csrf, Origin: new URL(page.url()).origin }, data: { outcome: 'DISCHARGED_HOME', dischargeSummary: 'E2E clean-up of an interrupted run' } });
+      expect(res.ok(), await res.text()).toBeTruthy();
+      await page.reload();
+    }
     await page.getByRole('button', { name: 'Admit' }).click();
     const dlg = page.getByRole('dialog');
     await dlg.locator('#adm-ward').selectOption({ index: 1 });

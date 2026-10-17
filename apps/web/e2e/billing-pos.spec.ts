@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { login } from './helpers';
+import { ensureStock, login } from './helpers';
 
 test.describe('Billing, payments and point of sale', () => {
   test('reception invoices a client’s items not yet invoiced and takes a card payment', async ({ page }) => {
     await login(page, 'reception@demo.pk');
     await page.goto('/billing/charges');
     const first = page.getByRole('row').filter({ has: page.getByRole('link', { name: 'Make invoice' }) }).first();
-    await first.getByRole('button', { name: 'Show items' }).click();
+    await first.getByRole('button', { name: 'Show items', exact: true }).click();
     await expect(page.getByText(/^Added on /).first()).toBeVisible();
     await first.getByRole('link', { name: 'Make invoice' }).click();
     await expect(page.getByRole('heading', { name: 'New invoice' })).toBeVisible();
@@ -48,7 +48,8 @@ test.describe('Billing, payments and point of sale', () => {
     await expect(page.getByRole('button', { name: /^Print receipt RCPT-\d{6}/ }).first()).toBeVisible();
   });
 
-  test('dispensary scans a retail item, takes cash with change, and stock is deducted', async ({ page }) => {
+  test('dispensary scans a retail item, takes cash with change, and stock is deducted', async ({ page, browser }) => {
+    await ensureStock(browser, 'ECOL-M');
     await login(page, 'pharmacy@demo.pk');
     await page.goto('/inventory?q=Elizabethan');
     const row = page.getByRole('row', { name: /Elizabethan collar/ });

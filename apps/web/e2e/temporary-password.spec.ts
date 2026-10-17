@@ -67,7 +67,7 @@ test.describe('Staff with a temporary password', () => {
     await expect(dlg.getByRole('checkbox', { name: 'Surgeon / anaesthetist' })).toBeVisible();
     const isVet = dlg.getByRole('checkbox', { name: /This person is a vet/ });
     await expect(isVet).not.toBeChecked();
-    await dlg.getByRole('checkbox', { name: 'Veterinarian' }).click();
+    await dlg.getByRole('checkbox', { name: 'Veterinarian', exact: true }).click();
     await expect(isVet).toBeChecked();
     await dlg.getByRole('button', { name: 'Cancel' }).click();
   });

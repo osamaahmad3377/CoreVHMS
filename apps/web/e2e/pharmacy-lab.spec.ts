@@ -37,7 +37,7 @@ test.describe('Prescribing, dispensing and laboratory', () => {
     await ph.goto('/pharmacy');
     await expect(ph.getByRole('row', { name: /Sheru/ }).first().getByText('Ready to hand over')).toBeVisible();
     await ph.getByRole('row', { name: /Sheru/ }).first().click();
-    await expect(ph.getByText(/^Approved by /)).toBeVisible();
+    await expect(ph.getByText(/Approved by Dr/).first()).toBeVisible({ timeout: 30_000 }); // integrity check runs first
     await ph.getByRole('button', { name: 'Dispense' }).click();
     const d = ph.getByRole('dialog');
     // Batch left blank: stock is issued first-expiry-first-out and the issued batch is recorded.

@@ -14,7 +14,7 @@ test.describe('Ease of use', () => {
     await expect(page.getByText('To refund, open Billing → Payments')).toBeVisible();
 
     await page.goto('/pos');
-    await page.getByRole('link', { name: 'How to' }).click();
+    await page.getByRole('link', { name: 'Help', exact: true }).click();
     await expect(page.getByText('Open the Shop counter. Scan the barcode')).toBeVisible();
     await page.keyboard.press('?');
     await expect(page.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeVisible();
