@@ -1,18 +1,20 @@
 'use client';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { enumLabel } from '@vcms/shared';
-import { ArrowRight, CalendarPlus, CheckCircle2, ClipboardList, FilePlus, Paperclip, Receipt, XCircle } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { enumLabel, type Paginated } from '@vcms/shared';
+import { Activity, AlertTriangle, ArrowRight, CalendarPlus, CheckCircle2, ChevronDown, ClipboardList, FilePlus, FlaskConical, Paperclip, Pill, Receipt, Stethoscope, Syringe, Upload, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { ConsultationCharges } from '@/components/clinical/charges-card';
 import { DiagnosesPanel } from '@/components/clinical/diagnoses-panel';
+import { FinishConsultationDialog } from '@/components/clinical/finish-dialog';
 import { NoteEditor } from '@/components/clinical/note-editor';
 import { NoteView } from '@/components/clinical/note-view';
 import { AdministrationsPanel, LabOrdersPanel, PrescriptionsPanel, WithdrawalBanner } from '@/components/clinical/orders-panels';
 import { ProblemsPanel } from '@/components/clinical/problems-panel';
 import { TasksPanel } from '@/components/clinical/tasks-panel';
-import { VitalsPanel } from '@/components/clinical/vitals-panel';
+import { VitalsPanel, type VitalsPanelHandle } from '@/components/clinical/vitals-panel';
 import { useConfirm } from '@/components/confirm';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/page';
 import { PatientBanner } from '@/components/patients/patient-banner';
@@ -22,15 +24,26 @@ import { AttachmentsPanel } from '@/components/shared/attachments-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { api } from '@/lib/api';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { useAppointmentTypes } from '@/hooks/use-catalog';
+import { api, qs } from '@/lib/api';
 import { fmtDateTime } from '@/lib/format';
 import { useSession } from '@/lib/session';
-import { shiftDate, todayIn } from '@/lib/time';
-import type { ClinicalNote, Encounter } from '@/lib/types';
+import { branchTime, localDate, shiftDate, todayIn } from '@/lib/time';
+import type { Appointment, ClinicalNote, Encounter, Prescription } from '@/lib/types';
+
+/** "Sat 24 Oct, 10:30" in the branch's time zone. */
+const when = (iso: string, tz: string) => `${branchTime(iso, tz, 'EEE d MMM')}, ${branchTime(iso, tz)}`;
+
+const scrollTo = (id: string, focusId?: string) => {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (focusId) setTimeout(() => document.getElementById(focusId)?.focus(), 300);
+};
 
 function Workspace() {
   const { id } = useParams<{ id: string }>();
-  const { can, session } = useSession();
+  const { can, canAny, session } = useSession();
+  const tz = session.branch?.timezone ?? 'UTC';
   const router = useRouter();
   const qc = useQueryClient();
   const confirm = useConfirm();
@@ -39,38 +52,64 @@ function Workspace() {
   const [amending, setAmending] = useState<ClinicalNote | null>(null);
   const [newNote, setNewNote] = useState(false);
   const [followUp, setFollowUp] = useState(false);
+  const [finishing, setFinishing] = useState(false);
+  const [rxOpen, setRxOpen] = useState(false);
+  const [giveOpen, setGiveOpen] = useState(false);
+  const [labOpen, setLabOpen] = useState(false);
+  const [booked, setBooked] = useState<Appointment | null>(null);
+  const vitalsRef = useRef<VitalsPanelHandle>(null);
+  const types = useAppointmentTypes();
   const refresh = () => qc.invalidateQueries({ queryKey: key });
-
-  const close = useMutation({
-    mutationFn: () => api.post<{ unsignedNotes: number }>(`/encounters/${id}/complete`),
-    onSuccess: (r) => {
-      const clientId = q.data?.client.id;
-      toast.success(r.unsignedNotes ? `Consultation completed — ${r.unsignedNotes} note(s) still need signing` : 'Consultation completed', {
-        action: clientId && can('billing.write') ? { label: 'Bill this visit', onClick: () => router.push(`/billing/invoices/new?clientId=${clientId}`) } : undefined,
-      });
-      refresh();
-      qc.invalidateQueries({ queryKey: ['queue'] });
-    },
-    onError: (e: Error) => toast.error(e.message),
+  const e = q.data;
+  const patientId = e?.patient.id;
+  const rx = useQuery({
+    queryKey: ['prescriptions', { patientId, encounterId: id }],
+    queryFn: () => api.get<Paginated<Prescription>>(`/prescriptions${qs({ patientId, encounterId: id, pageSize: 50 })}`),
+    enabled: !!patientId && can('prescriptions.read'),
   });
-  const cancel = useMutation({
-    mutationFn: (reason: string) => api.post(`/encounters/${id}/cancel`, { reason }),
-    onSuccess: () => {
+  // A recheck booked from this consultation (linked to its appointment), so the next step shows it as done.
+  const upcoming = useQuery({
+    queryKey: ['appointments', 'recheck', patientId, e?.appointmentId],
+    queryFn: () => api.get<(Appointment & { followUpOfId?: string | null })[]>(`/appointments${qs({ patientId, from: new Date().toISOString(), to: new Date(Date.now() + 60 * 86400_000).toISOString(), status: 'BOOKED,CONFIRMED' })}`),
+    enabled: !!patientId && !!e?.appointmentId && e?.status === 'COMPLETED' && can('appointments.read'),
+  });
+  const recheck = booked ?? upcoming.data?.find((a) => a.followUpOfId === e?.appointmentId) ?? null;
+
+  const cancel = async () => {
+    const r = await confirm({ title: 'Cancel this consultation?', description: 'Only possible while nothing has been signed.', requireReason: true, destructive: true, confirmLabel: 'Cancel consultation', cancelLabel: 'Keep consultation' });
+    if (!r.confirmed) return;
+    try {
+      await api.post(`/encounters/${id}/cancel`, { reason: r.reason });
       toast.success('Consultation cancelled');
       refresh();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+    } catch (err) {
+      toast.error((err as Error).message);
+    }
+  };
 
   if (q.isLoading) return <LoadingRows />;
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
-  const e = q.data!;
-  const writable = can('clinical.write') && e.status !== 'CANCELLED';
-  const current = e.notes.filter((n) => n.status !== 'SUPERSEDED');
-  const superseded = e.notes.filter((n) => n.status === 'SUPERSEDED');
+  const enc = e!;
+  const writable = can('clinical.write') && enc.status !== 'CANCELLED';
+  const current = enc.notes.filter((n) => n.status !== 'SUPERSEDED');
+  const superseded = enc.notes.filter((n) => n.status === 'SUPERSEDED');
   const drafts = current.filter((n) => n.status === 'DRAFT' || n.status === 'REVIEWED');
   const signed = current.filter((n) => n.status === 'SIGNED');
   const amendmentDraftFor = (noteId: string) => drafts.find((d) => d.amendsId === noteId);
+  const latestVitals = enc.vitals[0] ?? null;
+  const followUpType = types.data?.find((t) => t.category === 'FOLLOW_UP' && t.isActive !== false);
+  const hasPrescriptions = (rx.data?.data ?? []).some((p) => p.status !== 'CANCELLED');
+  const active = enc.status !== 'CANCELLED';
+
+  const actions = [
+    writable && { label: 'Vitals', icon: Activity, onClick: () => vitalsRef.current?.openForm() },
+    writable && { label: 'Diagnosis', icon: ClipboardList, onClick: () => scrollTo('diagnoses-card', 'diagnosis-term') },
+    active && can('prescriptions.write') && { label: 'Prescribe', icon: Pill, onClick: () => setRxOpen(true) },
+    active && canAny('clinical.write', 'hospital.write', 'pharmacy.dispense') && { label: 'Give medicine now', icon: Syringe, onClick: () => setGiveOpen(true) },
+    active && can('lab.read') && can('lab.order') && { label: 'Order test', icon: FlaskConical, onClick: () => setLabOpen(true) },
+    active && can('appointments.write') && { label: 'Follow-up', icon: CalendarPlus, onClick: () => setFollowUp(true) },
+    writable && { label: 'Upload', icon: Upload, onClick: () => scrollTo('attachments-card') },
+  ].filter(Boolean) as { label: string; icon: React.ComponentType<{ className?: string }>; onClick: () => void }[];
 
   return (
     <>
@@ -79,47 +118,73 @@ function Workspace() {
           Consultations
         </Link>
         <span>/</span>
-        <span>{e.encounterNo}</span>
+        <span>{enc.encounterNo}</span>
       </nav>
-      <PatientBanner patient={e.patient} className="mb-3" />
-      <WithdrawalBanner patientId={e.patient.id} />
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <PatientBanner patient={enc.patient} className="mb-3" />
+      <WithdrawalBanner patientId={enc.patient.id} />
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         <h1 className="text-lg font-semibold">
-          {enumLabel(e.type)}
-          {e.chiefComplaint && <span className="font-normal text-muted-foreground"> — {e.chiefComplaint}</span>}
+          {enumLabel(enc.type)}
+          {enc.chiefComplaint && <span className="font-normal text-muted-foreground"> — {enc.chiefComplaint}</span>}
         </h1>
-        <Badge variant={e.status === 'OPEN' ? 'warning' : e.status === 'COMPLETED' ? 'success' : 'outline'}>{enumLabel(e.status)}</Badge>
+        <Badge variant={enc.status === 'OPEN' ? 'warning' : enc.status === 'COMPLETED' ? 'success' : 'outline'}>{enc.status === 'OPEN' ? 'In progress' : enc.status === 'COMPLETED' ? 'Finished' : enumLabel(enc.status)}</Badge>
         <span className="text-xs text-muted-foreground">
-          {e.encounterNo} · {e.clinician?.name ?? 'No clinician'} · started {fmtDateTime(e.startedAt)}
-          {e.appointment && ` · ${e.appointment.appointmentType.name} appointment`}
+          {enc.encounterNo} · {enc.clinician?.name ?? 'No vet assigned'} · started {fmtDateTime(enc.startedAt)}
+          {enc.appointment && ` · ${enc.appointment.appointmentType.name} appointment`}
         </span>
         <div className="ml-auto flex gap-2">
-          {e.status === 'OPEN' && can('clinical.write') && (
+          {enc.status === 'OPEN' && can('clinical.write') && (
             <>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={async () => {
-                  const r = await confirm({ title: 'Cancel this consultation?', description: 'Only possible while nothing has been signed.', requireReason: true, destructive: true, confirmLabel: 'Cancel consultation', cancelLabel: 'Keep consultation' });
-                  if (r.confirmed) cancel.mutate(r.reason!);
-                }}
-              >
-                <XCircle /> Cancel consultation
-              </Button>
-              <Button size="sm" loading={close.isPending} onClick={() => close.mutate()}>
-                <CheckCircle2 /> Complete consultation
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" variant="ghost">
+                    More <ChevronDown />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem className="text-destructive" onSelect={() => void cancel()}>
+                    <XCircle /> Cancel consultation
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button size="sm" onClick={() => setFinishing(true)}>
+                <CheckCircle2 /> Finish consultation
               </Button>
             </>
           )}
         </div>
       </div>
 
-      {e.status === 'COMPLETED' && (
+      {actions.length > 0 && (
+        <div role="toolbar" aria-label="Consultation actions" className="mb-4 flex flex-wrap gap-1.5 rounded-lg border bg-card p-1.5">
+          {actions.map((a) => (
+            <Button key={a.label} size="sm" variant="ghost" onClick={a.onClick}>
+              <a.icon /> {a.label}
+            </Button>
+          ))}
+        </div>
+      )}
+
+      {enc.status === 'COMPLETED' && drafts.length > 0 && (
+        <div role="alert" className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-warning/50 bg-warning/10 px-3 py-2 text-sm font-medium">
+          <AlertTriangle className="h-4 w-4 text-warning" /> Notes not signed yet
+          {can('clinical.sign') && (
+            <button type="button" className="text-primary underline" onClick={() => scrollTo(`note-${drafts[0].id}`)}>
+              — sign now
+            </button>
+          )}
+        </div>
+      )}
+
+      {enc.status === 'COMPLETED' && (
         <NextSteps
           steps={[
-            can('billing.write') && { icon: Receipt, title: 'Bill this visit', text: 'Charges from this consultation are ready to invoice', href: `/billing/invoices/new?clientId=${e.client.id}`, primary: true },
-            can('appointments.write') && { icon: CalendarPlus, title: 'Book a recheck', text: 'Find a free slot for the follow-up visit', onClick: () => setFollowUp(true) },
-            can('appointments.checkin') ? { icon: ClipboardList, title: 'Back to the waiting list', text: 'See who is next', href: '/front-desk' } : { icon: ClipboardList, title: 'Next consultation', text: 'Open consultations', href: '/consultations' },
+            can('billing.write') && { icon: Receipt, title: 'Bill this visit', text: 'Charges from this consultation are ready to invoice', href: `/billing/invoices/new?clientId=${enc.client.id}`, primary: true },
+            can('appointments.write') &&
+              (recheck
+                ? { icon: CheckCircle2, done: true, title: `✔ Recheck booked — ${when(recheck.startsAt, tz).replace(',', '')}`, text: recheck.clinician ? `with ${recheck.clinician.name}` : 'Any free vet', href: `/calendar?date=${localDate(recheck.startsAt, tz)}`, linkLabel: '(change)' }
+                : { icon: CalendarPlus, title: 'Book a recheck', text: 'Find a free slot for the follow-up visit', onClick: () => setFollowUp(true) }),
+            can('appointments.checkin') ? { icon: ClipboardList, title: 'Back to the waiting list', text: 'See who is next', href: '/front-desk' } : { icon: Stethoscope, title: 'Next consultation', text: 'Open consultations', href: '/consultations' },
           ]}
         />
       )}
@@ -129,24 +194,30 @@ function Workspace() {
           {drafts
             .filter((d) => !d.amendsId)
             .map((d) => (
-              <Card key={d.id}>
+              <Card key={d.id} id={`note-${d.id}`}>
                 <CardHeader>
                   <CardTitle>Clinical note</CardTitle>
-                  <span className="text-xs text-muted-foreground">Drafted by {d.authorName}</span>
+                  <span className="text-xs text-muted-foreground">Written by {d.authorName}</span>
                 </CardHeader>
-                <CardContent>{writable ? <NoteEditor encounterId={e.id} speciesCategory={e.patient.species.category} note={d} /> : <p className="text-sm text-muted-foreground">Draft in progress.</p>}</CardContent>
+                <CardContent>
+                  {writable ? (
+                    <NoteEditor encounterId={enc.id} speciesCategory={enc.patient.species.category} note={d} chiefComplaint={enc.chiefComplaint} latestVitals={latestVitals} />
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Draft in progress.</p>
+                  )}
+                </CardContent>
               </Card>
             ))}
 
           {signed.map((n) => {
             const pendingAmendment = amendmentDraftFor(n.id);
             return (
-              <Card key={n.id}>
+              <Card key={n.id} id={pendingAmendment ? `note-${pendingAmendment.id}` : undefined}>
                 <CardContent className="grid gap-4">
                   <NoteView note={n} onAmend={can('clinical.amend') && !pendingAmendment && amending?.id !== n.id ? () => setAmending(n) : undefined} />
                   {(amending?.id === n.id || pendingAmendment) && (
                     <div className="rounded-md border-2 border-dashed border-warning/50 p-3">
-                      <NoteEditor encounterId={e.id} speciesCategory={e.patient.species.category} note={pendingAmendment ?? n} amending={!pendingAmendment} onDone={() => setAmending(null)} />
+                      <NoteEditor encounterId={enc.id} speciesCategory={enc.patient.species.category} note={pendingAmendment ?? n} amending={!pendingAmendment} onDone={() => setAmending(null)} latestVitals={latestVitals} />
                     </div>
                   )}
                 </CardContent>
@@ -160,7 +231,7 @@ function Workspace() {
                 <CardTitle>New clinical note</CardTitle>
               </CardHeader>
               <CardContent>
-                <NoteEditor encounterId={e.id} speciesCategory={e.patient.species.category} note={null} onDone={() => setNewNote(false)} />
+                <NoteEditor encounterId={enc.id} speciesCategory={enc.patient.species.category} note={null} onDone={() => setNewNote(false)} chiefComplaint={enc.chiefComplaint} latestVitals={latestVitals} />
               </CardContent>
             </Card>
           )}
@@ -184,48 +255,70 @@ function Workspace() {
         </div>
 
         <div className="grid min-w-0 grid-cols-1 content-start gap-4 [&>*]:min-w-0">
-          <VitalsPanel encounterId={e.id} vitals={e.vitals} editable={writable} onSaved={refresh} />
-          <DiagnosesPanel encounterId={e.id} diagnoses={e.diagnoses} editable={writable} onSaved={refresh} />
-          <PrescriptionsPanel patient={e.patient} encounterId={e.id} editable={e.status !== 'CANCELLED'} />
-          <AdministrationsPanel patient={e.patient} encounterId={e.id} editable={e.status !== 'CANCELLED'} />
-          <LabOrdersPanel patient={e.patient} encounterId={e.id} editable={e.status !== 'CANCELLED'} />
-          <ProblemsPanel patientId={e.patient.id} editable={writable} />
+          <VitalsPanel ref={vitalsRef} encounterId={enc.id} vitals={enc.vitals} editable={writable} onSaved={refresh} />
+          <DiagnosesPanel encounterId={enc.id} diagnoses={enc.diagnoses} editable={writable} onSaved={refresh} />
+          <PrescriptionsPanel patient={enc.patient} encounterId={enc.id} editable={active} dialogOpen={rxOpen} onDialogOpenChange={setRxOpen} />
+          <AdministrationsPanel patient={enc.patient} encounterId={enc.id} editable={active} dialogOpen={giveOpen} onDialogOpenChange={setGiveOpen} />
+          <LabOrdersPanel patient={enc.patient} encounterId={enc.id} editable={active} dialogOpen={labOpen} onDialogOpenChange={setLabOpen} />
+          <ConsultationCharges encounterId={enc.id} hasPrescriptions={hasPrescriptions} />
+          <ProblemsPanel patientId={enc.patient.id} editable={writable} />
           <TasksPanel
-            encounterId={e.id}
-            patientId={e.patient.id}
-            tasks={e.tasks}
+            encounterId={enc.id}
+            patientId={enc.patient.id}
+            tasks={enc.tasks}
             editable={writable}
             onSaved={refresh}
             onBookFollowUp={can('appointments.write') ? () => setFollowUp(true) : undefined}
           />
-          <Card>
+          <Card id="attachments-card">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Paperclip className="h-4 w-4 text-muted-foreground" /> Photos & documents
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <AttachmentsPanel entityType="Encounter" entityId={e.id} canWrite={writable} />
+              <AttachmentsPanel entityType="Encounter" entityId={enc.id} canWrite={writable} />
             </CardContent>
           </Card>
         </div>
       </div>
+      <FinishConsultationDialog
+        encounter={enc}
+        open={finishing}
+        onOpenChange={setFinishing}
+        onFinished={(r) => {
+          toast.success(r.unsignedNotes ? `Consultation finished — ${r.unsignedNotes === 1 ? '1 note still needs' : `${r.unsignedNotes} notes still need`} signing` : 'Consultation finished', {
+            action: can('billing.write') ? { label: 'Bill this visit', onClick: () => router.push(`/billing/invoices/new?clientId=${enc.client.id}`) } : undefined,
+          });
+          refresh();
+          qc.invalidateQueries({ queryKey: ['queue'] });
+          qc.invalidateQueries({ queryKey: ['charges'] });
+        }}
+      />
       <BookingDialog
         open={followUp}
         onOpenChange={setFollowUp}
+        onBooked={(a) => {
+          setBooked(a);
+          // Replace the generic booking toast with one that says what was booked.
+          toast.dismiss();
+          toast.success(`Recheck booked: ${when(a.startsAt, tz)}${a.clinician ? ` with ${a.clinician.name}` : ''}`);
+          qc.invalidateQueries({ queryKey: ['appointments', 'recheck'] });
+        }}
         defaults={{
-          clinicianId: e.clinician?.id,
+          clinicianId: enc.clinician?.id,
           // No recheck interval is configured on templates, so suggest a week from today (branch time).
-          date: shiftDate(todayIn(session.branch?.timezone ?? 'UTC'), 7),
-          followUpOfId: e.appointmentId ?? undefined,
-          reason: `Recheck${e.chiefComplaint ? `: ${e.chiefComplaint}` : ''}`,
+          date: shiftDate(todayIn(tz), 7),
+          followUpOfId: enc.appointmentId ?? undefined,
+          appointmentTypeId: followUpType?.id,
+          reason: `Recheck${enc.chiefComplaint ? `: ${enc.chiefComplaint}` : ''}`,
           patient: {
-            id: e.patient.id,
-            name: e.patient.name,
-            patientNo: e.patient.patientNo,
-            species: e.patient.species,
-            owner: e.patient.owner ? { id: e.patient.owner.id, displayName: e.patient.owner.displayName, mobilePhone: e.patient.owner.mobilePhone ?? null } : null,
-            alerts: e.patient.alerts,
+            id: enc.patient.id,
+            name: enc.patient.name,
+            patientNo: enc.patient.patientNo,
+            species: enc.patient.species,
+            owner: enc.patient.owner ? { id: enc.patient.owner.id, displayName: enc.patient.owner.displayName, mobilePhone: enc.patient.owner.mobilePhone ?? null } : null,
+            alerts: enc.patient.alerts,
           },
         }}
       />
@@ -241,7 +334,17 @@ export default function ConsultationPage() {
   );
 }
 
-interface Step { icon: React.ComponentType<{ className?: string }>; title: string; text: string; href?: string; onClick?: () => void; primary?: boolean }
+interface Step {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  text: string;
+  href?: string;
+  onClick?: () => void;
+  primary?: boolean;
+  /** Already done: shown with a tick and an optional link to change it. */
+  done?: boolean;
+  linkLabel?: string;
+}
 
 /** What to do once a consultation is finished, so the visit flows on to billing and follow-up. */
 function NextSteps({ steps }: { steps: (Step | false)[] }) {
@@ -249,9 +352,29 @@ function NextSteps({ steps }: { steps: (Step | false)[] }) {
   if (!list.length) return null;
   return (
     <section aria-label="Next steps" className="mb-4 rounded-lg border border-success/30 bg-success/5 p-3">
-      <p className="mb-2 flex items-center gap-2 text-sm font-medium"><CheckCircle2 className="h-4 w-4 text-success" /> Consultation completed — next steps</p>
+      <p className="mb-2 flex items-center gap-2 text-sm font-medium"><CheckCircle2 className="h-4 w-4 text-success" /> Consultation finished — next steps</p>
       <div className="grid gap-2 sm:grid-cols-3">
         {list.map((st) => {
+          if (st.done) {
+            return (
+              <div key={st.title} className="flex items-center gap-3 rounded-md border border-success/40 bg-card px-3 py-2.5">
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-success">{st.title}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {st.text}
+                    {st.href && (
+                      <>
+                        {' '}
+                        <Link href={st.href} className="text-primary underline">
+                          {st.linkLabel ?? 'change'}
+                        </Link>
+                      </>
+                    )}
+                  </span>
+                </span>
+              </div>
+            );
+          }
           const inner = (
             <>
               <span className={`rounded-md p-1.5 ${st.primary ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary'}`}><st.icon className="h-4 w-4" /></span>

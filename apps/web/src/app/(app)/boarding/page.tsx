@@ -118,7 +118,7 @@ function Chart() {
             </tbody>
           </table>
         </div>
-      ) : <EmptyState icon={BedDouble} title="No boarding units" description="Add kennels in Settings → Boarding units." />}
+      ) : <EmptyState icon={BedDouble} title="No boarding units" description="Add kennels in Settings → Boarding kennels." />}
     </Card>
   );
 }

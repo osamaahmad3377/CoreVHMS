@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { LocationType, MovementType, Prisma } from '@prisma/client';
+import { PRESCRIBABLE_PRODUCT_TYPES } from '@vcms/shared';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { CounterService, formatNumber } from '../../common/counter/counter.service';
@@ -22,6 +23,7 @@ const ADJ_TYPE: Record<string, MovementType> = {
 };
 
 export const grnNo = (n: number) => formatNumber('GRN', n);
+export const LOCAL_PURCHASE_SUPPLIER = 'Local purchase';
 const dec = (d: Prisma.Decimal | null | undefined) => (d === null || d === undefined ? null : Number(d));
 
 @Injectable()
@@ -102,31 +104,48 @@ export class InventoryService {
   }
 
   // ── Receiving ──
+  /**
+   * Records a delivery. Medicines and vaccines need a batch number (copied from the pack); other products may leave
+   * it blank and go into an automatic batch per delivery day ("NOBATCH-yyyymmdd", plus the expiry when one is given).
+   * Without a supplier (bought locally / not recorded) the delivery is booked to the clinic's "Local purchase"
+   * supplier, created on first use, so supplier accounts and returns keep working.
+   */
   async receive(input: {
-    supplierId: string;
+    supplierId?: string | null;
     locationId: string;
     purchaseOrderId?: string | null;
     supplierInvoiceNo?: string | null;
     notes?: string | null;
-    lines: { productId: string; purchaseOrderLineId?: string | null; batchNumber: string; expiryDate?: Date | null; quantity: number; unitCostMinor: number }[];
+    lines: { productId: string; purchaseOrderLineId?: string | null; batchNumber?: string | null; expiryDate?: Date | null; quantity: number; unitCostMinor: number }[];
   }) {
     const ctx = RequestContext.require();
-    const supplier = await this.prisma.db.supplier.findUnique({ where: { id: input.supplierId } });
-    if (!supplier) throw ruleViolation('INVALID_SUPPLIER', 'Supplier not found');
     const location = await this.prisma.db.stockLocation.findUnique({ where: { id: input.locationId } });
-    if (!location || !location.isActive) throw ruleViolation('INVALID_LOCATION', 'Stock location not found');
+    if (!location || !location.isActive) throw ruleViolation('INVALID_LOCATION', 'Store room not found');
     const po = input.purchaseOrderId ? await this.prisma.db.purchaseOrder.findUnique({ where: { id: input.purchaseOrderId }, include: { lines: true } }) : null;
     if (input.purchaseOrderId) {
       if (!po) throw ruleViolation('INVALID_PO', 'Purchase order not found');
       if (!['APPROVED', 'PARTIALLY_RECEIVED'].includes(po.status)) throw ruleViolation('PO_NOT_APPROVED', 'Only approved purchase orders can be received');
-      if (po.supplierId !== supplier.id) throw ruleViolation('SUPPLIER_MISMATCH', 'Supplier does not match the purchase order');
+      if (input.supplierId && po.supplierId !== input.supplierId) throw ruleViolation('SUPPLIER_MISMATCH', 'Supplier does not match the purchase order');
     }
+    const supplierId = input.supplierId ?? po?.supplierId ?? null;
+    const given = supplierId ? await this.prisma.db.supplier.findUnique({ where: { id: supplierId } }) : null;
+    if (supplierId && !given) throw ruleViolation('INVALID_SUPPLIER', 'Supplier not found');
     const productIds = [...new Set(input.lines.map((l) => l.productId))];
     const products = await this.prisma.db.product.findMany({ where: { id: { in: productIds } } });
     if (products.length !== productIds.length) throw ruleViolation('INVALID_PRODUCT', 'One or more products are invalid');
+    const byId = new Map(products.map((p) => [p.id, p]));
     const today = new Date(new Date().toISOString().slice(0, 10));
+    const ymd = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, '');
+    const lines = input.lines.map((l) => {
+      const product = byId.get(l.productId)!;
+      const batchNumber = l.batchNumber?.trim();
+      if (batchNumber) return { ...l, batchNumber };
+      if ((PRESCRIBABLE_PRODUCT_TYPES as readonly string[]).includes(product.type)) throw ruleViolation('BATCH_REQUIRED', `Enter a batch number for ${product.name}`);
+      return { ...l, batchNumber: `NOBATCH-${ymd(today)}${l.expiryDate ? `-E${ymd(l.expiryDate)}` : ''}` };
+    });
 
     return this.prisma.db.$transaction(async (tx) => {
+      const supplier = given ?? (await this.localPurchaseSupplier(tx));
       const number = await this.counters.next(tx, 'goods_receipt');
       let total = 0;
       const receipt = await tx.goodsReceipt.create({
@@ -143,7 +162,7 @@ export class InventoryService {
           receivedByName: ctx.userName ?? 'Unknown',
         },
       });
-      for (const l of input.lines) {
+      for (const l of lines) {
         if (l.expiryDate && l.expiryDate < today) throw ruleViolation('EXPIRED_ON_RECEIPT', `Batch ${l.batchNumber} is already expired`);
         if (l.purchaseOrderLineId) {
           const pl = po?.lines.find((x) => x.id === l.purchaseOrderLineId);
@@ -190,8 +209,17 @@ export class InventoryService {
         await tx.purchaseOrder.update({ where: { id: po.id }, data: { status: complete ? 'RECEIVED' : 'PARTIALLY_RECEIVED' } });
       }
       await this.audit.record({ action: 'stock.received', entityType: 'GoodsReceipt', entityId: receipt.id, summary: `${grnNo(number)} from ${supplier.name}: ${input.lines.length} line(s)` }, tx);
-      return { ...receipt, receiptNo: grnNo(number), totalMinor: total };
+      return { ...receipt, receiptNo: grnNo(number), totalMinor: total, supplier: { id: supplier.id, name: supplier.name } };
     });
+  }
+
+  /** The clinic's catch-all supplier for goods bought locally or without a recorded supplier. */
+  private async localPurchaseSupplier(tx: ScopedTx) {
+    const existing = await tx.supplier.findFirst({ where: { name: LOCAL_PURCHASE_SUPPLIER } });
+    if (existing) return existing;
+    const s = await tx.supplier.create({ data: { organizationId: RequestContext.orgId(), name: LOCAL_PURCHASE_SUPPLIER, paymentTermsDays: 0, notes: 'Created automatically for stock bought locally or without a recorded supplier.' } });
+    await this.audit.record({ action: 'supplier.created', entityType: 'Supplier', entityId: s.id, summary: `${s.name} (automatic)` }, tx);
+    return s;
   }
 
   // ── Adjustments, transfers, batch status ──
@@ -336,7 +364,10 @@ export class InventoryService {
     };
     const products = await this.prisma.db.product.findMany({
       where,
-      include: { stockLevels: { where: q.locationId ? { locationId: q.locationId } : {}, include: { batch: true, location: { select: { id: true, name: true } } } } },
+      include: {
+        stockLevels: { where: q.locationId ? { locationId: q.locationId } : {}, include: { batch: true, location: { select: { id: true, name: true } } } },
+        poLines: { where: { purchaseOrder: { status: { in: ['DRAFT', 'SUBMITTED', 'APPROVED', 'PARTIALLY_RECEIVED'] } } }, select: { purchaseOrder: { select: { id: true, number: true, status: true } } } },
+      },
       orderBy: { name: 'asc' },
     });
     const today = new Date(new Date().toISOString().slice(0, 10));
@@ -366,6 +397,8 @@ export class InventoryService {
         nextExpiry,
         low: p.reorderLevel !== null && available <= Number(p.reorderLevel),
         expiringSoon: !!(nextExpiry && nextExpiry <= horizon),
+        /** Purchase orders not yet fully received that include this product ("Already on order"). */
+        openOrders: [...new Map(p.poLines.map((l) => [l.purchaseOrder.id, { id: l.purchaseOrder.id, poNo: formatNumber('PO', l.purchaseOrder.number), status: l.purchaseOrder.status }])).values()],
         locations: Object.values(
           levels.reduce<Record<string, { id: string; name: string; quantity: number }>>((acc, l) => {
             acc[l.locationId] ??= { id: l.location.id, name: l.location.name, quantity: 0 };

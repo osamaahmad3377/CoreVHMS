@@ -13,7 +13,7 @@ test.describe('Clinical day: book → check in → consult → sign', () => {
     await login(page, 'vet@demo.pk');
     const date = futureTuesday();
     await page.goto(`/calendar?date=${date}`);
-    await page.getByRole('button', { name: 'New appointment' }).click();
+    await page.getByRole('button', { name: 'Book appointment' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByRole('combobox').first().click();
     await page.getByLabel('Search patients').fill('Toto');
@@ -26,7 +26,7 @@ test.describe('Clinical day: book → check in → consult → sign', () => {
     await slot.click();
     await dialog.locator('#bk-reason').fill('E2E: ear scratching');
     await dialog.getByRole('button', { name: 'Book appointment' }).click();
-    await expect(page.getByText(/Booked A-\d+/)).toBeVisible();
+    await expect(page.getByText(/Appointment booked: .*\(A-\d+\)/)).toBeVisible();
 
     // open it from the calendar grid
     await page.getByRole('button', { name: new RegExp(`${slotTime} Toto`) }).click();
@@ -36,11 +36,13 @@ test.describe('Clinical day: book → check in → consult → sign', () => {
     await appt.getByRole('button', { name: 'Start consultation' }).click();
     await expect(page).toHaveURL(/\/consultations\//);
 
+    await expect(page.locator('#n-presentingComplaint')).toHaveValue('E2E: ear scratching'); // from the booking reason
+    await expect(page.getByLabel('History — what the owner tells you')).toBeVisible();
     await page.locator('#n-subjective').fill('Scratching left ear for 5 days.');
     await page.locator('#n-objective').fill('Erythema and brown discharge in left canal.');
     await page.locator('#n-assessment').fill('Otitis externa (left).');
     await page.locator('#n-plan').fill('Ear cleaning; recheck 10 days.');
-    await page.getByRole('button', { name: 'Sign', exact: true }).click();
+    await page.getByRole('button', { name: 'Sign & lock note' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Sign note' }).click();
     await expect(page.getByText('Integrity verified')).toBeVisible();
     await expect(page.getByText('Signed · v1')).toBeVisible();
@@ -49,7 +51,7 @@ test.describe('Clinical day: book → check in → consult → sign', () => {
     await page.getByRole('button', { name: 'Amend' }).click();
     await page.locator('#amend-reason').fill('Owner reported head tilt after signing');
     await page.locator('#n-assessment').fill('Otitis externa (left); rule out otitis media.');
-    await page.getByRole('button', { name: 'Sign', exact: true }).click();
+    await page.getByRole('button', { name: 'Sign & lock note' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Sign note' }).click();
     await expect(page.getByText('Signed · v2')).toBeVisible();
     await expect(page.getByText('Previous versions (1)')).toBeVisible();
@@ -65,13 +67,13 @@ test.describe('Clinical day: book → check in → consult → sign', () => {
     await page.getByRole('option', { name: /Max/ }).first().click();
     await dialog.locator('#wi-r').fill('E2E: hit by car');
     await dialog.getByRole('button', { name: 'Check in' }).click();
-    await expect(page.getByText(/checked in as a walk-in/)).toBeVisible();
+    await expect(page.getByText(/Checked in: Max as a walk-in/)).toBeVisible();
     const card = page.locator('li', { hasText: 'E2E: hit by car' }).first();
     await card.getByRole('button', { name: 'Triage' }).click();
     const triage = page.getByRole('dialog');
-    await triage.getByRole('radio', { name: /Emergent/ }).click();
+    await triage.getByRole('radio', { name: /Very urgent/ }).click();
     await triage.locator('#tr-c').fill('Hit by car, tachypnoeic');
     await triage.getByRole('button', { name: 'Save triage' }).click();
-    await expect(page.locator('li', { hasText: 'E2E: hit by car' }).first().getByText('Emergent')).toBeVisible();
+    await expect(page.locator('li', { hasText: 'E2E: hit by car' }).first().getByText('Very urgent')).toBeVisible();
   });
 });

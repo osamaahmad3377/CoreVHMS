@@ -47,7 +47,7 @@ function CountSheet() {
       <PageHeader
         title={<span className="flex items-center gap-2">{c.countNo} · {c.location.name} <CommerceBadge status={c.status} /></span>}
         breadcrumbs={[{ label: 'Inventory', href: '/inventory' }, { label: 'Stock counts', href: '/inventory/counts' }, { label: c.countNo ?? '' }]}
-        description={`Started by ${c.startedByName}. Expected quantities are a snapshot at the start; variances are posted against the live balance when you complete.`}
+        description={`Started by ${c.startedByName}. Enter what you count. When you finish, stock is corrected to your count.`}
         actions={
           editable && (
             <>

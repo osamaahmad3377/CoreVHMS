@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { Session, User } from '@prisma/client';
-import type { SessionContext } from '@vcms/shared';
+import { enabledModules, type SessionContext } from '@vcms/shared';
 import { env } from '../../config/env';
 import { RequestContextStore } from '../../common/context/request-context';
 import { randomToken, sha256 } from '../../common/crypto/crypto';
@@ -136,6 +136,7 @@ export class SessionService {
         country: org.country,
         currency: org.currency,
         logoUrl: org.logoAttachmentId ? `/api/v1/organization/logo` : null,
+        enabledModules: enabledModules(org.disabledModules),
       };
       const m = await this.prisma.raw.membership.findUniqueOrThrow({
         where: { id: store.membershipId },

@@ -18,8 +18,13 @@ export const stockListQuery = paginationQuery.extend({
   expiringDays: z.coerce.number().int().min(0).max(3650).optional(),
 });
 
+/**
+ * Goods receipt (delivery). Without a supplier the delivery is recorded against the clinic's "Local purchase"
+ * supplier. Batch number and expiry are required for medicines and vaccines (checked by the API); other products
+ * may leave them blank and are kept in an automatic no-batch batch.
+ */
 export const receiveStockSchema = z.object({
-  supplierId: z.string().uuid(),
+  supplierId: optUuid(),
   locationId: z.string().uuid(),
   purchaseOrderId: optUuid(),
   supplierInvoiceNo: optText(80),
@@ -29,7 +34,7 @@ export const receiveStockSchema = z.object({
       z.object({
         productId: z.string().uuid(),
         purchaseOrderLineId: optUuid(),
-        batchNumber: reqText(60),
+        batchNumber: optText(60),
         expiryDate: optDate(),
         quantity: qty(),
         unitCostMinor: z.coerce.number().int().min(0),

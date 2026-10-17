@@ -27,9 +27,9 @@ const REPORTS: { key: string; label: string; perm: Permission[]; ranged: boolean
   { key: 'financial-summary', label: 'Financial summary', perm: ['reports.financial'], ranged: true },
   { key: 'sales-by-item', label: 'Sales by item', perm: ['reports.view', 'reports.financial'], ranged: true },
   { key: 'sales-by-category', label: 'Sales by category', perm: ['reports.view', 'reports.financial'], ranged: true },
-  { key: 'aged-receivables', label: 'Aged receivables', perm: ['reports.view', 'reports.financial'], ranged: false },
+  { key: 'aged-receivables', label: 'Who owes money', perm: ['reports.view', 'reports.financial'], ranged: false },
   { key: 'stock-valuation', label: 'Stock valuation', perm: ['reports.view', 'reports.financial'], ranged: false },
-  { key: 'write-offs', label: 'Write-offs', perm: ['reports.view', 'reports.financial'], ranged: true },
+  { key: 'write-offs', label: 'Stock thrown away', perm: ['reports.view', 'reports.financial'], ranged: true },
   { key: 'appointments', label: 'Appointments', perm: ['reports.view', 'reports.financial'], ranged: true },
   { key: 'clinical-activity', label: 'Clinical activity', perm: ['reports.view'], ranged: true },
 ];
@@ -47,9 +47,9 @@ function SummaryView({ d, currency }: { d: Summary; currency: string }) {
   return (
     <div className="grid gap-4">
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <Stat label="Net revenue (excl. tax)" value={m(d.netRevenueMinor)} hint={`${d.invoiceCount} invoices · billed ${m(d.grossBilledMinor)} incl. tax`} />
-        <Stat label="Gross profit" value={m(d.grossProfitMinor)} hint={`Cost of goods ${m(d.costOfGoodsMinor)}`} tone={d.grossProfitMinor < 0 ? 'danger' : 'success'} />
-        <Stat label="Operating profit" value={m(d.operatingProfitMinor)} hint={`Expenses ${m(d.expensesMinor)} excl. tax`} tone={d.operatingProfitMinor < 0 ? 'danger' : 'default'} />
+        <Stat label="Sales (without tax)" value={m(d.netRevenueMinor)} hint={`${d.invoiceCount} invoices · billed ${m(d.grossBilledMinor)} incl. tax`} />
+        <Stat label="Profit after stock costs" value={m(d.grossProfitMinor)} hint={`Stock used or sold ${m(d.costOfGoodsMinor)}`} tone={d.grossProfitMinor < 0 ? 'danger' : 'success'} />
+        <Stat label="Profit after all expenses" value={m(d.operatingProfitMinor)} hint={`Expenses ${m(d.expensesMinor)} excl. tax`} tone={d.operatingProfitMinor < 0 ? 'danger' : 'default'} />
         <Stat label="Cash received (net of refunds)" value={m(d.cashReceivedMinor)} hint={`Refunds ${m(d.refundsMinor)} · outstanding now ${m(d.outstandingMinor)}`} />
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
@@ -75,10 +75,10 @@ function SummaryView({ d, currency }: { d: Summary; currency: string }) {
               <TR><TD>Gross billed (incl. tax)</TD><TD className="text-right tabular">{m(d.grossBilledMinor)}</TD></TR>
               <TR><TD>Credit notes</TD><TD className="text-right tabular">−{m(d.creditNotesMinor)}</TD></TR>
               <TR><TD>Tax collected (net of credits)</TD><TD className="text-right tabular">{m(d.taxBilledMinor)}</TD></TR>
-              <TR><TD className="font-medium">Net revenue</TD><TD className="text-right font-medium tabular">{m(d.netRevenueMinor)}</TD></TR>
-              <TR><TD>Cost of goods (stock issued at cost, less returns)</TD><TD className="text-right tabular">−{m(d.costOfGoodsMinor)}</TD></TR>
+              <TR><TD className="font-medium">Sales (without tax)</TD><TD className="text-right font-medium tabular">{m(d.netRevenueMinor)}</TD></TR>
+              <TR><TD>Cost of stock used or sold</TD><TD className="text-right tabular">−{m(d.costOfGoodsMinor)}</TD></TR>
               {d.expensesByCategory.map((e) => <TR key={e.category}><TD className="pl-6 text-muted-foreground">{enumLabel(e.category)}</TD><TD className="text-right tabular text-muted-foreground">−{m(e.amountMinor)}</TD></TR>)}
-              <TR><TD className="font-semibold">Operating profit</TD><TD className="text-right font-semibold tabular">{m(d.operatingProfitMinor)}</TD></TR>
+              <TR><TD className="font-semibold">Profit after all expenses</TD><TD className="text-right font-semibold tabular">{m(d.operatingProfitMinor)}</TD></TR>
             </TBody>
           </Table>
         </Card>

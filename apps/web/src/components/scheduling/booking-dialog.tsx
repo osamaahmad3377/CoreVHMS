@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CalendarPlus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { apptSummary } from './appointment-text';
 import { PatientPicker, type PickedPatient } from '../patients/patient-picker';
 import { Field } from '../forms/field';
 import { FormError } from '../forms/form-error';
@@ -11,11 +12,72 @@ import { Checkbox } from '../ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Input, NativeSelect, Textarea } from '../ui/input';
 import { useAppointmentTypes, useClinicians, useResources } from '@/hooks/use-catalog';
+import { useDiscardConfirm } from '@/hooks/use-discard-confirm';
 import { ApiError, api, qs } from '@/lib/api';
 import { fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
-import { branchTime, hhmm, parseHhmm, todayIn, zonedInstant } from '@/lib/time';
+import { branchTime, hhmm, minuteOfDay, parseHhmm, shiftDate, todayIn, zonedInstant } from '@/lib/time';
 import type { Appointment } from '@/lib/types';
+import { cn } from '@/lib/utils';
+
+/** Vet choice meaning "whichever vet is free first at the chosen time". */
+export const ANY_VET = '__any';
+
+/** The browser's own time zone, read after mount so server and client render the same markup. */
+export function useBrowserTimeZone() {
+  const [zone, setZone] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      setZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    } catch {
+      setZone(null);
+    }
+  }, []);
+  return zone;
+}
+
+/** "Times shown in Asia/Karachi" is only worth saying when this computer is set to a different time zone. */
+export function useTimeZoneNote(tz: string) {
+  const zone = useBrowserTimeZone();
+  return zone && zone !== tz ? `Times shown in ${tz} (the branch’s time zone)` : null;
+}
+
+export interface AvailabilityRow {
+  clinicianId: string;
+  name: string;
+  slots: string[];
+}
+
+/** Clickable free start times; one button per time, the chosen one highlighted. */
+export function FreeTimeButtons({ slots, tz, value, onPick, titleFor }: { slots: string[]; tz: string; value: string; onPick: (hhmm: string) => void; titleFor?: (iso: string) => string | undefined }) {
+  return (
+    <div className="flex max-h-28 flex-wrap gap-1 overflow-y-auto">
+      {slots.map((s) => {
+        const t = branchTime(s, tz);
+        return (
+          <button
+            key={s}
+            type="button"
+            title={titleFor?.(s)}
+            onClick={() => onPick(t)}
+            className={cn('rounded border px-2 py-1 text-xs tabular hover:border-primary', t === value && 'border-primary bg-primary text-primary-foreground')}
+          >
+            {t}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** First start time, as yyyy-MM-dd + HH:mm in the branch zone, that is not in the past: the next quarter hour today, else 09:00. */
+function fallbackTime(date: string, tz: string) {
+  if (date !== todayIn(tz)) return '09:00';
+  const next = Math.min(Math.ceil((minuteOfDay(new Date(), tz) + 1) / 15) * 15, 23 * 60 + 45);
+  return hhmm(next);
+}
+
+const withStop = (s: string) => (/[.!?]$/.test(s) ? s : `${s}.`);
 
 export interface BookingDefaults {
   date?: string;
@@ -48,11 +110,17 @@ export function BookingDialog({
   const clinicians = useClinicians(branchId);
   const resources = useResources(branchId);
 
+  const discard = useDiscardConfirm();
+  const tzNote = useTimeZoneNote(tz);
   const [patient, setPatient] = useState<PickedPatient | null>(null);
   const [typeId, setTypeId] = useState('');
-  const [clinicianId, setClinicianId] = useState('');
+  /** A vet's membership id, ANY_VET, or '' for "no vet yet". */
+  const [clinicianId, setClinicianId] = useState(ANY_VET);
   const [date, setDate] = useState(todayIn(tz));
   const [time, setTime] = useState('09:00');
+  /** True until the user picks a time themselves: the start time follows the next free slot. */
+  const [timeAuto, setTimeAuto] = useState(true);
+  const [dirty, setDirty] = useState(false);
   const [duration, setDuration] = useState<number | ''>('');
   const [resourceIds, setResourceIds] = useState<string[]>([]);
   const [reason, setReason] = useState('');
@@ -65,9 +133,11 @@ export function BookingDialog({
   useEffect(() => {
     if (!open) return;
     setPatient(defaults?.patient ?? null);
-    setClinicianId(defaults?.clinicianId ?? '');
+    setClinicianId(defaults?.clinicianId === undefined ? ANY_VET : (defaults.clinicianId ?? ''));
     setDate(defaults?.date ?? todayIn(tz));
-    setTime(defaults?.minute !== undefined ? hhmm(defaults.minute) : '09:00');
+    setTime(defaults?.minute !== undefined ? hhmm(defaults.minute) : fallbackTime(defaults?.date ?? todayIn(tz), tz));
+    setTimeAuto(defaults?.minute === undefined);
+    setDirty(false);
     setReason(defaults?.reason ?? '');
     if (defaults?.appointmentTypeId) setTypeId(defaults.appointmentTypeId);
     setNotes('');
@@ -82,15 +152,31 @@ export function BookingDialog({
   }, [types.data, typeId]);
 
   const type = types.data?.find((t) => t.id === typeId);
+  const anyVet = clinicianId === ANY_VET;
   const availability = useQuery({
-    queryKey: ['availability', branchId, date, typeId, clinicianId],
-    queryFn: () => api.get<{ clinicianId: string; name: string; slots: string[] }[]>(`/appointments/availability${qs({ branchId, date, appointmentTypeId: typeId, clinicianId: clinicianId || undefined })}`),
-    enabled: open && !!typeId && !!date,
+    queryKey: ['availability', branchId, date, typeId, anyVet ? '' : clinicianId],
+    queryFn: () => api.get<AvailabilityRow[]>(`/appointments/availability${qs({ branchId, date, appointmentTypeId: typeId, clinicianId: anyVet ? undefined : clinicianId || undefined })}`),
+    enabled: open && !!typeId && !!date && clinicianId !== '',
   });
+  // One vet: their free times. Any vet: every time at least one vet is free.
   const slots = useMemo(() => {
     const list = availability.data ?? [];
+    if (anyVet) return [...new Set(list.flatMap((c) => c.slots))].sort();
     return clinicianId ? (list.find((c) => c.clinicianId === clinicianId)?.slots ?? []) : [];
-  }, [availability.data, clinicianId]);
+  }, [availability.data, clinicianId, anyVet]);
+
+  // Start at the next free time instead of a time that has already passed.
+  useEffect(() => {
+    if (!open || !timeAuto) return;
+    if (clinicianId && availability.isLoading) return;
+    setTime(slots.length ? branchTime(slots[0], tz) : fallbackTime(date, tz));
+  }, [open, timeAuto, slots, clinicianId, availability.isLoading, date, tz]);
+
+  const pickTime = (t: string) => {
+    setTime(t);
+    setTimeAuto(false);
+    setDirty(true);
+  };
 
   const book = useMutation({
     mutationFn: (override: Override) =>
@@ -99,7 +185,7 @@ export function BookingDialog({
         clientId: patient!.owner!.id,
         patientId: patient!.id,
         appointmentTypeId: typeId,
-        clinicianId: clinicianId || null,
+        clinicianId: resolvedClinicianId,
         resourceIds,
         startsAt: zonedInstant(date, parseHhmm(time), tz).toISOString(),
         durationMinutes: duration || undefined,
@@ -112,7 +198,8 @@ export function BookingDialog({
       }),
     onSuccess: (res) => {
       const first = 'series' in res ? res.series[0] : res;
-      toast.success('series' in res ? `Booked ${res.series.length} appointments` : `Booked ${first.appointmentNo}`);
+      const summary = apptSummary({ ...first, patient: first.patient ?? (patient ? { name: patient.name } : null) } as Appointment, tz);
+      toast.success('series' in res ? `${res.series.length} appointments booked, the first: ${summary}` : `Appointment booked: ${summary}`);
       qc.invalidateQueries({ queryKey: ['appointments'] });
       qc.invalidateQueries({ queryKey: ['queue'] });
       qc.invalidateQueries({ queryKey: ['availability'] });
@@ -133,17 +220,47 @@ export function BookingDialog({
   const startInstant = date && /^\d{1,2}:\d{2}$/.test(time) ? zonedInstant(date, parseHhmm(time), tz) : null;
   const inPast = !!startInstant && startInstant.getTime() < Date.now();
 
-  const canSubmit = !!patient?.owner && !!typeId && (!type?.requiresClinician || !!clinicianId) && !!date && !!time;
+  // "Any vet": the first vet (in the list order) who is free at the chosen start time.
+  const startIso = startInstant?.toISOString();
+  const firstFree = anyVet && startIso ? (availability.data ?? []).find((c) => c.slots.includes(startIso)) : undefined;
+  const resolvedClinicianId = anyVet ? (firstFree?.clinicianId ?? null) : clinicianId || null;
+  const vetMissing = anyVet ? !firstFree : !!type?.requiresClinician && !clinicianId;
+
+  const canSubmit = !!patient?.owner && !!typeId && !vetMissing && !!date && !!time;
+  const blockedReason = canSubmit
+    ? null
+    : !patient && vetMissing && !anyVet
+      ? 'Choose a patient and a vet to continue'
+      : !patient
+        ? 'Choose a patient to continue'
+        : anyVet && vetMissing
+          ? availability.isLoading
+            ? 'Checking which vets are free…'
+            : `No vet is free at ${time}. Pick a free time below, or choose a vet.`
+          : vetMissing
+            ? 'Choose a vet to continue'
+            : null;
+
+  const close = async () => {
+    if (await discard(dirty)) onOpenChange(false);
+  };
+  const today = todayIn(tz);
+  const shortcuts = [
+    { label: 'Today', date: today },
+    { label: 'Tomorrow', date: shiftDate(today, 1) },
+    { label: 'Next week', date: shiftDate(today, 7) },
+  ];
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(o) => (o ? onOpenChange(true) : void close())}>
       <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <CalendarPlus className="h-4 w-4" /> New appointment
+            <CalendarPlus className="h-4 w-4" /> Book appointment
           </DialogTitle>
           <DialogDescription>
-            {session.branch?.name} · times shown in {tz}
+            {session.branch?.name}
+            {tzNote && ` · ${tzNote}`}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
@@ -165,8 +282,7 @@ export function BookingDialog({
                   <span className="flex items-center gap-2 text-warning">
                     <AlertTriangle className="h-4 w-4 shrink-0" />
                     <span>
-                      {error.message}
-                      <span className="block text-xs">{error.override.allowOverbook ? 'Double-book anyway?' : 'Book outside rostered hours?'}</span>
+                      {withStop(error.message)} {error.override.allowOverbook ? 'Double-book anyway?' : 'Book anyway?'}
                     </span>
                   </span>
                   <Button size="sm" variant="outline" loading={book.isPending} onClick={() => book.mutate(error.override!)}>
@@ -177,22 +293,31 @@ export function BookingDialog({
             </div>
           )}
           <Field label="Patient" htmlFor="bk-patient" required>
-            <PatientPicker id="bk-patient" value={patient} onChange={setPatient} />
+            <PatientPicker
+              id="bk-patient"
+              value={patient}
+              allowCreate
+              onChange={(p) => {
+                setPatient(p);
+                setDirty(true);
+              }}
+            />
           </Field>
-          {patient && !patient.owner && <p className="text-xs text-destructive">This patient has no current owner.</p>}
+          {patient && !patient.owner && <p className="text-xs text-destructive">This patient has no client linked. Add the client on the patient’s page first.</p>}
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Appointment type" htmlFor="bk-type" required>
-              <NativeSelect id="bk-type" value={typeId} onChange={(e) => setTypeId(e.target.value)}>
+              <NativeSelect id="bk-type" value={typeId} onChange={(e) => { setTypeId(e.target.value); setDirty(true); }}>
                 {types.data?.map((t) => (
                   <option key={t.id} value={t.id}>
-                    {t.name} · {t.durationMinutes} min{t.priceMinor ? ` · ${fmtMoney(t.priceMinor, currency)}` : ''}
+                    {t.name} · {t.durationMinutes} min{(t.service?.priceMinor ?? t.priceMinor) ? ` · ${fmtMoney((t.service?.priceMinor ?? t.priceMinor)!, currency)}` : ''}
                   </option>
                 ))}
               </NativeSelect>
             </Field>
-            <Field label="Clinician" htmlFor="bk-clin" required={type?.requiresClinician}>
-              <NativeSelect id="bk-clin" value={clinicianId} onChange={(e) => setClinicianId(e.target.value)}>
-                <option value="">{type?.requiresClinician ? 'Select clinician…' : 'Unassigned'}</option>
+            <Field label="Vet" htmlFor="bk-clin" required={type?.requiresClinician}>
+              <NativeSelect id="bk-clin" value={clinicianId} onChange={(e) => { setClinicianId(e.target.value); setDirty(true); }}>
+                <option value={ANY_VET}>Any vet (first free)</option>
+                {type?.requiresClinician ? <option value="" disabled>Choose a vet…</option> : <option value="">No vet yet</option>}
                 {clinicians.data?.map((c) => (
                   <option key={c.membershipId} value={c.membershipId}>
                     {c.name}
@@ -200,15 +325,31 @@ export function BookingDialog({
                 ))}
               </NativeSelect>
             </Field>
-            <Field label="Date" htmlFor="bk-date" required>
-              <Input id="bk-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-            </Field>
-            <div className="grid grid-cols-[1fr_110px] gap-2">
+            <div className="grid content-start gap-1.5">
+              <Field label="Date" htmlFor="bk-date" required>
+                <Input id="bk-date" type="date" value={date} onChange={(e) => { setDate(e.target.value); setDirty(true); }} />
+              </Field>
+              <div className="flex flex-wrap gap-1" role="group" aria-label="Date shortcuts">
+                {shortcuts.map((d) => (
+                  <Button
+                    key={d.label}
+                    type="button"
+                    size="sm"
+                    variant={date === d.date ? 'default' : 'outline'}
+                    className="h-7 px-2 text-xs"
+                    onClick={() => { setDate(d.date); setDirty(true); }}
+                  >
+                    {d.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-[1fr_110px] content-start gap-2">
               <Field label="Start time" htmlFor="bk-time" required>
-                <Input id="bk-time" type="time" step={300} value={time} onChange={(e) => setTime(e.target.value)} />
+                <Input id="bk-time" type="time" step={300} value={time} onChange={(e) => pickTime(e.target.value)} />
               </Field>
               <Field label="Minutes" htmlFor="bk-dur">
-                <Input id="bk-dur" type="number" min={5} max={720} placeholder={String(type?.durationMinutes ?? '')} value={duration} onChange={(e) => setDuration(e.target.value ? Number(e.target.value) : '')} />
+                <Input id="bk-dur" type="number" min={5} max={720} placeholder={String(type?.durationMinutes ?? '')} value={duration} onChange={(e) => { setDuration(e.target.value ? Number(e.target.value) : ''); setDirty(true); }} />
               </Field>
             </div>
           </div>
@@ -219,28 +360,23 @@ export function BookingDialog({
           )}
           {clinicianId && (
             <div>
-              <p className="mb-1 text-xs font-medium text-muted-foreground">Free times for this clinician</p>
+              <p className="mb-1 text-xs font-medium text-muted-foreground">{anyVet ? 'Free times (any vet)' : 'Free times for this vet'}</p>
               {availability.isLoading ? (
-                <p className="text-xs text-muted-foreground">Checking availability…</p>
+                <p className="text-xs text-muted-foreground">Checking which times are free…</p>
               ) : slots.length ? (
-                <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto">
-                  {slots.map((s) => {
-                    const t = branchTime(s, tz);
-                    return (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => setTime(t)}
-                        className={`rounded border px-2 py-0.5 text-xs tabular hover:border-primary ${t === time ? 'border-primary bg-primary text-primary-foreground' : ''}`}
-                      >
-                        {t}
-                      </button>
-                    );
-                  })}
-                </div>
+                <FreeTimeButtons
+                  slots={slots}
+                  tz={tz}
+                  value={time}
+                  onPick={pickTime}
+                  titleFor={anyVet ? (iso) => `Free: ${(availability.data ?? []).filter((c) => c.slots.includes(iso)).map((c) => c.name).join(', ')}` : undefined}
+                />
               ) : (
-                <p className="text-xs text-muted-foreground">No free slots on this date (not rostered, on leave or fully booked).</p>
+                <p className="text-xs text-muted-foreground">
+                  {anyVet ? 'No vet has a free time on this date. Try another day.' : 'No free times on this date (not working, on leave or fully booked).'}
+                </p>
               )}
+              {anyVet && firstFree && <p className="mt-1 text-xs">Vet: <b>{firstFree.name}</b> (first free at {time})</p>}
             </div>
           )}
           {!!resources.data?.length && (
@@ -251,7 +387,7 @@ export function BookingDialog({
                   <label key={r.id} className="flex items-center gap-2 text-sm">
                     <Checkbox
                       checked={resourceIds.includes(r.id)}
-                      onCheckedChange={(v) => setResourceIds((ids) => (v === true ? [...ids, r.id] : ids.filter((x) => x !== r.id)))}
+                      onCheckedChange={(v) => { setResourceIds((ids) => (v === true ? [...ids, r.id] : ids.filter((x) => x !== r.id))); setDirty(true); }}
                     />
                     {r.name}
                   </label>
@@ -260,10 +396,10 @@ export function BookingDialog({
             </fieldset>
           )}
           <Field label="Reason for visit" htmlFor="bk-reason">
-            <Input id="bk-reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} />
+            <Input id="bk-reason" value={reason} onChange={(e) => { setReason(e.target.value); setDirty(true); }} maxLength={500} />
           </Field>
           <Field label="Booking notes" htmlFor="bk-notes">
-            <Textarea id="bk-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+            <Textarea id="bk-notes" rows={2} value={notes} onChange={(e) => { setNotes(e.target.value); setDirty(true); }} />
           </Field>
           <div className="flex flex-wrap items-center gap-3 text-sm">
             <label className="flex items-center gap-2">
@@ -280,8 +416,13 @@ export function BookingDialog({
             )}
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="items-center">
+          {blockedReason && (
+            <p className="mr-auto text-xs text-muted-foreground" role="status">
+              {blockedReason}
+            </p>
+          )}
+          <Button variant="outline" onClick={() => void close()}>
             Cancel
           </Button>
           <Button disabled={!canSubmit} loading={book.isPending} onClick={() => { setError(null); book.mutate({}); }}>

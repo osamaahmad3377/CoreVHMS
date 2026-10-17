@@ -2,7 +2,7 @@ import type { Product } from '@prisma/client';
 import { calculateDose } from '@vcms/shared';
 import type { Allocation } from '../inventory/stock.engine';
 import { RequestContext } from '../../common/context/request-context';
-import { localDayBounds } from '../../common/time/tz';
+import { localDayBounds, zonedToUtc } from '../../common/time/tz';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { formatNumber } from '../../common/counter/counter.service';
@@ -200,10 +200,13 @@ export class BillingIntegrations implements OnModuleInit {
         const b = r.branchId ? { branchId: r.branchId } : {};
         const branchId = r.branchId ?? RequestContext.get()?.branchId;
         const branch = branchId ? await db.branch.findUnique({ where: { id: branchId } }) : null;
-        const { start: startOfDay } = localDayBounds(new Date(), branch?.timezone ?? 'UTC');
-        const [billedToday, receivedToday, outstanding, overdue, unbilled] = await Promise.all([
+        const tz = branch?.timezone ?? 'UTC';
+        const { start: startOfDay, date: today } = localDayBounds(new Date(), tz);
+        const startOfMonth = zonedToUtc(`${today.slice(0, 8)}01`, 0, tz);
+        const [billedToday, receivedToday, receivedMonth, outstanding, overdue, unbilled] = await Promise.all([
           db.invoice.aggregate({ where: { ...b, issuedAt: { gte: startOfDay }, status: { notIn: ['DRAFT', 'VOID'] } }, _sum: { totalMinor: true } }),
           db.payment.aggregate({ where: { ...b, receivedAt: { gte: startOfDay } }, _sum: { amountMinor: true } }),
+          db.payment.aggregate({ where: { ...b, receivedAt: { gte: startOfMonth } }, _sum: { amountMinor: true } }),
           db.invoice.aggregate({ where: { ...b, status: { in: ['ISSUED', 'PARTIALLY_PAID'] } }, _sum: { balanceMinor: true } }),
           db.invoice.count({ where: { ...b, status: { in: ['ISSUED', 'PARTIALLY_PAID'] }, dueAt: { lt: new Date() }, balanceMinor: { gt: 0 } } }),
           db.charge.findMany({ where: { ...b, status: 'PENDING' }, select: { quantity: true, unitPriceMinor: true } }),
@@ -211,11 +214,31 @@ export class BillingIntegrations implements OnModuleInit {
         return {
           billedTodayMinor: billedToday._sum.totalMinor ?? 0,
           receivedTodayMinor: receivedToday._sum.amountMinor ?? 0,
+          /** Money received since the 1st of this month (branch-local), the same basis as "today". */
+          receivedMonthMinor: receivedMonth._sum.amountMinor ?? 0,
           outstandingMinor: outstanding._sum.balanceMinor ?? 0,
           overdueInvoices: overdue,
           unbilledCount: unbilled.length,
           unbilledMinor: unbilled.reduce((n, c) => n + Math.round(Number(c.quantity) * c.unitPriceMinor), 0),
         };
+      },
+    });
+    // Cash drawers left open from an earlier day (the drawer was never counted and closed).
+    this.dashboard.register({
+      key: 'cashDrawers',
+      permission: 'cash.manage',
+      load: async (r) => {
+        const db = this.prisma.db;
+        const branchId = r.branchId ?? RequestContext.get()?.branchId;
+        const branch = branchId ? await db.branch.findUnique({ where: { id: branchId } }) : null;
+        const { start: startOfDay } = localDayBounds(new Date(), branch?.timezone ?? 'UTC');
+        const rows = await db.cashSession.findMany({
+          where: { status: 'OPEN', openedAt: { lt: startOfDay }, ...(r.branchId ? { branchId: r.branchId } : {}) },
+          include: { register: { select: { id: true, name: true } } },
+          orderBy: { openedAt: 'asc' },
+          take: 10,
+        });
+        return { notClosed: rows.map((s) => ({ sessionId: s.id, register: s.register.name, registerId: s.register.id, openedAt: s.openedAt, openedByName: s.openedByName })) };
       },
     });
     this.dashboard.register({

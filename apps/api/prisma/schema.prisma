@@ -45,6 +45,10 @@ model Organization {
   weightUnit         String             @default("kg")
   temperatureUnit    String             @default("C")
   disabledModules    String[]           @default([])
+  /// Setup checklist: steps the owner chose to skip for now, when the checklist was hidden, and when "Services you offer" was first saved.
+  setupSkipped       String[]           @default([])
+  setupHiddenAt      DateTime?          @db.Timestamptz(3)
+  modulesChosenAt    DateTime?          @db.Timestamptz(3)
   status             OrganizationStatus @default(ACTIVE)
   createdAt          DateTime           @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
@@ -101,6 +105,12 @@ model Organization {
   pricesIncludeTax         Boolean                    @default(false)
   paymentTermsDays         Int                        @default(0)
   requireCashSession       Boolean                    @default(true)
+  /// Purchase orders must be approved by someone other than the person who raised them. Clinics that
+  /// existed before this setting keep the rule (migration backfills true); new clinics start without it.
+  poRequiresSecondApprover Boolean                    @default(false)
+  /// Prescribing screen asks "This is N tablets per dose — is that correct?" above this many countable units
+  /// per dose. A data-entry safety prompt, not a dose limit.
+  rxConfirmUnitsPerDose    Int                        @default(4)
   stockLocations           StockLocation[]
   stockBatches             StockBatch[]
   stockLevels              StockLevel[]
@@ -1501,6 +1511,8 @@ model Product {
   dispensingUnit       String            @default("unit")
   minDispenseIncrement Decimal           @default(1) @db.Decimal(10, 4)
   activeIngredients    String[]          @default([])
+  /// Drug class / family as entered by the clinic (e.g. "Penicillins", "NSAIDs"); allergy checks match it.
+  drugClass            String?
   manufacturer         String?
   requiresPrescription Boolean           @default(true)
   isControlled         Boolean           @default(false)

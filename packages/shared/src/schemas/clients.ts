@@ -21,7 +21,7 @@ const clientBase = z.object({
   lastName: optText(80),
   organizationName: optText(160),
   email: optEmail(),
-  mobilePhone: optPhone(),
+  mobilePhone: optPhone('Enter a mobile number like 0300 1234567'),
   homePhone: optPhone(),
   workPhone: optPhone(),
   nationalId: optText(40),
@@ -39,10 +39,11 @@ function refineClientName<T extends z.ZodTypeAny>(schema: T) {
   return schema.superRefine((v: any, ctx) => {
     const isOrg = v.type && !['INDIVIDUAL', 'FAMILY'].includes(v.type);
     if (isOrg && !v.organizationName && !v.lastName) {
-      ctx.addIssue({ code: 'custom', path: ['organizationName'], message: 'Enter a farm/business name or a contact surname' });
+      ctx.addIssue({ code: 'custom', path: ['organizationName'], message: 'Enter a farm or business name, or a contact surname' });
     }
-    if (!isOrg && v.type !== undefined && !v.lastName) {
-      ctx.addIssue({ code: 'custom', path: ['lastName'], message: 'Surname is required' });
+    // One name is enough (many clients go by a single name); the surname is optional.
+    if (!isOrg && v.type !== undefined && !v.firstName && !v.lastName) {
+      ctx.addIssue({ code: 'custom', path: ['firstName'], message: 'Enter the client’s name' });
     }
     if (v.email === null && v.mobilePhone === null && v.homePhone === null && v.workPhone === null) {
       // At least one way to reach the client is required on create; enforced by createClientSchema.

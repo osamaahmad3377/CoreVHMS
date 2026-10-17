@@ -39,7 +39,7 @@ function ExpenseDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Record expense</DialogTitle>
-          <DialogDescription>Cash expenses are paid out of the open register for this branch.</DialogDescription>
+          <DialogDescription>Cash expenses are taken out of this branch’s open cash drawer.</DialogDescription>
         </DialogHeader>
         {error && <FormError message={error} />}
         <div className="grid gap-3 sm:grid-cols-2">

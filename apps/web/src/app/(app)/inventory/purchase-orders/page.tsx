@@ -4,12 +4,13 @@ import { fromMinor } from '@vcms/shared';
 import { Plus, ShoppingBag, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { MoneyInput, parseMoney } from '@/components/billing/money';
 import { INVENTORY_LINKS, SectionNav } from '@/components/billing/section-nav';
 import { CommerceBadge } from '@/components/billing/status';
 import { DataTable } from '@/components/data-table';
+import { QuickAddSupplier } from '@/components/inventory/quick-supplier';
 import { Field } from '@/components/forms/field';
 import { FormError } from '@/components/forms/form-error';
 import { ProductPicker } from '@/components/pharmacy/product-picker';
@@ -19,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input, NativeSelect, Textarea } from '@/components/ui/input';
+import { useUrlState } from '@/hooks/use-url-state';
 import { api } from '@/lib/api';
 import { fmtDate, fmtMoney } from '@/lib/format';
 import { defaultLocation, locationLabel, sortedLocations } from '@/lib/locations';
@@ -29,10 +31,17 @@ import type { Product, PurchaseOrder, StockLocation, Supplier } from '@/lib/type
 interface Suggestion { productId: string; name: string; dispensingUnit: string; available: number; onOrder: number; reorderLevel: number; suggested: number; lastCostMinor: number | null; lastSupplier: { id: string; name: string } | null }
 interface PoLine { key: string; product: Pick<Product, 'id' | 'name' | 'dispensingUnit'> | null; quantity: string; cost: string }
 
+function useApprovalRule() {
+  return useQuery({ queryKey: ['po-approval-rule'], queryFn: () => api.get<{ needsSecondApprover: boolean }>('/purchase-orders/approval-rule'), staleTime: 60_000 });
+}
+
 function PoDialog({ open, onOpenChange, seed }: { open: boolean; onOpenChange: (o: boolean) => void; seed: Suggestion[] }) {
   const router = useRouter();
   const qc = useQueryClient();
-  const { currency, session } = useSession();
+  const { can, currency, session } = useSession();
+  const rule = useApprovalRule();
+  // Without a second approver, an authorised person approves their own order in the same step.
+  const oneStep = rule.data?.needsSecondApprover === false && can('procurement.approve');
   const [supplierId, setSupplierId] = useState('');
   const [locationId, setLocationId] = useState('');
   const [expectedAt, setExpectedAt] = useState('');
@@ -58,26 +67,41 @@ function PoDialog({ open, onOpenChange, seed }: { open: boolean; onOpenChange: (
   const valid = lines.filter((l) => l.product && Number(l.quantity) > 0 && parseMoney(l.cost, currency) !== null);
   const total = valid.reduce((n, l) => n + Math.round(Number(l.quantity) * (parseMoney(l.cost, currency) ?? 0)), 0);
   const m = useMutation({
-    mutationFn: () => api.post<PurchaseOrder>('/purchase-orders', { supplierId, locationId, expectedAt: expectedAt || null, notes: notes || null, lines: valid.map((l) => ({ productId: l.product!.id, quantity: Number(l.quantity), unitCostMinor: parseMoney(l.cost, currency) })) }),
-    onSuccess: (po) => { qc.invalidateQueries({ queryKey: ['purchase-orders'] }); qc.invalidateQueries({ queryKey: ['reorder-suggestions'] }); toast.success(`Draft ${po.poNo} saved — submit it for approval when ready`); router.push(`/inventory/purchase-orders/${po.id}`); },
+    mutationFn: async (approve: boolean) => {
+      const po = await api.post<PurchaseOrder>('/purchase-orders', { supplierId, locationId, expectedAt: expectedAt || null, notes: notes || null, lines: valid.map((l) => ({ productId: l.product!.id, quantity: Number(l.quantity), unitCostMinor: parseMoney(l.cost, currency) })) });
+      return approve ? api.post<PurchaseOrder>(`/purchase-orders/${po.id}/approve`, {}) : po;
+    },
+    onSuccess: (po) => {
+      ['purchase-orders', 'reorder-suggestions', 'stock'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      toast.success(po.status === 'APPROVED' ? `${po.poNo} approved — print it or send it to the supplier` : oneStep ? `${po.poNo} saved as a draft` : `${po.poNo} saved — send it for approval when ready`);
+      router.push(`/inventory/purchase-orders/${po.id}`);
+    },
     onError: (e: Error) => setError(e.message),
   });
+  const problem = !supplierId ? 'Choose a supplier' : !locationId ? 'Choose where it will be delivered' : !valid.length ? 'Add a product with a quantity and cost price' : null;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="xl">
         <DialogHeader>
-          <DialogTitle>New purchase order</DialogTitle>
-          <DialogDescription>Orders are saved as drafts, submitted, then approved by a different person before stock is received against them.</DialogDescription>
+          <DialogTitle>Add order</DialogTitle>
+          <DialogDescription>
+            {oneStep
+              ? 'Approve the order to print it or send it to the supplier. When the goods arrive, receive the delivery against it.'
+              : 'Save the order, then send it for approval. Another person approves it before the goods are received.'}
+          </DialogDescription>
         </DialogHeader>
         {error && <FormError message={error} />}
         <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Supplier" htmlFor="po-sup" required>
-            <NativeSelect id="po-sup" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-              <option value="">Choose…</option>
-              {(suppliers.data ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </NativeSelect>
-          </Field>
-          <Field label="Deliver to" htmlFor="po-loc" required>
+          <div className="grid content-start gap-1">
+            <Field label="Supplier" htmlFor="po-sup" required>
+              <NativeSelect id="po-sup" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+                <option value="">Choose…</option>
+                {(suppliers.data ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </NativeSelect>
+            </Field>
+            <QuickAddSupplier onCreated={(s) => setSupplierId(s.id)} />
+          </div>
+          <Field label="Deliver to (store room)" htmlFor="po-loc" required>
             <NativeSelect id="po-loc" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
               {sortedLocations(locations.data, session.branch?.id).filter((l) => l.isActive).map((l) => <option key={l.id} value={l.id}>{locationLabel(l, locations.data)}</option>)}
             </NativeSelect>
@@ -86,7 +110,7 @@ function PoDialog({ open, onOpenChange, seed }: { open: boolean; onOpenChange: (
         </div>
         <div className="grid max-h-[40vh] gap-2 overflow-y-auto">
           <div aria-hidden className="hidden px-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground sm:grid sm:grid-cols-[minmax(0,1fr)_110px_140px_32px] sm:gap-2">
-            <span>Product</span><span>Quantity</span><span>Unit cost</span><span />
+            <span>Product</span><span>Quantity</span><span>Cost price (each)</span><span />
           </div>
           {lines.map((l, idx) => (
             <div key={l.key} className="grid gap-2 rounded-md border p-2 sm:grid-cols-[minmax(0,1fr)_110px_140px_auto] sm:items-center">
@@ -100,9 +124,17 @@ function PoDialog({ open, onOpenChange, seed }: { open: boolean; onOpenChange: (
         <div><Button type="button" size="sm" variant="outline" onClick={() => setLines((ls) => [...ls, { key: crypto.randomUUID(), product: null, quantity: '', cost: '' }])}><Plus /> Add line</Button></div>
         <Field label="Notes" htmlFor="po-notes"><Textarea id="po-notes" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={1000} /></Field>
         <p className="text-right text-sm">Order total <b className="tabular">{fmtMoney(total, currency)}</b></p>
-        <DialogFooter>
+        <DialogFooter className="items-center">
+          {problem && <p role="status" className="mr-auto text-sm text-muted-foreground">{problem}</p>}
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button loading={m.isPending} disabled={!supplierId || !locationId || !valid.length} onClick={() => { setError(null); m.mutate(); }}>Save draft order</Button>
+          {oneStep ? (
+            <>
+              <Button variant="outline" loading={m.isPending && m.variables === false} disabled={!!problem || m.isPending} onClick={() => { setError(null); m.mutate(false); }}>Save as draft</Button>
+              <Button loading={m.isPending && m.variables === true} disabled={!!problem || m.isPending} onClick={() => { setError(null); m.mutate(true); }}>Approve &amp; send</Button>
+            </>
+          ) : (
+            <Button loading={m.isPending} disabled={!!problem} onClick={() => { setError(null); m.mutate(false); }}>Save order</Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -111,10 +143,20 @@ function PoDialog({ open, onOpenChange, seed }: { open: boolean; onOpenChange: (
 
 function Orders() {
   const router = useRouter();
+  const url = useUrlState();
   const { can, currency } = useSession();
   const [creating, setCreating] = useState<Suggestion[] | null>(null);
   const query = useQuery({ queryKey: ['purchase-orders'], queryFn: () => api.get<PurchaseOrder[]>('/purchase-orders') });
   const suggestions = useQuery({ queryKey: ['reorder-suggestions'], queryFn: () => api.get<Suggestion[]>('/purchase-orders/reorder-suggestions') });
+  const rule = useApprovalRule();
+  // The Stock page's "Order these" links here with ?new=suggested: open a draft seeded from the reorder suggestions.
+  const wantsNew = url.get('new');
+  useEffect(() => {
+    if (!wantsNew || !can('procurement.write')) return;
+    if (wantsNew === 'suggested' && !suggestions.isSuccess) return;
+    setCreating(wantsNew === 'suggested' ? suggestions.data ?? [] : []);
+    url.set({ new: null });
+  }, [wantsNew, can, suggestions.isSuccess, suggestions.data, url]);
   // One draft order per supplier: group suggestions by who supplied them last.
   const bySupplier = Object.entries(
     (suggestions.data ?? []).reduce<Record<string, Suggestion[]>>((acc, s) => ((acc[s.lastSupplier?.name ?? '—'] ??= []).push(s), acc), {}),
@@ -122,14 +164,22 @@ function Orders() {
   return (
     <>
       <PageHeader
-        help="purchase-order" title="Purchase orders" actions={can('procurement.write') && <Button size="sm" onClick={() => setCreating([])}><Plus /> New order</Button>} />
+        help="purchase-order"
+        title="Orders"
+        description={
+          rule.data?.needsSecondApprover === false
+            ? 'Orders to your suppliers. Approve an order to send it; receive the delivery when the goods arrive.'
+            : 'Orders to your suppliers. Another person approves each order before it is sent; receive the delivery when the goods arrive.'
+        }
+        actions={can('procurement.write') && <Button size="sm" onClick={() => setCreating([])}><Plus /> Add order</Button>}
+      />
       <SectionNav links={INVENTORY_LINKS} />
       {!!suggestions.data?.length && (
         <Card className="mb-4">
           <CardHeader>
             <div>
               <CardTitle>Reorder suggestions</CardTitle>
-              <p className="text-xs text-muted-foreground">At or below their reorder level, counting stock already on order. Quantities and costs are prefilled from the last delivery.</p>
+              <p className="text-xs text-muted-foreground">Running low, counting stock already on order. Quantities and costs are filled in from the last delivery.</p>
             </div>
           </CardHeader>
           {bySupplier.map(([supplier, items]) => (
@@ -161,7 +211,7 @@ function Orders() {
           query={query}
           rowKey={(r) => r.id}
           onRowClick={(r) => router.push(`/inventory/purchase-orders/${r.id}`)}
-          empty={<EmptyState icon={ShoppingBag} title="No purchase orders" />}
+          empty={<EmptyState icon={ShoppingBag} title="No orders yet" description="Add an order when you need stock from a supplier." />}
           columns={[
             { key: 'no', header: 'Order', cell: (r) => <Link className="font-medium hover:underline" href={`/inventory/purchase-orders/${r.id}`}>{r.poNo}</Link> },
             { key: 'sup', header: 'Supplier', cell: (r) => <span className="text-sm">{r.supplier.name}</span> },
@@ -180,7 +230,7 @@ function Orders() {
 export default function PurchaseOrdersPage() {
   return (
     <RequirePermission anyOf={['procurement.read']}>
-      <Orders />
+      <Suspense><Orders /></Suspense>
     </RequirePermission>
   );
 }

@@ -325,6 +325,16 @@ async function seedPharmacyLab(
     S('Rubber chew toy', 'ACCESSORY', 'Toys', { brand: 'Demo Paws', packSize: 'Large', dispensingUnit: 'piece', sellPriceMinor: pk ? 50000 : 900, sku: 'AC-TOY-L' }),
     S('Joint support chews', 'SUPPLEMENT', 'Vitamins & supplements', { brand: 'Demo Vet Nutrition', packSize: '60 chews', dispensingUnit: 'pack', sellPriceMinor: pk ? 350000 : 3200, sku: 'SP-JOINT60' }),
   ];
+  // Demo starter list of drug families, labelled with its source. Clinics enter or correct this per product
+  // (Product → "Drug class / family"); the allergy check matches against it. Not used by runtime logic.
+  const DEMO_DRUG_CLASSES = {
+    source: 'Pharmacological class as listed in the BSAVA Small Animal Formulary, 11th ed. (Part A) — demo data, verify locally',
+    bySku: { AMX250: 'Penicillins, Beta-lactams', MLX15: 'NSAIDs', MTZ200: 'Nitroimidazoles', IVM10: 'Macrocyclic lactones', OTC200: 'Tetracyclines', KET100: 'Dissociative anaesthetics' } as Record<string, string>,
+  };
+  for (const p of products as Record<string, unknown>[]) {
+    const drugClass = DEMO_DRUG_CLASSES.bySku[p.sku as string];
+    if (drugClass) Object.assign(p, { drugClass, notes: `Drug family source: ${DEMO_DRUG_CLASSES.source}` });
+  }
   const created: Record<string, string> = {};
   for (const p of products) created[(p as any).sku] = (await prisma.product.create({ data: p as any })).id;
 

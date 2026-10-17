@@ -60,4 +60,46 @@ test.describe('Item requests and supplier returns', () => {
     const row = page.getByRole('row', { name: new RegExp(reason) });
     await expect(row.getByText(/1 × Sterile syringe 3 mL/)).toBeVisible();
   });
+
+  test('an owner without a second approver orders and approves in one step', async ({ page }) => {
+    await login(page, 'owner@demo.pk');
+    // The two-person rule is a clinic setting (Settings → Tax & payments). Turn it off for this test, restore after.
+    await page.goto('/settings/billing');
+    const rule = page.getByRole('switch', { name: 'Purchase orders need a second person to approve' });
+    const wasOn = (await rule.getAttribute('aria-checked')) === 'true';
+    if (wasOn) {
+      await rule.click();
+      await expect(rule).toHaveAttribute('aria-checked', 'false');
+    }
+
+    await page.goto('/inventory/purchase-orders?new=1');
+    const dlg = page.getByRole('dialog', { name: 'Add order' });
+    await expect(dlg.getByRole('status')).toHaveText('Choose a supplier');
+    await dlg.locator('#po-sup').selectOption({ label: 'Demo Pharma Distributors (Lahore)' });
+    await dlg.getByRole('combobox').filter({ hasText: 'Product…' }).first().click();
+    await page.getByLabel('Search products').fill('Sterile syringe');
+    await page.getByRole('option', { name: /Sterile syringe 3 mL/ }).click();
+    await dlg.getByLabel('Line 1 quantity').fill('10');
+    await dlg.getByLabel('Line 1 unit cost').fill('25');
+    await dlg.getByRole('button', { name: 'Approve & send' }).click();
+    await expect(page).toHaveURL(/\/inventory\/purchase-orders\/[0-9a-f-]{36}/);
+    await expect(page.getByText('Approved').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Receive delivery' })).toBeVisible();
+
+    if (wasOn) {
+      await page.goto('/settings/billing');
+      await page.getByRole('switch', { name: 'Purchase orders need a second person to approve' }).click();
+    }
+  });
+
+  test('low stock links to a ready-made order', async ({ page }) => {
+    await login(page, 'inventory@demo.pk');
+    await page.goto('/inventory?filter=low');
+    const orderThese = page.getByRole('button', { name: 'Order these' });
+    if (await orderThese.isVisible()) {
+      await orderThese.click();
+      await expect(page).toHaveURL(/\/inventory\/purchase-orders/);
+      await expect(page.getByRole('dialog', { name: 'Add order' })).toBeVisible();
+    }
+  });
 });

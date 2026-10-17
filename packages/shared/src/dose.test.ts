@@ -1,4 +1,4 @@
-import { calculateDose, compareToRange, courseQuantity } from './dose';
+import { FREQUENCIES, calculateDose, compareToRange, courseQuantity, findFrequency, ownerAmount, ownerInstructions, ownerLabelText } from './dose';
 
 // Arithmetic tests only; numbers are illustrative, not clinical recommendations.
 describe('dose calculation', () => {
@@ -48,5 +48,27 @@ describe('dose calculation', () => {
   it('computes course quantities rounded up', () => {
     expect(courseQuantity(1.25, 2, 7, 0.25)).toBe(17.5);
     expect(courseQuantity(0.3, 3, 5, 1)).toBe(5);
+  });
+});
+
+describe('owner label text', () => {
+  it('writes the label in plain words without Latin abbreviations', () => {
+    expect(ownerInstructions({ amount: 1, unit: 'tablet', route: 'PO', frequencyCode: 'BID', durationDays: 7 })).toBe('Give 1 tablet by mouth 2 times a day for 7 days.');
+    expect(ownerInstructions({ amount: 1.5, unit: 'tablet', route: 'PO', frequencyCode: 'SID', durationDays: 1 })).toBe('Give 1½ tablets by mouth once a day for 1 day.');
+    expect(ownerInstructions({ amount: 2.5, unit: 'mL', route: 'SC', frequencyCode: 'ONCE', durationDays: 3 })).toBe('Give 2.5 mL under the skin once only.');
+    expect(ownerAmount(0.5, 'tablet')).toBe('½ tablet');
+    for (const f of FREQUENCIES) expect(ownerInstructions({ route: 'PO', frequencyCode: f.code })).not.toMatch(/\b(SID|BID|TID|QID|EOD|PRN|PO)\b/);
+  });
+
+  it('cleans older label text', () => {
+    expect(ownerLabelText('Give SC twice daily (BID) for 7 days.')).toBe('Give under the skin 2 times a day for 7 days.');
+    expect(ownerLabelText('Give by mouth Twice daily (bid)')).toBe('Give by mouth 2 times a day');
+  });
+
+  it('resolves frequencies from codes and stored labels', () => {
+    expect(findFrequency('BID')?.perDay).toBe(2);
+    expect(findFrequency('Twice daily (BID)')?.code).toBe('BID');
+    expect(findFrequency('2 times a day (BID)')?.code).toBe('BID');
+    expect(findFrequency('Once weekly')?.code).toBe('WEEKLY');
   });
 });

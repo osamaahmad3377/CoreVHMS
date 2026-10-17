@@ -53,7 +53,7 @@ export default function VitalReferencesPage() {
       <div className="mb-4 flex gap-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
         <p>
-          Reference intervals are clinical content. Enter values from a validated, current veterinary reference and name the source. NextCore ships with <b>no</b> default ranges; values without a configured range are never flagged. Only vets who can sign clinical notes can edit these; saving records you as the reviewer.
+          Normal ranges for each species. Only vets can edit. Add the book or source you used. Readings are not flagged until a range is added.
         </p>
       </div>
       <Card>

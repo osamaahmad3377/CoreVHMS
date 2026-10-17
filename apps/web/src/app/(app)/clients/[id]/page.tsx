@@ -4,6 +4,7 @@ import { enumLabel } from '@vcms/shared';
 import {
   Archive,
   ArchiveRestore,
+  CreditCard,
   Edit,
   GitMerge,
   Mail,
@@ -21,6 +22,8 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import { toast } from 'sonner';
 import { ClientAccount } from '@/components/billing/client-account';
+import { fmtBalance } from '@/components/billing/money';
+import { TakePaymentDialog } from '@/components/billing/take-payment-dialog';
 import { ClientCommunications, PortalCard } from '@/components/comms/client-comms';
 import { ClientFarms } from '@/components/livestock/client-farms';
 import { ClientPrivacy } from '@/components/clients/client-privacy';
@@ -29,6 +32,7 @@ import { ClientPicker, type PickedClient } from '@/components/clients/client-pic
 import { AddressDialog, ContactDialog } from '@/components/clients/contact-dialogs';
 import { useConfirm } from '@/components/confirm';
 import { DescriptionList, EmptyState, ErrorState, LoadingRows, PageHeader } from '@/components/page';
+import { SavedNextSteps } from '@/components/patients/saved-next-steps';
 import { RequirePermission } from '@/components/require';
 import { AttachmentsPanel } from '@/components/shared/attachments-panel';
 import { HistoryPanel } from '@/components/shared/history-panel';
@@ -44,11 +48,32 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ApiError, api } from '@/lib/api';
 import { fmtAge, fmtCountry, fmtDate, fmtDateTime, fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
-import type { Address, ClientContact, ClientDetail } from '@/lib/types';
+import type { Address, ClientContact, ClientDetail, Statement } from '@/lib/types';
+
+/** "Owes Rs 10,410" in red, "Rs 1,000 credit" in green — never a minus sign. */
+function AmountOwed({ balanceMinor, currency, className }: { balanceMinor: number; currency: string; className?: string }) {
+  if (balanceMinor > 0) return <span className={`font-semibold text-destructive tabular ${className ?? ''}`}>Owes {fmtMoney(balanceMinor, currency)}</span>;
+  if (balanceMinor < 0) return <span className={`font-semibold text-success tabular ${className ?? ''}`}>{fmtMoney(-balanceMinor, currency)} credit</span>;
+  return <span className={`text-muted-foreground tabular ${className ?? ''}`}>Nothing owed</span>;
+}
+
+/**
+ * The Account tab. Waits for the statement (shared query cache with the account panel) so a loading account
+ * shows a skeleton rather than "No account activity yet".
+ */
+function AccountTab({ clientId }: { clientId: string }) {
+  const statement = useQuery({ queryKey: ['statement', clientId], queryFn: () => api.get<Statement>(`/clients/${clientId}/statement`) });
+  if (statement.isLoading) return <LoadingRows rows={5} />;
+  return <ClientAccount clientId={clientId} />;
+}
 
 function ClientRecord() {
   const { id } = useParams<{ id: string }>();
-  const initialTab = useSearchParams().get('tab') ?? 'animals';
+  const params = useSearchParams();
+  const initialTab = (params.get('tab') === 'animals' ? 'patients' : params.get('tab')) ?? 'patients';
+  // Just registered (from Add client): offer the next step once.
+  const [justSaved, setJustSaved] = useState(params.get('registered') === '1');
+  const [paying, setPaying] = useState(false);
   const router = useRouter();
   const qc = useQueryClient();
   const confirm = useConfirm();
@@ -83,7 +108,7 @@ function ClientRecord() {
         breadcrumbs={[{ label: 'Clients', href: '/clients' }, { label: c.clientNo }]}
         title={
           <span className="flex flex-wrap items-center gap-2">
-            {/* displayName is surname-first ("Qureshi, Bilal"), so the title goes after it rather than reading "Mr Qureshi, …". */}
+            {/* The title (Mr, Dr, Haji…) is shown after the name, in brackets, so the name itself reads first. */}
             <span>
               {c.displayName}
               {c.title && <span className="font-normal text-muted-foreground"> ({c.title})</span>}
@@ -110,10 +135,16 @@ function ClientRecord() {
                 <MapPin className="h-3.5 w-3.5" /> {[primaryAddress.line1, primaryAddress.city].filter(Boolean).join(', ')}
               </span>
             )}
+            {can('billing.read') && <AmountOwed balanceMinor={c.balanceMinor} currency={currency} />}
           </span>
         }
         actions={
           <>
+            {can('payments.take') && c.balanceMinor > 0 && c.status !== 'MERGED' && (
+              <Button size="sm" onClick={() => setPaying(true)}>
+                <CreditCard /> Take payment
+              </Button>
+            )}
             {can('patients.write') && c.status === 'ACTIVE' && (
               <Button size="sm" asChild>
                 <Link href={`/patients/new?ownerId=${c.id}`}>
@@ -129,8 +160,8 @@ function ClientRecord() {
             {(can('clients.archive') || can('clients.merge')) && c.status !== 'MERGED' && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button size="icon" variant="outline" aria-label="More actions">
-                    <MoreHorizontal />
+                  <Button size="sm" variant="outline" aria-label="More actions" title="More actions: merge, archive">
+                    <MoreHorizontal /> More
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -169,6 +200,17 @@ function ClientRecord() {
         }
       />
 
+      {justSaved && (
+        <SavedNextSteps onDismiss={() => setJustSaved(false)}>
+          {can('patients.write') && c.status === 'ACTIVE' && (
+            <Button size="sm" asChild>
+              <Link href={`/patients/new?ownerId=${c.id}`}>
+                <PawPrint /> Add patient
+              </Link>
+            </Button>
+          )}
+        </SavedNextSteps>
+      )}
       {c.status === 'MERGED' && c.mergedInto && (
         <div className="mb-4 rounded-md border border-info/30 bg-info/10 px-4 py-3 text-sm">
           This record was merged into{' '}
@@ -187,7 +229,7 @@ function ClientRecord() {
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <Tabs defaultValue={initialTab} className="min-w-0">
           <TabsList>
-            <TabsTrigger value="animals">Animals ({c.patients.length})</TabsTrigger>
+            <TabsTrigger value="patients">Patients ({c.patients.length})</TabsTrigger>
             <TabsTrigger value="contacts">Contacts & addresses</TabsTrigger>
             <TabsTrigger value="notes">Notes ({c.clientNotes.length})</TabsTrigger>
             <TabsTrigger value="documents">Documents</TabsTrigger>
@@ -196,7 +238,7 @@ function ClientRecord() {
             {can('audit.read') && <TabsTrigger value="history">History</TabsTrigger>}
           </TabsList>
 
-          <TabsContent value="animals">
+          <TabsContent value="patients">
             {c.patients.length ? (
               <div className="grid gap-3 md:grid-cols-2">
                 {c.patients.map((p) => (
@@ -229,7 +271,7 @@ function ClientRecord() {
             ) : (
               <EmptyState
                 icon={PawPrint}
-                title="No animals registered"
+                title="No patients yet"
                 action={
                   can('patients.write') &&
                   c.status === 'ACTIVE' && (
@@ -247,7 +289,7 @@ function ClientRecord() {
           <TabsContent value="contacts" className="grid gap-4">
             <Card>
               <CardHeader>
-                <CardTitle>Authorized, emergency and co-owner contacts</CardTitle>
+                <CardTitle>Authorised, emergency and co-owner contacts</CardTitle>
                 {writable && (
                   <Button size="sm" variant="outline" onClick={() => setContactDlg({ open: true, contact: null })}>
                     <Plus /> Add contact
@@ -266,7 +308,7 @@ function ClientRecord() {
                           {[ct.relationship, ct.phone, ct.email].filter(Boolean).join(' · ')}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {ct.canAuthorizeTreatment && 'May authorize treatment. '}
+                          {ct.canAuthorizeTreatment && 'May authorise treatment. '}
                           {ct.canCollectAnimal && 'May collect animal.'}
                         </p>
                       </div>
@@ -373,7 +415,7 @@ function ClientRecord() {
 
           {can('billing.read') && (
             <TabsContent value="account">
-              <ClientAccount clientId={c.id} />
+              <AccountTab clientId={c.id} />
             </TabsContent>
           )}
 
@@ -397,8 +439,15 @@ function ClientRecord() {
               <CardTitle>Account</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-xs text-muted-foreground">{c.balanceMinor < 0 ? 'Account credit' : 'Outstanding balance'}</p>
-              <p className={`text-2xl font-semibold tabular ${c.balanceMinor > 0 ? 'text-warning' : c.balanceMinor < 0 ? 'text-success' : ''}`}>{fmtMoney(Math.abs(c.balanceMinor), currency)}</p>
+              <p className="text-xs text-muted-foreground">{c.balanceMinor < 0 ? 'Credit' : 'Amount owed'}</p>
+              <p className={`text-2xl font-semibold tabular ${c.balanceMinor > 0 ? 'text-destructive' : c.balanceMinor < 0 ? 'text-success' : ''}`}>
+                {fmtBalance(c.balanceMinor, currency)}
+              </p>
+              {can('payments.take') && c.balanceMinor > 0 && c.status !== 'MERGED' && (
+                <Button size="sm" variant="outline" className="mt-2" onClick={() => setPaying(true)}>
+                  <CreditCard /> Take payment
+                </Button>
+              )}
             </CardContent>
           </Card>
           <Card>
@@ -440,8 +489,8 @@ function ClientRecord() {
           </DialogHeader>
           <ClientForm
             client={c}
-            onSaved={() => {
-              toast.success('Client updated');
+            onSaved={(saved) => {
+              toast.success(saved.displayName ? `Client saved: ${saved.displayName}` : 'Client saved');
               setEditing(false);
               refresh();
             }}
@@ -449,6 +498,16 @@ function ClientRecord() {
           />
         </DialogContent>
       </Dialog>
+      <TakePaymentDialog
+        open={paying}
+        onOpenChange={setPaying}
+        clientId={c.id}
+        onPaid={() => {
+          refresh();
+          qc.invalidateQueries({ queryKey: ['statement', c.id] });
+          qc.invalidateQueries({ queryKey: ['invoices'] });
+        }}
+      />
       <ContactDialog clientId={c.id} contact={contactDlg.contact} open={contactDlg.open} onOpenChange={(open) => setContactDlg({ open })} onSaved={refresh} />
       <AddressDialog
         clientId={c.id}
@@ -537,7 +596,7 @@ function MergeDialog({ survivor, open, onOpenChange, onMerged }: { survivor: Cli
   const merge = useMutation({
     mutationFn: () => api.post<{ moved: Record<string, number> }>('/clients/merge', { survivorId: survivor.id, mergedId: dupe!.id, reason }),
     onSuccess: (r) => {
-      toast.success(`Merged. Moved ${r.moved.patientOwnerships ?? 0} animal(s).`);
+      toast.success(`Clients merged: ${r.moved.patientOwnerships ?? 0} patient${r.moved.patientOwnerships === 1 ? '' : 's'} moved to ${survivor.displayName}`);
       onOpenChange(false);
       setDupe(null);
       setReason('');
@@ -551,7 +610,7 @@ function MergeDialog({ survivor, open, onOpenChange, onMerged }: { survivor: Cli
         <DialogHeader>
           <DialogTitle>Merge duplicate client</DialogTitle>
           <DialogDescription>
-            The duplicate's animals, contacts, addresses, notes and documents move into <b>{survivor.displayName}</b>. The duplicate is kept read-only and cannot be un-merged.
+            The duplicate's patients, contacts, addresses, notes and documents move into <b>{survivor.displayName}</b>. The duplicate is kept read-only and cannot be un-merged.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">

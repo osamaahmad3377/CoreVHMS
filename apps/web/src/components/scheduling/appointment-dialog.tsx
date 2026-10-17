@@ -6,25 +6,97 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { useConfirm } from '../confirm';
 import { Field } from '../forms/field';
 import { FormError } from '../forms/form-error';
 import { DescriptionList, ErrorState, LoadingRows } from '../page';
 import { AlertChip } from '../status';
 import { Button } from '../ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
-import { Input, NativeSelect } from '../ui/input';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
+import { Input, NativeSelect, Textarea } from '../ui/input';
 import { AppointmentStatusBadge, PriorityDot } from './appointment-status';
-import { BookingDialog, type BookingDefaults } from './booking-dialog';
+import { apptWho, statusChangeMessage } from './appointment-text';
+import { BookingDialog, FreeTimeButtons, type AvailabilityRow, type BookingDefaults } from './booking-dialog';
 import { TriageDialog } from './triage-dialog';
 import { GroomingCheckInDialog } from '../boarding/dialogs';
 import { VisitFromAppointmentDialog } from '../livestock/record-dialogs';
 import { useClinicians } from '@/hooks/use-catalog';
-import { ApiError, api } from '@/lib/api';
+import { ApiError, api, qs } from '@/lib/api';
 import { fmtDateTime } from '@/lib/format';
 import { useSession } from '@/lib/session';
-import { branchTime, localDate, minuteOfDay, hhmm, parseHhmm, zonedInstant } from '@/lib/time';
+import { branchTime, localDate, minuteOfDay, hhmm, parseHhmm, todayIn, zonedInstant } from '@/lib/time';
 import type { Appointment } from '@/lib/types';
+import { cn } from '@/lib/utils';
+
+const CANCEL_REASONS = ['Owner cancelled', 'Patient is better', 'Booked by mistake'] as const;
+const OTHER = 'Other';
+
+/** Cancel with a one-tap reason; "Other…" opens a text box. The reason is stored on the appointment. */
+function CancelAppointmentDialog({
+  appointment,
+  tz,
+  open,
+  onOpenChange,
+  onConfirm,
+  pending,
+}: {
+  appointment: Appointment;
+  tz: string;
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  onConfirm: (reason: string) => void;
+  pending: boolean;
+}) {
+  const [choice, setChoice] = useState<string>('');
+  const [other, setOther] = useState('');
+  useEffect(() => {
+    if (open) {
+      setChoice('');
+      setOther('');
+    }
+  }, [open]);
+  const reason = choice === OTHER ? other.trim() : choice;
+  const day = localDate(appointment.startsAt, tz) === todayIn(tz) ? 'today' : `on ${branchTime(appointment.startsAt, tz, 'EEE d MMM')}`;
+  const who = appointment.patient ? `${appointment.patient.name}’s` : `${appointment.client.displayName}’s`;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent size="sm">
+        <DialogHeader>
+          <DialogTitle>
+            Cancel {who} appointment {day} at {branchTime(appointment.startsAt, tz)}?
+          </DialogTitle>
+          <DialogDescription>Choose a reason. The time becomes free for other bookings.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-2" role="radiogroup" aria-label="Reason for cancelling">
+          {[...CANCEL_REASONS, OTHER].map((r) => (
+            <button
+              key={r}
+              type="button"
+              role="radio"
+              aria-checked={choice === r}
+              onClick={() => setChoice(r)}
+              className={cn('rounded-md border px-3 py-2 text-left text-sm hover:bg-muted', choice === r && 'border-primary bg-primary/10 font-medium')}
+            >
+              {r === OTHER ? 'Other…' : r}
+            </button>
+          ))}
+          {choice === OTHER && (
+            <Field label="Reason" htmlFor="cancel-other" required>
+              <Textarea id="cancel-other" rows={2} autoFocus maxLength={500} value={other} onChange={(e) => setOther(e.target.value)} />
+            </Field>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Keep appointment
+          </Button>
+          <Button variant="destructive" disabled={!reason} loading={pending} onClick={() => onConfirm(reason)}>
+            Cancel appointment
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export function AppointmentDialog({ id, open, onOpenChange }: { id: string | null; open: boolean; onOpenChange: (o: boolean) => void }) {
   const { session, can } = useSession();
@@ -32,7 +104,7 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
   const qc = useQueryClient();
   const router = useRouter();
   const [moduleDlg, setModuleDlg] = useState<null | 'grooming' | 'visit'>(null);
-  const confirm = useConfirm();
+  const [cancelling, setCancelling] = useState(false);
   const q = useQuery({ queryKey: ['appointment', id], queryFn: () => api.get<Appointment>(`/appointments/${id}`), enabled: open && !!id });
   const clinicians = useClinicians(session.branch?.id);
   const [mode, setMode] = useState<'view' | 'reschedule'>('view');
@@ -66,7 +138,8 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
     mutationFn: (body: { action: string; reason?: string }) => api.post<Appointment & { encounterId: string | null }>(`/appointments/${id}/status`, body),
     onSuccess: (a, vars) => {
       refresh();
-      toast.success(`${a.appointmentNo}: ${enumLabel(a.status)}`);
+      setCancelling(false);
+      toast.success(statusChangeMessage(vars.action, a, tz));
       if (vars.action === 'start' && a.encounterId) router.push(`/consultations/${a.encounterId}`);
     },
     onError: (e: Error) => toast.error(e.message),
@@ -77,8 +150,9 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
       api.patch<Appointment>(`/appointments/${id}`, { startsAt: zonedInstant(date, parseHhmm(time), tz).toISOString(), clinicianId: clinicianId || null, ...override }),
     onSuccess: (after) => {
       // The API resets a confirmed appointment to Booked when its time changes, so the client should be asked again.
-      if (q.data?.status === 'CONFIRMED' && after.status === 'BOOKED') toast.warning('Time changed — confirmation reset to Booked');
-      else toast.success('Appointment moved');
+      const when = `${apptWho(after)}, ${branchTime(after.startsAt, tz, 'EEE d MMM')} at ${branchTime(after.startsAt, tz)}${after.clinician ? ` with ${after.clinician.name}` : ''} (${after.appointmentNo})`;
+      if (q.data?.status === 'CONFIRMED' && after.status === 'BOOKED') toast.warning(`Appointment moved: ${when}. Ask the owner to confirm the new time again.`);
+      else toast.success(`Appointment moved: ${when}`);
       refresh();
       setMode('view');
     },
@@ -87,12 +161,19 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
 
   const a = q.data;
   const s = a?.status;
+  // Free start times for the reschedule form: the chosen vet's, or every vet's when none is chosen.
+  const availability = useQuery({
+    queryKey: ['availability', a?.branchId, date, a?.appointmentType.id, clinicianId],
+    queryFn: () => api.get<AvailabilityRow[]>(`/appointments/availability${qs({ branchId: a!.branchId, date, appointmentTypeId: a!.appointmentType.id, clinicianId: clinicianId || undefined })}`),
+    enabled: open && mode === 'reschedule' && !!a && !!date,
+  });
+  const freeSlots = [...new Set((availability.data ?? []).filter((c) => !clinicianId || c.clinicianId === clinicianId).flatMap((c) => c.slots))].sort();
   const actions: { key: string; label: string; icon: React.ComponentType; show: boolean; variant?: 'outline' | 'default' | 'destructive'; reason?: boolean }[] = a
     ? [
-        { key: 'confirm', label: 'Confirm', icon: ClipboardCheck, show: s === 'BOOKED' && (can('appointments.write') || can('appointments.checkin')), variant: 'outline' },
+        { key: 'confirm', label: 'Owner confirmed', icon: ClipboardCheck, show: s === 'BOOKED' && (can('appointments.write') || can('appointments.checkin')), variant: 'outline' },
         { key: 'check-in', label: 'Check in', icon: LogIn, show: (s === 'BOOKED' || s === 'CONFIRMED') && can('appointments.checkin') },
         { key: 'start', label: 'Start consultation', icon: Play, show: ['BOOKED', 'CONFIRMED', 'CHECKED_IN'].includes(s!) && !!a.patient && can('clinical.write') },
-        { key: 'complete', label: 'Complete', icon: CheckCircle2, show: (s === 'CHECKED_IN' || s === 'IN_CONSULTATION') && (can('clinical.write') || can('appointments.checkin')), variant: 'outline' },
+        { key: 'complete', label: 'Mark finished', icon: CheckCircle2, show: (s === 'CHECKED_IN' || s === 'IN_CONSULTATION') && (can('clinical.write') || can('appointments.checkin')), variant: 'outline' },
         { key: 'no-show', label: 'No-show', icon: UserX, show: (s === 'BOOKED' || s === 'CONFIRMED') && new Date(a.startsAt) < new Date() && (can('appointments.write') || can('appointments.checkin')), variant: 'outline' },
         { key: 'revert', label: s === 'NO_SHOW' ? 'Undo no-show' : 'Undo check-in', icon: XCircle, show: (s === 'CHECKED_IN' || s === 'NO_SHOW') && can('appointments.checkin'), variant: 'outline' },
         { key: 'cancel', label: 'Cancel appointment', icon: XCircle, show: ['BOOKED', 'CONFIRMED', 'CHECKED_IN'].includes(s!) && can('appointments.write'), variant: 'destructive', reason: true },
@@ -139,10 +220,8 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
                       { label: 'Patient', value: a.patient ? <Link className="text-primary hover:underline" href={`/patients/${a.patient.id}`}>{a.patient.name} ({a.patient.species.name})</Link> : 'Not specified' },
                       { label: 'Client', value: <Link className="text-primary hover:underline" href={`/clients/${a.client.id}`}>{a.client.displayName}</Link> },
                       { label: 'Phone', value: a.client.mobilePhone },
-                      { label: 'Clinician', value: a.clinician?.name ?? 'Unassigned' },
+                      { label: 'Vet', value: a.clinician?.name ?? 'No vet yet' },
                       { label: 'Rooms', value: a.resources.map((r) => r.name).join(', ') },
-                      // Walk-ins are always stored as overbooked (they sit alongside bookings), so the flag is noise for them.
-                      { label: 'Number', value: `${a.appointmentNo} · ${enumLabel(a.source)}${a.isOverbooked && a.source !== 'WALK_IN' ? ' · overbooked' : ''}` },
                       { label: 'Reason', value: a.reason },
                       { label: 'Notes', value: a.notes },
                       { label: 'Checked in', value: a.checkedInAt && fmtDateTime(a.checkedInAt) },
@@ -150,6 +229,12 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
                       ...(a.cancelReason ? [{ label: 'Cancelled', value: `${fmtDateTime(a.cancelledAt)} — ${a.cancelReason}` }] : []),
                     ]}
                   />
+                  {/* Reference details for the office; kept small so they do not compete with the actions. */}
+                  <p className="text-2xs text-muted-foreground">
+                    {/* Walk-ins are always stored as overbooked (they sit alongside bookings), so the flag is noise for them. */}
+                    Ref. {a.appointmentNo} · booked via {enumLabel(a.source).toLowerCase()}
+                    {a.isOverbooked && a.source !== 'WALK_IN' ? ' · double-booked' : ''}
+                  </p>
                   {hasActions && (
                   <div className="flex flex-wrap gap-2 border-t pt-3">
                     {a.encounter && (
@@ -192,10 +277,8 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
                         variant={x.variant ?? 'default'}
                         loading={act.isPending && act.variables?.action === x.key}
                         onClick={async () => {
-                          if (x.reason) {
-                            const r = await confirm({ title: `Cancel ${a.appointmentNo}?`, requireReason: true, reasonLabel: 'Cancellation reason', destructive: true, confirmLabel: 'Cancel appointment', cancelLabel: 'Keep appointment' });
-                            if (r.confirmed) act.mutate({ action: x.key, reason: r.reason });
-                          } else act.mutate({ action: x.key });
+                          if (x.reason) setCancelling(true);
+                          else act.mutate({ action: x.key });
                         }}
                       >
                         <x.icon /> {x.label}
@@ -230,12 +313,22 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
                   <div className="grid gap-3 sm:grid-cols-3">
                     <Field label="Date" htmlFor="rs-date"><Input id="rs-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
                     <Field label="Time" htmlFor="rs-time"><Input id="rs-time" type="time" step={300} value={time} onChange={(e) => setTime(e.target.value)} /></Field>
-                    <Field label="Clinician" htmlFor="rs-clin">
+                    <Field label="Vet" htmlFor="rs-clin">
                       <NativeSelect id="rs-clin" value={clinicianId} onChange={(e) => setClinicianId(e.target.value)}>
-                        <option value="">Unassigned</option>
+                        <option value="">No vet yet</option>
                         {clinicians.data?.map((c) => <option key={c.membershipId} value={c.membershipId}>{c.name}</option>)}
                       </NativeSelect>
                     </Field>
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs font-medium text-muted-foreground">{clinicianId ? 'Free times for this vet' : 'Free times (any vet)'}</p>
+                    {availability.isLoading ? (
+                      <p className="text-xs text-muted-foreground">Checking which times are free…</p>
+                    ) : freeSlots.length ? (
+                      <FreeTimeButtons slots={freeSlots} tz={tz} value={time} onPick={setTime} />
+                    ) : (
+                      <p className="text-xs text-muted-foreground">No free times on this date. Try another day.</p>
+                    )}
                   </div>
                   <div className="flex justify-end gap-2">
                     <Button variant="outline" onClick={() => setMode('view')}>Back</Button>
@@ -247,6 +340,16 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
           )}
         </DialogContent>
       </Dialog>
+      {a && (
+        <CancelAppointmentDialog
+          appointment={a}
+          tz={tz}
+          open={cancelling}
+          onOpenChange={setCancelling}
+          pending={act.isPending && act.variables?.action === 'cancel'}
+          onConfirm={(reason) => act.mutate({ action: 'cancel', reason })}
+        />
+      )}
       {a?.patient && (
         <TriageDialog
           open={triageOpen}

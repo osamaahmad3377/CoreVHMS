@@ -16,6 +16,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/input';
 import { api, qs } from '@/lib/api';
 import { fmtDate, fmtMoney } from '@/lib/format';
+import { splitRef } from '@/lib/labels';
 import { useSession } from '@/lib/session';
 import type { Charge, ClientDetail, Invoice } from '@/lib/types';
 import { calcLine } from '@vcms/shared';
@@ -54,7 +55,7 @@ function Builder() {
   const save = useMutation({
     mutationFn: (issue: boolean) => api.post<Invoice>('/invoices', { clientId: client?.id, chargeIds: selected, lines: toPayload(lines, currency), notes: notes || null, issue }),
     onSuccess: (inv) => {
-      toast.success(inv.status === 'DRAFT' ? 'Draft invoice saved' : `${inv.invoiceNo} issued`);
+      toast.success(inv.status === 'DRAFT' ? 'Draft invoice saved' : `${inv.invoiceNo} finished`);
       router.push(`/billing/invoices/${inv.id}`);
     },
     onError: (e: Error) => setError(e.message),
@@ -63,7 +64,7 @@ function Builder() {
   const empty = !selected.length && !lines.length;
   return (
     <>
-      <PageHeader title="New invoice" breadcrumbs={[{ label: 'Billing', href: '/billing' }, { label: 'New invoice' }]} description="Select the client's unbilled charges and add any other items. Drafts can be edited; issued invoices are final and are corrected with credit notes." />
+      <PageHeader title="New invoice" breadcrumbs={[{ label: 'Billing', href: '/billing' }, { label: 'New invoice' }]} description="Tick the client’s items that are not yet invoiced and add anything else. A draft can still be changed; a finished invoice cannot." />
       {error && <div className="mb-4"><FormError message={error} /></div>}
       <div className="grid gap-4">
         <Card>
@@ -76,7 +77,7 @@ function Builder() {
         {client && (
           <Card>
             <CardHeader>
-              <CardTitle>Unbilled charges</CardTitle>
+              <CardTitle>Not yet invoiced</CardTitle>
               {!!charges.data?.data.length && <span className="text-xs text-muted-foreground">{selected.length} of {charges.data.data.length} selected</span>}
             </CardHeader>
             {charges.isLoading ? (
@@ -87,7 +88,7 @@ function Builder() {
                   <li key={c.id} className="flex items-center gap-3 px-4 py-2">
                     <Checkbox aria-label={`Include ${c.description}`} checked={selected.includes(c.id)} onCheckedChange={(v) => setSelected((s) => (v ? [...s, c.id] : s.filter((x) => x !== c.id)))} />
                     <div className="min-w-0 flex-1 text-sm">
-                      <p className="truncate font-medium">{c.description}</p>
+                      <p className="truncate font-medium">{splitRef(c.description)[0]}</p>
                       <p className="text-xs text-muted-foreground">{c.patient?.name ? `${c.patient.name} · ` : ''}{fmtDate(c.createdAt)} · {c.quantity} × {fmtMoney(c.unitPriceMinor, currency)}</p>
                     </div>
                     <span className="text-sm tabular">{fmtMoney(Math.round(c.quantity * c.unitPriceMinor), currency)}</span>
@@ -95,7 +96,7 @@ function Builder() {
                 ))}
               </ul>
             ) : (
-              <p className="px-4 pb-4 text-sm text-muted-foreground">No unbilled charges for this client.</p>
+              <p className="px-4 pb-4 text-sm text-muted-foreground">Nothing is waiting to be invoiced for this client.</p>
             )}
           </Card>
         )}
@@ -113,10 +114,11 @@ function Builder() {
             <TotalsBox {...totals} inclusive={cat.pricesIncludeTax} />
           </CardContent>
         </Card>
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <p className="mr-auto text-xs text-muted-foreground">“Finish invoice”: after this it can't be changed; corrections are made with a credit note.</p>
           <Button variant="outline" onClick={() => router.back()}>Cancel</Button>
           <Button variant="outline" disabled={!client || empty} loading={save.isPending && save.variables === false} onClick={() => { setError(null); save.mutate(false); }}>Save draft</Button>
-          <Button disabled={!client || empty} loading={save.isPending && save.variables === true} onClick={() => { setError(null); save.mutate(true); }}>Issue invoice</Button>
+          <Button disabled={!client || empty} loading={save.isPending && save.variables === true} onClick={() => { setError(null); save.mutate(true); }}>Finish invoice</Button>
         </div>
       </div>
     </>

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '@/components/page';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ShortcutList } from '@/components/help/shortcuts';
-import { GLOSSARY, GUIDES, type HelpGuide } from '@/lib/help-content';
+import { GLOSSARY, GUIDES, SYNONYMS, type HelpGuide } from '@/lib/help-content';
 import { hrefPermissions } from '@/lib/navigation';
 import { useSession } from '@/lib/session';
 import { cn } from '@/lib/utils';
@@ -24,6 +24,25 @@ function normalise(text: string): string {
 function hasWord(haystack: string, word: string): boolean {
   if (haystack.includes(word)) return true;
   return word.length > 3 && word.endsWith('s') && haystack.includes(word.slice(0, -1));
+}
+
+/** A search word matches its own text or one of its synonyms ("bill" also finds "invoice"). */
+function matchesWord(haystack: string, word: string): boolean {
+  return hasWord(haystack, word) || (SYNONYMS[word] ?? []).some((alt) => haystack.includes(alt));
+}
+
+/** Two-word phrases with a synonym ("no show") are matched as one word. */
+function searchWords(term: string): string[] {
+  const words = term ? term.split(' ') : [];
+  const out: string[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const pair = `${words[i]} ${words[i + 1] ?? ''}`.trim();
+    if (i + 1 < words.length && pair === 'no show') {
+      out.push(pair);
+      i++;
+    } else out.push(words[i]);
+  }
+  return out;
 }
 
 function Guide({ g, open, onToggle }: { g: HelpGuide; open: boolean; onToggle: () => void }) {
@@ -85,7 +104,7 @@ export default function HelpPage() {
   }, []);
 
   const term = normalise(q);
-  const words = useMemo(() => (term ? term.split(' ') : []), [term]);
+  const words = useMemo(() => searchWords(term), [term]);
   const guides = useMemo(
     () =>
       GUIDES.filter((g) => !g.feature || session.features?.[g.feature])
@@ -93,14 +112,15 @@ export default function HelpPage() {
         .filter((g) => {
           if (!words.length) return true;
           const text = normalise([g.title, g.summary, g.area, ...g.steps, ...(g.tips ?? []), ...(g.keywords ?? [])].join(' '));
-          return words.every((w) => hasWord(text, w));
+          return words.every((w) => matchesWord(text, w));
         }),
     [scope, words, canAny, session.features],
   );
-  const glossary = GLOSSARY.filter((g) => {
+  // "For my role" shows the terms for this person's job first (front desk: walk-in, no-show, triage, credit, receipt).
+  const glossary = GLOSSARY.filter((g) => scope === 'all' || !g.anyOf?.length || canAny(...g.anyOf)).filter((g) => {
     if (!words.length) return true;
     const text = normalise(`${g.term} ${g.meaning}`);
-    return words.every((w) => hasWord(text, w));
+    return words.every((w) => matchesWord(text, w));
   });
   const areas = [...new Set(guides.map((g) => g.area))];
 
@@ -115,7 +135,7 @@ export default function HelpPage() {
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="What do you want to do? e.g. refund, vaccine, stock count"
+                placeholder="What do you want to do? e.g. take payment, no show, change phone"
                 aria-label="Search help"
                 className="h-11 w-full rounded-lg border border-input bg-card pl-9 pr-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />

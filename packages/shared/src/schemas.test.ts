@@ -27,10 +27,16 @@ describe('form-friendly schemas', () => {
     expect('notes' in r ? r.notes : undefined).toBeUndefined();
   });
 
-  it('requires a surname for individuals and a contact method', () => {
+  it('requires one name for individuals (surname optional) and a contact method', () => {
     expect(createClientSchema.safeParse({ type: 'INDIVIDUAL', mobilePhone: '0300 1234567' }).success).toBe(false);
+    expect(createClientSchema.safeParse({ type: 'INDIVIDUAL', firstName: 'Bilal', mobilePhone: '0300 1234567' }).success).toBe(true);
     expect(createClientSchema.safeParse({ type: 'INDIVIDUAL', lastName: 'Ali' }).success).toBe(false);
     expect(createClientSchema.safeParse({ type: 'FARM', organizationName: 'Green Farm', mobilePhone: '0300 1234567' }).success).toBe(true);
+    const bad = createClientSchema.safeParse({ type: 'INDIVIDUAL', firstName: 'Bilal', mobilePhone: '0300-abc', email: 'bilal@' });
+    expect(bad.success).toBe(false);
+    const messages = bad.success ? [] : bad.error.issues.map((i) => i.message);
+    expect(messages).toContain('Enter a mobile number like 0300 1234567');
+    expect(messages).toContain('Email looks incomplete — e.g. name@gmail.com');
   });
 
   it('rejects invalid weights and body condition scores', () => {

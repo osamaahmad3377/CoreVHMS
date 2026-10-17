@@ -33,7 +33,7 @@ function Accept({ mode }: { mode: 'accept' | 'reset' }) {
   if (done) return <PortalAuthCard title="Password changed" description="You can now sign in with your new password."><Button asChild className="w-full"><a href="/portal/login">Sign in</a></Button></PortalAuthCard>;
   return (
     <PortalAuthCard title={mode === 'accept' ? 'Set up your account' : 'Choose a new password'} description="Use at least 10 characters, with upper-case and lower-case letters and a number.">
-      <form className="grid gap-3" onSubmit={submit}>
+      <form method="post" className="grid gap-3" onSubmit={submit}>
         {!token && <FormError message="This link is incomplete. Open the link from your email again." />}
         {error && <FormError message={error} />}
         <Field label="New password" htmlFor="pa-pw"><Input id="pa-pw" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></Field>

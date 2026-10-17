@@ -20,6 +20,8 @@ export const productSchema = z.object({
   dispensingUnit: reqText(20),
   minDispenseIncrement: z.coerce.number().positive().max(1000).default(1),
   activeIngredients: z.array(z.string().trim().min(1).max(80)).max(10).default([]),
+  /** Drug class / family (e.g. "Penicillins", "NSAIDs"); used with the ingredients for allergy checks. */
+  drugClass: optText(120),
   manufacturer: optText(120),
   requiresPrescription: z.boolean().default(true),
   isControlled: z.boolean().default(false),
@@ -30,6 +32,14 @@ export const productSchema = z.object({
   isActive: z.boolean().default(true),
 });
 export type ProductInput = z.infer<typeof productSchema>;
+
+/**
+ * Clinic prescribing preferences. `confirmUnitsPerDoseAbove` is a data-entry safety prompt ("This is 9 tablets
+ * per dose — is that correct?"), not a dose limit: the prescriber confirms and may continue.
+ */
+export const pharmacySettingsSchema = z.object({
+  confirmUnitsPerDoseAbove: z.coerce.number().int().min(1).max(1000),
+});
 
 export const productListQuery = paginationQuery.extend({
   type: z.enum(PRODUCT_TYPES).optional(),

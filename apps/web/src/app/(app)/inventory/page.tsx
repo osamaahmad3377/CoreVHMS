@@ -1,7 +1,7 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
 import type { Paginated } from '@vcms/shared';
-import { AlertTriangle, Boxes, CalendarClock, Lock, PackagePlus } from 'lucide-react';
+import { AlertTriangle, Boxes, CalendarClock, Lock, PackagePlus, ShoppingCart } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
@@ -43,31 +43,37 @@ function Stock() {
     <>
       <PageHeader
         help="receive-stock"
-        title="Inventory & procurement"
-        description="Stock on hand by batch and location. Dispensing, administration and counter sales deduct stock automatically."
+        title="Stock"
+        description="What you have in stock. Sales and medicines given are taken off automatically."
         actions={can('inventory.write') && <Button size="sm" disabled={noLocations} onClick={() => setReceiving(true)}><PackagePlus /> Receive stock</Button>}
       />
       <SectionNav links={INVENTORY_LINKS} />
       {noLocations && (
         <Card className="mb-4 border-warning/40 bg-warning/5 p-4 text-sm">
-          No stock locations are set up yet, so stock is not being tracked. <Link className="font-medium underline" href="/inventory/locations">Add a pharmacy or store location</Link> to start receiving stock.
+          No store rooms are set up yet, so stock is not being tracked. <Link className="font-medium underline" href="/inventory/locations">Add a store room</Link> (for example Pharmacy or Shop) to start receiving stock.
         </Card>
       )}
       <Card>
         <div className="flex flex-col gap-2 border-b p-3 lg:flex-row lg:items-center">
           <SearchInput value={params.q} onChange={(q) => url.set({ q, page: 1 })} placeholder="Product name, SKU or barcode" />
-          <NativeSelect aria-label="Location" className="lg:w-48" value={params.locationId} onChange={(e) => url.set({ locationId: e.target.value, page: 1 })}>
-            <option value="">All locations</option>
+          <NativeSelect aria-label="Store room" className="lg:w-48" value={params.locationId} onChange={(e) => url.set({ locationId: e.target.value, page: 1 })}>
+            <option value="">All store rooms</option>
             {(locations.data ?? []).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </NativeSelect>
           <NativeSelect aria-label="Filter" className="lg:w-48" value={filter} onChange={(e) => url.set({ filter: e.target.value, page: 1 })}>
             <option value="">All stocked products</option>
-            <option value="low">At or below reorder level</option>
+            <option value="low">Low stock (order more)</option>
             <option value="exp30">Expiring within 30 days</option>
             <option value="exp90">Expiring within 90 days</option>
           </NativeSelect>
           {query.data && <p className="text-sm text-muted-foreground lg:ml-auto">Value at cost <b className="tabular text-foreground">{fmtMoney(query.data.totals.valueMinor, currency)}</b></p>}
         </div>
+        {filter === 'low' && can('procurement.write') && !!query.data?.data.length && (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/40 px-3 py-2 text-sm">
+            <span>These products are running low. Items already on an order are marked.</span>
+            <Button size="sm" onClick={() => router.push('/inventory/purchase-orders?new=suggested')}><ShoppingCart /> Order these</Button>
+          </div>
+        )}
         <DataTable
           query={query}
           rowKey={(r) => r.id}
@@ -77,10 +83,10 @@ function Stock() {
           onPage={(page) => url.set({ page })}
           empty={<EmptyState icon={Boxes} title="No stock to show" description="Products appear here once they are marked as stock-tracked and stock is received." />}
           columns={[
-            { key: 'name', header: 'Product', cell: (r) => <div><Link href={`/inventory/products/${r.id}`} className="flex items-center gap-1 font-medium hover:underline">{r.name}{r.isControlled && <Lock className="h-3 w-3 text-warning" aria-label="Controlled" />}</Link><p className="text-xs text-muted-foreground">{[r.sku, ...r.locations.map((l) => `${l.name}: ${l.quantity}`)].filter(Boolean).join(' · ')}</p></div> },
+            { key: 'name', header: 'Product', cell: (r) => <div><Link href={`/inventory/products/${r.id}`} className="flex items-center gap-1 font-medium hover:underline">{r.name}{r.isControlled && <Lock className="h-3 w-3 text-warning" aria-label="Controlled" />}</Link><p className="text-xs text-muted-foreground">{[r.sku, ...r.locations.map((l) => `${l.name}: ${l.quantity}`)].filter(Boolean).join(' · ')}</p>{r.low && !!r.openOrders?.length && <p className="text-xs text-primary">Already on order ({r.openOrders.map((o, i) => <span key={o.id}>{i > 0 && ', '}<Link className="hover:underline" href={`/inventory/purchase-orders/${o.id}`} onClick={(e) => e.stopPropagation()}>{o.poNo}</Link></span>)})</p>}</div> },
             { key: 'avail', header: 'Available', className: 'text-right tabular', headerClassName: 'text-right', cell: (r) => <span className={r.low ? 'font-semibold text-destructive' : ''}>{r.available} <span className="text-xs font-normal text-muted-foreground">{r.dispensingUnit}</span></span> },
             { key: 'unusable', header: 'Unusable', className: 'text-right tabular', headerClassName: 'text-right', cell: (r) => (r.unusable ? <span className="text-warning" title="Expired, quarantined or recalled">{r.unusable}</span> : '—') },
-            { key: 'reorder', header: 'Reorder at', className: 'text-right tabular', headerClassName: 'text-right', cell: (r) => r.reorderLevel ?? '—' },
+            { key: 'reorder', header: 'Order more below', className: 'text-right tabular', headerClassName: 'text-right', cell: (r) => r.reorderLevel ?? '—' },
             { key: 'exp', header: 'Next expiry', cell: (r) => <span className={`whitespace-nowrap text-sm ${r.expiringSoon ? 'font-medium text-warning' : ''}`}>{fmtDate(r.nextExpiry)}</span> },
             { key: 'value', header: 'Value', className: 'text-right tabular', headerClassName: 'text-right', cell: (r) => fmtMoney(r.valueMinor, currency) },
             { key: 'flags', header: '', cell: (r) => <div className="flex gap-1">{r.low && <Badge variant="destructive"><AlertTriangle className="h-3 w-3" /> Low</Badge>}{r.expiringSoon && <Badge variant="warning"><CalendarClock className="h-3 w-3" /> Expiring</Badge>}</div> },

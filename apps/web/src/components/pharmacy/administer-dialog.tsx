@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input, NativeSelect } from '../ui/input';
 import { ProductPicker } from './product-picker';
 import { ApiError, api } from '@/lib/api';
+import { routeLabel } from '@/lib/labels';
 import type { Product } from '@/lib/types';
 
 /** Records medication given in clinic (injection, in-clinic dose, vaccine). */
@@ -57,8 +58,8 @@ export function AdministerDialog({ open, onOpenChange, patientId, encounterId }:
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="lg">
         <DialogHeader>
-          <DialogTitle>Record medication given</DialogTitle>
-          <DialogDescription>In-clinic administration. Withdrawal periods start automatically for food-producing animals when configured for the product.</DialogDescription>
+          <DialogTitle>Give medicine now (in clinic)</DialogTitle>
+          <DialogDescription>Record a medicine you give here — an injection, a tablet or a vaccine. Checked against the patient’s allergies. Withdrawal periods start automatically for food-producing animals when configured for the product.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
           {error && <FormError message={error} />}
@@ -75,7 +76,7 @@ export function AdministerDialog({ open, onOpenChange, patientId, encounterId }:
             <Field label="Dose" htmlFor="ad-d" required><Input id="ad-d" inputMode="decimal" value={f.dose} onChange={set('dose')} /></Field>
             <Field label="Unit" htmlFor="ad-u"><Input id="ad-u" value={f.doseUnit} onChange={set('doseUnit')} /></Field>
             <Field label="Route" htmlFor="ad-r">
-              <NativeSelect id="ad-r" value={f.route} onChange={set('route')}>{ROUTES.map((r) => <option key={r}>{r}</option>)}</NativeSelect>
+              <NativeSelect id="ad-r" value={f.route} onChange={set('route')}>{ROUTES.map((r) => <option key={r} value={r}>{routeLabel(r)}</option>)}</NativeSelect>
             </Field>
             <Field label="Site" htmlFor="ad-s"><Input id="ad-s" placeholder="e.g. L flank" value={f.site} onChange={set('site')} /></Field>
             <Field label="Batch / lot" htmlFor="ad-b"><Input id="ad-b" value={f.batchNumber} onChange={set('batchNumber')} /></Field>

@@ -44,7 +44,7 @@ export default function TemplatesPage() {
         <Card className="h-fit">
           <CardHeader>
             <CardTitle>Consultation templates</CardTitle>
-            <Button size="sm" variant="outline" onClick={() => setSelected('new')}><Plus /> New</Button>
+            <Button size="sm" variant="outline" onClick={() => setSelected('new')}><Plus /> Add template</Button>
           </CardHeader>
           {q.isLoading ? <LoadingRows rows={3} /> : q.data?.length ? (
             <ul className="p-1">

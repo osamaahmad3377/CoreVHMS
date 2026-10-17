@@ -172,7 +172,7 @@ function ReceiptSettingsForm({ ctx }: { ctx: ReceiptContext }) {
                         options={[{ value: 'LEFT', label: <AlignLeft className="h-4 w-4" />, title: 'Left' }, { value: 'CENTER', label: <AlignCenter className="h-4 w-4" />, title: 'Centre' }, { value: 'RIGHT', label: <AlignRight className="h-4 w-4" />, title: 'Right' }]}
                       />
                     </Field>
-                    <Toggle label="Thermal-friendly (black & white)" hint="Converts colours to sharp black and white" checked={f.logoMonochrome} onChange={(v) => set('logoMonochrome', v)} />
+                    <Toggle label="Black & white logo (for receipt printers)" hint="Converts colours to sharp black and white" checked={f.logoMonochrome} onChange={(v) => set('logoMonochrome', v)} />
                   </div>
                 </>
               )}
@@ -183,7 +183,7 @@ function ReceiptSettingsForm({ ctx }: { ctx: ReceiptContext }) {
             <CardHeader><div><CardTitle>Text</CardTitle><CardDescription>Shown in the header and at the bottom of the receipt.</CardDescription></div></CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2">
               <Field label="Receipt title" htmlFor="rc-t" required><Input id="rc-t" value={f.title} maxLength={60} onChange={(e) => set('title', e.target.value)} /></Field>
-              <Field label="Header line" htmlFor="rc-h" hint="e.g. opening hours or website"><Input id="rc-h" value={f.headerText ?? ''} maxLength={300} onChange={(e) => set('headerText', e.target.value || null)} /></Field>
+              <Field label="Message at the top" htmlFor="rc-h" hint="e.g. opening hours or website"><Input id="rc-h" value={f.headerText ?? ''} maxLength={300} onChange={(e) => set('headerText', e.target.value || null)} /></Field>
               <Field label="Thank-you message" htmlFor="rc-f"><Textarea id="rc-f" rows={2} value={f.footerText ?? ''} maxLength={300} onChange={(e) => set('footerText', e.target.value || null)} /></Field>
               <Field label="Returns / policy (small print)" htmlFor="rc-p"><Textarea id="rc-p" rows={2} value={f.policyText ?? ''} maxLength={600} onChange={(e) => set('policyText', e.target.value || null)} /></Field>
             </CardContent>
@@ -203,14 +203,14 @@ function ReceiptSettingsForm({ ctx }: { ctx: ReceiptContext }) {
                 <Toggle label="Served by (staff name)" checked={f.showServedBy} onChange={(v) => set('showServedBy', v)} />
                 <Toggle label="Customer name" checked={f.showCustomer} onChange={(v) => set('showCustomer', v)} />
                 <Toggle label="Patient name" checked={f.showPatient} onChange={(v) => set('showPatient', v)} />
-                <Toggle label="Item codes (SKU)" checked={f.showItemCodes} onChange={(v) => set('showItemCodes', v)} />
+                <Toggle label="Product codes" checked={f.showItemCodes} onChange={(v) => set('showItemCodes', v)} />
                 <Toggle label="Subtotal and tax lines" checked={f.showTaxLine} onChange={(v) => set('showTaxLine', v)} />
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader><div><CardTitle>Printing</CardTitle><CardDescription>Receipts print on the printer chosen in the print window; browsers remember it. To print without the window, start Chrome on the counter PC with <code className="text-xs">--kiosk-printing</code>.</CardDescription></div></CardHeader>
+            <CardHeader><div><CardTitle>Printing</CardTitle><CardDescription>Receipts print on the printer you choose in the print window. Ask your IT person if you want to skip that window.</CardDescription></div></CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2">
               <Toggle label="Print automatically after each counter sale" checked={f.autoPrint} onChange={(v) => set('autoPrint', v)} />
               <Field label="Copies" htmlFor="rc-c" hint="With 2 copies: customer copy and clinic copy">

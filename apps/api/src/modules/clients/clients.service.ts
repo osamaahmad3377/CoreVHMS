@@ -13,6 +13,7 @@ import { CounterService, formatNumber } from '../../common/counter/counter.servi
 import { notFound, ruleViolation } from '../../common/http/errors';
 import { orderBy, pageArgs, paginated } from '../../common/http/pagination';
 import { csvCell } from '../../common/util/csv';
+import { phoneSearchDigits } from '../../common/util/phone';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { ClientMergeService } from './client-merge.service';
 
@@ -25,6 +26,7 @@ export function phoneKey(phone?: string | null): string | null {
   return digits.length >= 6 ? digits.slice(-10) : null;
 }
 
+/** First name first ("Bilal Hussain"); one name on its own is fine. Businesses and farms use their name. */
 export function displayNameFor(c: {
   type?: string | null;
   firstName?: string | null;
@@ -33,8 +35,8 @@ export function displayNameFor(c: {
 }): string {
   const isOrg = c.type && !['INDIVIDUAL', 'FAMILY'].includes(c.type);
   if (isOrg && c.organizationName) return c.organizationName;
-  if (c.lastName && c.firstName) return `${c.lastName}, ${c.firstName}`;
-  return c.lastName || c.organizationName || c.firstName || 'Unnamed client';
+  const person = [c.firstName?.trim(), c.lastName?.trim()].filter(Boolean).join(' ');
+  return person || c.organizationName || 'Unnamed client';
 }
 
 const NAME_FIELDS = ['type', 'firstName', 'lastName', 'organizationName'] as const;
@@ -99,8 +101,21 @@ export class ClientsService {
       { organizationName: { contains: t, mode: 'insensitive' } },
       { email: { contains: t, mode: 'insensitive' } },
     ];
-    const digits = t.replace(/\D/g, '');
-    if (digits.length >= 4) clauses.push({ phoneDigits: { contains: digits.slice(-10) } });
+    const phone = phoneSearchDigits(t);
+    if (phone) clauses.push({ phoneDigits: { contains: phone } });
+    // "Bilal Hussain" or "Hussain Bilal": every word must match a name part.
+    const words = t.split(/\s+/).filter((w) => w.length >= 2);
+    if (words.length > 1) {
+      clauses.push({
+        AND: words.map((w) => ({
+          OR: [
+            { firstName: { contains: w, mode: 'insensitive' as const } },
+            { lastName: { contains: w, mode: 'insensitive' as const } },
+            { organizationName: { contains: w, mode: 'insensitive' as const } },
+          ],
+        })),
+      });
+    }
     const num = /^c-?0*(\d+)$/i.exec(t) ?? (/^\d{1,9}$/.test(t) ? [t, t] : null);
     if (num) clauses.push({ number: Number(num[1]) });
     return clauses;

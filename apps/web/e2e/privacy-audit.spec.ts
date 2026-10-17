@@ -14,7 +14,7 @@ test.describe('Privacy requests and audit export', () => {
     await page.getByRole('button', { name: 'Add address' }).click();
     await page.locator('#a1').fill('House 1, Street 2');
     await page.getByLabel('City / town / village').fill('Lahore');
-    await page.getByRole('button', { name: 'Create client' }).click();
+    await page.getByRole('button', { name: 'Add client' }).click();
     await expect(page.getByRole('heading', { name: new RegExp(surname) })).toBeVisible();
 
     // Access request: one JSON file with everything held about the client.

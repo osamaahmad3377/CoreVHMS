@@ -21,6 +21,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input, Textarea } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { fmtDate, fmtMoney } from '@/lib/format';
+import { ESTIMATE_STATUS_LABEL } from '@/lib/labels';
 import { useSession } from '@/lib/session';
 import type { Estimate, Invoice } from '@/lib/types';
 
@@ -44,7 +45,7 @@ function EstimateDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
       <DialogContent size="xl">
         <DialogHeader>
           <DialogTitle>New estimate</DialogTitle>
-          <DialogDescription>A priced treatment plan for the client to approve. It can be converted into a draft invoice later.</DialogDescription>
+          <DialogDescription>A priced treatment plan for the client to agree to. Later it can be turned into an invoice.</DialogDescription>
         </DialogHeader>
         {error && <FormError message={error} />}
         <div className="grid gap-3 sm:grid-cols-2">
@@ -81,7 +82,7 @@ function Estimates() {
   });
   return (
     <>
-      <PageHeader title="Estimates" description="Quotes for planned treatment. An accepted estimate becomes a draft invoice in one click." actions={can('billing.write') && <Button size="sm" onClick={() => setCreate(true)}><Plus /> New estimate</Button>} />
+      <PageHeader title="Estimates" description="Prices for planned treatment, given to the client before the work. When the client agrees, turn it into an invoice." actions={can('billing.write') && <Button size="sm" onClick={() => setCreate(true)}><Plus /> New estimate</Button>} />
       <SectionNav links={BILLING_LINKS} />
       <Card>
         <DataTable
@@ -94,22 +95,22 @@ function Estimates() {
             { key: 'items', header: 'Items', cell: (r) => <span className="text-sm">{r.lines.map((l) => l.description).join(', ')}</span> },
             { key: 'date', header: 'Created', cell: (r) => <span className="whitespace-nowrap text-sm">{fmtDate(r.createdAt)}{r.validUntil && <span className="block text-xs text-muted-foreground">valid to {fmtDate(r.validUntil)}</span>}</span> },
             { key: 'total', header: 'Total', className: 'text-right tabular', headerClassName: 'text-right', cell: (r) => fmtMoney(r.totalMinor, currency) },
-            { key: 'st', header: 'Status', cell: (r) => <CommerceBadge status={r.status} /> },
+            { key: 'st', header: 'Status', cell: (r) => <CommerceBadge status={r.status} labels={ESTIMATE_STATUS_LABEL} /> },
             {
               key: 'act',
               header: '',
               cell: (r) =>
                 r.status === 'CONVERTED' ? (
-                  r.convertedInvoiceId && <Button size="sm" variant="ghost" asChild><Link href={`/billing/invoices/${r.convertedInvoiceId}`}>Invoice</Link></Button>
+                  r.convertedInvoiceId && <Button size="sm" variant="ghost" asChild><Link href={`/billing/invoices/${r.convertedInvoiceId}`}>Open invoice</Link></Button>
                 ) : (
                   can('billing.write') && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild><Button size="sm" variant="outline">Update</Button></DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        {r.status === 'DRAFT' && <DropdownMenuItem onSelect={() => act.mutate({ id: r.id, status: 'SENT' })}>Mark as sent</DropdownMenuItem>}
-                        <DropdownMenuItem onSelect={() => act.mutate({ id: r.id, status: 'ACCEPTED' })}>Client accepted</DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => act.mutate({ id: r.id, status: 'DECLINED' })}>Client declined</DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => act.mutate({ id: r.id, convert: true })}>Convert to draft invoice</DropdownMenuItem>
+                        {r.status === 'DRAFT' && <DropdownMenuItem onSelect={() => act.mutate({ id: r.id, status: 'SENT' })}>Mark as given to client</DropdownMenuItem>}
+                        <DropdownMenuItem onSelect={() => act.mutate({ id: r.id, status: 'ACCEPTED' })}>Client agreed</DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => act.mutate({ id: r.id, status: 'DECLINED' })}>Client said no</DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => act.mutate({ id: r.id, convert: true })}>Turn into invoice (draft)</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   )

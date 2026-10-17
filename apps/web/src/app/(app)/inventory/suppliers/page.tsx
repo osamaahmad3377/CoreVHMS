@@ -49,7 +49,7 @@ function SupplierDialog({ supplier, open, onOpenChange }: { supplier: Supplier |
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="lg">
         <DialogHeader>
-          <DialogTitle>{supplier ? supplier.name : 'New supplier'}</DialogTitle>
+          <DialogTitle>{supplier ? supplier.name : 'Add supplier'}</DialogTitle>
           <DialogDescription>Supplier details, and the account balance: goods received, less supplier payments and goods returned.</DialogDescription>
         </DialogHeader>
         {error && <FormError message={error} />}
@@ -90,7 +90,7 @@ function Suppliers() {
   const query = useQuery({ queryKey: ['suppliers', 'all'], queryFn: () => api.get<Supplier[]>('/suppliers?all=true') });
   return (
     <>
-      <PageHeader title="Suppliers" actions={can('procurement.write') && <Button size="sm" onClick={() => setEditing(null)}><Plus /> New supplier</Button>} />
+      <PageHeader title="Suppliers" actions={can('procurement.write') && <Button size="sm" onClick={() => setEditing(null)}><Plus /> Add supplier</Button>} />
       <SectionNav links={INVENTORY_LINKS} />
       <Card>
         <DataTable

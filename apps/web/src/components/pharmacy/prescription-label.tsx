@@ -1,3 +1,4 @@
+import { findFrequency, ownerAmount, ownerLabelText } from '@vcms/shared';
 import type { ClinicHeader } from '../billing/invoice-document';
 import { fmtDate, fmtDateOnly } from '@/lib/format';
 import { qtyUnit } from '@/lib/labels';
@@ -8,8 +9,6 @@ export function ownerName(c: Prescription['client']) {
   return c.organizationName || [c.title, c.firstName, c.lastName].filter(Boolean).join(' ') || c.displayName;
 }
 
-/** Frequency abbreviations in older label text were saved lower case ("twice daily (bid)"). */
-const upperAbbreviations = (s: string) => s.replace(/\((sid|bid|tid|qid|eod|prn)\)/gi, (m) => m.toUpperCase());
 
 /** Printable dispensing labels (one per item). Shown only when printing. */
 export function PrescriptionLabels({ rx, clinic }: { rx: Prescription; clinic: ClinicHeader }) {
@@ -21,20 +20,21 @@ export function PrescriptionLabels({ rx, clinic }: { rx: Prescription; clinic: C
         return (
           <section key={i.id} className="mb-4 break-inside-avoid border border-black p-3 text-[11pt] leading-snug" style={{ width: '9cm' }}>
             <p className="font-bold">{i.product.name}</p>
-            <p className="my-1 text-[12pt]">{upperAbbreviations(i.instructions)}</p>
+            {/* Owner labels never carry Latin abbreviations (BID, PO…): older text is written out in plain words. */}
+            <p className="my-1 text-[12pt]">{ownerLabelText(i.instructions)}</p>
             <p>
-              {qtyUnit(i.amountPerDose, i.product.dispensingUnit)} per dose · {i.frequencyText}
+              {ownerAmount(i.amountPerDose, i.product.dispensingUnit)} each time · {findFrequency(i.frequencyText)?.ownerText ?? ownerLabelText(i.frequencyText)}
               {i.durationDays ? ` · ${i.durationDays} days` : ''}
             </p>
             <p>
-              Qty: {qtyUnit(last?.quantity ?? i.quantity, i.product.dispensingUnit)}
-              {i.repeats ? ` · repeats: ${i.repeats}` : ''}
+              Quantity: {qtyUnit(last?.quantity ?? i.quantity, i.product.dispensingUnit)}
+              {i.repeats ? ` · refills: ${i.repeats}` : ''}
             </p>
             {last && (last.batchNumber || last.expiryDate) && (
               <p>
                 {last.batchNumber && `Batch ${last.batchNumber}`}
                 {last.batchNumber && last.expiryDate && ' · '}
-                {last.expiryDate && `Exp ${fmtDateOnly(last.expiryDate)}`}
+                {last.expiryDate && `Use before ${fmtDateOnly(last.expiryDate)}`}
               </p>
             )}
             <p className="mt-1">

@@ -8,7 +8,8 @@ test.describe('Staff with a temporary password', () => {
     await page.goto('/settings/staff');
     await page.getByRole('button', { name: 'Add staff' }).click();
     const dlg = page.getByRole('dialog');
-    await dlg.getByRole('radio', { name: /Create temporary password/ }).click();
+    // Temporary password is the default (many clinics have no staff email).
+    await expect(dlg.getByRole('radio', { name: /Create temporary password/ })).toHaveAttribute('aria-checked', 'true');
     await dlg.locator('#m-name').fill('Temp Receptionist');
     await dlg.locator('#m-email').fill(email);
     await dlg.getByRole('checkbox', { name: 'Receptionist' }).click();
@@ -53,5 +54,21 @@ test.describe('Staff with a temporary password', () => {
     await page.getByLabel('Password').fill('Reception2026x');
     await page.getByRole('button', { name: 'Sign in' }).click();
     await expect(page).toHaveURL(/\/dashboard/);
+  });
+
+  test('the Staff page can add a person too; choosing the vet role marks them as a vet', async ({ page }) => {
+    await login(page, 'owner@demo.pk');
+    await page.goto('/staff');
+    await page.getByRole('button', { name: 'Add staff' }).click();
+    const dlg = page.getByRole('dialog', { name: 'Add staff member' });
+    // Six common roles first, the rest behind "More roles…".
+    await expect(dlg.getByRole('checkbox', { name: 'Surgeon / anaesthetist' })).toHaveCount(0);
+    await dlg.getByRole('button', { name: 'More roles…' }).click();
+    await expect(dlg.getByRole('checkbox', { name: 'Surgeon / anaesthetist' })).toBeVisible();
+    const isVet = dlg.getByRole('checkbox', { name: /This person is a vet/ });
+    await expect(isVet).not.toBeChecked();
+    await dlg.getByRole('checkbox', { name: 'Veterinarian' }).click();
+    await expect(isVet).toBeChecked();
+    await dlg.getByRole('button', { name: 'Cancel' }).click();
   });
 });

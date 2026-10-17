@@ -1,12 +1,13 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LEAVE_TYPES, enumLabel } from '@vcms/shared';
-import { CalendarOff, Clock, Edit, Plus, Trash2, UserCog } from 'lucide-react';
+import { CalendarOff, Clock, Edit, Plus, Trash2, UserCog, UserPlus } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirm } from '@/components/confirm';
 import { Field } from '@/components/forms/field';
 import { FormError } from '@/components/forms/form-error';
+import { MemberDialog, TemporaryPasswordDialog, type TemporaryPassword } from '@/components/staff/member-dialog';
 import { EmptyState, ErrorState, LoadingRows, PageHeader } from '@/components/page';
 import { RequirePermission } from '@/components/require';
 import { Badge } from '@/components/ui/badge';
@@ -170,6 +171,8 @@ function Rosters() {
   const q = useQuery({ queryKey: ['roster', session.branch?.id, from, to], queryFn: () => api.get<RosterEntry[]>(`/schedules/roster${qs({ branchId: session.branch?.id, from, to })}`) });
   const [edit, setEdit] = useState<{ entry: RosterEntry | null; key: number }>({ entry: null, key: 0 });
   const [leave, setLeave] = useState(false);
+  const [adding, setAdding] = useState(0);
+  const [temp, setTemp] = useState<TemporaryPassword | null>(null);
   const removeLeave = useMutation({ mutationFn: (id: string) => api.del(`/schedules/leave/${id}`), onSuccess: () => qc.invalidateQueries({ queryKey: ['roster'] }) });
 
   if (q.isLoading) return <LoadingRows />;
@@ -181,12 +184,17 @@ function Rosters() {
     <>
       <PageHeader
         help="setup"
-        title="Staff & rosters"
-        description={`Working hours and leave at ${session.branch?.name}. Rosters drive appointment availability.`}
-        actions={can('staff.manage') && <Button size="sm" variant="outline" onClick={() => setLeave(true)}><CalendarOff /> Record leave</Button>}
+        title="Staff"
+        description={`Working hours and leave at ${session.branch?.name}. Appointments can only be booked when the person is working.`}
+        actions={
+          <>
+            {can('staff.manage') && <Button size="sm" variant="outline" onClick={() => setLeave(true)}><CalendarOff /> Record leave</Button>}
+            {can('users.manage') && <Button size="sm" onClick={() => setAdding(Date.now())}><UserPlus /> Add staff</Button>}
+          </>
+        }
       />
-      <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
-        <Card>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Clock className="h-4 w-4 text-muted-foreground" /> Weekly roster</CardTitle>
           </CardHeader>
@@ -242,7 +250,7 @@ function Rosters() {
             <EmptyState icon={UserCog} title="No staff at this branch" />
           )}
         </Card>
-        <Card className="h-fit">
+        <Card className="h-fit min-w-0 overflow-hidden">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><CalendarOff className="h-4 w-4 text-muted-foreground" /> Upcoming leave</CardTitle>
           </CardHeader>
@@ -251,8 +259,8 @@ function Rosters() {
               {upcomingLeave.map((l) => (
                 <li key={l.id} className="flex items-center gap-2 px-3 py-2">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">{l.name}</p>
-                    <p className="text-xs text-muted-foreground">{enumLabel(l.type)} · {fmtDate(l.startsAt)} – {fmtDate(new Date(new Date(l.endsAt).getTime() - 1))}{l.reason && ` · ${l.reason}`}</p>
+                    <p className="truncate text-sm font-medium">{l.name}</p>
+                    <p className="break-words text-xs text-muted-foreground">{enumLabel(l.type)} · {fmtDate(l.startsAt)} – {fmtDate(new Date(new Date(l.endsAt).getTime() - 1))}{l.reason && ` · ${l.reason}`}</p>
                   </div>
                   {can('staff.manage') && (
                     <Button size="icon-sm" variant="ghost" aria-label="Remove leave" onClick={async () => { const r = await confirm({ title: 'Remove this leave?', destructive: true, confirmLabel: 'Remove' }); if (r.confirmed) removeLeave.mutate(l.id); }}>
@@ -269,6 +277,9 @@ function Rosters() {
       </div>
       {edit.entry && <HoursDialog key={edit.key} entry={edit.entry} open={!!edit.entry} onOpenChange={(o) => !o && setEdit({ entry: null, key: 0 })} />}
       <LeaveDialog roster={roster} open={leave} onOpenChange={setLeave} />
+      {/* Same dialog as Settings → Staff accounts. */}
+      {adding > 0 && <MemberDialog key={adding} member={null} open onOpenChange={(o) => { if (!o) { setAdding(0); qc.invalidateQueries({ queryKey: ['roster'] }); } }} onTemporaryPassword={setTemp} />}
+      <TemporaryPasswordDialog result={temp} onClose={() => setTemp(null)} />
     </>
   );
 }

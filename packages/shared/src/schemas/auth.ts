@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { OptionalModule } from '../modules';
 
 export const passwordPolicy = z
   .string()
@@ -74,7 +75,15 @@ export interface SessionUser {
 
 export interface SessionContext {
   user: SessionUser;
-  organization: { id: string; name: string; country: string; currency: string; logoUrl: string | null } | null;
+  organization: {
+    id: string;
+    name: string;
+    country: string;
+    currency: string;
+    logoUrl: string | null;
+    /** Optional areas this clinic offers (Settings → Services you offer); the rest are hidden, never deleted. */
+    enabledModules: OptionalModule[];
+  } | null;
   branch: { id: string; name: string; timezone: string } | null;
   branches: { id: string; name: string; timezone: string }[];
   organizations: { id: string; name: string }[];

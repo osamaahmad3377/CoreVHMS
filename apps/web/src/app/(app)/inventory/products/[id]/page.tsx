@@ -2,32 +2,34 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { enumLabel, type Paginated } from '@vcms/shared';
 import { PRESCRIBABLE_PRODUCT_TYPES, PRODUCT_TYPE_LABELS } from '@vcms/shared';
-import { Edit, Lock, MoreHorizontal } from 'lucide-react';
+import { Edit, Lock, MoreHorizontal, PackagePlus } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { bpToPct } from '@/components/billing/money';
+import { MoneyInput, bpToPct, parseMoney } from '@/components/billing/money';
 import { CommerceBadge } from '@/components/billing/status';
 import { useConfirm } from '@/components/confirm';
 import { DataTable } from '@/components/data-table';
 import { Field } from '@/components/forms/field';
 import { AdjustDialog, TransferDialog } from '@/components/inventory/batch-dialogs';
+import { needsBatch } from '@/components/inventory/receive-dialog';
 import { MovementsTable } from '@/components/inventory/movements-table';
 import { ProductDialog } from '@/components/pharmacy/product-dialog';
 import { EmptyState, ErrorState, LoadingRows, PageHeader } from '@/components/page';
 import { RequirePermission } from '@/components/require';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/checkbox';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input, NativeSelect } from '@/components/ui/input';
 import { api, qs } from '@/lib/api';
 import { fmtDate, fmtMoney } from '@/lib/format';
+import { defaultLocation, locationLabel, sortedLocations } from '@/lib/locations';
 import { qtyUnit } from '@/lib/labels';
 import { useSession } from '@/lib/session';
 import { cn } from '@/lib/utils';
-import type { Product, ProductStock, StockBatch, StockMovement, TaxRate } from '@/lib/types';
+import type { Product, ProductStock, StockBatch, StockLocation, StockMovement, TaxRate } from '@/lib/types';
 import { localToday } from '@/lib/time';
 
 function Settings({ data }: { data: ProductStock }) {
@@ -53,16 +55,92 @@ function Settings({ data }: { data: ProductStock }) {
           <Switch checked={track} onCheckedChange={setTrack} aria-label="Track stock" />
         </label>
         <div className="grid grid-cols-2 gap-3">
-          <Field label={`Reorder level (${p.dispensingUnit})`} htmlFor="ps-level"><Input id="ps-level" inputMode="decimal" value={level} onChange={(e) => setLevel(e.target.value)} /></Field>
-          <Field label="Reorder quantity" htmlFor="ps-qty"><Input id="ps-qty" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} /></Field>
+          <Field label={`Order more when below (${p.dispensingUnit})`} htmlFor="ps-level"><Input id="ps-level" inputMode="decimal" value={level} onChange={(e) => setLevel(e.target.value)} /></Field>
+          <Field label="How many to order" htmlFor="ps-qty"><Input id="ps-qty" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} /></Field>
         </div>
-        <Field label="Tax rate" htmlFor="ps-tax" hint="Leave as default to use the organisation's default tax rate.">
+        <Field label="Tax rate" htmlFor="ps-tax" hint="Leave as Default to use the clinic's usual tax rate.">
           <NativeSelect id="ps-tax" value={tax} onChange={(e) => setTax(e.target.value)}>
             <option value="">Default</option>
             {(rates.data ?? []).filter((r) => r.isActive).map((r) => <option key={r.id} value={r.id}>{r.name} ({bpToPct(r.rateBasisPoints)})</option>)}
           </NativeSelect>
         </Field>
         <div><Button size="sm" loading={m.isPending} onClick={() => m.mutate()}>Save</Button></div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Next step after adding a product: record what is already on the shelf. Uses the delivery (goods receipt) API so the
+ * cost price is recorded on the batch and stock value is right; no supplier is needed ("Local purchase").
+ */
+function OpeningStock({ product }: { product: ProductStock['product'] }) {
+  const qc = useQueryClient();
+  const { currency, session } = useSession();
+  const [qty, setQty] = useState('');
+  const [cost, setCost] = useState('');
+  const [batch, setBatch] = useState('');
+  const [expiry, setExpiry] = useState('');
+  const [locationId, setLocationId] = useState('');
+  const locations = useQuery({ queryKey: ['stock-locations'], queryFn: () => api.get<StockLocation[]>('/stock-locations') });
+  const active = sortedLocations(locations.data, session.branch?.id).filter((l) => l.isActive);
+  useEffect(() => {
+    if (!locationId && locations.data?.length) setLocationId(defaultLocation(locations.data, session.branch?.id)?.id ?? '');
+  }, [locations.data, locationId, session.branch?.id]);
+  const strict = needsBatch(product.type);
+  const costMinor = parseMoney(cost, currency);
+  const problem =
+    locations.isSuccess && !active.length ? 'Add a store room first'
+    : !(Number(qty) > 0) ? 'Enter how many you have'
+    : costMinor === null ? 'Enter the cost price'
+    : strict && !batch.trim() ? `Enter a batch number for ${product.name}`
+    : strict && !expiry ? `Enter the expiry date for ${product.name}`
+    : null;
+  const m = useMutation({
+    mutationFn: () =>
+      api.post<{ receiptNo: string }>('/stock/receipts', {
+        supplierId: null,
+        locationId,
+        notes: 'Opening stock',
+        lines: [{ productId: product.id, batchNumber: batch.trim() || null, expiryDate: expiry || null, quantity: Number(qty), unitCostMinor: costMinor }],
+      }),
+    onSuccess: (r) => {
+      toast.success(`${qtyUnit(Number(qty), product.dispensingUnit)} of ${product.name} added to stock (${r.receiptNo})`);
+      ['stock', 'stock-product', 'stock-movements', 'dashboard'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  return (
+    <Card className="border-primary/40 bg-primary/5">
+      <CardHeader>
+        <div>
+          <CardTitle className="flex items-center gap-2"><PackagePlus className="h-4 w-4 text-primary" /> Add opening stock</CardTitle>
+          <CardDescription>How many do you have on the shelf now? {strict ? 'Copy the batch number and expiry date from the pack.' : 'No batch number needed.'}</CardDescription>
+        </div>
+      </CardHeader>
+      <CardContent className="grid gap-3">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Field label={`Quantity (${product.dispensingUnit})`} htmlFor="os-qty" required><Input id="os-qty" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} /></Field>
+          <Field label={`Cost price per ${product.dispensingUnit}`} htmlFor="os-cost" required hint="What you paid, for stock value and profit"><MoneyInput id="os-cost" currency={currency} value={cost} onChange={(e) => setCost(e.target.value)} /></Field>
+          {active.length > 1 && (
+            <Field label="Store room" htmlFor="os-loc">
+              <NativeSelect id="os-loc" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+                {active.map((l) => <option key={l.id} value={l.id}>{locationLabel(l, locations.data)}</option>)}
+              </NativeSelect>
+            </Field>
+          )}
+        </div>
+        {strict && (
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label="Batch number" htmlFor="os-batch" required><Input id="os-batch" value={batch} maxLength={60} onChange={(e) => setBatch(e.target.value)} /></Field>
+            <Field label="Expiry date" htmlFor="os-exp" required><Input id="os-exp" type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} /></Field>
+          </div>
+        )}
+        <div className="flex flex-wrap items-center gap-3">
+          <Button size="sm" loading={m.isPending} disabled={!!problem || !locationId} onClick={() => m.mutate()}>Add to stock</Button>
+          {problem && <p role="status" className="text-sm text-muted-foreground">{problem}</p>}
+          {problem === 'Add a store room first' && <Link className="text-sm font-medium text-primary hover:underline" href="/inventory/locations">Add store room</Link>}
+        </div>
       </CardContent>
     </Card>
   );
@@ -104,7 +182,7 @@ function ProductStockView() {
           <>
             {details.data && <>{PRODUCT_TYPE_LABELS[details.data.type as keyof typeof PRODUCT_TYPE_LABELS] ?? details.data.type}{details.data.productCategory && ` › ${details.data.productCategory.name}`}{details.data.brand && ` · ${details.data.brand}`}{details.data.packSize && ` · ${details.data.packSize}`} · </>}
             {qtyUnit(onHand, p.dispensingUnit)} on hand{p.sellPriceMinor != null && ` · sells at ${fmtMoney(p.sellPriceMinor, currency)}/${p.dispensingUnit}`}
-            {details.data && (PRESCRIBABLE_PRODUCT_TYPES as readonly string[]).includes(details.data.type) && <> · <Link className="hover:underline" href={`/pharmacy/formulary/${p.id}`}>Formulary record</Link></>}
+            {details.data && (PRESCRIBABLE_PRODUCT_TYPES as readonly string[]).includes(details.data.type) && <> · <Link className="hover:underline" href={`/pharmacy/formulary/${p.id}`}>Medicine details</Link></>}
           </>
         }
         actions={(can('inventory.write') || can('formulary.manage')) && details.data && <Button size="sm" variant="outline" onClick={() => setEditing(true)}><Edit /> Edit product</Button>}
@@ -112,16 +190,17 @@ function ProductStockView() {
       {editing && details.data && <ProductDialog product={details.data} open={editing} onOpenChange={setEditing} onSaved={() => qc.invalidateQueries({ queryKey: ['stock-product', id] })} />}
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="grid content-start gap-4">
+          {!batches.length && p.trackStock && can('inventory.write') && <OpeningStock product={p} />}
           <Card>
             <CardHeader><CardTitle>Batches</CardTitle></CardHeader>
             <DataTable
               query={{ data: batches, isLoading: false, error: null, refetch: () => q.refetch() }}
               rowKey={(b) => b.id}
-              empty={<EmptyState title="No batches received yet" />}
+              empty={<EmptyState title="No stock received yet" />}
               columns={[
                 { key: 'b', header: 'Batch', cell: (b) => <div><p className="font-medium">{b.batchNumber}</p><p className="text-xs text-muted-foreground">Received {fmtDate(b.receivedAt)}{b.supplier && ` · ${b.supplier.name}`}</p></div> },
                 { key: 'exp', header: 'Expiry', cell: (b) => <span className={b.expiryDate && b.expiryDate.slice(0, 10) < today ? 'whitespace-nowrap font-medium text-destructive' : 'whitespace-nowrap text-sm'}>{fmtDate(b.expiryDate)}{b.expiryDate && b.expiryDate.slice(0, 10) < today && ' (expired)'}</span> },
-                { key: 'lv', header: 'Locations', cell: (b) => { const at = b.levels.filter((l) => l.quantity !== 0); return at.length ? <ul className="grid gap-0.5 text-xs">{at.map((l) => <li key={l.location.name} className="flex justify-between gap-3"><span className="truncate">{l.location.name}</span><span className="tabular">{l.quantity}</span></li>)}</ul> : <span className="text-xs text-muted-foreground">—</span>; } },
+                { key: 'lv', header: 'Store rooms', cell: (b) => { const at = b.levels.filter((l) => l.quantity !== 0); return at.length ? <ul className="grid gap-0.5 text-xs">{at.map((l) => <li key={l.location.name} className="flex justify-between gap-3"><span className="truncate">{l.location.name}</span><span className="tabular">{l.quantity}</span></li>)}</ul> : <span className="text-xs text-muted-foreground">—</span>; } },
                 { key: 'qty', header: 'On hand', className: 'text-right tabular', headerClassName: 'text-right', cell: (b) => <span className={cn('whitespace-nowrap', b.onHand < 0 && 'text-destructive')}>{qtyUnit(b.onHand, p.dispensingUnit)}</span> },
                 { key: 'cost', header: 'Unit cost', className: 'text-right tabular', headerClassName: 'text-right', cell: (b) => fmtMoney(b.unitCostMinor, currency) },
                 { key: 'st', header: 'Status', cell: (b) => <span title={b.statusReason ?? undefined}><CommerceBadge status={b.status} /></span> },
@@ -147,7 +226,7 @@ function ProductStockView() {
             />
           </Card>
           <Card>
-            <CardHeader><CardTitle>Stock ledger</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Stock history</CardTitle></CardHeader>
             <MovementsTable query={ledger} page={page} onPage={setPage} hideProduct />
           </Card>
         </div>

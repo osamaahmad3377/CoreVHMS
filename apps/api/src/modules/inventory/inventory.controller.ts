@@ -202,6 +202,13 @@ export class InventoryController {
     return this.procurement.reorderSuggestions();
   }
 
+  /** Whether orders need a second person to approve them (drives "Approve & send" in one step). */
+  @Get('purchase-orders/approval-rule')
+  @RequirePermissions('procurement.read')
+  approvalRule() {
+    return this.procurement.approvalRule();
+  }
+
   @Get('purchase-orders/:id')
   @RequirePermissions('procurement.read')
   order(@Param('id', UUID) id: string) {

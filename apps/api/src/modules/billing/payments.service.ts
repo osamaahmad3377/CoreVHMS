@@ -49,7 +49,7 @@ export class PaymentsService {
     const ctx = RequestContext.require();
     const org = await this.org();
     const session = await tx.cashSession.findFirst({ where: { branchId: ctx.branchId!, status: 'OPEN' }, orderBy: { openedAt: 'desc' } });
-    if (!session && org.requireCashSession) throw ruleViolation('NO_CASH_SESSION', 'Open a cash register session before taking or refunding cash');
+    if (!session && org.requireCashSession) throw ruleViolation('NO_CASH_SESSION', 'The cash drawer is closed. Open it before taking or refunding cash');
     return session;
   }
 
@@ -217,7 +217,7 @@ export class CashService {
   async open(registerId: string, openingFloatMinor: number) {
     const ctx = RequestContext.require();
     const reg = await this.prisma.db.cashRegister.findUnique({ where: { id: registerId } });
-    if (!reg || !reg.isActive) throw notFound('Cash register');
+    if (!reg || !reg.isActive) throw notFound('Cash drawer');
     try {
       return await this.prisma.db.$transaction(async (tx) => {
         const s = await tx.cashSession.create({
@@ -227,7 +227,7 @@ export class CashService {
         return s;
       });
     } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw conflict('This register already has an open session');
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw conflict('This cash drawer is already open');
       throw e;
     }
   }
@@ -248,9 +248,9 @@ export class CashService {
   async close(sessionId: string, countedCashMinor: number, notes?: string | null) {
     const ctx = RequestContext.require();
     const { session, expectedCashMinor } = await this.expected(sessionId);
-    if (session.status !== 'OPEN') throw ruleViolation('SESSION_CLOSED', 'This session is already closed');
+    if (session.status !== 'OPEN') throw ruleViolation('SESSION_CLOSED', 'This cash drawer is already closed');
     const variance = countedCashMinor - expectedCashMinor;
-    if (variance !== 0 && !notes) throw ruleViolation('VARIANCE_NOTE', 'Explain the cash variance before closing');
+    if (variance !== 0 && !notes) throw ruleViolation('VARIANCE_NOTE', 'Explain the difference before closing');
     return this.prisma.db.$transaction(async (tx) => {
       const s = await tx.cashSession.update({
         where: { id: sessionId },
@@ -377,7 +377,7 @@ export class EstimatesAndExpensesService {
       if (input.method === 'CASH') {
         const s = await tx.cashSession.findFirst({ where: { branchId: ctx.branchId!, status: 'OPEN' } });
         const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: ctx.organizationId! } });
-        if (!s && org.requireCashSession) throw ruleViolation('NO_CASH_SESSION', 'Open a cash register session to pay out cash');
+        if (!s && org.requireCashSession) throw ruleViolation('NO_CASH_SESSION', 'The cash drawer is closed. Open it to pay out cash');
         cashSessionId = s?.id ?? null;
       }
       const e = await tx.expense.create({ data: { ...input, organizationId: ctx.organizationId!, branchId: ctx.branchId!, cashSessionId, createdById: ctx.userId!, createdByName: ctx.userName ?? 'Unknown' } });

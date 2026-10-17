@@ -149,7 +149,7 @@ function Catalog() {
         actions={
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => setManaging(true)}><Tags /> Categories</Button>
-            {canEdit && <Button size="sm" onClick={() => setCreate(true)}><Plus /> New product</Button>}
+            {canEdit && <Button size="sm" onClick={() => setCreate(true)}><Plus /> Add product</Button>}
           </div>
         }
       />

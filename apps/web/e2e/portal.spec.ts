@@ -27,7 +27,7 @@ test.describe('Client portal', () => {
   test('reception invites a client; the client sets a password from the email and signs in', async ({ page, browser, request }) => {
     await login(page, 'reception@demo.pk');
     await page.goto('/clients?q=Hussain');
-    await page.getByRole('link', { name: /Hussain, Zainab/ }).first().click();
+    await page.getByRole('link', { name: /Zainab Hussain/ }).first().click();
     const since = Date.now();
     await page.getByRole('button', { name: /Invite to portal|Resend invitation/ }).click();
     await expect(page.getByText(/Invitation emailed to/)).toBeVisible();
@@ -65,7 +65,7 @@ test.describe('Client portal', () => {
 
     await login(page, 'reception@demo.pk');
     await page.goto('/communications?tab=inbox');
-    await page.getByRole('button', { name: /Khan, Ahmed/ }).click();
+    await page.getByRole('button', { name: /Ahmed Khan/ }).click();
     await expect(page.getByText('Is Sheru due for deworming? (E2E)')).toBeVisible();
     await page.getByLabel('Reply').fill('Yes, please book a visit this week. (E2E)');
     await page.getByRole('button', { name: 'Send' }).click();

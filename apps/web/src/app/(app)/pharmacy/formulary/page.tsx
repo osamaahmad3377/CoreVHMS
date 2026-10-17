@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import { DataTable } from '@/components/data-table';
 import { EmptyState, PageHeader } from '@/components/page';
+import { PrescribingPromptSetting } from '@/components/pharmacy/prescribing-settings';
 import { ProductDialog } from '@/components/pharmacy/product-dialog';
 import { productStrength } from '@/components/pharmacy/product-picker';
 import { RequirePermission } from '@/components/require';
@@ -38,6 +39,7 @@ function Formulary() {
         description={<>Medicines, vaccines and consumables. Strength and dispensing units drive the dose calculator. Food, grooming items and accessories are managed under <Link className="underline" href="/inventory/catalog">Inventory → Products</Link>.</>}
         actions={(can('formulary.manage') || can('inventory.write')) && <Button size="sm" onClick={() => setCreate(true)}><Plus /> New product</Button>}
       />
+      {can('formulary.manage') && <div className="mb-3"><PrescribingPromptSetting /></div>}
       <Card>
         <div className="flex flex-col gap-2 border-b p-3 sm:flex-row">
           <SearchInput value={params.q} onChange={(q) => url.set({ q, page: 1 })} placeholder="Name, generic, SKU, ingredient" />
@@ -59,7 +61,7 @@ function Formulary() {
           onPage={(page) => url.set({ page })}
           empty={<EmptyState icon={Package} title="No products" description="Add medicines with their strength and dispensing unit to enable prescribing." />}
           columns={[
-            { key: 'name', header: 'Product', cell: (p) => <div><Link href={`/pharmacy/formulary/${p.id}`} className="flex items-center gap-1 font-medium hover:underline">{p.name}{p.isControlled && <Lock className="h-3 w-3 text-warning" aria-label="Controlled" />}</Link><p className="text-xs text-muted-foreground">{p.genericName}</p></div> },
+            { key: 'name', header: 'Product', cell: (p) => <div><Link href={`/pharmacy/formulary/${p.id}`} className="flex items-center gap-1 font-medium hover:underline">{p.name}{p.isControlled && <Lock className="h-3 w-3 text-warning" aria-label="Controlled" />}</Link><p className="text-xs text-muted-foreground">{[p.genericName, p.drugClass].filter(Boolean).join(' · ')}</p></div> },
             { key: 'type', header: 'Type', cell: (p) => <span className="text-sm">{PRODUCT_TYPE_LABELS[p.type as keyof typeof PRODUCT_TYPE_LABELS] ?? enumLabel(p.type)}{p.form && ` · ${enumLabel(p.form)}`}</span> },
             { key: 'str', header: 'Strength / pack', cell: (p) => <span className="text-sm">{productStrength(p)}</span> },
             { key: 'refs', header: 'Dose refs', cell: (p) => (p._count?.doseReferences ? <Badge variant="success">{p._count.doseReferences} approved</Badge> : <span className="text-xs text-muted-foreground">none</span>) },

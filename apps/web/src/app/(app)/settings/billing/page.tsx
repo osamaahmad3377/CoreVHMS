@@ -39,7 +39,7 @@ function TaxDialog({ rate, open, onOpenChange }: { rate: TaxRate | null; open: b
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="sm">
         <DialogHeader>
-          <DialogTitle>{rate ? 'Edit tax rate' : 'New tax rate'}</DialogTitle>
+          <DialogTitle>{rate ? 'Edit tax rate' : 'Add tax rate'}</DialogTitle>
           <DialogDescription>Enter the rate your tax adviser has confirmed for your jurisdiction. Changing a rate affects new charges and invoices only; issued invoices keep their rates.</DialogDescription>
         </DialogHeader>
         {error && <FormError message={error} />}
@@ -63,7 +63,7 @@ function Options() {
   useEffect(() => { if (q.data) setTerms(String(q.data.paymentTermsDays)); }, [q.data]);
   const m = useMutation({
     mutationFn: (patch: Partial<BillingSettings>) => api.patch<BillingSettings>('/billing/settings', patch),
-    onSuccess: (d) => { qc.setQueryData(['billing-settings'], d); toast.success('Billing settings saved'); },
+    onSuccess: (d) => { qc.setQueryData(['billing-settings'], d); qc.invalidateQueries({ queryKey: ['po-approval-rule'] }); qc.invalidateQueries({ queryKey: ['purchase-order'] }); toast.success('Settings saved'); },
     onError: (e: Error) => toast.error(e.message),
   });
   if (q.isLoading) return <LoadingRows rows={3} />;
@@ -79,11 +79,12 @@ function Options() {
     <Card>
       <CardHeader><div><CardTitle>Billing options</CardTitle><CardDescription>Currency: {d.currency}</CardDescription></div></CardHeader>
       <CardContent className="divide-y">
-        {toggle('pricesIncludeTax', 'Prices include tax', 'Catalogue prices already contain tax (as with GST or VAT-inclusive pricing). Tax is extracted on invoices instead of added.')}
-        {toggle('requireCashSession', 'Require an open cash register for cash', 'Cash payments, refunds and expenses are blocked unless a register session is open at the branch.')}
-        {toggle('allowNegativeStock', 'Allow negative stock', 'Lets dispensing and sales proceed when the system shows insufficient stock. Leave off unless stock records are still being set up.')}
+        {toggle('pricesIncludeTax', 'Prices include tax', 'Your prices already include sales tax. The invoice shows the tax part separately.')}
+        {toggle('requireCashSession', 'Cash drawer must be open to take cash', 'Staff can take cash, refund or pay expenses only after opening the cash drawer for the day.')}
+        {toggle('allowNegativeStock', 'Allow selling when stock shows zero', 'Turn on only while you are still entering your stock.')}
+        {toggle('poRequiresSecondApprover', 'Purchase orders need a second person to approve', 'When on, the person who makes an order cannot approve it. When off, they can approve and send it in one step.')}
         <div className="flex items-end gap-2 py-3">
-          <Field label="Payment terms (days)" htmlFor="bs-terms" hint="Due date on issued invoices. 0 = due on issue."><Input id="bs-terms" className="w-28" inputMode="numeric" value={terms} onChange={(e) => setTerms(e.target.value)} /></Field>
+          <Field label="Days to pay" htmlFor="bs-terms" hint="How many days clients have to pay. 0 = pay straight away."><Input id="bs-terms" className="w-28" inputMode="numeric" value={terms} onChange={(e) => setTerms(e.target.value)} /></Field>
           <Button size="sm" variant="outline" disabled={!/^\d+$/.test(terms) || Number(terms) === d.paymentTermsDays} onClick={() => m.mutate({ paymentTermsDays: Number(terms) })}>Save</Button>
         </div>
       </CardContent>
@@ -101,7 +102,7 @@ export default function BillingSettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Tax rates</CardTitle>
-            <Button size="sm" onClick={() => setDlg({ open: true, rate: null })}><Plus /> New rate</Button>
+            <Button size="sm" onClick={() => setDlg({ open: true, rate: null })}><Plus /> Add tax rate</Button>
           </CardHeader>
           <DataTable
             query={rates}

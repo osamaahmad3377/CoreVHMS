@@ -159,7 +159,7 @@ export function AlertDialog({ patientId, open, onOpenChange, onSaved }: Base) {
           </Field>
           {(type === 'ALLERGY' || type === 'MEDICATION') && (
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Substance" htmlFor="al-sub">
+              <Field label="Substance" htmlFor="al-sub" hint="Type the medicine or drug family, e.g. Amoxicillin or Penicillins.">
                 <Input id="al-sub" {...form.register('substance')} />
               </Field>
               <Field label="Reaction" htmlFor="al-rx">

@@ -6,7 +6,7 @@ test.describe('Shop products: food, grooming and accessories', () => {
     const name = uniq('E2E puppy kibble ');
     await login(page, 'owner@demo.pk');
     await page.goto('/inventory/catalog');
-    await page.getByRole('button', { name: 'New product' }).click();
+    await page.getByRole('button', { name: 'Add product' }).click();
     const dlg = page.getByRole('dialog');
     await dlg.getByRole('radio', { name: /Food & treats/ }).click();
     await expect(dlg.getByText('Strength & dispensing')).toHaveCount(0); // medicine fields are not asked for food
@@ -17,26 +17,31 @@ test.describe('Shop products: food, grooming and accessories', () => {
     await dlg.locator('#p-pack').fill('2 kg bag');
     await dlg.locator('#p-du').selectOption('bag');
     await dlg.locator('#p-pr').fill('3500');
+    await dlg.locator('#p-reorder').fill('2');
     await dlg.getByRole('button', { name: 'Save product' }).click();
     await expect(page).toHaveURL(/\/inventory\/products\//);
     await expect(page.getByText(/Food & treats › Dry food · E2E Brand · 2 kg bag/)).toBeVisible();
+    // Next step is offered straight away; the reorder level from the form was saved.
+    await expect(page.getByText('Add opening stock')).toBeVisible();
+    await expect(page.locator('#ps-level')).toHaveValue('2');
 
     // It is listed under Products → Food & treats.
     await page.goto('/inventory/catalog?tab=FOOD');
     await expect(page.getByRole('row', { name: new RegExp(name) })).toContainText('Dry food');
 
-    // Receive a delivery so it can be sold.
+    // Receive a delivery so it can be sold: food needs no batch number, and the supplier can be "bought locally".
     await page.goto('/inventory?receive=1');
     const rcv = page.getByRole('dialog');
-    await rcv.locator('#rcv-sup').selectOption({ label: 'Demo Pharma Distributors (Lahore)' });
+    await rcv.locator('#rcv-sup').selectOption({ label: 'Bought locally / not recorded' });
     await rcv.getByRole('combobox').filter({ hasText: 'Product…' }).first().click();
     await page.getByLabel('Search products').fill(name);
     await page.getByRole('option', { name: new RegExp(name) }).click();
-    await rcv.getByLabel('Line 1 batch number').fill(uniq('LOT'));
     await rcv.getByLabel('Line 1 quantity').fill('6');
+    // The disabled button explains what is missing.
+    await expect(rcv.getByRole('status')).toContainText(`Enter the cost price for ${name}`);
     await rcv.getByLabel('Line 1 unit cost').fill('2500');
-    await rcv.getByRole('button', { name: 'Receive' }).click();
-    await expect(page.getByText(/GRN-\d+/).first()).toBeVisible();
+    await rcv.getByRole('button', { name: 'Add to stock' }).click();
+    await expect(page.getByText(new RegExp(`6 bags of ${name} added to stock \\(GRN-\\d+\\)`))).toBeVisible();
 
     // Shop counter: section → shelf → tile with brand, pack size and stock.
     await page.goto('/pos');

@@ -120,6 +120,7 @@ describe('Inventory & procurement', () => {
     const org = await registerOrg();
     const f = await stockFixture(org);
     const manager = await staff(org, 'practice_manager');
+    expect((await org.owner.patch('/billing/settings', { poRequiresSecondApprover: true })).body.poRequiresSecondApprover).toBe(true);
     const po = await org.owner.post('/purchase-orders', { supplierId: f.supplierId, locationId: f.locationId, lines: [{ productId: f.product.id, quantity: 10, unitCostMinor: 180 }] });
     expect(po.status).toBe(201);
     expect(po.body).toMatchObject({ status: 'DRAFT', totalMinor: 1800 });
@@ -139,6 +140,68 @@ describe('Inventory & procurement', () => {
     expect((await org.owner.get(`/stock/products/${f.product.id}`)).body.batches[0].unitCostMinor).toBe(200);
     const bal = (await org.owner.get(`/suppliers/${f.supplierId}`)).body;
     expect(bal.receivedMinor).toBe(6 * 180 + 4 * 230);
+  });
+
+  it('lets a clinic without a second approver approve its own order straight from draft (audited setting)', async () => {
+    const org = await registerOrg();
+    const f = await stockFixture(org);
+    // New clinics start without the two-person rule.
+    expect((await org.owner.get('/billing/settings')).body.poRequiresSecondApprover).toBe(false);
+    expect((await org.owner.get('/purchase-orders/approval-rule')).body).toEqual({ needsSecondApprover: false });
+    const po = (await org.owner.post('/purchase-orders', { supplierId: f.supplierId, locationId: f.locationId, lines: [{ productId: f.product.id, quantity: 4, unitCostMinor: 100 }] })).body;
+    expect(po.needsSecondApprover).toBe(false);
+    const approved = await org.owner.post(`/purchase-orders/${po.id}/approve`);
+    expect(approved.status).toBe(200);
+    expect(approved.body).toMatchObject({ status: 'APPROVED', approvedByName: 'Olivia Owner' });
+    expect(approved.body.submittedAt).toBeTruthy();
+    const events = (await org.owner.get(`/audit-events?entityId=${po.id}`)).body.data;
+    expect(events.map((e: any) => e.action)).toContain('purchase_order.approved');
+    // A receptionist cannot approve, whatever the setting.
+    const reception = await staff(org, 'receptionist');
+    const po2 = (await org.owner.post('/purchase-orders', { supplierId: f.supplierId, locationId: f.locationId, lines: [{ productId: f.product.id, quantity: 1, unitCostMinor: 100 }] })).body;
+    expect((await reception.client.post(`/purchase-orders/${po2.id}/approve`)).status).toBe(403);
+
+    // Turning the rule on is audited and blocks self-approval again, including from draft.
+    const on = await org.owner.patch('/billing/settings', { poRequiresSecondApprover: true });
+    expect(on.body.poRequiresSecondApprover).toBe(true);
+    const settingEvents = (await org.owner.get(`/audit-events?entityId=${org.orgId}`)).body.data;
+    expect(settingEvents.find((e: any) => e.action === 'billing_settings.updated')).toBeTruthy();
+    expect((await org.owner.post(`/purchase-orders/${po2.id}/approve`)).body.error.code).toBe('INVALID_TRANSITION');
+    await org.owner.post(`/purchase-orders/${po2.id}/submit`);
+    expect((await org.owner.post(`/purchase-orders/${po2.id}/approve`)).status).toBe(403);
+    expect((await org.owner.get(`/purchase-orders/${po2.id}`)).body.needsSecondApprover).toBe(true);
+  });
+
+  it('receives shop goods without a batch number or supplier, but insists on a batch for medicines', async () => {
+    const org = await registerOrg();
+    const f = await stockFixture(org);
+    const litter = (await org.owner.post('/products', { name: 'Cat litter 10 kg', type: 'GROOMING', dispensingUnit: 'bag', minDispenseIncrement: 1, sellPriceMinor: 150000 })).body;
+    // Medicines still need the batch number from the pack.
+    const med = await org.owner.post('/stock/receipts', { locationId: f.locationId, lines: [{ productId: f.product.id, quantity: 5, unitCostMinor: 100 }] });
+    expect(med.status).toBe(422);
+    expect(med.body.error.code).toBe('BATCH_REQUIRED');
+    expect(med.body.error.message).toContain(f.product.name);
+
+    const r1 = await org.owner.post('/stock/receipts', { locationId: f.locationId, lines: [{ productId: litter.id, quantity: 20, unitCostMinor: 90000 }] });
+    expect(r1.status).toBe(201);
+    expect(r1.body).toMatchObject({ receiptNo: expect.stringMatching(/^GRN-/), totalMinor: 20 * 90000, supplier: { name: 'Local purchase' } });
+    const r2 = await org.owner.post('/stock/receipts', { supplierId: '', locationId: f.locationId, lines: [{ productId: litter.id, batchNumber: '', quantity: 10, unitCostMinor: 120000 }] });
+    expect(r2.status).toBe(201);
+    // One "Local purchase" supplier, reused; one automatic batch per day with the weighted average cost.
+    const suppliers = (await org.owner.get('/suppliers')).body.filter((s: any) => s.name === 'Local purchase');
+    expect(suppliers).toHaveLength(1);
+    expect(r2.body.supplierId).toBe(suppliers[0].id);
+    const stock = (await org.owner.get(`/stock/products/${litter.id}`)).body;
+    expect(stock.batches).toHaveLength(1);
+    expect(stock.batches[0]).toMatchObject({ batchNumber: expect.stringMatching(/^NOBATCH-\d{8}$/), onHand: 30, unitCostMinor: 100000 });
+    const audit = (await org.owner.get(`/audit-events?entityId=${suppliers[0].id}`)).body.data;
+    expect(audit.map((e: any) => e.action)).toContain('supplier.created');
+
+    // Low items show the order they are already on.
+    await org.owner.patch(`/stock/products/${litter.id}/settings`, { reorderLevel: 50 });
+    const po = (await org.owner.post('/purchase-orders', { supplierId: f.supplierId, locationId: f.locationId, lines: [{ productId: litter.id, quantity: 10, unitCostMinor: 90000 }] })).body;
+    const low = (await org.owner.get('/stock?lowStock=true')).body.data.find((r: any) => r.id === litter.id);
+    expect(low.openOrders).toEqual([{ id: po.id, poNo: po.poNo, status: 'DRAFT' }]);
   });
 
   it('leaves dispensing unaffected where inventory has not been set up, and isolates stock between organizations', async () => {

@@ -10,6 +10,8 @@ export interface SearchHit {
   subtitle?: string | null;
   href: string;
   badge?: string | null;
+  /** Clients only, for users who can see billing: what they owe (positive) or their credit (negative), minor units. */
+  balanceMinor?: number | null;
 }
 
 export type SearchProvider = (q: string, permissions: Set<string>) => Promise<SearchHit[]>;
@@ -30,7 +32,7 @@ export class SearchService {
         where: { status: { not: 'MERGED' }, OR: patients.searchClauses(q) },
         include: {
           species: { select: { name: true } },
-          ownerships: { where: { endedAt: null, isPrimary: true }, include: { client: { select: { displayName: true } } } },
+          ownerships: { where: { endedAt: null, isPrimary: true }, include: { client: { select: { displayName: true, mobilePhone: true } } } },
         },
         take: 8,
         orderBy: [{ status: 'asc' }, { name: 'asc' }],
@@ -39,7 +41,7 @@ export class SearchService {
         type: 'patient',
         id: p.id,
         title: `${p.name} (${p.species.name})`,
-        subtitle: `${patientNo(p.number)} · ${p.ownerships[0]?.client.displayName ?? 'No owner'}`,
+        subtitle: [patientNo(p.number), p.ownerships[0]?.client.displayName ?? 'No client', p.ownerships[0]?.client.mobilePhone].filter(Boolean).join(' · '),
         href: `/patients/${p.id}`,
         badge: p.status !== 'ACTIVE' ? p.status : null,
       }));
@@ -58,6 +60,7 @@ export class SearchService {
         subtitle: [clientNo(c.number), c.mobilePhone, c.email].filter(Boolean).join(' · '),
         href: `/clients/${c.id}`,
         badge: c.status !== 'ACTIVE' ? c.status : null,
+        balanceMinor: perms.has('billing.read') ? c.balanceMinor : null,
       }));
     });
   }

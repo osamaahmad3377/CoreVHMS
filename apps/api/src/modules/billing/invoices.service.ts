@@ -17,7 +17,7 @@ export const invoiceNo = (n: number | null) => (n ? formatNumber('INV', n) : 'Dr
 const include = {
   client: { select: { id: true, displayName: true, number: true, email: true, mobilePhone: true, addresses: { where: { isPrimary: true }, take: 1 } } },
   lines: { orderBy: { sortOrder: 'asc' }, include: { charge: { select: { id: true, sourceType: true, sourceId: true } } } },
-  allocations: { include: { payment: { select: { id: true, number: true, method: true, receivedAt: true, receivedByName: true } } }, orderBy: { createdAt: 'asc' } },
+  allocations: { include: { payment: { select: { id: true, number: true, method: true, reference: true, receivedAt: true, receivedByName: true } } }, orderBy: { createdAt: 'asc' } },
   creditNotes: { orderBy: { createdAt: 'asc' } },
   branch: { select: { id: true, name: true, addressLine1: true, addressLine2: true, city: true, postcode: true, phone: true, email: true } },
 } satisfies Prisma.InvoiceInclude;

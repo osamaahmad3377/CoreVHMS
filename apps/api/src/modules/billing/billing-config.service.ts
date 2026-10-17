@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ServiceCategory } from '@prisma/client';
+import { Organization, ServiceCategory } from '@prisma/client';
 import { AuditService, diff } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { notFound } from '../../common/http/errors';
@@ -30,7 +30,7 @@ export class BillingConfigService {
   services(includeInactive = false, q?: string) {
     return this.prisma.db.service.findMany({
       where: { ...(includeInactive ? {} : { isActive: true }), ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' } }, { code: { contains: q, mode: 'insensitive' } }] } : {}) },
-      include: { taxRate: { select: { id: true, name: true, rateBasisPoints: true } } },
+      include: { taxRate: { select: { id: true, name: true, rateBasisPoints: true } }, appointmentTypes: { where: { isActive: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } } },
       orderBy: [{ category: 'asc' }, { name: 'asc' }],
     });
   }
@@ -47,17 +47,21 @@ export class BillingConfigService {
   }
 
   async settings() {
-    const o = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: RequestContext.orgId() } });
-    return { currency: o.currency, allowNegativeStock: o.allowNegativeStock, pricesIncludeTax: o.pricesIncludeTax, paymentTermsDays: o.paymentTermsDays, requireCashSession: o.requireCashSession };
+    return this.view(await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: RequestContext.orgId() } }));
   }
 
-  async updateSettings(input: Partial<{ allowNegativeStock: boolean; pricesIncludeTax: boolean; paymentTermsDays: number; requireCashSession: boolean }>) {
+  private view(o: Organization) {
+    return { currency: o.currency, allowNegativeStock: o.allowNegativeStock, pricesIncludeTax: o.pricesIncludeTax, paymentTermsDays: o.paymentTermsDays, requireCashSession: o.requireCashSession, poRequiresSecondApprover: o.poRequiresSecondApprover };
+  }
+
+  async updateSettings(input: Partial<{ allowNegativeStock: boolean; pricesIncludeTax: boolean; paymentTermsDays: number; requireCashSession: boolean; poRequiresSecondApprover: boolean }>) {
     const id = RequestContext.orgId();
     return this.prisma.raw.$transaction(async (tx) => {
       const before = await tx.organization.findUniqueOrThrow({ where: { id } });
       const after = await tx.organization.update({ where: { id }, data: input });
       await this.audit.record({ action: 'billing_settings.updated', entityType: 'Organization', entityId: id, changes: diff(before, after, Object.keys(input)) }, tx);
-      return this.settings();
+      // Built from the updated row: a read outside this transaction would still see the old values.
+      return this.view(after);
     });
   }
 }

@@ -11,7 +11,11 @@ import { FormError } from '@/components/forms/form-error';
 import { PageHeader } from '@/components/page';
 import { PosCart } from '@/components/pos/cart';
 import { PosCatalog } from '@/components/pos/catalog';
-import { blockReason, cartTotals, toInvoiceLines, type CartLine, type Tender } from '@/components/pos/model';
+import { MoneyInput, parseMoney } from '@/components/billing/money';
+import { Field } from '@/components/forms/field';
+import { blockReason, cartTotals, customItem, isOutOfStock, toInvoiceLines, type CartLine, type Tender } from '@/components/pos/model';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { useConfirm } from '@/components/confirm';
 import { receiptFromInvoice, type ReceiptPayment } from '@/components/receipts/receipt-document';
 import { ReceiptPreview, useReceiptPrinter } from '@/components/receipts/use-receipt';
@@ -26,7 +30,37 @@ import { ApiError, api, qs } from '@/lib/api';
 import { fmtDateTime, fmtMoney, fmtTime } from '@/lib/format';
 import { localDate, todayIn } from '@/lib/time';
 import { useSession } from '@/lib/session';
-import type { BillingSettings, CashRegister, Invoice, Payment, PosCatalog as Catalog, PosItem, ProductCategory } from '@/lib/types';
+import type { BillingSettings, CashRegister, Invoice, Payment, PosCatalog as CatalogBase, PosItem, ProductCategory } from '@/lib/types';
+
+type Catalog = CatalogBase & { sellableTypes?: string[]; defaultTaxRateBasisPoints?: number };
+
+/** "+ Other item": something not in the catalogue, sold by name and price (needs billing permission). */
+function OtherItemDialog({ open, onOpenChange, currency, onAdd }: { open: boolean; onOpenChange: (o: boolean) => void; currency: string; onAdd: (name: string, priceMinor: number) => void }) {
+  const [name, setName] = useState('');
+  const [price, setPrice] = useState('');
+  useEffect(() => { if (open) { setName(''); setPrice(''); } }, [open]);
+  const priceMinor = parseMoney(price, currency);
+  const ok = !!name.trim() && priceMinor !== null && priceMinor > 0;
+  const submit = () => { if (ok) { onAdd(name.trim(), priceMinor!); onOpenChange(false); } };
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent size="sm">
+        <DialogHeader>
+          <DialogTitle>Other item</DialogTitle>
+          <DialogDescription>For something that is not in the list. Type its name and price.</DialogDescription>
+        </DialogHeader>
+        <form className="grid gap-3" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+          <Field label="Item name" htmlFor="oi-name" required><Input id="oi-name" autoFocus value={name} maxLength={300} onChange={(e) => setName(e.target.value)} /></Field>
+          <Field label="Price" htmlFor="oi-price" required><MoneyInput id="oi-price" currency={currency} value={price} onChange={(e) => setPrice(e.target.value)} /></Field>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="submit" disabled={!ok}>Add item</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 interface SaleResult {
   invoice: Invoice;
@@ -78,6 +112,7 @@ function Pos() {
   const [showToday, setShowToday] = useState(false);
   const [showHeld, setShowHeld] = useState(false);
   const [payBalance, setPayBalance] = useState(false);
+  const [otherItem, setOtherItem] = useState(false);
   const heldKey = `vcms.pos.held.${session.organization?.id}.${session.branch?.id}`;
   const [held, setHeld] = useState<HeldSale[]>([]);
   useEffect(() => setHeld(readHeld(heldKey)), [heldKey]);
@@ -104,7 +139,8 @@ function Pos() {
     (item: PosItem) => {
       const reason = blockReason(item, qtyInCart(item), allowNegative);
       if (reason) {
-        toast.error(`${item.name}: ${reason.toLowerCase()}`);
+        if (isOutOfStock(item, allowNegative)) toast.error('Out of stock — tell your manager', { description: item.name });
+        else toast.error(`${item.name}: ${reason.toLowerCase()}`);
         return;
       }
       setLines((ls) => {
@@ -141,13 +177,13 @@ function Pos() {
     const next = [{ id: crypto.randomUUID(), at: new Date().toISOString(), client, lines }, ...held].slice(0, 20);
     setHeld(next);
     writeHeld(heldKey, next);
-    toast.success('Sale held');
+    toast.success('Sale paused');
     clearSale();
   };
 
   const recall = async (h: HeldSale) => {
     if (lines.length) {
-      const c = await confirm({ title: 'Replace the current basket?', description: 'The items in the basket now will be removed and the held sale loaded instead. Hold the current basket first if you still need it.', confirmLabel: 'Replace basket' });
+      const c = await confirm({ title: 'Replace the current basket?', description: 'The items in the basket now will be removed and the paused sale loaded instead. Pause the current basket first if you still need it.', confirmLabel: 'Replace basket' });
       if (!c.confirmed) return;
     }
     setLines(h.lines);
@@ -195,7 +231,7 @@ function Pos() {
         });
         recorded.push({ method: t.method, amountMinor: t.applied, receiptNo: p.receiptNo, reference: t.reference || null });
       } catch (e) {
-        error = `Sale ${invoice.invoiceNo} was issued, but the ${t.method.toLowerCase().replace('_', ' ')} payment was not recorded: ${e instanceof ApiError ? e.message : 'network error'}. Take the remaining balance below.`;
+        error = `Sale ${invoice.invoiceNo} was saved, but the ${t.method.toLowerCase().replace('_', ' ')} payment was not recorded: ${e instanceof ApiError ? e.message : 'network error'}. Take the remaining balance below.`;
         break;
       }
     }
@@ -240,26 +276,30 @@ function Pos() {
   const header = (
     <PageHeader
         help="pos"
-      title="Point of sale"
+      title="Shop counter"
       description={`${session.branch?.name ?? ''} · ${session.user.name}`}
       actions={
         <>
           {openRegister ? (
             localDate(openRegister.sessions[0].openedAt, tz) === todayIn(tz) ? (
-              <Badge variant="success" className="gap-1 py-1"><Landmark className="h-3 w-3" /> {openRegister.name} open since {fmtTime(openRegister.sessions[0].openedAt)}</Badge>
+              <Badge variant="success" className="gap-1 py-1"><Landmark className="h-3 w-3" /> Cash drawer open since {fmtTime(openRegister.sessions[0].openedAt)}</Badge>
             ) : (
-              <span className="inline-flex" title="This register was opened on an earlier day and not closed. Count and close it, then open today’s session.">
+              <span className="inline-flex" title={`${openRegister.name} was opened on ${fmtDateTime(openRegister.sessions[0].openedAt)} and not closed. Count the cash and close it, then open it again for today.`}>
                 {can('cash.manage') ? (
-                  <Link href="/billing/cash"><Badge variant="warning" className="gap-1 py-1"><Landmark className="h-3 w-3" /> {openRegister.name} still open from {fmtDateTime(openRegister.sessions[0].openedAt)} — close it</Badge></Link>
+                  <Link href="/billing/cash"><Badge variant="warning" className="gap-1 py-1"><Landmark className="h-3 w-3" /> Yesterday’s cash drawer was not closed — count and close it</Badge></Link>
                 ) : (
-                  <Badge variant="warning" className="gap-1 py-1"><Landmark className="h-3 w-3" /> {openRegister.name} still open from {fmtDateTime(openRegister.sessions[0].openedAt)} — ask a manager to close it</Badge>
+                  <Badge variant="warning" className="gap-1 py-1"><Landmark className="h-3 w-3" /> Yesterday’s cash drawer was not closed — please tell your manager</Badge>
                 )}
               </span>
             )
           ) : registers.isSuccess ? (
-            <Badge variant={cashBlocked ? 'destructive' : 'secondary'} className="gap-1 py-1"><Landmark className="h-3 w-3" /> No register open{cashBlocked ? ' · cash unavailable' : ''}</Badge>
+            can('cash.manage') ? (
+              <Link href="/billing/cash"><Badge variant={cashBlocked ? 'destructive' : 'secondary'} className="gap-1 py-1"><Landmark className="h-3 w-3" /> Cash drawer closed — open it to take cash</Badge></Link>
+            ) : (
+              <Badge variant={cashBlocked ? 'destructive' : 'secondary'} className="gap-1 py-1"><Landmark className="h-3 w-3" /> Cash drawer closed{cashBlocked ? ' — ask your manager to open it to take cash' : ''}</Badge>
+            )
           ) : null}
-          <Button size="sm" variant="outline" onClick={() => setShowHeld(true)}><Clock /> Held{held.length ? ` (${held.length})` : ''}</Button>
+          <Button size="sm" variant="outline" onClick={() => setShowHeld(true)}><Clock /> Paused sales{held.length ? ` (${held.length})` : ''}</Button>
           <Button size="sm" variant="outline" onClick={() => setShowToday(true)}><History /> Today’s sales</Button>
         </>
       }
@@ -304,7 +344,7 @@ function Pos() {
               </div>
               {result.changeMinor > 0 && (
                 <div className="rounded-lg border-2 border-success bg-success/10 p-4">
-                  <p className="text-sm font-medium text-success">Change due</p>
+                  <p className="text-sm font-medium text-success">Change to give</p>
                   <p className="text-4xl font-bold tabular text-success">{fmtMoney(result.changeMinor, currency)}</p>
                 </div>
               )}
@@ -323,7 +363,7 @@ function Pos() {
           onOpenChange={setPayBalance}
           clientId={inv.clientId}
           invoice={{ ...inv, balanceMinor: balance }}
-          onPaid={(p) => setResult((r) => r && { ...r, error: null, payments: [...r.payments, { method: p.method, amountMinor: p.allocatedMinor, receiptNo: p.receiptNo }] })}
+          onPaid={(ps) => setResult((r) => r && { ...r, error: null, payments: [...r.payments, ...ps.map((p) => ({ method: p.method, amountMinor: p.allocatedMinor, receiptNo: p.receiptNo, reference: p.reference }))] })}
         />
       </>
     );
@@ -350,6 +390,8 @@ function Pos() {
             allowNegative={allowNegative}
             currency={currency}
             onAdd={add}
+            sellableTypes={catalog.data?.sellableTypes}
+            canAddProducts={can('inventory.write')}
           />
           <div id="pos-basket" className="scroll-mt-20 lg:sticky lg:top-20 lg:h-[calc(100vh-10.5rem)]">
             <PosCart
@@ -365,23 +407,30 @@ function Pos() {
               onCharge={() => setTendering(true)}
               onHold={hold}
               onClear={clearSale}
+              onOtherItem={can('billing.write') ? () => setOtherItem(true) : undefined}
             />
           </div>
         </div>
-        {/* Phones and tablets: the basket sits below the shelves, so keep the total and Charge within thumb reach. */}
+        {/* Phones and tablets: the basket sits below the shelves, so keep the total and Take payment within thumb reach. */}
         {lines.length > 0 && (
           <div className="fixed inset-x-0 bottom-0 z-20 flex items-center gap-2 border-t bg-card/95 px-4 py-2.5 shadow-[0_-4px_12px_rgb(0_0_0/0.06)] backdrop-blur lg:hidden">
             <button type="button" className="min-w-0 flex-1 text-left" onClick={() => document.getElementById('pos-basket')?.scrollIntoView({ behavior: 'smooth' })}>
               <span className="block text-xs text-muted-foreground">{lines.length} {lines.length === 1 ? 'item' : 'items'} · view basket</span>
               <span className="block truncate text-base font-semibold tabular">{fmtMoney(totals.totalMinor, currency)}</span>
             </button>
-            <Button size="lg" disabled={totals.totalMinor <= 0} onClick={() => setTendering(true)}>Charge</Button>
+            <Button size="lg" disabled={totals.totalMinor <= 0} onClick={() => setTendering(true)}>Take payment</Button>
           </div>
         )}
         <p className="mt-3 hidden text-xs text-muted-foreground xl:block">
           <Kbd>F2</Kbd> scan / search · <Kbd>Enter</Kbd> add scanned code · <Kbd>F9</Kbd> take payment · <Kbd>Esc</Kbd> clear search
         </p>
       </div>
+      <OtherItemDialog
+        open={otherItem}
+        onOpenChange={setOtherItem}
+        currency={currency}
+        onAdd={(name, priceMinor) => setLines((ls) => [...ls, { key: crypto.randomUUID(), item: customItem(name, priceMinor, catalog.data?.defaultTaxRateBasisPoints ?? 0), quantity: 1, priceMinor, discountMinor: 0 }])}
+      />
       <TenderDialog open={tendering} onOpenChange={setTendering} dueMinor={totals.totalMinor} currency={currency} cashBlocked={cashBlocked} canManageCash={can('cash.manage')} busy={busy} onComplete={complete} />
       {dialogs}
     </>

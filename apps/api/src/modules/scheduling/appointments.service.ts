@@ -190,7 +190,7 @@ export class AppointmentsService {
         const endMinute = end.minuteOfDay + 1;
         const within = start.date === end.date && hours.some((h) => h.startMinute <= start.minuteOfDay && h.endMinute >= endMinute);
         if (!within) {
-          throw ruleViolation('OUTSIDE_WORKING_HOURS', `${r.clinician.name} is not rostered at this branch at that time`, {
+          throw ruleViolation('OUTSIDE_WORKING_HOURS', `${r.clinician.name} is not working at this time`, {
             canOverride: true,
           });
         }
@@ -299,7 +299,7 @@ export class AppointmentsService {
             action: 'appointment.booked',
             entityType: 'Appointment',
             entityId: a.id,
-            summary: `${appointmentNo(number)} ${r.type.name} ${s.startsAt.toISOString()}${input.allowOverbook ? ' (overbooked)' : ''}${input.allowOutsideHours ? ' (outside rostered hours)' : ''}`,
+            summary: `${appointmentNo(number)} ${r.type.name} ${s.startsAt.toISOString()}${input.allowOverbook ? ' (overbooked)' : ''}${input.allowOutsideHours ? ' (outside working hours)' : ''}`,
           },
           tx,
         );

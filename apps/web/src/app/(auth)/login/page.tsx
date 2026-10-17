@@ -63,7 +63,7 @@ function LoginForm() {
 
   if (challenge) {
     return (
-      <form onSubmit={verify} className="grid gap-4">
+      <form method="post" onSubmit={verify} className="grid gap-4">
         <div>
           <KeyRound className="mb-3 h-8 w-8 text-primary" />
           <h1 className="text-xl font-semibold">Two-factor verification</h1>
@@ -84,7 +84,7 @@ function LoginForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="grid gap-4" noValidate>
+    <form method="post" onSubmit={onSubmit} className="grid gap-4" noValidate>
       <div>
         <h1 className="text-xl font-semibold">Sign in</h1>
         <p className="mt-1 text-sm text-muted-foreground">Use your clinic staff account.</p>

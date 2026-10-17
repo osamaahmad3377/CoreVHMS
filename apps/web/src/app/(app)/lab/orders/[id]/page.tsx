@@ -11,7 +11,7 @@ import { useConfirm } from '@/components/confirm';
 import { Field } from '@/components/forms/field';
 import { FormError } from '@/components/forms/form-error';
 import { Code128 } from '@/components/lab/barcode';
-import { LabStatusBadge } from '@/components/lab/lab-status';
+import { LabStatusBadge, sampleInSentence } from '@/components/lab/lab-status';
 import { ResultFlag, previewFlag } from '@/components/lab/result-flag';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/page';
 import { PatientBanner } from '@/components/patients/patient-banner';
@@ -78,15 +78,23 @@ function OrderView() {
     return () => clearTimeout(t);
   }, [printing]);
 
-  const refresh = () => {
-    qc.invalidateQueries({ queryKey: key });
-    qc.invalidateQueries({ queryKey: ['lab-orders'] });
-  };
+  const refresh = () =>
+    Promise.all([qc.invalidateQueries({ queryKey: key }), qc.invalidateQueries({ queryKey: ['lab-orders'] })]);
   const act = useMutation({
     mutationFn: (fn: () => Promise<unknown>) => fn(),
+    // Wait for the order to reload so the page shows the new state before the next step.
     onSuccess: () => refresh(),
     onError: (e: Error) => setError(e.message),
   });
+  /** After a sample is taken: say what comes next and put the cursor in the first result box. */
+  const afterCollect = () => {
+    toast.success('Sample collected. Next: enter results');
+    setTimeout(() => {
+      const first = document.querySelector<HTMLInputElement | HTMLSelectElement>('[data-result-input]');
+      first?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      first?.focus();
+    }, 100);
+  };
 
   const saveResults = useMutation({
     mutationFn: () => {
@@ -144,9 +152,12 @@ function OrderView() {
       confirmLabel: pendingSamples.length === 1 ? 'Collect sample' : 'Collect samples',
     });
     if (!r.confirmed) return;
-    act.mutate(async () => {
-      for (const ps of pendingSamples) await api.post(`/lab-orders/${id}/samples`, { sampleType: ps.type });
-    });
+    act.mutate(
+      async () => {
+        for (const ps of pendingSamples) await api.post(`/lab-orders/${id}/samples`, { sampleType: ps.type });
+      },
+      { onSuccess: afterCollect },
+    );
   };
   const clinic = org.data ?? { name: session.organization?.name ?? '' };
   const clinicAddress = [clinic.addressLine1, clinic.addressLine2, clinic.city, clinic.postcode].filter(Boolean).join(', ');
@@ -194,12 +205,15 @@ function OrderView() {
               <Card key={it.id}>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    {it.test.name} <span className="text-xs font-normal text-muted-foreground">{it.test.code} · {enumLabel(it.test.category)}{it.test.performedBy === 'EXTERNAL' && ` · ${it.test.externalLabName}`}</span>
+                    {it.test.name} <span className="font-mono text-2xs font-normal text-muted-foreground">{it.test.code}</span> <span className="text-xs font-normal text-muted-foreground">{enumLabel(it.test.category)}{it.test.performedBy === 'EXTERNAL' && ` · ${it.test.externalLabName}`}</span>
                   </CardTitle>
                   <Badge variant={it.status === 'RESULTED' ? 'success' : it.status === 'CANCELLED' ? 'outline' : 'secondary'}>{enumLabel(it.status)}</Badge>
                 </CardHeader>
                 {awaitingSample && it.test.category !== 'IMAGING' && (
-                  <p className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2 text-xs text-muted-foreground"><TestTube className="h-3.5 w-3.5" /> Collect the {enumLabel(it.test.sampleType, 'sample').toLowerCase()} sample before entering results.</p>
+                  <p className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2 text-xs text-muted-foreground"><TestTube className="h-3.5 w-3.5" /> Collect the {sampleInSentence(it.test.sampleType)} sample before entering results.</p>
+                )}
+                {it.test.category !== 'IMAGING' && it.test.analytes.some((a) => a.resultType === 'NUMERIC') && !it.test.analytes.some((a) => intervals[a.id] || current(it.results, a.id)?.refLow != null || current(it.results, a.id)?.refHigh != null) && (
+                  <p className="border-b bg-warning/10 px-3 py-2 text-xs">Normal ranges not set up — ask your admin. Results are saved without high/low flags.</p>
                 )}
                 {it.test.category === 'IMAGING' ? (
                   <ImagingReportForm orderId={order.id} item={it} editable={editable} onSaved={refresh} />
@@ -211,7 +225,7 @@ function OrderView() {
                           <th className="px-3 py-2 text-left font-semibold">Analyte</th>
                           <th className="px-3 py-2 text-left font-semibold">Result</th>
                           <th className="px-3 py-2 text-left font-semibold">Unit</th>
-                          <th className="px-3 py-2 text-left font-semibold">Reference</th>
+                          <th className="px-3 py-2 text-left font-semibold">Normal range</th>
                           <th className="px-3 py-2 text-left font-semibold">Comment</th>
                           <th />
                         </tr>
@@ -226,17 +240,17 @@ function OrderView() {
                           const history = it.results.filter((x) => x.analyteId === a.id && x.status === 'SUPERSEDED');
                           return (
                             <tr key={a.id} className={cn('border-t', flag?.startsWith('CRITICAL') && 'bg-destructive/5')}>
-                              <td className="px-3 py-2 font-medium">{a.name} <span className="text-2xs text-muted-foreground">{a.code}</span></td>
+                              <td className="px-3 py-2 font-medium">{a.name} <span className="font-mono text-2xs font-normal text-muted-foreground">{a.code}</span></td>
                               <td className="px-3 py-2">
                                 {canEnter ? (
                                   a.resultType === 'OPTION' ? (
-                                    <NativeSelect aria-label={a.name} className="h-8 w-40 text-xs" value={v} onChange={(e) => { setEntry({ ...entry, [k]: { ...entry[k], value: e.target.value } }); setDirty(true); }}>
+                                    <NativeSelect data-result-input aria-label={a.name} className="h-8 w-40 text-xs" value={v} onChange={(e) => { setEntry({ ...entry, [k]: { ...entry[k], value: e.target.value } }); setDirty(true); }}>
                                       <option value=""></option>
                                       {a.options.map((op) => <option key={op}>{op}</option>)}
                                     </NativeSelect>
                                   ) : (
                                     <div className="flex items-center gap-1.5">
-                                      <Input aria-label={a.name} className="h-8 w-28 tabular" inputMode={a.resultType === 'NUMERIC' ? 'decimal' : 'text'} value={v} onChange={(e) => { setEntry({ ...entry, [k]: { ...entry[k], value: e.target.value } }); setDirty(true); }} />
+                                      <Input data-result-input aria-label={a.name} className="h-8 w-28 tabular" inputMode={a.resultType === 'NUMERIC' ? 'decimal' : 'text'} value={v} onChange={(e) => { setEntry({ ...entry, [k]: { ...entry[k], value: e.target.value } }); setDirty(true); }} />
                                       <ResultFlag flag={flag} />
                                     </div>
                                   )
@@ -248,7 +262,7 @@ function OrderView() {
                               </td>
                               <td className="px-3 py-2 text-xs text-muted-foreground">{a.unit}</td>
                               <td className="px-3 py-2 text-xs text-muted-foreground" title={r?.refSource ?? ref?.source}>
-                                {r && r.status === 'FINAL' ? (r.refLow != null || r.refHigh != null ? `${r.refLow ?? '–'} – ${r.refHigh ?? '–'}` : '—') : ref ? `${ref.low ?? '–'} – ${ref.high ?? '–'}` : a.resultType === 'NUMERIC' ? 'Not configured' : ''}
+                                {r && r.status === 'FINAL' ? (r.refLow != null || r.refHigh != null ? `${r.refLow ?? '–'} – ${r.refHigh ?? '–'}` : '—') : ref ? `${ref.low ?? '–'} – ${ref.high ?? '–'}` : a.resultType === 'NUMERIC' ? '—' : ''}
                               </td>
                               <td className="px-3 py-2">
                                 {canEnter ? <Input aria-label={`${a.name} comment`} className="h-8 text-xs" value={entry[k]?.comment ?? ''} onChange={(e) => { setEntry({ ...entry, [k]: { ...entry[k], comment: e.target.value } }); setDirty(true); }} /> : <span className="text-xs">{r?.comment}</span>}
@@ -297,8 +311,8 @@ function OrderView() {
                         size="sm"
                         variant="outline"
                         onClick={async () => {
-                          const r = await confirm({ title: `Collect a ${enumLabel(sampleType, 'sample').toLowerCase()} sample?`, description: 'A new sample number and label are created.', confirmLabel: 'Collect sample' });
-                          if (r.confirmed) act.mutate(() => api.post(`/lab-orders/${id}/samples`, { sampleType }));
+                          const r = await confirm({ title: `Collect a ${sampleInSentence(sampleType)} sample?`, description: 'A new sample number and label are created.', confirmLabel: 'Collect sample' });
+                          if (r.confirmed) act.mutate(() => api.post(`/lab-orders/${id}/samples`, { sampleType }), { onSuccess: afterCollect });
                         }}
                       >
                         <Barcode /> Collect

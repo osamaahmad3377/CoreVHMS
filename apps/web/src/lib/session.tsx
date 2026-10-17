@@ -1,6 +1,6 @@
 'use client';
 
-import type { Permission, SessionContext } from '@vcms/shared';
+import type { OptionalModule, Permission, SessionContext } from '@vcms/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createContext, useCallback, useContext, useEffect, useMemo } from 'react';
 import { api, setActiveBranch } from './api';
@@ -53,4 +53,10 @@ export function useSession(): SessionValue {
 /** True when the client portal is switched on for this installation (CLIENT_PORTAL_ENABLED on the API). */
 export function usePortalEnabled(): boolean {
   return useSession().session.features?.clientPortal === true;
+}
+
+/** True when the clinic offers this optional area (Settings → Services you offer). */
+export function useModuleOn(): (module: OptionalModule | undefined) => boolean {
+  const enabled = useSession().session.organization?.enabledModules;
+  return (module) => !module || !enabled || enabled.includes(module);
 }

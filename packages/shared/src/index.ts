@@ -4,6 +4,7 @@ export * from './money';
 export * from './dose';
 export * from './allergy';
 export * from './treatment';
+export * from './modules';
 export * from './schemas/common';
 export * from './schemas/auth';
 export * from './schemas/admin';

@@ -69,7 +69,7 @@ export function ReserveDialog({ open, onOpenChange, patient }: { open: boolean; 
           <Field label="Departure" htmlFor="rs-end" required hint={nights ? `${nights} night${nights === 1 ? '' : 's'}` : 'Must be after arrival'}><Input id="rs-end" type="date" value={f.endDate} onChange={set('endDate')} /></Field>
           <Field label="Kennel / unit" htmlFor="rs-unit" className="sm:col-span-2" hint={unit?.nightlyService ? `${fmtMoney(unit.nightlyService.priceMinor, currency)} per night · about ${fmtMoney(unit.nightlyService.priceMinor * nights, currency)} in total` : 'You can also assign the unit at check-in.'}>
             <NativeSelect id="rs-unit" value={f.unitId} onChange={set('unitId')}>
-              <option value="">{avail.data && !avail.data.length ? 'No units set up (Settings → Boarding units)' : 'Assign at check-in'}</option>
+              <option value="">{avail.data && !avail.data.length ? 'No units set up (Settings → Boarding kennels)' : 'Assign at check-in'}</option>
               {free.map((u) => <option key={u.id} value={u.id}>{u.name}{u.nightlyService ? ` — ${fmtMoney(u.nightlyService.priceMinor, currency)}/night` : ''}</option>)}
             </NativeSelect>
           </Field>
@@ -116,7 +116,7 @@ export function GroomingCheckInDialog({ open, onOpenChange, appointment }: { ope
             <p className="text-sm font-medium">Services</p>
             {grooming.length ? grooming.map((s) => (
               <label key={s.id} className="flex items-center gap-2 text-sm"><Checkbox checked={picked.includes(s.id)} onCheckedChange={(v) => setPicked(v ? [...picked, s.id] : picked.filter((x) => x !== s.id))} /> <span className="flex-1">{s.name}</span><span className="tabular text-muted-foreground">{fmtMoney(s.priceMinor, currency)}</span></label>
-            )) : <p className="text-xs text-muted-foreground">No grooming services yet — add them in Settings → Services & fees (category Grooming). You can add services later.</p>}
+            )) : <p className="text-xs text-muted-foreground">No grooming services yet — add them in Settings → Services & prices (category Grooming). You can add services later.</p>}
           </div>
         </div>
         <DialogFooter>

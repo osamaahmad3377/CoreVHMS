@@ -28,7 +28,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return (
       <ErrorState
         className="min-h-screen"
-        error={new Error('Your account is not an active member of any organization. Ask your practice manager for an invitation.')}
+        error={new Error('Your account is not linked to a clinic. Ask your clinic manager to add you.')}
       />
     );
   }

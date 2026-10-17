@@ -24,18 +24,20 @@ export function fmtRelative(d: string | Date | null | undefined) {
   return date && isValid(date) ? `${formatDistanceToNowStrict(date)} ago` : '';
 }
 
-/** Age from date of birth: "3 y 4 m", "7 m", "12 d". */
+/** Age from date of birth in plain words: "5 years 5 months", "7 months", "12 days" ("about …" when estimated). */
 export function fmtAge(dob: string | Date | null | undefined, estimated = false, until?: string | Date | null) {
   const date = toDate(dob);
   if (!date || !isValid(date)) return '—';
   const end = toDate(until) ?? new Date();
+  const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`;
   const y = differenceInYears(end, date);
-  const m = differenceInMonths(end, date) % 12;
+  const months = differenceInMonths(end, date);
+  const m = months % 12;
   let s: string;
-  if (y >= 1) s = m ? `${y} y ${m} m` : `${y} y`;
-  else if (differenceInMonths(end, date) >= 1) s = `${differenceInMonths(end, date)} m`;
-  else s = `${differenceInDays(end, date)} d`;
-  return estimated ? `~${s}` : s;
+  if (y >= 1) s = m ? `${plural(y, 'year')} ${plural(m, 'month')}` : plural(y, 'year');
+  else if (months >= 1) s = plural(months, 'month');
+  else s = plural(Math.max(0, differenceInDays(end, date)), 'day');
+  return estimated ? `about ${s}` : s;
 }
 
 export function fmtMoney(minor: number | null | undefined, currency = 'PKR') {

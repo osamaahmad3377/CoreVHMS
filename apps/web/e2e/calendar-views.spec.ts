@@ -13,7 +13,7 @@ test.describe('Calendar: drag to reschedule and month view', () => {
     await login(page, 'reception@demo.pk');
     const date = futureWednesday();
     await page.goto(`/calendar?date=${date}`);
-    await page.getByRole('button', { name: 'New appointment' }).click();
+    await page.getByRole('button', { name: 'Book appointment' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByRole('combobox').first().click();
     await page.getByLabel('Search patients').fill('Snowy');
@@ -25,7 +25,7 @@ test.describe('Calendar: drag to reschedule and month view', () => {
     await slot.click();
     await dialog.locator('#bk-reason').fill('E2E: drag me');
     await dialog.getByRole('button', { name: 'Book appointment' }).click();
-    await expect(page.getByText(/Booked A-\d+/)).toBeVisible();
+    await expect(page.getByText(/Appointment booked: .*\(A-\d+\)/)).toBeVisible();
 
     // Drag it within Dr. Ayesha's column so that its top lands on the next full hour at least an hour later.
     const [h, m] = slotTime.split(':').map(Number);

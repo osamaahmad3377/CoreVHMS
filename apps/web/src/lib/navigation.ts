@@ -1,4 +1,4 @@
-import type { Permission } from '@vcms/shared';
+import type { OptionalModule, Permission } from '@vcms/shared';
 import {
   Activity,
   BarChart3,
@@ -26,6 +26,7 @@ import {
   ShoppingCart,
   Stethoscope,
   Syringe,
+  ToggleRight,
   Tractor,
   UserCog,
   Users,
@@ -40,6 +41,8 @@ export interface NavItem {
   anyOf: Permission[];
   /** Hidden until the module is implemented end-to-end (no links to empty pages). */
   ready: boolean;
+  /** Optional area (Settings → Services you offer); hidden while the clinic has it switched off. */
+  module?: OptionalModule;
 }
 
 export interface NavSection {
@@ -68,35 +71,35 @@ export const NAV: NavSection[] = [
     label: 'Clinical',
     items: [
       { label: 'Consultations', href: '/consultations', icon: Stethoscope, anyOf: ['clinical.read'], ready: true },
-      { label: 'Prescriptions & pharmacy', href: '/pharmacy', icon: Pill, anyOf: ['prescriptions.read', 'pharmacy.dispense'], ready: true },
-      { label: 'Laboratory & imaging', href: '/lab', icon: FlaskConical, anyOf: ['lab.read'], ready: true },
-      { label: 'Hospitalisation', href: '/hospital', icon: Bed, anyOf: ['hospital.read'], ready: true },
-      { label: 'Surgery & anaesthesia', href: '/surgery', icon: HeartPulse, anyOf: ['surgery.read'], ready: true },
-      { label: 'Preventive care', href: '/preventive', icon: Syringe, anyOf: ['preventive.read'], ready: true },
+      { label: 'Pharmacy', href: '/pharmacy', icon: Pill, anyOf: ['prescriptions.read', 'pharmacy.dispense'], ready: true },
+      { label: 'Lab & X-ray', href: '/lab', icon: FlaskConical, anyOf: ['lab.read'], ready: true, module: 'lab' },
+      { label: 'Hospital', href: '/hospital', icon: Bed, anyOf: ['hospital.read'], ready: true, module: 'hospital' },
+      { label: 'Surgery', href: '/surgery', icon: HeartPulse, anyOf: ['surgery.read'], ready: true, module: 'surgery' },
+      { label: 'Vaccines & reminders', href: '/preventive', icon: Syringe, anyOf: ['preventive.read'], ready: true },
     ],
   },
   {
-    label: 'Commercial',
+    label: 'Money & stock',
     items: [
-      { label: 'Inventory & procurement', href: '/inventory', icon: Boxes, anyOf: ['inventory.read', 'procurement.read'], ready: true },
-      { label: 'Billing & payments', href: '/billing', icon: Receipt, anyOf: ['billing.read'], ready: true },
-      { label: 'Point of sale', href: '/pos', icon: ShoppingCart, anyOf: ['pos.use'], ready: true },
-    ],
-  },
-  {
-    label: 'Services',
-    items: [
-      { label: 'Livestock & farms', href: '/livestock', icon: Tractor, anyOf: ['livestock.read'], ready: true },
-      { label: 'Boarding & grooming', href: '/boarding', icon: Scissors, anyOf: ['boarding.read'], ready: true },
-      { label: 'Insurance & referrals', href: '/insurance', icon: ShieldCheck, anyOf: ['insurance.read'], ready: true },
-    ],
-  },
-  {
-    label: 'Management',
-    items: [
-      { label: 'Staff & rosters', href: '/staff', icon: UserCog, anyOf: ['staff.read', 'users.read'], ready: true },
+      { label: 'Shop counter', href: '/pos', icon: ShoppingCart, anyOf: ['pos.use'], ready: true },
+      { label: 'Billing', href: '/billing', icon: Receipt, anyOf: ['billing.read'], ready: true },
+      { label: 'Stock', href: '/inventory', icon: Boxes, anyOf: ['inventory.read', 'procurement.read'], ready: true },
       { label: 'Reports', href: '/reports', icon: BarChart3, anyOf: ['reports.view'], ready: true },
-      { label: 'Communications', href: '/communications', icon: MessageSquare, anyOf: ['communications.read'], ready: true },
+    ],
+  },
+  {
+    label: 'Extra services',
+    items: [
+      { label: 'Livestock & farms', href: '/livestock', icon: Tractor, anyOf: ['livestock.read'], ready: true, module: 'livestock' },
+      { label: 'Boarding & grooming', href: '/boarding', icon: Scissors, anyOf: ['boarding.read'], ready: true, module: 'boarding' },
+      { label: 'Insurance & referrals', href: '/insurance', icon: ShieldCheck, anyOf: ['insurance.read'], ready: true, module: 'insurance' },
+    ],
+  },
+  {
+    label: 'Team',
+    items: [
+      { label: 'Staff', href: '/staff', icon: UserCog, anyOf: ['staff.read', 'users.read'], ready: true },
+      { label: 'Messages', href: '/communications', icon: MessageSquare, anyOf: ['communications.read'], ready: true },
       { label: 'Documents & templates', href: '/documents', icon: FileText, anyOf: ['documents.read'], ready: false },
       { label: 'Integrations', href: '/integrations', icon: Plug, anyOf: ['integrations.manage'], ready: false },
     ],
@@ -111,33 +114,48 @@ export const NAV: NavSection[] = [
         anyOf: ['org.manage', 'branches.manage', 'users.read', 'roles.manage', 'settings.manage'],
         ready: true,
       },
-      { label: 'Audit log', href: '/audit', icon: ScrollText, anyOf: ['audit.read'], ready: true },
+      { label: 'Activity log', href: '/audit', icon: ScrollText, anyOf: ['audit.read'], ready: true },
     ],
   },
 ];
 
-export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyOf: Permission[] }[] = [
-  { label: 'Organization', href: '/settings/organization', icon: Building2, anyOf: ['org.manage'] },
-  { label: 'Branches', href: '/settings/branches', icon: Building2, anyOf: ['branches.manage'] },
-  { label: 'Staff accounts', href: '/settings/staff', icon: Users, anyOf: ['users.read'] },
-  { label: 'Roles & permissions', href: '/settings/roles', icon: Shield, anyOf: ['roles.manage', 'users.read'] },
-  { label: 'Species & breeds', href: '/settings/species', icon: PawPrint, anyOf: ['settings.manage'] },
-  { label: 'Appointment types', href: '/settings/appointment-types', icon: CalendarDays, anyOf: ['settings.manage'] },
-  { label: 'Services & fees', href: '/settings/services', icon: Receipt, anyOf: ['settings.manage'] },
-  { label: 'Billing & tax', href: '/settings/billing', icon: Receipt, anyOf: ['settings.manage'] },
-  { label: 'Receipts & printing', href: '/settings/receipts', icon: Printer, anyOf: ['settings.manage'] },
-  { label: 'Messages & reminders', href: '/settings/communications', icon: MessageSquare, anyOf: ['settings.manage'] },
-  { label: 'Rooms & equipment', href: '/settings/resources', icon: Bed, anyOf: ['settings.manage'] },
-  { label: 'Wards & cages', href: '/settings/wards', icon: Bed, anyOf: ['settings.manage'] },
-  { label: 'Surgical checklist', href: '/settings/surgery-checklist', icon: Scissors, anyOf: ['settings.manage'] },
-  { label: 'Boarding units', href: '/settings/boarding-units', icon: Bed, anyOf: ['settings.manage'] },
-  { label: 'Livestock', href: '/settings/livestock', icon: Tractor, anyOf: ['settings.manage'] },
-  { label: 'Consultation templates', href: '/settings/templates', icon: FileText, anyOf: ['settings.manage'] },
-  { label: 'Vital references', href: '/settings/vital-references', icon: Activity, anyOf: ['settings.manage'] },
+export type SettingsGroup = 'Your clinic' | 'Staff & access' | 'Prices & billing' | 'Rooms & spaces' | 'Clinical setup';
+export const SETTINGS_GROUPS: SettingsGroup[] = ['Your clinic', 'Staff & access', 'Prices & billing', 'Rooms & spaces', 'Clinical setup'];
+
+/** Settings pages, grouped the way an owner thinks about them; `hint` is the one-line description on the Settings home page. */
+export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyOf: Permission[]; group: SettingsGroup; hint: string; module?: OptionalModule }[] = [
+  { label: 'Clinic details', href: '/settings/organization', icon: Building2, anyOf: ['org.manage'], group: 'Your clinic', hint: 'Name, address, phone, tax number and logo' },
+  { label: 'Services you offer', href: '/settings/modules', icon: ToggleRight, anyOf: ['settings.manage', 'org.manage'], group: 'Your clinic', hint: 'Switch hospital, surgery, lab, farms, boarding or insurance on or off' },
+  { label: 'Branches', href: '/settings/branches', icon: Building2, anyOf: ['branches.manage'], group: 'Your clinic', hint: 'Each location, its address and time zone' },
+  { label: 'Receipts & printing', href: '/settings/receipts', icon: Printer, anyOf: ['settings.manage'], group: 'Your clinic', hint: 'Receipt size, logo and the text printed on it' },
+  { label: 'Reminder messages', href: '/settings/communications', icon: MessageSquare, anyOf: ['settings.manage'], group: 'Your clinic', hint: 'When reminders are sent and what they say' },
+  { label: 'Staff accounts', href: '/settings/staff', icon: Users, anyOf: ['users.read'], group: 'Staff & access', hint: 'Add staff, reset passwords, suspend access' },
+  { label: 'Roles & permissions', href: '/settings/roles', icon: Shield, anyOf: ['roles.manage', 'users.read'], group: 'Staff & access', hint: 'What each job is allowed to see and do (advanced)' },
+  { label: 'Services & prices', href: '/settings/services', icon: Receipt, anyOf: ['settings.manage'], group: 'Prices & billing', hint: 'Your price list: consultations, vaccinations, procedures' },
+  { label: 'Appointment types', href: '/settings/appointment-types', icon: CalendarDays, anyOf: ['settings.manage'], group: 'Prices & billing', hint: 'What can be booked, how long it takes and what it charges' },
+  { label: 'Tax & payments', href: '/settings/billing', icon: Receipt, anyOf: ['settings.manage'], group: 'Prices & billing', hint: 'Sales tax, days to pay, cash drawer rules' },
+  { label: 'Rooms & equipment', href: '/settings/resources', icon: Bed, anyOf: ['settings.manage'], group: 'Rooms & spaces', hint: 'Consult rooms, theatre and equipment that can be booked' },
+  { label: 'Hospital wards & cages', href: '/settings/wards', icon: Bed, anyOf: ['settings.manage'], group: 'Rooms & spaces', hint: 'Where admitted patients stay and the daily fee', module: 'hospital' },
+  { label: 'Boarding kennels', href: '/settings/boarding-units', icon: Bed, anyOf: ['settings.manage'], group: 'Rooms & spaces', hint: 'Kennels and catteries for boarding, and the nightly price', module: 'boarding' },
+  { label: 'Consultation templates', href: '/settings/templates', icon: FileText, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Ready-made note layouts for common visits' },
+  { label: 'Species & breeds', href: '/settings/species', icon: PawPrint, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Already filled in; add a breed if one is missing' },
+  { label: 'Normal vital-sign ranges', href: '/settings/vital-references', icon: Activity, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Normal temperature, heart rate… per species, to flag readings' },
+  { label: 'Surgical checklist', href: '/settings/surgery-checklist', icon: Scissors, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Safety checks ticked before each operation', module: 'surgery' },
+  { label: 'Livestock pregnancy lengths', href: '/settings/livestock', icon: Tractor, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Used to work out calving and lambing dates', module: 'livestock' },
 ];
 
-export function visibleNav(canAny: (...p: Permission[]) => boolean): NavSection[] {
-  return NAV.map((s) => ({ ...s, items: s.items.filter((i) => i.ready && (!i.anyOf.length || canAny(...i.anyOf))) })).filter((s) => s.items.length);
+/** `modules` = the clinic's enabled optional modules (session.organization.enabledModules); omitted = all on. */
+export function visibleNav(canAny: (...p: Permission[]) => boolean, modules?: readonly OptionalModule[]): NavSection[] {
+  return NAV.map((s) => ({ ...s, items: s.items.filter((i) => i.ready && moduleOn(i.module, modules) && (!i.anyOf.length || canAny(...i.anyOf))) })).filter((s) => s.items.length);
+}
+
+/** Settings pages the user may open, without those of switched-off modules. */
+export function visibleSettings(canAny: (...p: Permission[]) => boolean, modules?: readonly OptionalModule[]) {
+  return SETTINGS_NAV.filter((i) => moduleOn(i.module, modules) && canAny(...i.anyOf));
+}
+
+export function moduleOn(module: OptionalModule | undefined, enabled?: readonly OptionalModule[]) {
+  return !module || !enabled || enabled.includes(module);
 }
 
 /**

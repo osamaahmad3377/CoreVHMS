@@ -4,7 +4,6 @@ import { TASK_TYPES, enumLabel } from '@vcms/shared';
 import { CalendarCheck, Check, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { EmptyState } from '../page';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Card, CardHeader, CardTitle } from '../ui/card';
@@ -88,7 +87,7 @@ export function TasksPanel({
           ))}
         </ul>
       ) : (
-        <EmptyState title="No follow-up tasks" className="py-6" />
+        <p className="px-3 py-2 text-xs text-muted-foreground">No follow-up tasks.</p>
       )}
     </Card>
   );

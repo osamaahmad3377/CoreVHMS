@@ -27,7 +27,7 @@ export default function PortalLoginPage() {
   };
   return (
     <PortalAuthCard title="Sign in" description="See your animals’ records, vaccinations, appointments and invoices.">
-      <form className="grid gap-3" onSubmit={submit}>
+      <form method="post" className="grid gap-3" onSubmit={submit}>
         {error && <FormError message={error} />}
         <Field label="Email" htmlFor="pl-email"><Input id="pl-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></Field>
         <Field label="Password" htmlFor="pl-pw"><Input id="pl-pw" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></Field>

@@ -1,9 +1,20 @@
 import { calcLine, sumLines } from '@vcms/shared';
 import type { PosItem } from '@/lib/types';
 
+/** A catalogue item, or an "other item" typed in at the counter (name and price only). */
+export type CartItem = Omit<PosItem, 'type'> & { type: PosItem['type'] | 'CUSTOM' };
+
+/** Builds an "other item" for the basket; it is sold as a CUSTOM invoice line at the price typed in. */
+export function customItem(name: string, priceMinor: number, taxRateBasisPoints: number): CartItem {
+  return {
+    type: 'CUSTOM', id: crypto.randomUUID(), name, code: null, barcode: null, category: 'CUSTOM', categoryId: null, categoryName: null,
+    brand: null, packSize: null, photoAttachmentId: null, unit: 'item', priceMinor, taxRateBasisPoints, trackStock: false, available: null, rxOnly: false,
+  };
+}
+
 export interface CartLine {
   key: string;
-  item: PosItem;
+  item: CartItem;
   quantity: number;
   /** Unit price charged; differs from the catalogue price only after an authorised override. */
   priceMinor: number;
@@ -42,22 +53,28 @@ export function cartTotals(lines: CartLine[], inclusive: boolean) {
 }
 
 /** Why an item cannot be added (or more of it), or null if it can. */
-export function blockReason(item: PosItem, qtyInCart: number, allowNegative: boolean): string | null {
+export function blockReason(item: CartItem, qtyInCart: number, allowNegative: boolean): string | null {
   if (item.rxOnly) return 'Prescription only';
   if (item.priceMinor === null) return 'No price set';
   if (item.trackStock && !allowNegative && item.available !== null && qtyInCart >= item.available) return item.available <= 0 ? 'Out of stock' : 'No more in stock';
   return null;
 }
 
+/** Out of stock (nothing left at all), as opposed to having reached the last one in the basket. */
+export const isOutOfStock = (item: CartItem, allowNegative: boolean) => item.trackStock && !allowNegative && item.available !== null && item.available <= 0;
+
 export function toInvoiceLines(lines: CartLine[]) {
-  return lines.map((l) => ({
-    kind: l.item.type,
-    productId: l.item.type === 'PRODUCT' ? l.item.id : undefined,
-    serviceId: l.item.type === 'SERVICE' ? l.item.id : undefined,
-    quantity: l.quantity,
-    unitPriceMinor: l.priceMinor !== l.item.priceMinor ? l.priceMinor : undefined,
-    discountMinor: l.discountMinor,
-  }));
+  return lines.map((l) => {
+    if (l.item.type === 'CUSTOM') return { kind: 'CUSTOM' as const, description: l.item.name, quantity: l.quantity, unitPriceMinor: l.priceMinor, discountMinor: l.discountMinor };
+    return {
+      kind: l.item.type,
+      productId: l.item.type === 'PRODUCT' ? l.item.id : undefined,
+      serviceId: l.item.type === 'SERVICE' ? l.item.id : undefined,
+      quantity: l.quantity,
+      unitPriceMinor: l.priceMinor !== l.item.priceMinor ? l.priceMinor : undefined,
+      discountMinor: l.discountMinor,
+    };
+  });
 }
 
 /** Quick-cash suggestions: exact amount plus the next round notes above it. */

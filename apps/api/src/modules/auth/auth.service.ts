@@ -297,6 +297,7 @@ export class AuthService {
           branchName: input.branchName,
           ownerUserId: u.id,
         });
+        await this.bootstrap.starterSetup(tx, org.id);
         await this.audit.record(
           { action: 'organization.created', entityType: 'Organization', entityId: org.id, organizationId: org.id, actorUserId: u.id, actorName: u.name },
           tx,

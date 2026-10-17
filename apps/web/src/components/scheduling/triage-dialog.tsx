@@ -52,7 +52,7 @@ export function TriageDialog({
   const m = useMutation({
     mutationFn: () => api.post('/triage', { patientId, appointmentId, priority, presentingComplaint: complaint, ...v }),
     onSuccess: () => {
-      toast.success('Triage recorded');
+      toast.success(`Triage saved: ${patientName} — ${enumLabel(priority)}`);
       qc.invalidateQueries({ queryKey: ['queue'] });
       qc.invalidateQueries({ queryKey: ['appointments'] });
       onOpenChange(false);

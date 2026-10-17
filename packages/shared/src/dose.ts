@@ -130,13 +130,103 @@ export function courseQuantity(amountPerDose: number, perDay: number, days: numb
   return r4(Math.ceil(raw / increment - 1e-9) * increment);
 }
 
-export const FREQUENCIES: { code: string; label: string; perDay: number | null }[] = [
-  { code: 'SID', label: 'Once daily (SID)', perDay: 1 },
-  { code: 'BID', label: 'Twice daily (BID)', perDay: 2 },
-  { code: 'TID', label: 'Three times daily (TID)', perDay: 3 },
-  { code: 'QID', label: 'Four times daily (QID)', perDay: 4 },
-  { code: 'EOD', label: 'Every other day (EOD)', perDay: 0.5 },
-  { code: 'WEEKLY', label: 'Once weekly', perDay: 1 / 7 },
-  { code: 'ONCE', label: 'Single dose', perDay: null },
-  { code: 'PRN', label: 'As needed (PRN)', perDay: null },
+/**
+ * Dosing frequencies. `label` is for staff (plain words first, the abbreviation in brackets); `ownerText`
+ * is for owner labels, which never carry Latin abbreviations.
+ */
+export const FREQUENCIES: { code: string; label: string; ownerText: string; perDay: number | null }[] = [
+  { code: 'SID', label: 'Once a day (SID)', ownerText: 'once a day', perDay: 1 },
+  { code: 'BID', label: '2 times a day (BID)', ownerText: '2 times a day', perDay: 2 },
+  { code: 'TID', label: '3 times a day (TID)', ownerText: '3 times a day', perDay: 3 },
+  { code: 'QID', label: '4 times a day (QID)', ownerText: '4 times a day', perDay: 4 },
+  { code: 'EOD', label: 'Every other day (EOD)', ownerText: 'every other day', perDay: 0.5 },
+  { code: 'WEEKLY', label: 'Once a week', ownerText: 'once a week', perDay: 1 / 7 },
+  { code: 'ONCE', label: 'Single dose', ownerText: 'once only', perDay: null },
+  { code: 'PRN', label: 'Only when needed (PRN)', ownerText: 'only when needed', perDay: null },
 ];
+
+/** Earlier wording of the frequency labels, so stored prescriptions still resolve to a frequency. */
+const OLD_FREQUENCY_LABELS: Record<string, string> = {
+  'once daily': 'SID',
+  'twice daily': 'BID',
+  'three times daily': 'TID',
+  'four times daily': 'QID',
+  'once weekly': 'WEEKLY',
+  'as needed': 'PRN',
+};
+
+/** Finds the frequency from a code ("BID") or from stored label text ("Twice daily (BID)", "2 times a day (BID)"). */
+export function findFrequency(codeOrText: string | null | undefined) {
+  if (!codeOrText) return undefined;
+  const t = codeOrText.trim();
+  const code = /\(([A-Z]+)\)\s*$/.exec(t)?.[1] ?? t.toUpperCase();
+  return (
+    FREQUENCIES.find((f) => f.code === code) ??
+    FREQUENCIES.find((f) => f.label.toLowerCase() === t.toLowerCase()) ??
+    FREQUENCIES.find((f) => f.code === OLD_FREQUENCY_LABELS[t.toLowerCase().replace(/\s*\(.*\)$/, '')])
+  );
+}
+
+/** How an owner reads the route on a label: "by mouth", "under the skin". Routes without an entry are left out. */
+export const ROUTE_OWNER_TEXT: Record<string, string> = {
+  PO: 'by mouth',
+  SC: 'under the skin',
+  IM: 'into the muscle',
+  IV: 'into the vein',
+  TOPICAL: 'on the skin',
+  TRANSDERMAL: 'on the skin',
+  OPHTHALMIC: 'in the eye',
+  OTIC: 'in the ear',
+  INTRANASAL: 'in the nose',
+  INTRAMAMMARY: 'into the teat',
+  RECTAL: 'into the back passage',
+  INHALED: 'by inhaler',
+};
+
+const ABBREVIATED_UNIT = /^(mL|L|g|kg|mg|mcg|µg|IU|cm|mm)$/;
+const FRACTIONS: Record<string, string> = { '0.25': '¼', '0.5': '½', '0.75': '¾' };
+
+/** "1 tablet", "½ tablet", "1½ tablets", "2.5 mL" — written for an owner. */
+export function ownerAmount(amount: number, unit: string) {
+  if (ABBREVIATED_UNIT.test(unit)) return `${amount} ${unit}`;
+  const whole = Math.floor(amount + 1e-9);
+  const frac = FRACTIONS[String(r2(amount - whole))];
+  const n = frac ? `${whole || ''}${frac}` : String(amount);
+  const plural = amount > 1 && !unit.endsWith('s') ? `${unit}s` : unit;
+  return `${n} ${plural}`;
+}
+
+/**
+ * Owner label sentence: "Give 1 tablet by mouth 2 times a day for 7 days." Built only from what the vet
+ * prescribed (amount, route, frequency, duration); it adds no clinical content.
+ */
+export function ownerInstructions(i: { amount?: number | null; unit?: string | null; route: string; frequencyCode: string; durationDays?: number | null }) {
+  const f = findFrequency(i.frequencyCode);
+  const parts = ['Give'];
+  if (i.amount && i.unit) parts.push(ownerAmount(i.amount, i.unit));
+  if (ROUTE_OWNER_TEXT[i.route]) parts.push(ROUTE_OWNER_TEXT[i.route]);
+  if (f) parts.push(f.ownerText);
+  if (i.durationDays && f?.code !== 'ONCE') parts.push(`for ${i.durationDays} day${i.durationDays === 1 ? '' : 's'}`);
+  return `${parts.join(' ')}.`;
+}
+
+const ROUTE_ABBREVIATIONS: Record<string, string> = { PO: 'by mouth', SC: 'under the skin', SQ: 'under the skin', IM: 'into the muscle', IV: 'into the vein' };
+const OLD_FREQUENCY_WORDS: [RegExp, string][] = [
+  [/\bonce daily\b/gi, 'once a day'],
+  [/\btwice daily\b/gi, '2 times a day'],
+  [/\bthree times daily\b/gi, '3 times a day'],
+  [/\bfour times daily\b/gi, '4 times a day'],
+  [/\bas needed\b/gi, 'only when needed'],
+];
+
+/**
+ * Label text as printed for the owner: Latin abbreviations are removed or written out
+ * ("Give SC twice daily (BID) for 7 days." → "Give under the skin 2 times a day for 7 days.").
+ */
+export function ownerLabelText(text: string) {
+  let s = text.replace(/\s*\((SID|BID|TID|QID|EOD|PRN|q\d+h)\)/gi, '');
+  for (const [re, plain] of OLD_FREQUENCY_WORDS) s = s.replace(re, plain);
+  s = s.replace(/\b(SID|BID|TID|QID|EOD|PRN)\b/gi, (m) => findFrequency(m.toUpperCase())?.ownerText ?? m);
+  s = s.replace(/\b(PO|SC|SQ|IM|IV)\b/g, (m) => ROUTE_ABBREVIATIONS[m]);
+  return s.replace(/\s{2,}/g, ' ').trim();
+}

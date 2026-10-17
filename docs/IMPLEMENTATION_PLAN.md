@@ -260,3 +260,70 @@ Items from the feature matrix that need no external device, data source or provi
 - **Demo data:** repeated E2E runs have left test records in the Pakistan demo clinic (E2E-*, "Temp Receptionist" staff, "Allergy to …"). Only re-seeding with `npm run db:seed -- --reset` removes them, and it also removes data added by hand, so it has not been run.
 - **Tests executed:** shared 27/27; API full run 31 suites — 29 passed first time, and the 2 that failed (the new `qa-polish.int-spec.ts`, whose test data needed an open cash register and a non-prescription item, and a security assertion affected by a statement wording change that was then reverted) pass on re-run, 162 tests in all. New tests: `qa-polish.int-spec.ts` (statement wording, invoice filed against the animal, sales-by-item names/totals/CSV, empty CSV header, movement references, reorder last cost/supplier), scheduling (triage carried into the consultation, starting clinician, same-patient clash), preventive (local-day next due), pharmacy (mass-dose charging), patients (empty duplicate filters, related documents), `tz.spec`. ESLint and `tsc` clean. Playwright, re-run spec by spec after the push: 28 of 31 scenarios pass (plus 2 portal scenarios skipped while the portal is off). The first full run found one real regression, fixed here: the top bar's new search-button label clashed with the patient search box. Six tests were updated for intended wording and behaviour changes: "On draft order", locations named with their branch, sample-type confirmation on collection, and a batch number shown twice. Three failures are demo-data exhaustion, not code: the demo surgery and the demo insurance claim were already completed by earlier runs, and the demo "Elizabethan collar" is out of stock. They pass after `npm run db:seed -- --reset`, which has not been run because it would remove data added by hand.
 
+### 2026-10-17 — Ease of use for first-day staff
+- **Requested by the clinic:** "we want it easy to use and easy to understand". The interface stays English only (no Urdu), in plain wording for second-language speakers.
+- **How:** four usability walkthroughs as untrained staff (front desk, vet/pharmacy/lab, owner/manager on an existing and a brand-new clinic) plus a wording audit of about 7,900 UI strings. Every task was timed in steps, and each hesitation point was written down.
+- **One vocabulary everywhere:** Client, Patient, Vet, Appointment/Consultation, Invoice (Unpaid / Partly paid / Paid / Cancelled), "Not yet invoiced", Cash drawer (starting cash, difference), Store room, Shop counter, Rs, British spelling, "Add …" / "Save". Urgency reads Critical — see now / Very urgent / Urgent / Can wait / Routine. Abbreviations come after plain words (e.g. "By mouth (PO)", "Heart rate (beats/min)").
+- **Navigation:** short menu names (Pharmacy, Lab & X-ray, Hospital, Shop counter, Billing, Stock, Reports, Messages, Activity log). The Settings home is grouped cards with one line each (Your clinic, Staff & access, Prices & billing, Rooms & spaces, Clinical setup). A new **Services you offer** setting hides Hospital, Surgery, Lab, Farms, Boarding or Insurance when the clinic does not offer them, and never deletes data (existing column `Organization.disabledModules`).
+- **Dashboard by role:**
+  - Reception sees Waiting now, Arriving next (with Check in) and Still to do.
+  - The owner sees "Money today": received today and this month, clients owe, not yet invoiced.
+  - Quick actions depend on the role.
+  - A cash drawer left open from an earlier day becomes a to-do.
+- **First day:**
+  - An 11-step "Get your clinic ready" checklist with Start and Skip; skip and hide are stored per clinic (migration `setup_checklist_state`).
+  - New clinics get a cash drawer per branch and a starter price list (Consultation, Follow-up, Vaccination, Deworming at Rs 0, marked "Set your price") with linked appointment types.
+- **Front desk:**
+  - Add a new client and patient from inside the walk-in and booking windows.
+  - Phone search ignores spaces, dashes and +92.
+  - The surname is optional, and names show first-name-first (migration `client_display_name_order`).
+  - Short forms with "More details (optional)", and "What next?" after saving.
+  - Booking: "Any vet (first free)", Today / Tomorrow / Next week, and the reason when Book is disabled.
+  - One-tap cancel reasons.
+  - Cards show the client and phone, and waits read "9 h 12 min".
+  - Plain-sentence confirmations that stay 6–12 s.
+  - Amount owed shows in search and on the client page.
+- **Billing and shop counter:**
+  - Split card + cash payments on invoices, and a print button per payment.
+  - "Not yet invoiced" is grouped by client (`GET /charges/by-client`).
+  - "Finish invoice", and credit shown in green (never a minus).
+  - Shop counter: out-of-stock items last with an explanation, "+ Other item", word and category search, "Take payment", "Pause sale".
+  - A note counter when closing the cash drawer.
+- **Stock, staff and prices:**
+  - Shop items can be received without a batch or supplier ("Bought locally"), and the disabled button explains why.
+  - The setting "Purchase orders need a second person to approve" (migration `po_second_approver_setting`; on for existing clinics, off for new ones).
+  - "Order these" from low stock, and "Add opening stock" after creating a product.
+  - Stock tabs are grouped under "More".
+  - Appointment types show the linked service's price, so there is one price only.
+  - "Add staff" on the Staff page; common roles first; "vet" ticked automatically; temporary password by default.
+- **Clinical:**
+  - **Allergy matching:** checks the medicine name, ingredients and a new per-product "Drug class / family". A "Penicillin" allergy now warns on amoxicillin.
+    - The prescribe dialog shows an allergy strip, marks matches in the search list, and shows a red box as soon as a product is picked.
+    - Authorising a draft re-checks allergies on the server.
+    - The pharmacy shows "May conflict with allergy — ask the vet".
+  - **Finishing a consultation:** "Finish consultation" opens a checklist with "Sign notes & finish". "Sign & lock note"; a lasting reminder when notes are still unsigned.
+  - **Validation:** vital-sign errors appear on the field itself ("Temperature must be between 25 and 46 °C", "Did you mean 39.8?").
+  - **Dose checks:**
+    - An amber box when no dose range is set up for the species.
+    - A clinic setting asks to confirm when one dose is a large number of tablets (default 4). This is a safety prompt, not a dose.
+  - **Plain wording:**
+    - Note sections are History / Examination findings / Assessment / Plan, with "Insert vitals".
+    - Plain route, frequency and vital-sign names.
+    - Owner labels read "Give 1 tablet by mouth 2 times a day for 7 days".
+  - **Consultation page:** an action bar, slim empty cards, a "Charges sent to reception" card, and a recheck defaulting to a follow-up type.
+  - **Pharmacy and lab:** "Ready to hand over", "Approved by", "Print label" after dispensing. The lab worklist has an "Open" button and a "Sample collected. Next: enter results" message.
+  - **Starting a consultation:** if the patient is already checked in, the dialog offers to start that appointment.
+  - **Migration:** `clinical_drug_class_dose_prompt`.
+- **Security:** sign-in and other password forms now always POST, so a click before the page finishes loading can no longer put a password in the address bar.
+- **Tests executed:**
+  - Shared: 35/35.
+  - API: 177/177 across 32 suites. New or extended suites:
+    - onboarding: starter data, steps, modules, front-desk widget, cash drawers;
+    - billing-ease: shop search, charges by client, "Other item" permission;
+    - inventory: one-person order approval;
+    - clients: phone search with spaces, names;
+    - pharmacy: drug-family allergies, large-dose prompt;
+    - clinical: vital-sign messages.
+  - ESLint and `tsc` clean.
+  - E2E specs were updated for the new wording; the browser run is recorded in the next entry.
+

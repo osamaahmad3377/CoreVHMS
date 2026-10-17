@@ -30,7 +30,8 @@ const VARIANTS: Record<string, BadgeProps['variant']> = {
   REJECTED: 'destructive',
 };
 
-export function CommerceBadge({ status, overdue }: { status: string; overdue?: boolean }) {
+/** Status badge for invoices, charges, payments and estimates. `labels` overrides the wording (e.g. estimate statuses). */
+export function CommerceBadge({ status, overdue, labels }: { status: string; overdue?: boolean; labels?: Record<string, string> }) {
   if (overdue) return <Badge variant="destructive">Overdue</Badge>;
-  return <Badge variant={VARIANTS[status] ?? 'secondary'}>{status === 'PENDING' ? 'Unbilled' : STATUS_LABEL[status] ?? enumLabel(status)}</Badge>;
+  return <Badge variant={VARIANTS[status] ?? 'secondary'}>{labels?.[status] ?? (status === 'PENDING' ? 'Not yet invoiced' : STATUS_LABEL[status] ?? enumLabel(status))}</Badge>;
 }

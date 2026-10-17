@@ -37,7 +37,7 @@ function WardDialog({ ward, open, onOpenChange }: { ward: WardRow | null; open: 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{ward ? `Edit ${ward.name}` : 'New ward'}</DialogTitle>
+          <DialogTitle>{ward ? `Edit ${ward.name}` : 'Add ward'}</DialogTitle>
           <DialogDescription>The daily fee is charged once per started 24 hours that a patient spends in this ward.</DialogDescription>
         </DialogHeader>
         {error && <FormError message={error} />}
@@ -45,7 +45,7 @@ function WardDialog({ ward, open, onOpenChange }: { ward: WardRow | null; open: 
           <Field label="Branch" htmlFor="wd-branch"><NativeSelect id="wd-branch" value={f.branchId} disabled={!!ward} onChange={(e) => setF({ ...f, branchId: e.target.value })}>{session.branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</NativeSelect></Field>
           <Field label="Type" htmlFor="wd-type"><NativeSelect id="wd-type" value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })}>{WARD_TYPES.map((t) => <option key={t} value={t}>{enumLabel(t, 'wardType')}</option>)}</NativeSelect></Field>
           <Field label="Name" htmlFor="wd-name" required className="sm:col-span-2"><Input id="wd-name" value={f.name} maxLength={80} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
-          <Field label="Daily fee (service)" htmlFor="wd-svc" className="sm:col-span-2" hint="Create a “per day” service in Services & fees first.">
+          <Field label="Daily fee (service)" htmlFor="wd-svc" className="sm:col-span-2" hint="Create a “per day” service in Services & prices first.">
             <NativeSelect id="wd-svc" value={f.dailyServiceId} onChange={(e) => setF({ ...f, dailyServiceId: e.target.value })}>
               <option value="">No daily fee</option>
               {(services.data ?? []).filter((s) => s.isActive).map((s) => <option key={s.id} value={s.id}>{s.name} ({fmtMoney(s.priceMinor, currency)})</option>)}
@@ -94,10 +94,10 @@ export default function WardsSettingsPage() {
       <Card>
         <CardHeader className="flex-wrap">
           <div className="min-w-0">
-            <CardTitle>Wards & cages</CardTitle>
+            <CardTitle>Hospital wards & cages</CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">Where inpatients stay. Cages can be kennels, runs or stalls.</p>
           </div>
-          <Button size="sm" onClick={() => setDlg({ open: true, ward: null })}><Plus /> New ward</Button>
+          <Button size="sm" onClick={() => setDlg({ open: true, ward: null })}><Plus /> Add ward</Button>
         </CardHeader>
         {q.isLoading ? <LoadingRows /> : !q.data?.length ? <EmptyState icon={BedDouble} title="No wards yet" description="Add a ward, then add its cages or kennels." /> : (
           <div className="divide-y">

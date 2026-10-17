@@ -65,7 +65,7 @@ export function PatientBanner({ patient, className, compact }: { patient: Banner
       {!compact && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground sm:ml-4 sm:border-l sm:pl-4">
           <span className="flex items-center gap-1">
-            <Scale className="h-3.5 w-3.5" /> {fmtWeight(patient.latestWeightKg)}
+            <Scale className="h-3.5 w-3.5" /> {patient.latestWeightKg == null ? 'Weight: not recorded' : fmtWeight(patient.latestWeightKg)}
           </span>
           {patient.owner && (
             <Link href={`/clients/${patient.owner.id}`} className="flex items-center gap-1 hover:text-foreground">

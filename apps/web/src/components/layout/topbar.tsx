@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { useCreateActions } from './create-actions';
+import { useModKey } from '../help/shortcuts';
 import { Button } from '../ui/button';
 import {
   DropdownMenu,
@@ -41,6 +42,7 @@ export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () 
   };
 
   const quick = useCreateActions();
+  const mod = useModKey();
 
   return (
     <header className="no-print sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-card/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-card/80 sm:px-4">
@@ -50,13 +52,14 @@ export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () 
 
       <button
         onClick={onSearch}
-        aria-label="Search everything (⌘K)"
+        aria-label={`Search everything (${mod} K)`}
+        title={`Search by name, patient or phone (${mod} K)`}
         className="flex h-9 min-w-0 shrink items-center gap-2 rounded-md border bg-muted/50 px-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted sm:w-full sm:max-w-md sm:px-3"
       >
         <Search className="h-4 w-4 shrink-0" />
-        <span className="hidden flex-1 truncate text-left sm:block">Search patients, owners, phone…</span>
+        <span className="hidden flex-1 truncate text-left sm:block">Search by name, patient or phone (e.g. 0300 77…)</span>
         <span className="hidden items-center gap-0.5 sm:flex">
-          <Kbd>⌘</Kbd>
+          <Kbd>{mod}</Kbd>
           <Kbd>K</Kbd>
         </span>
       </button>
@@ -68,8 +71,8 @@ export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () 
         {quick.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="sm" className="gap-1">
-                <Plus /> <span className="hidden sm:inline">New</span>
+              <Button size="sm" className="gap-1" title="Add a client, patient, appointment and more">
+                <Plus /> New
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -108,7 +111,7 @@ export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () 
               {session.organizations.length > 1 && (
                 <>
                   <DropdownMenuSeparator />
-                  <DropdownMenuLabel>Switch organization</DropdownMenuLabel>
+                  <DropdownMenuLabel>Switch clinic</DropdownMenuLabel>
                   {session.organizations
                     .filter((o) => o.id !== session.organization?.id)
                     .map((o) => (

@@ -13,19 +13,19 @@ export const reqText = (max = 255) => z.string().trim().min(1, 'Required').max(m
 
 export const optEmail = () =>
   z
-    .union([z.literal(''), z.string().trim().toLowerCase().email('Invalid email').max(254)])
+    .union([z.literal(''), z.string().trim().toLowerCase().email('Email looks incomplete — e.g. name@gmail.com').max(254)])
     .nullish()
     .transform((v) => (v === '' ? null : v));
 
-export const optPhone = () =>
+export const optPhone = (message = 'Enter a phone number like 0300 1234567') =>
   z
     .union([
       z.literal(''),
       z
         .string()
         .trim()
-        .max(32)
-        .regex(/^\+?[0-9 ()\-]{6,32}$/, 'Invalid phone number'),
+        .max(32, message)
+        .regex(/^\+?[0-9 ()\-]{6,32}$/, message),
     ])
     .nullish()
     .transform((v) => (v === '' ? null : v));

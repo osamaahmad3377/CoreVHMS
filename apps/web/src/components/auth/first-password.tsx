@@ -42,6 +42,7 @@ export function FirstPasswordChange({ name, onDone }: { name: string; onDone: ()
         </CardHeader>
         <CardContent>
           <form
+            method="post"
             className="grid gap-3"
             onSubmit={(e) => {
               e.preventDefault();

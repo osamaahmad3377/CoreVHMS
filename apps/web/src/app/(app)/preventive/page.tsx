@@ -197,7 +197,7 @@ function Preventive() {
   const tab = url.get('tab', 'due');
   return (
     <>
-      <PageHeader title="Preventive care" help="preventive" description="Vaccinations, parasite control and health checks — what is due, who to remind, and how well patients are covered." />
+      <PageHeader title="Vaccines & reminders" help="preventive" description="Vaccinations, parasite control and health checks — what is due, who to remind, and how well patients are covered." />
       <div className="mb-4 flex gap-1 border-b" role="tablist">
         {[['due', 'Due & overdue'], ['protocols', 'Protocols'], ['compliance', 'Compliance']].map(([k, l]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => url.set({ tab: k })} className={cn('-mb-px border-b-2 px-3 pb-2 pt-1 text-sm font-medium', tab === k ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}>{l}</button>

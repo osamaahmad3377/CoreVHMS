@@ -4,6 +4,7 @@ import type { Paginated } from '@vcms/shared';
 import { CreditCard, Download, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
+import { AccountBalance } from './money';
 import { CommerceBadge } from './status';
 import { TakePaymentDialog } from './take-payment-dialog';
 import { DataTable } from '../data-table';
@@ -28,12 +29,12 @@ export function ClientAccount({ clientId }: { clientId: string }) {
     <div className="grid gap-4">
       <div className="flex flex-wrap gap-2">
         {can('payments.take') && <Button size="sm" onClick={() => setPaying(true)}><CreditCard /> Take payment</Button>}
-        {can('billing.write') && <Button size="sm" variant="outline" asChild><Link href={`/billing/invoices/new?clientId=${clientId}`}><Plus /> New invoice{unbilled ? ` (${unbilled} unbilled)` : ''}</Link></Button>}
-        <Button size="sm" variant="outline" asChild><a href={`/api/v1/clients/${clientId}/statement.csv`} download><Download /> Statement CSV</a></Button>
+        {can('billing.write') && <Button size="sm" variant="outline" asChild><Link href={`/billing/invoices/new?clientId=${clientId}`}><Plus /> {unbilled ? `Make invoice (${unbilled} ${unbilled === 1 ? 'item' : 'items'} waiting)` : 'New invoice'}</Link></Button>}
+        <Button size="sm" variant="outline" asChild><a href={`/api/v1/clients/${clientId}/statement.csv`} download><Download /> Download statement</a></Button>
       </div>
       {!!unbilled && (
         <Card className="border-warning/40 bg-warning/5 p-3 text-sm">
-          {unbilled} unbilled charge{unbilled === 1 ? '' : 's'} worth {fmtMoney(charges.data?.totalMinor ?? 0, currency)} before tax. {can('billing.write') && <Link className="font-medium underline" href={`/billing/invoices/new?clientId=${clientId}`}>Create an invoice</Link>}
+          {unbilled} {unbilled === 1 ? 'item is' : 'items are'} not yet invoiced, worth {fmtMoney(charges.data?.totalMinor ?? 0, currency)} before tax. {can('billing.write') && <Link className="font-medium underline" href={`/billing/invoices/new?clientId=${clientId}`}>Make invoice</Link>}
         </Card>
       )}
       <Card>
@@ -46,16 +47,16 @@ export function ClientAccount({ clientId }: { clientId: string }) {
             { key: 'no', header: 'Invoice', cell: (r) => <Link className="font-medium hover:underline" href={`/billing/invoices/${r.id}`}>{r.invoiceNo}</Link> },
             { key: 'date', header: 'Date', cell: (r) => <span className="text-sm">{fmtDate(r.issuedAt ?? r.createdAt)}</span> },
             { key: 'total', header: 'Total', className: 'text-right tabular', headerClassName: 'text-right', cell: (r) => fmtMoney(r.totalMinor, r.currency) },
-            { key: 'bal', header: 'Balance', className: 'text-right tabular', headerClassName: 'text-right', cell: (r) => (['DRAFT', 'VOID'].includes(r.status) ? '—' : fmtMoney(r.balanceMinor, r.currency)) },
+            { key: 'bal', header: 'Amount owed', className: 'text-right tabular', headerClassName: 'text-right', cell: (r) => (['DRAFT', 'VOID'].includes(r.status) ? '—' : fmtMoney(r.balanceMinor, r.currency)) },
             { key: 'st', header: 'Status', cell: (r) => <CommerceBadge status={r.status} overdue={r.overdue} /> },
           ]}
         />
       </Card>
       <Card>
-        <CardHeader><CardTitle>Statement</CardTitle>{statement.data && <span className="text-sm">Balance <b className="tabular">{fmtMoney(statement.data.closingBalanceMinor, currency)}</b></span>}</CardHeader>
+        <CardHeader><CardTitle>Statement</CardTitle>{statement.data && <span className="text-sm">{statement.data.closingBalanceMinor < 0 ? 'Credit' : 'Amount owed'} <AccountBalance className="font-bold" minor={statement.data.closingBalanceMinor} currency={currency} /></span>}</CardHeader>
         {statement.data?.lines.length ? (
           <Table>
-            <THead><TR><TH>Date</TH><TH>Reference</TH><TH>Description</TH><TH className="text-right">Charges</TH><TH className="text-right">Credits</TH><TH className="text-right">Balance</TH></TR></THead>
+            <THead><TR><TH>Date</TH><TH>Reference</TH><TH>Description</TH><TH className="text-right">Charges</TH><TH className="text-right">Credits</TH><TH className="text-right">Amount owed</TH></TR></THead>
             <TBody>
               {statement.data.lines.map((l, i) => (
                 <TR key={i}>
@@ -64,7 +65,7 @@ export function ClientAccount({ clientId }: { clientId: string }) {
                   <TD className="text-sm">{l.description}</TD>
                   <TD className="text-right tabular">{l.debitMinor ? fmtMoney(l.debitMinor, currency) : ''}</TD>
                   <TD className="text-right tabular">{l.creditMinor ? fmtMoney(l.creditMinor, currency) : ''}</TD>
-                  <TD className="text-right tabular">{fmtMoney(l.balanceMinor, currency)}</TD>
+                  <TD className="text-right"><AccountBalance minor={l.balanceMinor} currency={currency} /></TD>
                 </TR>
               ))}
             </TBody>

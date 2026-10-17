@@ -31,15 +31,15 @@ function LocationDialog({ location, open, onOpenChange }: { location: StockLocat
   }, [open, location, session]);
   const m = useMutation({
     mutationFn: () => (location ? api.patch(`/stock-locations/${location.id}`, f) : api.post('/stock-locations', f)),
-    onSuccess: () => { toast.success('Location saved'); qc.invalidateQueries({ queryKey: ['stock-locations'] }); onOpenChange(false); },
+    onSuccess: () => { toast.success('Store room saved'); qc.invalidateQueries({ queryKey: ['stock-locations'] }); onOpenChange(false); },
     onError: (e: Error) => setError(e.message),
   });
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="sm">
         <DialogHeader>
-          <DialogTitle>{location ? 'Edit location' : 'New stock location'}</DialogTitle>
-          <DialogDescription>The default location of a branch is used for automatic deductions when dispensing, administering and selling.</DialogDescription>
+          <DialogTitle>{location ? `Edit ${location.name}` : 'Add store room'}</DialogTitle>
+          <DialogDescription>Stock is taken from the main store room of a branch when medicines are given or items are sold.</DialogDescription>
         </DialogHeader>
         {error && <FormError message={error} />}
         <Field label="Branch" htmlFor="loc-branch" required>
@@ -51,7 +51,7 @@ function LocationDialog({ location, open, onOpenChange }: { location: StockLocat
         <Field label="Type" htmlFor="loc-type">
           <NativeSelect id="loc-type" value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })}>{LOCATION_TYPES.map((t) => <option key={t} value={t}>{enumLabel(t)}</option>)}</NativeSelect>
         </Field>
-        <label className="flex items-center gap-2 text-sm"><Checkbox checked={f.isDefault} onCheckedChange={(v) => setF({ ...f, isDefault: !!v })} /> Default location for this branch</label>
+        <label className="flex items-center gap-2 text-sm"><Checkbox checked={f.isDefault} onCheckedChange={(v) => setF({ ...f, isDefault: !!v })} /> Main store room for this branch</label>
         <label className="flex items-center gap-2 text-sm"><Checkbox checked={f.isActive} onCheckedChange={(v) => setF({ ...f, isActive: !!v })} /> Active</label>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
@@ -70,16 +70,16 @@ function Locations() {
   const branchName = (id: string) => session.branches.find((b) => b.id === id)?.name ?? '—';
   return (
     <>
-      <PageHeader title="Stock locations" actions={editable && <Button size="sm" onClick={() => setEditing(null)}><Plus /> New location</Button>} />
+      <PageHeader title="Store rooms" actions={editable && <Button size="sm" onClick={() => setEditing(null)}><Plus /> Add store room</Button>} />
       <SectionNav links={INVENTORY_LINKS} />
       <Card>
         <DataTable
           query={query}
           rowKey={(l) => l.id}
           onRowClick={editable ? (l) => setEditing(l) : undefined}
-          empty={<EmptyState icon={MapPin} title="No stock locations" description="Add at least one pharmacy or store location per branch to start tracking stock." />}
+          empty={<EmptyState icon={MapPin} title="No store rooms yet" description="Add at least one store room (for example Pharmacy or Shop) per branch to start tracking stock." />}
           columns={[
-            { key: 'name', header: 'Location', cell: (l) => <span className="flex items-center gap-2 font-medium">{l.name}{l.isDefault && <Badge>Default</Badge>}</span> },
+            { key: 'name', header: 'Store room', cell: (l) => <span className="flex items-center gap-2 font-medium">{l.name}{l.isDefault && <Badge>Default</Badge>}</span> },
             { key: 'branch', header: 'Branch', cell: (l) => <span className="text-sm">{l.branch?.name ?? branchName(l.branchId)}</span> },
             { key: 'type', header: 'Type', cell: (l) => <span className="text-sm">{enumLabel(l.type)}</span> },
             { key: 'st', header: 'Status', cell: (l) => <StatusBadge status={l.isActive ? 'ACTIVE' : 'ARCHIVED'} /> },

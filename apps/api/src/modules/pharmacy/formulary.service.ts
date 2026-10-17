@@ -24,6 +24,31 @@ export class FormularyService {
     private readonly audit: AuditService,
   ) {}
 
+  /** Prescribing preferences kept on the organization (data-entry prompts, not clinical limits). */
+  async settings() {
+    const o = await this.prisma.db.organization.findUniqueOrThrow({ where: { id: RequestContext.orgId() }, select: { rxConfirmUnitsPerDose: true } });
+    return { confirmUnitsPerDoseAbove: o.rxConfirmUnitsPerDose };
+  }
+
+  async updateSettings(input: { confirmUnitsPerDoseAbove: number }) {
+    const id = RequestContext.orgId();
+    return this.prisma.db.$transaction(async (tx) => {
+      const before = await tx.organization.findUniqueOrThrow({ where: { id }, select: { rxConfirmUnitsPerDose: true } });
+      await tx.organization.update({ where: { id }, data: { rxConfirmUnitsPerDose: input.confirmUnitsPerDoseAbove } });
+      await this.audit.record(
+        {
+          action: 'pharmacy.settings_updated',
+          entityType: 'Organization',
+          entityId: id,
+          summary: `Confirm doses above ${input.confirmUnitsPerDoseAbove} tablets/units`,
+          changes: { rxConfirmUnitsPerDose: { from: before.rxConfirmUnitsPerDose, to: input.confirmUnitsPerDoseAbove } },
+        },
+        tx,
+      );
+      return { confirmUnitsPerDoseAbove: input.confirmUnitsPerDoseAbove };
+    });
+  }
+
   async list(q: { page: number; pageSize: number; q?: string; sort?: string; type?: ProductType; kind?: 'clinical' | 'shop'; categoryId?: string; active: string; prescribable?: boolean }) {
     const where: Prisma.ProductWhereInput = {
       type: q.type ?? (q.prescribable || q.kind === 'clinical' ? { in: PRESCRIBABLE_TYPES } : q.kind === 'shop' ? { notIn: PRESCRIBABLE_TYPES } : undefined),

@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { login } from './helpers';
 
-test.describe('Preventive care', () => {
+test.describe('Vaccines & reminders', () => {
   test('vet records a vaccination given elsewhere and the next one is scheduled', async ({ page }) => {
     await login(page, 'vet@demo.pk');
     await page.goto('/patients?q=Max');
@@ -24,11 +24,11 @@ test.describe('Preventive care', () => {
     await page.goto('/portal/login');
     await expect(page).not.toHaveURL(/\/portal/);
     await page.goto('/clients?q=Hussain');
-    await page.getByRole('link', { name: /Hussain, Zainab/ }).first().click();
+    await page.getByRole('link', { name: /Zainab Hussain/ }).first().click();
     await expect(page.getByRole('heading', { name: /Hussain/ })).toBeVisible();
     await expect(page.getByText('Client portal')).toHaveCount(0);
     await page.goto('/communications');
-    await expect(page.getByRole('heading', { name: 'Communications' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Messages' })).toBeVisible();
     await expect(page.getByRole('tab', { name: /Client messages|Appointment requests/ })).toHaveCount(0);
   });
 });

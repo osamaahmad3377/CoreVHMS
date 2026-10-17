@@ -41,6 +41,8 @@ function RoleEditor({ role, groups, onDone }: { role: Role | null; groups: Group
   const [description, setDescription] = useState(role?.description ?? '');
   const [perms, setPerms] = useState<Set<string>>(new Set(role?.permissions ?? []));
   const [error, setError] = useState<string | null>(null);
+  /** Raw permission codes are for support staff; hidden unless asked for. */
+  const [technical, setTechnical] = useState(false);
   useEffect(() => {
     setName(role?.name ?? '');
     setDescription(role?.description ?? '');
@@ -81,7 +83,7 @@ function RoleEditor({ role, groups, onDone }: { role: Role | null; groups: Group
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          {role ? role.name : 'New custom role'} {role?.isSystem && <Badge variant="secondary">System</Badge>}
+          {role ? role.name : 'Add role'} {role?.isSystem && <Badge variant="secondary">System</Badge>}
           {locked && <Lock className="h-3.5 w-3.5 text-muted-foreground" />}
         </CardTitle>
         {role && !role.isSystem && can('roles.manage') && (
@@ -99,7 +101,7 @@ function RoleEditor({ role, groups, onDone }: { role: Role | null; groups: Group
       </CardHeader>
       <CardContent className="grid gap-4">
         {error && <FormError message={error} />}
-        {role?.key === 'owner' && <p className="text-sm text-muted-foreground">The owner role always holds every permission so the organization can never be locked out.</p>}
+        {role?.key === 'owner' && <p className="text-sm text-muted-foreground">The owner always has full access, so the clinic can never be locked out.</p>}
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Role name" htmlFor="r-name" required>
             <Input id="r-name" value={name} disabled={locked || role?.isSystem} onChange={(e) => setName(e.target.value)} />
@@ -108,6 +110,9 @@ function RoleEditor({ role, groups, onDone }: { role: Role | null; groups: Group
             <Textarea id="r-desc" rows={1} value={description} disabled={locked} onChange={(e) => setDescription(e.target.value)} />
           </Field>
         </div>
+        <label className="flex items-center gap-2 justify-self-end text-xs text-muted-foreground">
+          <Checkbox checked={technical} onCheckedChange={(v) => setTechnical(v === true)} /> Show technical names
+        </label>
         <div className="grid gap-4 md:grid-cols-2">
           {groups.map((g) => (
             <fieldset key={g.key} className="rounded-md border p-3">
@@ -116,11 +121,11 @@ function RoleEditor({ role, groups, onDone }: { role: Role | null; groups: Group
                 {g.permissions.map((p) => {
                   const grantable = mine.has(p.permission);
                   return (
-                    <label key={p.permission} className={cn('flex items-start gap-2 text-sm', (!grantable || locked) && 'opacity-60')} title={grantable ? p.permission : 'You do not hold this permission'}>
+                    <label key={p.permission} className={cn('flex items-start gap-2 text-sm', (!grantable || locked) && 'opacity-60')} title={grantable ? undefined : 'You do not have this access yourself'}>
                       <Checkbox className="mt-0.5" checked={perms.has(p.permission)} disabled={locked || !grantable} onCheckedChange={() => toggle(p.permission)} />
                       <span>
                         {p.description}
-                        <span className="ml-1 font-mono text-2xs text-muted-foreground">{p.permission}</span>
+                        {technical && <span className="ml-1 font-mono text-2xs text-muted-foreground">{p.permission}</span>}
                       </span>
                     </label>
                   );
@@ -163,7 +168,7 @@ export default function RolesPage() {
             <CardTitle>Roles</CardTitle>
             {can('roles.manage') && (
               <Button size="sm" variant="outline" onClick={() => setSelected('new')}>
-                <Plus /> New
+                <Plus /> Add role
               </Button>
             )}
           </CardHeader>

@@ -67,7 +67,7 @@ export function LabOrderDialog({ open, onOpenChange, patient, encounterId, onCre
                 {list.map((t) => (
                   <label key={t.id} className="flex items-center gap-2 rounded px-1 py-1 text-sm hover:bg-muted">
                     <Checkbox checked={selected.includes(t.id)} onCheckedChange={(v) => setSelected((s) => (v === true ? [...s, t.id] : s.filter((x) => x !== t.id)))} />
-                    <span className="flex-1">{t.name} <span className="text-xs text-muted-foreground">{t.code}{t.performedBy === 'EXTERNAL' && ` · ${t.externalLabName}`}</span></span>
+                    <span className="flex-1">{t.name} <span className="font-mono text-2xs text-muted-foreground">{t.code}</span>{t.performedBy === 'EXTERNAL' && <span className="text-xs text-muted-foreground"> · {t.externalLabName}</span>}</span>
                     {t.priceMinor != null && <span className="text-xs tabular text-muted-foreground">{fmtMoney(t.priceMinor, currency)}</span>}
                   </label>
                 ))}

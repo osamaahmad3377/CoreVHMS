@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, Product } from '@prisma/client';
-import { FREQUENCIES, allergyMatches, calculateDose, compareToRange, courseQuantity, type CreatePrescriptionInput, type PrescriptionItemInput } from '@vcms/shared';
+import { FREQUENCIES, allergyConflictText, allergyConflicts, allergyMatches, calculateDose, compareToRange, courseQuantity, type CreatePrescriptionInput, type PrescriptionItemInput } from '@vcms/shared';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { sha256 } from '../../common/crypto/crypto';
@@ -34,7 +34,7 @@ const include = {
       dateOfBirth: true,
       latestWeightKg: true,
       species: { select: { id: true, name: true, category: true } },
-      alerts: { where: { isActive: true }, select: { id: true, severity: true, title: true, type: true } },
+      alerts: { where: { isActive: true }, select: { id: true, severity: true, title: true, type: true, substance: true, reaction: true } },
     },
   },
   client: { select: { id: true, displayName: true, title: true, firstName: true, lastName: true, organizationName: true, mobilePhone: true } },
@@ -78,8 +78,11 @@ export function shapePrescription(p: Row) {
   };
 }
 
-/** Case-insensitive match of allergy alerts against a product's name and active ingredients (shared with the web). */
+/** Allergy alerts matched against a product's name, ingredients and drug family (shared with the web). */
 export { allergyMatches };
+
+/** Countable dispensing units (tablets, capsules…) for the "N per dose — is that correct?" prompt; liquids and masses are not counted. */
+const MEASURED_UNIT = /^(mL|L|g|kg|mg|mcg|µg|IU|cm|mm)$/i;
 
 @Injectable()
 export class PrescriptionsService {
@@ -159,8 +162,8 @@ export class PrescriptionsService {
       item.quantity ?? (freq.perDay && item.durationDays ? courseQuantity(calc.amount, freq.perDay, item.durationDays, increment) : calc.amount);
 
     const warnings: SafetyWarning[] = [];
-    for (const a of allergyMatches(patient.alerts, product)) {
-      warnings.push({ code: 'ALLERGY', message: `Patient alert “${a.title}” matches ${product.name}`, blocking: true });
+    for (const c of allergyConflicts(patient.alerts, product)) {
+      warnings.push({ code: 'ALLERGY', message: `${allergyConflictText(c, product.name)}${c.alert.reaction ? ` (reaction: ${c.alert.reaction})` : ''}`, blocking: true });
     }
     if (product.targetSpecies.length && !product.targetSpecies.includes(patient.species.category)) {
       warnings.push({ code: 'SPECIES', message: `${product.name} is not listed for ${patient.species.category.toLowerCase()} species`, blocking: true });
@@ -191,8 +194,13 @@ export class PrescriptionsService {
         warnings.push({ code: 'MAX_DOSE', message: `Exceeds the reference maximum of ${Number(ref.maxPerDose)} ${calc.deliveredUnit} per dose`, blocking: true });
       }
     } else {
-      warnings.push({ code: 'NO_REFERENCE', message: `No approved dose reference for ${product.name} in ${patient.species.name} (${item.route}). Verify the dose against a current source.`, blocking: false });
+      warnings.push({ code: 'NO_REFERENCE', message: `No dose range is set up for this medicine in ${patient.species.name}. Please double-check the dose before approving.`, blocking: false });
     }
+
+    // Data-entry safety prompt (clinic setting), not a dose limit: the UI asks the prescriber to confirm.
+    const org = await this.prisma.db.organization.findUnique({ where: { id: RequestContext.orgId() }, select: { rxConfirmUnitsPerDose: true } });
+    const confirmAbove = org?.rxConfirmUnitsPerDose ?? null;
+    const largeDose = confirmAbove !== null && !MEASURED_UNIT.test(product.dispensingUnit) && calc.amount > confirmAbove ? { amount: calc.amount, unit: product.dispensingUnit, confirmAbove } : null;
 
     return {
       product: { id: product.id, name: product.name, dispensingUnit: product.dispensingUnit, isControlled: product.isControlled },
@@ -202,6 +210,7 @@ export class PrescriptionsService {
       warnings,
       doseReferenceId,
       requiresOverride: warnings.some((w) => w.blocking),
+      largeDose,
     };
   }
 
@@ -310,6 +319,21 @@ export class PrescriptionsService {
     const rx = await tx.prescription.findUnique({ where: { id }, include: { items: true } });
     if (!rx) throw notFound('Prescription');
     if (rx.status !== 'DRAFT') throw ruleViolation('INVALID_TRANSITION', 'Only draft prescriptions can be authorised');
+    // Allergy alerts may have been added (or a draft repeated) since the draft was written: check again at authorisation.
+    const [alerts, products] = await Promise.all([
+      tx.patientAlert.findMany({ where: { patientId: rx.patientId, isActive: true } }),
+      tx.product.findMany({ where: { id: { in: rx.items.map((i) => i.productId) } } }),
+    ]);
+    for (const i of rx.items) {
+      const product = products.find((p) => p.id === i.productId);
+      const conflicts = product ? allergyConflicts(alerts, product) : [];
+      if (conflicts.length && !i.overrideReason?.trim()) {
+        throw ruleViolation('SAFETY_OVERRIDE_REQUIRED', `${allergyConflictText(conflicts[0], product!.name)}. Write a reason for overriding the allergy warning before authorising.`, {
+          itemId: i.id,
+          warnings: conflicts.map((c) => ({ code: 'ALLERGY', message: allergyConflictText(c, product!.name), blocking: true })),
+        });
+      }
+    }
     const prescriber = ctx.membershipId ? await tx.membership.findUnique({ where: { id: ctx.membershipId } }) : null;
     await tx.prescription.update({
       where: { id },

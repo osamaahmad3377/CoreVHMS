@@ -3,6 +3,9 @@ export interface AlertSummary {
   severity: 'INFO' | 'WARNING' | 'CRITICAL';
   title: string;
   type: string;
+  /** Allergy / medication alerts: what the patient reacts to, and how. */
+  substance?: string | null;
+  reaction?: string | null;
 }
 
 export interface ClientRow {
@@ -212,6 +215,8 @@ export interface AppointmentType {
   color: string;
   priceMinor: number | null;
   serviceId?: string | null;
+  /** The linked service: its price is what the appointment is charged at. */
+  service?: { id: string; code: string; name: string; priceMinor: number; isActive: boolean } | null;
   requiresClinician: boolean;
   allowOnlineBooking: boolean;
   isActive: boolean;
@@ -294,6 +299,7 @@ export interface ClinicalNote {
   examFindings: ExamFinding[] | null;
   templateId: string | null;
   aiAssisted: boolean;
+  authorId: string;
   authorName: string;
   reviewedByName: string | null;
   reviewedAt: string | null;
@@ -430,6 +436,8 @@ export interface Product {
   dispensingUnit: string;
   minDispenseIncrement: number;
   activeIngredients: string[];
+  /** Drug class / family (e.g. "Penicillins"); matched by the allergy check. */
+  drugClass?: string | null;
   manufacturer: string | null;
   requiresPrescription: boolean;
   isControlled: boolean;
@@ -482,6 +490,8 @@ export interface DoseEvaluation {
   warnings: SafetyWarning[];
   doseReferenceId: string | null;
   requiresOverride: boolean;
+  /** Set when the amount per dose is above the clinic's "please confirm" number of tablets/units. */
+  largeDose?: { amount: number; unit: string; confirmAbove: number } | null;
 }
 
 export interface PrescriptionItem {
@@ -660,6 +670,8 @@ export interface StockRow {
   low: boolean;
   expiringSoon: boolean;
   locations: { id: string; name: string; quantity: number }[];
+  /** Orders not yet fully received that include this product. */
+  openOrders?: { id: string; poNo: string; status: string }[];
 }
 
 export interface StockBatch {
@@ -763,7 +775,9 @@ export interface PurchaseOrder {
   approvedByName: string | null;
   approvedAt: string | null;
   createdAt: string;
-  lines: { id: string; productId: string; quantity: number; quantityReceived: number; outstanding?: number; unitCostMinor: number; product: { id?: string; name: string; dispensingUnit?: string; sku?: string | null } }[];
+  /** This clinic requires a different person to approve (Settings → Tax & payments). */
+  needsSecondApprover?: boolean;
+  lines: { id: string; productId: string; quantity: number; quantityReceived: number; outstanding?: number; unitCostMinor: number; product: { id?: string; name: string; dispensingUnit?: string; sku?: string | null; type?: string } }[];
   receipts?: { id: string; receiptNo: string; receivedAt: string; totalMinor: number; receivedByName: string; lines: { id: string; quantity: number; unitCostMinor: number; product: { name: string }; batch: { batchNumber: string; expiryDate: string | null } }[] }[];
 }
 
@@ -784,6 +798,8 @@ export interface Service {
   priceMinor: number;
   taxRateId: string | null;
   isActive: boolean;
+  /** Active appointment types charged with this service. */
+  appointmentTypes?: { id: string; name: string }[];
 }
 
 export interface BillingSettings {
@@ -792,6 +808,8 @@ export interface BillingSettings {
   paymentTermsDays: number;
   requireCashSession: boolean;
   allowNegativeStock: boolean;
+  /** Purchase orders must be approved by someone other than the person who raised them. */
+  poRequiresSecondApprover: boolean;
 }
 
 export interface Charge {
@@ -953,7 +971,7 @@ export interface Statement {
   closingBalanceMinor: number;
 }
 
-// ── Point of sale ──
+// ── Shop counter ──
 export interface PosItem {
   type: 'PRODUCT' | 'SERVICE';
   id: string;

@@ -98,6 +98,10 @@ describe('Clinical records', () => {
     const p = (await vet.client.get(`/patients/${patient.id}`)).body;
     expect(p.latestWeightKg).toBe(21.4);
     expect((await vet.client.post(`/encounters/${encounter.id}/vitals`, { notes: 'nothing' })).body.error.code).toBe('EMPTY_VITALS');
+    // A typing slip (398 for 39.8) comes back as a plain message for that field.
+    const slip = await vet.client.post(`/encounters/${encounter.id}/vitals`, { temperatureC: 398 });
+    expect(slip.status).toBe(400);
+    expect(slip.body.error.details).toEqual([expect.objectContaining({ path: 'temperatureC', message: 'Temperature must be between 25 and 46 °C' })]);
   });
 
   it('records diagnoses, maintains the problem list and closes the encounter', async () => {

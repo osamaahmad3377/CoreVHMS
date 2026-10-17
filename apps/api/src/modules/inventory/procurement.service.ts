@@ -70,7 +70,7 @@ export class ProcurementService {
       where: { id },
       include: {
         supplier: true,
-        lines: { include: { product: { select: { id: true, name: true, dispensingUnit: true, sku: true } } } },
+        lines: { include: { product: { select: { id: true, name: true, dispensingUnit: true, sku: true, type: true } } } },
         receipts: { include: { lines: { include: { batch: { select: { batchNumber: true, expiryDate: true } }, product: { select: { name: true } } } } }, orderBy: { receivedAt: 'asc' } },
       },
     });
@@ -82,6 +82,7 @@ export class ProcurementService {
     return {
       ...p,
       location,
+      needsSecondApprover: await this.needsSecondApprover(),
       poNo: poNo(p.number),
       lines: p.lines.map((l) => ({ ...l, quantity: Number(l.quantity), quantityReceived: Number(l.quantityReceived), outstanding: Number(l.quantity) - Number(l.quantityReceived) })),
       receipts: p.receipts.map((r) => ({ ...r, receiptNo: formatNumber('GRN', r.number), lines: r.lines.map((l) => ({ ...l, quantity: Number(l.quantity) })) })),
@@ -134,16 +135,36 @@ export class ProcurementService {
     return this.getOrder(id);
   }
 
-  /** Segregation of duties: the person who raised an order cannot approve it. */
+  /** Whether this clinic requires a second person to approve purchase orders (Settings → Tax & payments). */
+  async approvalRule() {
+    return { needsSecondApprover: await this.needsSecondApprover() };
+  }
+
+  private async needsSecondApprover() {
+    const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: RequestContext.orgId() }, select: { poRequiresSecondApprover: true } });
+    return org.poRequiresSecondApprover;
+  }
+
+  /**
+   * Segregation of duties when the clinic asks for it: the person who raised an order cannot approve it, and orders
+   * must be submitted first. Without that setting, an authorised person may approve their own order straight from
+   * draft ("Approve & send").
+   */
   async approve(id: string) {
     const ctx = RequestContext.require();
     const po = await this.prisma.db.purchaseOrder.findUnique({ where: { id } });
     if (!po) throw notFound('Purchase order');
-    if (po.status !== 'SUBMITTED') throw ruleViolation('INVALID_TRANSITION', 'Only submitted orders can be approved');
-    if (po.createdById === ctx.userId) throw forbidden('You cannot approve a purchase order you created');
+    const secondApprover = await this.needsSecondApprover();
+    const allowed = secondApprover ? ['SUBMITTED'] : ['DRAFT', 'SUBMITTED'];
+    if (!allowed.includes(po.status)) throw ruleViolation('INVALID_TRANSITION', secondApprover ? 'Only submitted orders can be approved' : 'Only draft or submitted orders can be approved');
+    if (secondApprover && po.createdById === ctx.userId) throw forbidden('You cannot approve a purchase order you created');
+    const now = new Date();
     await this.prisma.db.$transaction(async (tx) => {
-      await tx.purchaseOrder.update({ where: { id }, data: { status: 'APPROVED', approvedById: ctx.userId, approvedByName: ctx.userName, approvedAt: new Date() } });
-      await this.audit.record({ action: 'purchase_order.approved', entityType: 'PurchaseOrder', entityId: id, summary: poNo(po.number) }, tx);
+      await tx.purchaseOrder.update({ where: { id }, data: { status: 'APPROVED', submittedAt: po.submittedAt ?? now, approvedById: ctx.userId, approvedByName: ctx.userName, approvedAt: now } });
+      await this.audit.record(
+        { action: 'purchase_order.approved', entityType: 'PurchaseOrder', entityId: id, summary: po.status === 'DRAFT' ? `${poNo(po.number)} (approved without a second approver)` : poNo(po.number) },
+        tx,
+      );
     });
     return this.getOrder(id);
   }

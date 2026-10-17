@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertOctagon, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { AlertOctagon, CalendarPlus, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirm } from '@/components/confirm';
@@ -8,7 +8,8 @@ import { ErrorState, LoadingRows, PageHeader } from '@/components/page';
 import { RequirePermission } from '@/components/require';
 import { AppointmentDialog } from '@/components/scheduling/appointment-dialog';
 import { PriorityDot } from '@/components/scheduling/appointment-status';
-import { BookingDialog, type BookingDefaults } from '@/components/scheduling/booking-dialog';
+import { apptSummary } from '@/components/scheduling/appointment-text';
+import { BookingDialog, useTimeZoneNote, type BookingDefaults } from '@/components/scheduling/booking-dialog';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -62,6 +63,7 @@ const MONTH_CELL_LIMIT = 3;
 function CalendarView() {
   const { session, can } = useSession();
   const tz = session.branch?.timezone ?? 'UTC';
+  const tzNote = useTimeZoneNote(tz);
   const branchId = session.branch?.id ?? '';
   const url = useUrlState();
   const view = url.get('view', 'day') as 'day' | 'week' | 'month';
@@ -80,6 +82,13 @@ function CalendarView() {
       setBooking({ open: true, defaults: { date, patient: (requestPatient.data as never) ?? null, reason: url.get('reason') || undefined } });
     }
   }, [requestId, requestPatientId, requestPatient.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  // "Book appointment" from the New menu or search opens the booking window straight away: /calendar?book=1
+  const bookNow = url.get('book') === '1';
+  useEffect(() => {
+    if (!bookNow) return;
+    if (can('appointments.write')) setBooking({ open: true, defaults: { date } });
+    url.set({ book: null });
+  }, [bookNow]); // eslint-disable-line react-hooks/exhaustive-deps
   const markRequestBooked = async (appointmentId: string) => {
     if (!requestId) return;
     try {
@@ -135,7 +144,7 @@ function CalendarView() {
         });
       const unassigned = visible.filter((a) => !a.clinician);
       if (!clinicianFilter && (unassigned.length || !cols.length)) {
-        cols.push({ key: 'none', title: 'Unassigned', date, clinicianId: null, available: [[0, 1440]], leave: [], appointments: unassigned });
+        cols.push({ key: 'none', title: 'No vet yet', date, clinicianId: null, available: [[0, 1440]], leave: [], appointments: unassigned });
       }
       return cols;
     }
@@ -172,7 +181,8 @@ function CalendarView() {
     if (!can('appointments.write')) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const minute = Math.floor((startMin + (e.clientY - rect.top) / PX_PER_MIN) / 15) * 15;
-    setBooking({ open: true, defaults: { date: col.date, minute, clinicianId: col.clinicianId } });
+    // The "No vet yet" column books without a vet; a day column without a vet filter offers any free vet.
+    setBooking({ open: true, defaults: { date: col.date, minute, clinicianId: col.key === 'none' ? null : (col.clinicianId ?? undefined) } });
   };
 
   // Drag an appointment to a new time, day or clinician column. The server applies the same conflict and roster
@@ -188,8 +198,8 @@ function CalendarView() {
     },
     onSuccess: (after, v) => {
       // The API resets a confirmed appointment to Booked when its time changes.
-      if (v.wasConfirmed && after.status === 'BOOKED') toast.warning('Time changed — confirmation reset to Booked');
-      else toast.success('Appointment moved');
+      if (v.wasConfirmed && after.status === 'BOOKED') toast.warning(`Appointment moved: ${apptSummary(after, tz)}. Ask the owner to confirm the new time again.`);
+      else toast.success(`Appointment moved: ${apptSummary(after, tz)}`);
       qc.invalidateQueries({ queryKey: ['appointments'] });
       qc.invalidateQueries({ queryKey: ['queue'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
@@ -240,11 +250,11 @@ function CalendarView() {
       <PageHeader
         help="book"
         title="Calendar"
-        description={`${session.branch?.name ?? ''} · ${tz}`}
+        description={[session.branch?.name, tzNote].filter(Boolean).join(' · ')}
         actions={
           can('appointments.write') && (
             <Button size="sm" onClick={() => setBooking({ open: true, defaults: { date } })}>
-              <Plus /> New appointment
+              <CalendarPlus /> Book appointment
             </Button>
           )
         }
@@ -268,8 +278,8 @@ function CalendarView() {
             <label className="flex items-center gap-2 text-xs text-muted-foreground">
               <Checkbox checked={showCancelled} onCheckedChange={(v) => setShowCancelled(v === true)} /> Show cancelled / no-shows
             </label>
-            <NativeSelect aria-label="Clinician" className="h-8 w-[180px] text-xs" value={clinicianFilter} onChange={(e) => url.set({ clinician: e.target.value })}>
-              <option value="">All clinicians</option>
+            <NativeSelect aria-label="Vet" className="h-8 w-[180px] text-xs" value={clinicianFilter} onChange={(e) => url.set({ clinician: e.target.value })}>
+              <option value="">All vets</option>
               {clinicians.data?.map((c) => (
                 <option key={c.membershipId} value={c.membershipId}>
                   {c.name}
@@ -370,7 +380,7 @@ function CalendarView() {
                     <p className="truncate text-sm font-medium">{col.title}</p>
                     <p className="truncate text-2xs text-muted-foreground">
                       {col.subtitle}
-                      {view === 'day' && col.clinicianId && !col.available.length && ' · not rostered'}
+                      {view === 'day' && col.clinicianId && !col.available.length && ' · not working today'}
                     </p>
                   </div>
                   <div
@@ -469,7 +479,7 @@ function CalendarView() {
       <p className="mt-2 text-xs text-muted-foreground">
         {view === 'month'
           ? 'Click a day to open it; click an appointment for details.'
-          : 'Click an empty time to book; drag an appointment to move it. Shaded areas are outside rostered hours; striped areas are leave.'}
+          : 'Click an empty time to book; drag an appointment to move it. Shaded areas are outside working hours; striped areas are leave.'}
       </p>
       <BookingDialog
         open={booking.open}

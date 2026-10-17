@@ -197,7 +197,7 @@ function Requests() {
   );
 }
 
-function Communications() {
+function Messages() {
   const url = useUrlState();
   const portal = usePortalEnabled();
   const tab = portal ? url.get('tab', 'log') : 'log';
@@ -206,14 +206,14 @@ function Communications() {
   if (!portal) {
     return (
       <>
-        <PageHeader title="Communications" help="communications" description="Reminders and messages sent to clients, with their delivery status." />
+        <PageHeader title="Messages" help="communications" description="Reminders and messages sent to clients, with their delivery status." />
         <MessageLog />
       </>
     );
   }
   return (
     <>
-      <PageHeader title="Communications" help="communications" description="Reminders and messages to clients, secure messages from the client portal, and online appointment requests." />
+      <PageHeader title="Messages" help="communications" description="Reminders and messages to clients, secure messages from the client portal, and online appointment requests." />
       <div className="mb-4 flex gap-1 border-b" role="tablist">
         {[['log', 'Message log', 0], ['inbox', 'Client messages', unread.data?.unread ?? 0], ['requests', 'Appointment requests', requests.data?.length ?? 0]].map(([k, l, n]) => (
           <button key={k as string} role="tab" aria-selected={tab === k} onClick={() => url.set({ tab: k as string, client: null })} className={cn('-mb-px flex items-center gap-1.5 border-b-2 px-3 pb-2 pt-1 text-sm font-medium', tab === k ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}>
@@ -229,7 +229,7 @@ function Communications() {
 export default function CommunicationsPage() {
   return (
     <RequirePermission anyOf={['communications.read']}>
-      <Suspense><Communications /></Suspense>
+      <Suspense><Messages /></Suspense>
     </RequirePermission>
   );
 }

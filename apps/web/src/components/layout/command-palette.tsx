@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { useDebounce } from '@/hooks/use-debounce';
 import { api, qs } from '@/lib/api';
 import { visibleNav } from '@/lib/navigation';
+import { fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import { useCreateActions } from './create-actions';
 import { Dialog, DialogContent, DialogTitle } from '../ui/dialog';
@@ -20,6 +21,8 @@ interface Hit {
   subtitle?: string | null;
   href: string;
   badge?: string | null;
+  /** Clients: what they owe (positive) or their credit (negative), in minor units. */
+  balanceMinor?: number | null;
 }
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -33,7 +36,7 @@ const GROUPS: Record<string, string> = {
 
 export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const router = useRouter();
-  const { canAny } = useSession();
+  const { canAny, session, currency } = useSession();
   const [term, setTerm] = useState('');
   const q = useDebounce(term.trim(), 200);
   const search = useQuery({
@@ -54,7 +57,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
 
   const results = search.data?.results ?? [];
   const grouped = results.reduce<Record<string, Hit[]>>((acc, h) => ((acc[h.type] ??= []).push(h), acc), {});
-  const pages = visibleNav(canAny).flatMap((s) => s.items);
+  const pages = visibleNav(canAny, session.organization?.enabledModules).flatMap((s) => s.items);
   const needle = term.trim().toLowerCase();
   // Typing, or the request is still in flight: say so rather than showing an empty list.
   const searching = term.trim().length >= 2 && (term.trim() !== q || search.isFetching);
@@ -72,7 +75,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
               value={term}
               onValueChange={setTerm}
               autoFocus
-              placeholder="Search patients, owners, phone, microchip, or a number (C-, P-, INV-, RX-…)"
+              placeholder="Search by name, patient or phone (e.g. 0300 77…)"
               className="h-12 min-w-0 flex-1 border-0 bg-transparent text-sm shadow-none outline-none ring-0 placeholder:text-muted-foreground focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
             />
             {searching && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />}
@@ -105,6 +108,8 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
                         <div className="truncate font-medium">{h.title}</div>
                         {h.subtitle && <div className="truncate text-xs text-muted-foreground">{h.subtitle}</div>}
                       </div>
+                      {!!h.balanceMinor && h.balanceMinor > 0 && <span className="shrink-0 text-xs font-medium text-destructive tabular">Owes {fmtMoney(h.balanceMinor, currency)}</span>}
+                      {!!h.balanceMinor && h.balanceMinor < 0 && <span className="shrink-0 text-xs font-medium text-success tabular">{fmtMoney(-h.balanceMinor, currency)} credit</span>}
                       {h.badge && <Badge variant="secondary">{h.badge}</Badge>}
                     </Command.Item>
                   ))}

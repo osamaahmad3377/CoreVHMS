@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { EXAM_SYSTEMS } from '@vcms/shared';
-import { CheckCircle2, FileSignature, Loader2, Save, Trash2 } from 'lucide-react';
+import { Activity, CheckCircle2, FileSignature, Loader2, Save, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirm } from '../confirm';
@@ -14,7 +14,7 @@ import { useTemplates } from '@/hooks/use-catalog';
 import { api } from '@/lib/api';
 import { fmtDateTime } from '@/lib/format';
 import { useSession } from '@/lib/session';
-import type { ClinicalNote, ExamFinding } from '@/lib/types';
+import type { ClinicalNote, ExamFinding, Vitals } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 type Content = Pick<ClinicalNote, 'presentingComplaint' | 'history' | 'subjective' | 'objective' | 'assessment' | 'plan' | 'followUpInstructions'> & {
@@ -24,8 +24,8 @@ type Content = Pick<ClinicalNote, 'presentingComplaint' | 'history' | 'subjectiv
 
 const DEFAULT_SYSTEMS = ['General appearance', 'Eyes', 'Ears', 'Oral cavity & teeth', 'Lymph nodes', 'Cardiovascular', 'Respiratory', 'Abdomen', 'Musculoskeletal', 'Neurological', 'Skin & coat'];
 
-const empty = (): Content => ({
-  presentingComplaint: '',
+const empty = (presentingComplaint = ''): Content => ({
+  presentingComplaint,
   history: '',
   subjective: '',
   objective: '',
@@ -36,10 +36,11 @@ const empty = (): Content => ({
   templateId: null,
 });
 
-function fromNote(n: ClinicalNote | null): Content {
-  if (!n) return empty();
+function fromNote(n: ClinicalNote | null, chiefComplaint?: string | null): Content {
+  // The reason given at booking or check-in starts the presenting complaint; the vet can change it.
+  if (!n) return empty(chiefComplaint ?? '');
   return {
-    presentingComplaint: n.presentingComplaint ?? '',
+    presentingComplaint: n.presentingComplaint || (n.status === 'DRAFT' && !n.amendsId ? (chiefComplaint ?? '') : ''),
     history: n.history ?? '',
     subjective: n.subjective ?? '',
     objective: n.objective ?? '',
@@ -51,15 +52,37 @@ function fromNote(n: ClinicalNote | null): Content {
   };
 }
 
-const FIELDS: { key: keyof Content; label: string; hint: string; rows: number }[] = [
-  { key: 'presentingComplaint', label: 'Presenting complaint', hint: 'Why the animal is here today', rows: 2 },
-  { key: 'history', label: 'History', hint: 'Relevant history, diet, environment, previous treatment', rows: 3 },
-  { key: 'subjective', label: 'S — Subjective', hint: "Owner's observations, demeanour, appetite, duration", rows: 3 },
-  { key: 'objective', label: 'O — Objective', hint: 'Measured findings. Record only what was examined.', rows: 3 },
-  { key: 'assessment', label: 'A — Assessment', hint: 'Problem list, differentials, working diagnosis', rows: 3 },
-  { key: 'plan', label: 'P — Plan', hint: 'Diagnostics, treatment, client communication', rows: 3 },
-  { key: 'followUpInstructions', label: 'Follow-up instructions for the client', hint: 'Plain-language discharge / home-care instructions', rows: 2 },
+/** S/O/A/P letters stay as small grey prefixes; the words say what to write. */
+const FIELDS: { key: keyof Content; letter?: string; label: string; hint: string; rows: number }[] = [
+  { key: 'presentingComplaint', label: 'Presenting complaint', hint: 'Why the animal is here today (filled in from the booking or check-in)', rows: 2 },
+  { key: 'history', label: 'Past history', hint: 'Earlier illnesses, vaccinations, diet, home, medicines already given', rows: 3 },
+  { key: 'subjective', letter: 'S', label: 'History — what the owner tells you', hint: 'What the owner noticed this time: since when, eating, drinking, vomiting, energy', rows: 3 },
+  { key: 'objective', letter: 'O', label: 'Examination findings', hint: 'What you found when you examined: temperature, heart, lungs, abdomen. Record only what you examined.', rows: 3 },
+  { key: 'assessment', letter: 'A', label: 'Assessment — likely problem', hint: 'What you think is wrong, and other possible causes', rows: 3 },
+  { key: 'plan', letter: 'P', label: 'Plan — tests, treatment, advice', hint: 'Tests to do, medicines and treatment, what you told the owner', rows: 3 },
+  { key: 'followUpInstructions', label: 'Instructions for the owner', hint: 'Plain words for home care, e.g. “Give the tablets with food. Come back if he stops eating.”', rows: 2 },
 ];
+
+/** "Temp 39.8 °C, Weight 18 kg, Heart rate 120/min, …" from a vitals row. */
+export function vitalsText(v: Vitals) {
+  const parts: string[] = [];
+  if (v.temperatureC != null) parts.push(`Temp ${v.temperatureC} °C`);
+  if (v.weightKg != null) parts.push(`Weight ${v.weightKg} kg`);
+  if (v.heartRate != null) parts.push(`Heart rate ${v.heartRate}/min`);
+  if (v.respiratoryRate != null) parts.push(`Breathing ${v.respiratoryRate}/min`);
+  if (v.capillaryRefillSec != null) parts.push(`CRT ${v.capillaryRefillSec} s`);
+  if (v.mucousMembranes) parts.push(`Gums ${v.mucousMembranes.toLowerCase()}`);
+  if (v.painScore != null) parts.push(`Pain ${v.painScore}/10`);
+  if (v.systolicBp != null) parts.push(`BP ${v.systolicBp}${v.diastolicBp != null ? `/${v.diastolicBp}` : ''} mmHg`);
+  if (v.spo2 != null) parts.push(`SpO₂ ${v.spo2}%`);
+  return parts.join(', ');
+}
+
+/** Save functions of open editors with unsaved changes, so "Finish consultation" can save them before signing. */
+const pendingSaves = new Set<() => Promise<unknown>>();
+export async function flushNoteDrafts() {
+  await Promise.all([...pendingSaves].map((save) => save()));
+}
 
 /**
  * Editor for a draft note or a new amendment. Drafts autosave; signing is explicit and irreversible.
@@ -70,8 +93,14 @@ export function NoteEditor({
   amending,
   onDone,
   speciesCategory,
+  chiefComplaint,
+  latestVitals,
 }: {
   encounterId: string;
+  /** Reason from the booking or check-in, used to start an empty presenting complaint. */
+  chiefComplaint?: string | null;
+  /** Newest vitals of the consultation, for "Insert vitals". */
+  latestVitals?: Vitals | null;
   /** Patient's species category; templates restricted to another category are hidden. */
   speciesCategory?: string | null;
   /** Draft being edited, or the signed note being amended. */
@@ -79,24 +108,26 @@ export function NoteEditor({
   amending?: boolean;
   onDone?: () => void;
 }) {
-  const { can } = useSession();
+  const { can, session } = useSession();
   const qc = useQueryClient();
   const confirm = useConfirm();
   const templates = useTemplates();
-  const [content, setContent] = useState<Content>(() => fromNote(note));
+  const [content, setContent] = useState<Content>(() => fromNote(note, amending ? null : chiefComplaint));
+  // An existing draft without a presenting complaint gets the check-in reason; save it like any other change.
+  const prefilled = !amending && !!note && note.status === 'DRAFT' && !note.amendsId && !note.presentingComplaint && !!chiefComplaint;
   const [noteId, setNoteId] = useState<string | null>(amending ? null : (note?.id ?? null));
   const [status, setStatus] = useState(amending ? 'DRAFT' : (note?.status ?? 'DRAFT'));
   const [reason, setReason] = useState('');
-  const [dirty, setDirty] = useState(false);
+  const [dirty, setDirty] = useState(prefilled);
   const [savedAt, setSavedAt] = useState<Date | null>(note && !amending ? new Date(note.updatedAt) : null);
   const [error, setError] = useState<string | null>(null);
   const saving = useRef(false);
 
   useEffect(() => {
-    setContent(fromNote(note));
+    setContent(fromNote(note, amending ? null : chiefComplaint));
     setNoteId(amending ? null : (note?.id ?? null));
     setStatus(amending ? 'DRAFT' : (note?.status ?? 'DRAFT'));
-    setDirty(false);
+    setDirty(prefilled);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [note?.id, amending]);
 
@@ -128,6 +159,15 @@ export function NoteEditor({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content, noteId, amending, note, reason, encounterId]);
+
+  // While there are unsaved changes, "Finish consultation" can save them first.
+  useEffect(() => {
+    if (!dirty || (amending && !noteId && !reason.trim())) return;
+    pendingSaves.add(save);
+    return () => {
+      pendingSaves.delete(save);
+    };
+  }, [dirty, save, amending, noteId, reason]);
 
   // Autosave drafts 2 s after the last change (amendments need a reason first).
   useEffect(() => {
@@ -171,7 +211,7 @@ export function NoteEditor({
     },
     onSuccess: (n) => {
       setStatus(n.status);
-      toast.success(n.status === 'SIGNED' ? 'Note signed and locked' : 'Marked as reviewed');
+      toast.success(n.status === 'SIGNED' ? 'Note signed and locked' : 'Note approved');
       invalidate();
       qc.invalidateQueries({ queryKey: ['dashboard'] });
       if (n.status === 'SIGNED') onDone?.();
@@ -189,13 +229,37 @@ export function NoteEditor({
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const insertVitals = () => {
+    if (!latestVitals) return;
+    const text = vitalsText(latestVitals);
+    const current = content.objective ?? '';
+    set('objective', current.trim() ? `${current.trimEnd()}\n${text}` : text);
+  };
+
+  const renderField = (f: (typeof FIELDS)[number]) => (
+    <div key={f.key} className="grid gap-1.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <Label htmlFor={`n-${f.key}`}>
+          {f.letter && <span className="mr-1.5 font-mono text-xs font-normal text-muted-foreground" aria-hidden>{f.letter}</span>}
+          {f.label}
+        </Label>
+        {f.key === 'objective' && latestVitals && vitalsText(latestVitals) && (
+          <Button type="button" size="sm" variant="outline" className="ml-auto h-7 text-xs" onClick={insertVitals}>
+            <Activity /> Insert vitals
+          </Button>
+        )}
+      </div>
+      <Textarea id={`n-${f.key}`} rows={f.rows} placeholder={f.hint} value={String(content[f.key] ?? '')} onChange={(e) => set(f.key, e.target.value)} />
+    </div>
+  );
+
   const findings = content.examFindings;
   const setFinding = (i: number, patch: Partial<ExamFinding>) => set('examFindings', findings.map((f, j) => (j === i ? { ...f, ...patch } : f)));
 
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={status === 'REVIEWED' ? 'info' : 'warning'}>{amending ? 'Amendment draft' : status === 'REVIEWED' ? 'Reviewed' : 'Draft'}</Badge>
+        <Badge variant={status === 'REVIEWED' ? 'info' : 'warning'}>{amending ? 'Correction draft' : status === 'REVIEWED' ? `Approved${note?.reviewedByName ? ` by ${note.reviewedByName}` : ''} — not signed` : 'Draft — not signed'}</Badge>
         <span className="flex items-center gap-1 text-xs text-muted-foreground" aria-live="polite">
           {saving.current ? (
             <>
@@ -228,12 +292,7 @@ export function NoteEditor({
           <p className="text-xs text-muted-foreground">The signed original stays in the record unchanged. This amendment replaces it as the current version once signed.</p>
         </div>
       )}
-      {FIELDS.slice(0, 4).map((f) => (
-        <div key={f.key} className="grid gap-1.5">
-          <Label htmlFor={`n-${f.key}`}>{f.label}</Label>
-          <Textarea id={`n-${f.key}`} rows={f.rows} placeholder={f.hint} value={String(content[f.key] ?? '')} onChange={(e) => set(f.key, e.target.value)} />
-        </div>
-      ))}
+      {FIELDS.slice(0, 4).map(renderField)}
 
       <fieldset className="rounded-md border p-3">
         <legend className="px-1 text-sm font-medium">Physical examination</legend>
@@ -280,12 +339,7 @@ export function NoteEditor({
         )}
       </fieldset>
 
-      {FIELDS.slice(4).map((f) => (
-        <div key={f.key} className="grid gap-1.5">
-          <Label htmlFor={`n-${f.key}`}>{f.label}</Label>
-          <Textarea id={`n-${f.key}`} rows={f.rows} placeholder={f.hint} value={String(content[f.key] ?? '')} onChange={(e) => set(f.key, e.target.value)} />
-        </div>
-      ))}
+      {FIELDS.slice(4).map(renderField)}
 
       <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-3">
         {noteId && !amending && (
@@ -309,9 +363,10 @@ export function NoteEditor({
         <Button variant="outline" size="sm" onClick={() => void save()} disabled={!dirty && !!noteId}>
           <Save /> Save draft
         </Button>
-        {can('clinical.sign') && status === 'DRAFT' && noteId && !amending && (
+        {/* Approving is for a note someone else (e.g. a nurse) wrote; your own note is simply signed. */}
+        {can('clinical.sign') && status === 'DRAFT' && noteId && !amending && note && note.authorId !== session.user.id && (
           <Button variant="outline" size="sm" loading={transition.isPending && transition.variables === 'review'} onClick={() => transition.mutate('review')}>
-            <CheckCircle2 /> Mark reviewed
+            <CheckCircle2 /> Approve nurse's note
           </Button>
         )}
         {can('clinical.sign') && (
@@ -334,7 +389,7 @@ export function NoteEditor({
               if (r.confirmed) transition.mutate('sign');
             }}
           >
-            <FileSignature /> Sign
+            <FileSignature /> Sign & lock note
           </Button>
         )}
       </div>

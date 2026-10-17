@@ -44,7 +44,7 @@ function ResetForm() {
     );
   }
   return (
-    <form onSubmit={submit} className="grid gap-4">
+    <form method="post" onSubmit={submit} className="grid gap-4">
       <h1 className="text-xl font-semibold">Choose a new password</h1>
       {!token && <FormError message="This reset link is incomplete. Request a new one." />}
       {error && <FormError message={error} />}

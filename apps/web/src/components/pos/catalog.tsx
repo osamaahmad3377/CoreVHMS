@@ -2,6 +2,7 @@
 import { enumLabel } from '@vcms/shared';
 import { Ban, Loader2, Lock, PackageSearch, ScanBarcode, Scissors } from 'lucide-react';
 import { PRODUCT_TYPE_LABELS } from '@vcms/shared';
+import Link from 'next/link';
 import * as React from 'react';
 import { EmptyState } from '../page';
 import { Kbd } from '../ui/misc';
@@ -27,12 +28,25 @@ interface Props {
   qtyInCart: (item: PosItem) => number;
   allowNegative: boolean;
   currency: string;
+  /** Tapping an item that cannot be sold also calls this, so the page can say why (e.g. out of stock). */
   onAdd: (item: PosItem) => void;
+  /** Product types with something sellable at the counter; clinic-only sections without any are hidden. */
+  sellableTypes?: string[];
+  /** Shows "Add products to sell" in empty sections (inventory.write). */
+  canAddProducts: boolean;
 }
+
+/** Sections that are often empty at the counter (prescription-only items are not sold here). */
+const HIDE_WHEN_EMPTY = new Set(['MEDICINE', 'VACCINE']);
 
 export const PosCatalog = React.forwardRef<HTMLInputElement, Props>(function PosCatalog(p, ref) {
   // Prescription-only items are only shown when searching, so staff understand why they cannot be sold here.
-  const visible = p.search.trim() ? p.items : p.items.filter((i) => !i.rxOnly);
+  // Items that cannot be sold (out of stock, prescription only, no price) go last, greyed out.
+  const visible = (p.search.trim() ? p.items : p.items.filter((i) => !i.rxOnly))
+    .map((item, i) => ({ item, i, blocked: !!blockReason(item, 0, p.allowNegative) }))
+    .sort((a, b) => Number(a.blocked) - Number(b.blocked) || a.i - b.i)
+    .map((x) => x.item);
+  const categories = CATEGORIES.filter((c) => !HIDE_WHEN_EMPTY.has(c.key) || !p.sellableTypes || p.sellableTypes.includes(c.key) || p.category === c.key);
   return (
     <div className="flex min-h-0 min-w-0 flex-col gap-3">
       <div className="relative">
@@ -54,11 +68,11 @@ export const PosCatalog = React.forwardRef<HTMLInputElement, Props>(function Pos
         />
         <span className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-2">
           {p.loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-          <Kbd>F2</Kbd>
+          <span className="hidden xl:inline"><Kbd>F2</Kbd></span>
         </span>
       </div>
       <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Categories">
-        {CATEGORIES.map((c) => (
+        {categories.map((c) => (
           <button
             key={c.key}
             role="tab"
@@ -86,7 +100,12 @@ export const PosCatalog = React.forwardRef<HTMLInputElement, Props>(function Pos
         </div>
       )}
       {!p.loading && !visible.length ? (
-        <EmptyState icon={PackageSearch} title={p.search ? `Nothing matches “${p.search}”` : 'No items in this category'} description="Products need a selling price, and services must be active, to appear here." />
+        <EmptyState
+          icon={PackageSearch}
+          title={p.search ? `Nothing matches “${p.search}”` : 'No items here yet.'}
+          description={p.search ? 'Try another word, such as the brand or the type of item (food, shampoo, collar).' : 'Products need a selling price to appear here.'}
+          action={p.canAddProducts ? <Link className="text-sm font-medium text-primary underline" href="/inventory/catalog">Add products to sell</Link> : undefined}
+        />
       ) : (
         <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" aria-label="Items">
           {visible.map((item) => {
@@ -97,12 +116,12 @@ export const PosCatalog = React.forwardRef<HTMLInputElement, Props>(function Pos
               <li key={`${item.type}-${item.id}`}>
                 <button
                   type="button"
-                  disabled={!!blocked}
+                  aria-disabled={!!blocked}
                   onClick={() => p.onAdd(item)}
                   aria-label={`Add ${item.name}`}
                   className={cn(
                     'group relative flex h-full min-h-[118px] w-full flex-col rounded-lg border bg-card p-3 text-left shadow-sm transition-all',
-                    blocked ? 'cursor-not-allowed opacity-60' : 'hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md active:translate-y-0',
+                    blocked ? 'cursor-not-allowed bg-muted/40 opacity-50 grayscale' : 'hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md active:translate-y-0',
                     inCart > 0 && 'border-primary ring-1 ring-primary/40',
                   )}
                 >

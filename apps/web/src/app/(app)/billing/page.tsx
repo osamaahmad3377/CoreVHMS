@@ -21,11 +21,11 @@ import type { Invoice } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 const TABS = [
-  { key: 'open', label: 'Outstanding', params: { status: 'ISSUED,PARTIALLY_PAID' } },
+  { key: 'open', label: 'Waiting for payment', params: { status: 'ISSUED,PARTIALLY_PAID' } },
   { key: 'overdue', label: 'Overdue', params: { overdue: 'true' } },
   { key: 'draft', label: 'Drafts', params: { status: 'DRAFT' } },
   { key: 'paid', label: 'Paid', params: { status: 'PAID' } },
-  { key: 'void', label: 'Void', params: { status: 'VOID' } },
+  { key: 'void', label: 'Cancelled', params: { status: 'VOID' } },
   { key: 'all', label: 'All', params: {} },
 ];
 
@@ -43,8 +43,8 @@ function Invoices() {
     <>
       <PageHeader
         help="invoice"
-        title="Billing & payments"
-        description="Invoices, payments, credit and refunds. Clinical work is billed automatically as unbilled charges."
+        title="Billing"
+        description="Invoices, payments and refunds. Work done in the clinic waits in “Not yet invoiced” until you bill it."
         actions={can('billing.write') && <Button size="sm" asChild><Link href="/billing/invoices/new"><Plus /> New invoice</Link></Button>}
       />
       <SectionNav links={BILLING_LINKS} />
@@ -69,12 +69,12 @@ function Invoices() {
             waiting > 0 && (tab.key === 'open' || tab.key === 'draft') ? (
               <EmptyState
                 icon={Receipt}
-                title={`No ${tab.key === 'open' ? 'outstanding' : 'draft'} invoices — but ${waiting} charge${waiting === 1 ? ' is' : 's are'} waiting to be billed`}
+                title={`No ${tab.key === 'open' ? 'unpaid' : 'draft'} invoices — but ${waiting} ${waiting === 1 ? 'item is' : 'items are'} not yet invoiced`}
                 description={`${fmtMoney(unbilled.data?.totalMinor ?? 0, currency)} of work from consultations, pharmacy, lab and other services.`}
-                action={can('billing.write') ? <Button size="sm" asChild><Link href="/billing/charges">Invoice unbilled charges</Link></Button> : undefined}
+                action={can('billing.write') ? <Button size="sm" asChild><Link href="/billing/charges">See items not yet invoiced</Link></Button> : undefined}
               />
             ) : (
-              <EmptyState icon={Receipt} title={tab.key === 'open' ? 'Nothing outstanding — every issued invoice is paid' : 'No invoices here'} />
+              <EmptyState icon={Receipt} title={tab.key === 'open' ? 'Nothing owed — every finished invoice is paid' : 'No invoices here'} />
             )
           }
           columns={[
@@ -83,7 +83,7 @@ function Invoices() {
             { key: 'date', header: 'Date', cell: (r) => <span className="whitespace-nowrap text-sm">{fmtDate(r.issuedAt ?? r.createdAt)}</span> },
             { key: 'due', header: 'Due', cell: (r) => <span className={cn('whitespace-nowrap text-sm', r.overdue && 'font-medium text-destructive')}>{fmtDate(r.dueAt)}</span> },
             { key: 'total', header: 'Total', className: 'text-right tabular', headerClassName: 'text-right', cell: (r) => fmtMoney(r.totalMinor, r.currency ?? currency) },
-            { key: 'bal', header: 'Balance', className: 'text-right tabular', headerClassName: 'text-right', cell: (r) => (r.status === 'VOID' || r.status === 'DRAFT' ? '—' : fmtMoney(r.balanceMinor, r.currency ?? currency)) },
+            { key: 'bal', header: 'Amount owed', className: 'text-right tabular', headerClassName: 'text-right', cell: (r) => (r.status === 'VOID' || r.status === 'DRAFT' ? '—' : fmtMoney(r.balanceMinor, r.currency ?? currency)) },
             { key: 'st', header: 'Status', cell: (r) => <CommerceBadge status={r.status} overdue={r.overdue} /> },
           ]}
         />

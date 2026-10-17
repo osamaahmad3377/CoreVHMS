@@ -11,7 +11,7 @@ import { quickCash, type Tender } from './model';
 import { fmtMoney } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
-const METHODS: { key: string; icon: LucideIcon }[] = [
+export const PAYMENT_TILES: { key: string; icon: LucideIcon }[] = [
   { key: 'CASH', icon: Banknote },
   { key: 'CARD', icon: CreditCard },
   { key: 'MOBILE_WALLET', icon: Smartphone },
@@ -19,6 +19,39 @@ const METHODS: { key: string; icon: LucideIcon }[] = [
   { key: 'CHEQUE', icon: Wallet },
   { key: 'OTHER', icon: Wallet },
 ];
+
+/** Big, tappable payment-method buttons (Cash, Card, Mobile wallet…), shared by the shop counter and invoice payments. */
+export function MethodTiles({ value, onChange, cashBlocked }: { value: string; onChange: (method: string) => void; cashBlocked: boolean }) {
+  return (
+    <div className="grid grid-cols-3 gap-2 sm:grid-cols-6" role="radiogroup" aria-label="Payment method">
+      {PAYMENT_TILES.map(({ key, icon: Icon }) => {
+        const disabled = key === 'CASH' && cashBlocked;
+        return (
+          <button
+            key={key}
+            type="button"
+            role="radio"
+            aria-checked={value === key}
+            disabled={disabled}
+            onClick={() => onChange(key)}
+            className={cn('flex flex-col items-center gap-1 rounded-lg border p-2.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40', value === key ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-muted')}
+          >
+            <Icon className="h-5 w-5" /> {enumLabel(key)}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Shown when cash cannot be taken because no cash drawer is open at this branch. */
+export function CashClosedNote({ canManageCash }: { canManageCash: boolean }) {
+  return (
+    <p className="text-xs text-destructive">
+      {canManageCash ? <Link className="font-medium underline" href="/billing/cash">Cash drawer closed — open it to take cash</Link> : 'Cash drawer closed — ask your manager to open it to take cash.'}
+    </p>
+  );
+}
 
 /**
  * Split-tender payment. Non-cash tenders cannot exceed what is still due; cash may exceed it and the
@@ -86,38 +119,21 @@ export function TenderDialog({
       <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>Take payment</DialogTitle>
-          <DialogDescription>Choose a method and amount. Add several payments to split the bill.</DialogDescription>
+          <DialogDescription>Choose how the customer pays. To split the payment (part card, part cash), enter the first amount and press “Add split”.</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-3 gap-2 rounded-lg bg-muted/50 p-3 text-center">
           <div><p className="text-xs text-muted-foreground">Total due</p><p className="text-xl font-bold tabular">{fmtMoney(dueMinor, currency)}</p></div>
-          <div><p className="text-xs text-muted-foreground">Tendered</p><p className="text-xl font-semibold tabular">{fmtMoney(pendingPaid, currency)}</p></div>
+          <div><p className="text-xs text-muted-foreground">Customer gave</p><p className="text-xl font-semibold tabular">{fmtMoney(pendingPaid, currency)}</p></div>
           <div>
-            <p className="text-xs text-muted-foreground">{change > 0 ? 'Change due' : 'Remaining'}</p>
+            <p className="text-xs text-muted-foreground">{change > 0 ? 'Change to give' : 'Still to pay'}</p>
             <p className={cn('text-xl font-bold tabular', change > 0 ? 'text-success' : pendingPaid < dueMinor ? 'text-warning' : '')}>{fmtMoney(change > 0 ? change : Math.max(0, dueMinor - pendingPaid), currency)}</p>
           </div>
         </div>
 
         {remaining > 0 && (
           <>
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6" role="radiogroup" aria-label="Payment method">
-              {METHODS.map(({ key, icon: Icon }) => {
-                const disabled = key === 'CASH' && cashBlocked;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    role="radio"
-                    aria-checked={method === key}
-                    disabled={disabled}
-                    onClick={() => { setMethod(key); amountRef.current?.focus(); }}
-                    className={cn('flex flex-col items-center gap-1 rounded-lg border p-2.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40', method === key ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-muted')}
-                  >
-                    <Icon className="h-5 w-5" /> {enumLabel(key)}
-                  </button>
-                );
-              })}
-            </div>
-            {cashBlocked && <p className="text-xs text-destructive">Cash is unavailable: no register is open at this branch. {canManageCash && <Link className="underline" href="/billing/cash">Open a register</Link>}</p>}
+            <MethodTiles value={method} cashBlocked={cashBlocked} onChange={(m) => { setMethod(m); amountRef.current?.focus(); }} />
+            {cashBlocked && <CashClosedNote canManageCash={canManageCash} />}
             <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
               <MoneyInput
                 ref={amountRef}
@@ -133,7 +149,7 @@ export function TenderDialog({
                   else add();
                 }}
               />
-              {method !== 'CASH' ? <Input aria-label="Reference" placeholder="Reference / auth code" className="h-11" value={reference} maxLength={120} onChange={(e) => setReference(e.target.value)} /> : <div className="hidden sm:block" />}
+              {method !== 'CASH' ? <Input aria-label="Receipt / slip no. (optional)" placeholder="Receipt / slip no. (optional)" className="h-11" value={reference} maxLength={120} onChange={(e) => setReference(e.target.value)} /> : <div className="hidden sm:block" />}
               <Button variant="outline" className="h-11" disabled={!entry || entry <= 0 || !!entryError || entry >= remaining} onClick={add}>Add split</Button>
             </div>
             {entryError && <p className="text-xs text-destructive" role="alert">{entryError}</p>}
@@ -165,7 +181,7 @@ export function TenderDialog({
         <DialogFooter>
           <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>Back to sale</Button>
           <Button size="lg" disabled={!canComplete} loading={busy} onClick={() => onComplete(pending, change)}>
-            {change > 0 ? `Complete · change ${fmtMoney(change, currency)}` : 'Complete sale'}
+            {change > 0 ? `Finish sale · give ${fmtMoney(change, currency)} change` : 'Finish sale'}
           </Button>
         </DialogFooter>
       </DialogContent>

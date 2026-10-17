@@ -65,11 +65,11 @@ test.describe('Receipts & printing', () => {
     await page.keyboard.press('F9');
     const pay = page.getByRole('dialog');
     await pay.getByLabel('Amount', { exact: true }).fill('1000');
-    await pay.getByRole('button', { name: /Complete · change/ }).click();
+    await pay.getByRole('button', { name: /Finish sale · give .* change/ }).click();
     await expect(page.getByText(/Sale INV-\d{6} complete/)).toBeVisible();
     const shown = page.getByLabel(/^Receipt INV-\d{6}/).first();
     await expect(shown).toContainText('Open daily 9 am – 9 pm');
-    await expect(shown).toContainText('Cash tendered');
+    await expect(shown).toContainText('Cash given');
     const invoiceNo = ((await shown.getAttribute('aria-label')) ?? '').replace('Receipt ', '');
     await capturePrints(page);
     await page.getByRole('button', { name: 'Print receipt' }).click();

@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MESSAGE_PURPOSES, enumLabel, type Paginated } from '@vcms/shared';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Field } from '@/components/forms/field';
 import { RequirePermission } from '@/components/require';
@@ -26,8 +26,26 @@ const PLACEHOLDERS: Record<string, string> = {
   GENERAL: '{{body}} {{clientName}} {{clinicName}}',
 };
 
+/** Plain names for the placeholders, shown on the Insert buttons. */
+const PLACEHOLDER_LABELS: Record<string, string> = {
+  clientName: 'Client name', petNames: 'Pet names', petName: 'Pet name', items: 'What is due', itemsShort: 'What is due (short)',
+  clinicName: 'Clinic name', clinicPhoneLine: 'Clinic phone', appointmentType: 'Appointment type', appointmentTime: 'Appointment time',
+  link: 'Link', body: 'Your message',
+};
+const placeholderList = (purpose: string) => (PLACEHOLDERS[purpose] ?? '').split(' ').filter(Boolean).map((p) => p.replace(/[{}]/g, ''));
+
 function TemplateEditor({ t }: { t: MessageTemplate }) {
   const qc = useQueryClient();
+  const area = useRef<HTMLTextAreaElement>(null);
+  /** Puts {{name}} where the cursor is, so owners do not have to type braces. */
+  const insert = (name: string) => {
+    const el = area.current;
+    const token = `{{${name}}}`;
+    const start = el?.selectionStart ?? body.length;
+    const end = el?.selectionEnd ?? body.length;
+    setBody(body.slice(0, start) + token + body.slice(end));
+    requestAnimationFrame(() => { if (el) { el.focus(); el.setSelectionRange(start + token.length, start + token.length); } });
+  };
   const [subject, setSubject] = useState(t.subject ?? '');
   const [body, setBody] = useState(t.body);
   const [active, setActive] = useState(t.isActive);
@@ -45,7 +63,13 @@ function TemplateEditor({ t }: { t: MessageTemplate }) {
         <label className="flex items-center gap-2 text-xs text-muted-foreground">Active <Switch checked={active} onCheckedChange={setActive} aria-label={`${t.purpose} ${t.channel} active`} /></label>
       </div>
       {t.channel === 'EMAIL' && <Input aria-label="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} />}
-      <Textarea aria-label="Message" rows={t.channel === 'EMAIL' ? 6 : 3} value={body} onChange={(e) => setBody(e.target.value)} />
+      <div role="group" aria-label="Insert a detail" className="flex flex-wrap items-center gap-1">
+        <span className="text-2xs text-muted-foreground">Insert:</span>
+        {placeholderList(t.purpose).map((name) => (
+          <Button key={name} type="button" size="sm" variant="outline" className="h-6 px-2 text-2xs" onClick={() => insert(name)} title={`Adds {{${name}}}`}>{PLACEHOLDER_LABELS[name] ?? name}</Button>
+        ))}
+      </div>
+      <Textarea ref={area} aria-label="Message" rows={t.channel === 'EMAIL' ? 6 : 3} value={body} onChange={(e) => setBody(e.target.value)} />
       <div className="flex items-center justify-between gap-2">
         <span className="text-2xs text-muted-foreground">{t.channel !== 'EMAIL' && `${body.length} characters · `}{t.updatedByName ? `Edited by ${t.updatedByName}` : 'Default wording'}</span>
         <Button size="sm" disabled={!dirty || !body.trim()} loading={m.isPending} onClick={() => m.mutate()}>Save</Button>
@@ -103,14 +127,13 @@ export default function CommunicationsSettingsPage() {
           </CardContent>
         </Card>
         <Card>
-          <CardHeader><div><CardTitle>Message wording</CardTitle><CardDescription>Placeholders in {'{{double braces}}'} are filled in automatically.</CardDescription></div></CardHeader>
+          <CardHeader><div><CardTitle>Message wording</CardTitle><CardDescription>Use the Insert buttons to add the client’s name, pet name and other details. They are filled in when the message is sent.</CardDescription></div></CardHeader>
           <CardContent className="grid gap-3">
             <div className="flex flex-wrap gap-1" role="tablist">
               {purposes.map((p) => (
                 <button key={p} role="tab" aria-selected={purpose === p} onClick={() => setPurpose(p)} className={cn('rounded-md px-3 py-1.5 text-sm', purpose === p ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>{enumLabel(p, 'message')}</button>
               ))}
             </div>
-            <p className="text-xs text-muted-foreground">Available: <code>{PLACEHOLDERS[purpose]}</code></p>
             <div className="grid gap-3 lg:grid-cols-3">
               {(templates.data ?? []).filter((t) => t.purpose === purpose).map((t) => <TemplateEditor key={t.id} t={t} />)}
             </div>

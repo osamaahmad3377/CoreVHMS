@@ -38,7 +38,7 @@ export default function LivestockSettingsPage() {
       <div className="grid gap-4">
         <div>
           <h2 className="text-base font-semibold">Livestock — gestation lengths</h2>
-          <p className="text-sm text-muted-foreground">Used to work out expected due dates after a service, insemination or positive pregnancy check. Nothing is pre-filled: enter your clinic’s reviewed figure and its source. Leave blank and due dates must be entered by hand.</p>
+          <p className="text-sm text-muted-foreground">Used to work out due dates. Add your figure and its source; leave blank to enter dates by hand.</p>
         </div>
         <Card className="overflow-x-auto">
           <table className="w-full text-sm">

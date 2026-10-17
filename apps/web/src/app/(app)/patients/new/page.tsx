@@ -21,15 +21,15 @@ function NewPatient() {
       <PageHeader
         title="Add patient"
         breadcrumbs={[{ label: 'Patients', href: '/patients' }, { label: 'New' }]}
-        description={initialOwner ? `Owner: ${initialOwner.displayName}` : undefined}
+        description={initialOwner ? `Owner (client): ${initialOwner.displayName}` : undefined}
       />
       <Card className="max-w-5xl">
         <CardContent className="pb-0 pt-5">
           <PatientForm
             initialOwner={initialOwner}
             onSaved={(p) => {
-              toast.success('Patient registered');
-              router.push(`/patients/${p.id}`);
+              toast.success(p.name ? `Patient added: ${p.name}${p.patientNo ? ` (${p.patientNo})` : ''}` : 'Patient added');
+              router.push(`/patients/${p.id}?registered=1`);
             }}
             onCancel={() => router.back()}
           />

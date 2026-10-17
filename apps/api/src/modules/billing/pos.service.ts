@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, ProductType } from '@prisma/client';
+import { Prisma, ProductType, ServiceCategory } from '@prisma/client';
+import { PRODUCT_TYPES, PRODUCT_TYPE_LABELS } from '@vcms/shared';
 import { RequestContext } from '../../common/context/request-context';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { localDayBounds } from '../../common/time/tz';
@@ -29,6 +30,21 @@ export interface PosItem {
   rxOnly: boolean;
 }
 
+/** Search words, lower-cased, with a simple plural "s" removed ("dogs" → "dog", "foods" → "food"). */
+export function searchWords(term: string) {
+  return term
+    .toLowerCase()
+    .split(/[\s,]+/)
+    .filter(Boolean)
+    .slice(0, 6)
+    .map((w) => (w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w));
+}
+
+const startsAWord = (label: string, w: string) => label.toLowerCase().split(/[^a-z]+/).some((x) => x && x.startsWith(w));
+/** Product types whose name a search word refers to ("food" → FOOD, "treat" → FOOD, "medicine" → MEDICINE). */
+const typesFor = (w: string) => (w.length < 3 ? [] : PRODUCT_TYPES.filter((t) => startsAWord(PRODUCT_TYPE_LABELS[t], w) || startsAWord(t, w)));
+const serviceCategoriesFor = (w: string) => (w.length < 3 ? [] : (Object.values(ServiceCategory) as ServiceCategory[]).filter((c) => startsAWord(c.replace('_', ' '), w)));
+
 /** Read models for the point-of-sale screen. Sales themselves go through InvoicesService/PaymentsService. */
 @Injectable()
 export class PosService {
@@ -37,10 +53,19 @@ export class PosService {
     private readonly inventory: InventoryService,
   ) {}
 
-  async catalog(q: { q?: string; category?: string; categoryId?: string; limit: number }): Promise<{ items: PosItem[]; exact: PosItem | null; allowNegativeStock: boolean }> {
+  async catalog(q: { q?: string; category?: string; categoryId?: string; limit: number }): Promise<{
+    items: PosItem[];
+    exact: PosItem | null;
+    allowNegativeStock: boolean;
+    /** Product types with at least one item that can be sold at the counter, so empty sections can be hidden. */
+    sellableTypes: string[];
+    /** Tax applied to an "other item" typed in at the counter. */
+    defaultTaxRateBasisPoints: number;
+  }> {
     const db = this.prisma.db;
     const ctx = RequestContext.require();
     const term = q.q?.trim();
+    const words = term ? searchWords(term) : [];
     const wantServices = (!q.category || q.category === 'SERVICE') && !q.categoryId;
     const wantProducts = q.category !== 'SERVICE';
     const productWhere: Prisma.ProductWhereInput = {
@@ -50,28 +75,55 @@ export class PosService {
       ...(term
         ? {
             OR: [
-              { name: { contains: term, mode: 'insensitive' } },
-              { genericName: { contains: term, mode: 'insensitive' } },
-              { brand: { contains: term, mode: 'insensitive' } },
               { sku: { equals: term, mode: 'insensitive' } },
               { barcode: term },
+              // Every word must match something: name, brand, pack size, shop category ("Dry food") or section ("food").
+              {
+                AND: words.map((w) => ({
+                  OR: [
+                    { name: { contains: w, mode: 'insensitive' } },
+                    { genericName: { contains: w, mode: 'insensitive' } },
+                    { brand: { contains: w, mode: 'insensitive' } },
+                    { packSize: { contains: w, mode: 'insensitive' } },
+                    { productCategory: { name: { contains: w, mode: 'insensitive' } } },
+                    ...(typesFor(w).length ? [{ type: { in: typesFor(w) as ProductType[] } }] : []),
+                  ],
+                })),
+              },
             ],
           }
         : {}),
     };
-    const [products, services, rates, org] = await Promise.all([
+    const serviceWhere: Prisma.ServiceWhereInput = {
+      isActive: true,
+      ...(term
+        ? {
+            OR: [
+              { code: { equals: term.toUpperCase() } },
+              { AND: words.map((w) => ({ OR: [{ name: { contains: w, mode: 'insensitive' } }, ...(serviceCategoriesFor(w).length ? [{ category: { in: serviceCategoriesFor(w) } }] : [])] })) },
+            ],
+          }
+        : {}),
+    };
+    const [products, services, rates, org, sellable] = await Promise.all([
       wantProducts
         ? db.product.findMany({ where: productWhere, include: { productCategory: { select: { name: true } } }, orderBy: { name: 'asc' }, take: q.limit })
         : Promise.resolve([]),
       wantServices
         ? db.service.findMany({
-            where: { isActive: true, ...(term ? { OR: [{ name: { contains: term, mode: 'insensitive' } }, { code: { equals: term.toUpperCase() } }] } : {}) },
+            where: serviceWhere,
             orderBy: { name: 'asc' },
             take: q.limit,
           })
         : Promise.resolve([]),
       db.taxRate.findMany({ where: { isActive: true } }),
       this.prisma.raw.organization.findUniqueOrThrow({ where: { id: ctx.organizationId! }, select: { allowNegativeStock: true } }),
+      // Types with something sellable here: priced, active, and not a prescription-only medicine or vaccine.
+      db.product.findMany({
+        where: { isActive: true, sellPriceMinor: { not: null }, NOT: { requiresPrescription: true, type: { in: ['MEDICINE', 'VACCINE'] } } },
+        distinct: ['type'],
+        select: { type: true },
+      }),
     ]);
     const defaultBp = rates.find((r) => r.isDefault)?.rateBasisPoints ?? 0;
     const bp = (id: string | null) => rates.find((r) => r.id === id)?.rateBasisPoints ?? defaultBp;
@@ -128,7 +180,13 @@ export class PosService {
     ];
     // A scanned barcode or typed SKU/service code that identifies exactly one item.
     const exactMatches = term ? items.filter((i) => i.barcode === term || i.code?.toLowerCase() === term.toLowerCase()) : [];
-    return { items, exact: exactMatches.length === 1 ? exactMatches[0] : null, allowNegativeStock: org.allowNegativeStock };
+    return {
+      items,
+      exact: exactMatches.length === 1 ? exactMatches[0] : null,
+      allowNegativeStock: org.allowNegativeStock,
+      sellableTypes: sellable.map((p) => p.type),
+      defaultTaxRateBasisPoints: defaultBp,
+    };
   }
 
   /** Today's counter sales at the current branch (branch-local day), newest first. */
@@ -142,7 +200,7 @@ export class PosService {
       include: {
         client: { select: { id: true, displayName: true, number: true, email: true, mobilePhone: true, addresses: { where: { isPrimary: true }, take: 1 } } },
         lines: { orderBy: { sortOrder: 'asc' }, include: { charge: { select: { id: true, sourceType: true, sourceId: true } } } },
-        allocations: { include: { payment: { select: { id: true, number: true, method: true, receivedAt: true, receivedByName: true } } }, orderBy: { createdAt: 'asc' } },
+        allocations: { include: { payment: { select: { id: true, number: true, method: true, reference: true, receivedAt: true, receivedByName: true } } }, orderBy: { createdAt: 'asc' } },
         creditNotes: { orderBy: { createdAt: 'asc' } },
         branch: { select: { id: true, name: true, addressLine1: true, addressLine2: true, city: true, postcode: true, phone: true, email: true } },
       },

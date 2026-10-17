@@ -1,6 +1,6 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
-import { AlertOctagon, AlertTriangle, BedDouble, Boxes, CalendarClock, CalendarDays, CheckSquare, FileWarning, ListChecks, PawPrint, Receipt, Scissors, Stethoscope, Tractor, UserPlus, Users, Wallet } from 'lucide-react';
+import { AlertOctagon, AlertTriangle, BedDouble, Boxes, CalendarClock, CalendarDays, CalendarRange, CheckSquare, FileWarning, ListChecks, PawPrint, Receipt, Scissors, Stethoscope, Tractor, UserPlus, Users, Wallet } from 'lucide-react';
 import { enumLabel } from '@vcms/shared';
 import { PriorityDot } from '@/components/scheduling/appointment-status';
 import { branchTime, localDate } from '@/lib/time';
@@ -9,8 +9,9 @@ import { useState } from 'react';
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { EmptyState, ErrorState, LoadingRows, PageHeader } from '@/components/page';
 import { AttentionList, buildAttention } from '@/components/dashboard/attention';
-import { QuickActions } from '@/components/dashboard/quick-actions';
-import { SetupChecklist } from '@/components/dashboard/setup-checklist';
+import { ArrivingNext, type FrontDeskWidget, WaitingNow, noMoreBookingsText } from '@/components/dashboard/front-desk-panels';
+import { QuickActions, dashboardRole } from '@/components/dashboard/quick-actions';
+import { SetupChecklist, ShowSetupAgainLink } from '@/components/dashboard/setup-checklist';
 import { Stat } from '@/components/stat';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { NativeSelect } from '@/components/ui/input';
@@ -29,6 +30,7 @@ interface DashboardData {
       total: number;
       byStatus: Record<string, number>;
       emergencies: number;
+      staleDate?: string | null;
       upcoming: { id: string; startsAt: string; status: string; priority: string | null; patient: { id: string; name: string } | null; type: { name: string; color: string }; clinician: string | null }[];
     };
     clinicalWork?: { openEncounters: number; unsignedNotes: { id: string; encounterId: string; encounterNo: string; patient: string; updatedAt: string; status: string }[] };
@@ -38,7 +40,9 @@ interface DashboardData {
     surgery?: { today: { id: string; surgeryNo: string; procedure: string; status: string; scheduledAt: string; patient: { id: string; name: string }; theatre: string | null }[] };
     preventive?: { overdue: number; dueThisWeek: number };
     communications?: { unreadMessages: number; pendingRequests: number; failedMessages: number };
-    finance?: { billedTodayMinor: number; receivedTodayMinor: number; outstandingMinor: number; overdueInvoices: number; unbilledCount: number; unbilledMinor: number };
+    finance?: { billedTodayMinor: number; receivedTodayMinor: number; receivedMonthMinor: number; outstandingMinor: number; overdueInvoices: number; unbilledCount: number; unbilledMinor: number };
+    cashDrawers?: { notClosed: { sessionId: string; register: string; registerId: string; openedAt: string; openedByName: string }[] };
+    frontDesk?: FrontDeskWidget;
     inventory?: { lowStockCount: number; lowStock: { id: string; name: string; available: number; reorderLevel: number | null; unit: string }[]; expiringCount: number; expiring: { id: string; name: string; nextExpiry: string | null }[]; valueMinor: number };
     livestock?: { visitsToday: { id: string; visitNo: string; farm: { id: string; name: string }; purpose: string; status: string; scheduledAt: string }[]; openOutbreaks: number; animalsUnderWithdrawal: number; birthsDue14Days: number };
     boarding?: { inHouse: number; arrivingToday: number; departingToday: number; grooming: { waiting: number; inProgress: number; ready: number } };
@@ -48,43 +52,64 @@ interface DashboardData {
 }
 
 const RANGES = [
+  { value: 'today', label: 'Today' },
+  { value: 'month', label: 'This month' },
+  { value: 'last-month', label: 'Last month' },
   { value: '7', label: 'Last 7 days' },
   { value: '30', label: 'Last 30 days' },
   { value: '90', label: 'Last 90 days' },
   { value: '365', label: 'Last 12 months' },
 ];
 
+/** Day-granular range for a preset, so the query key is stable between renders. */
+function rangeOf(preset: string): { from: string; to?: string } {
+  const today = new Date(new Date().setHours(0, 0, 0, 0));
+  if (preset === 'today') return { from: today.toISOString() };
+  if (preset === 'month') return { from: new Date(today.getFullYear(), today.getMonth(), 1).toISOString() };
+  if (preset === 'last-month') {
+    const start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const end = new Date(new Date(today.getFullYear(), today.getMonth(), 1).getTime() - 1);
+    return { from: start.toISOString(), to: end.toISOString() };
+  }
+  return { from: new Date(today.getTime() - Number(preset) * 86400_000).toISOString() };
+}
+
 export default function DashboardPage() {
   const { session, currency, can } = useSession();
   const portal = session.features?.clientPortal === true;
-  const [days, setDays] = useState('30');
+  const [days, setDays] = useState('month');
   const [scope, setScope] = useState<'branch' | 'all'>('all');
-  // Day-granular so the query key is stable between renders.
-  const from = new Date(new Date().setHours(0, 0, 0, 0) - Number(days) * 86400_000).toISOString();
+  const { from, to } = rangeOf(days);
   const branchId = scope === 'branch' ? session.branch?.id : undefined;
+  // Owners and managers see money first; front-desk staff (and clinicians at the desk) see arrivals first.
+  const role = dashboardRole((p) => can(p));
+  const frontline = role !== 'owner' && can('appointments.checkin');
 
   const q = useQuery({
     queryKey: ['dashboard', days, branchId],
-    queryFn: () => api.get<DashboardData>(`/dashboard${qs({ from, branchId })}`),
+    queryFn: () => api.get<DashboardData>(`/dashboard${qs({ from, to, branchId })}`),
     refetchInterval: 60_000,
   });
   const w = q.data?.widgets;
   const rangeLabel = RANGES.find((r) => r.value === days)?.label.toLowerCase();
 
   const money = (m: number) => fmtMoney(m, currency);
-  const attention = w ? buildAttention(w, { money, portal, can: (p) => can(p as never) }) : [];
+  const attention = w ? buildAttention(w, { money, portal, can: (p) => can(p as never), hideStock: frontline }) : [];
   const appts = w?.appointmentsToday;
   const glance = [
     appts && { label: 'Appointments', value: appts.total, hint: `${appts.byStatus.COMPLETED ?? 0} done`, icon: CalendarDays, href: '/calendar' },
     appts && { label: 'Waiting', value: appts.byStatus.CHECKED_IN ?? 0, icon: Users, href: '/front-desk', tone: (appts.byStatus.CHECKED_IN ?? 0) ? 'warning' : undefined },
-    w?.clinicalWork && { label: 'Open consults', value: w.clinicalWork.openEncounters, icon: Stethoscope, href: '/consultations' },
+    w?.clinicalWork && { label: 'Unfinished consultations', value: w.clinicalWork.openEncounters, icon: Stethoscope, href: '/consultations' },
     w?.hospital && { label: 'In hospital', value: w.hospital.inpatients, icon: BedDouble, href: '/hospital' },
     w?.surgery && { label: 'Surgeries', value: w.surgery.today.length, icon: Scissors, href: '/surgery' },
     w?.boarding && { label: 'Boarders in', value: w.boarding.inHouse, icon: BedDouble, href: '/boarding' },
     w?.livestock && { label: 'Farm visits', value: w.livestock.visitsToday.length, icon: Tractor, href: '/livestock?tab=visits' },
-    w?.finance && { label: 'Received today', value: money(w.finance.receivedTodayMinor), icon: Wallet, href: '/billing/payments' },
+    w?.finance && role !== 'owner' && { label: 'Received today', value: money(w.finance.receivedTodayMinor), icon: Wallet, href: '/billing/payments' },
   ].filter(Boolean) as { label: string; value: number | string; hint?: string; icon: React.ComponentType<{ className?: string }>; href: string; tone?: 'warning' }[];
-  const insights = !!(w?.finance || w?.inventory || w?.registrations);
+  // "Money & stock" is for owners and managers, not for the front desk.
+  const insights = !frontline && !!(w?.finance || w?.inventory || w?.registrations);
+  const moneyStrip = role === 'owner' && w?.finance;
+  const noMoreBookings = noMoreBookingsText(appts);
   // One row per patient, however many critical alerts they carry.
   const alertsByPatient = Object.values(
     (w?.criticalAlerts ?? []).reduce<Record<string, { patient: { id: string; name: string }; titles: string[] }>>((acc, a) => {
@@ -110,8 +135,24 @@ export default function DashboardPage() {
           <QuickActions />
           <SetupChecklist />
 
+          {frontline && w?.frontDesk && (
+            <div className="grid gap-4 lg:grid-cols-2">
+              <WaitingNow data={w.frontDesk} />
+              <ArrivingNext data={w.frontDesk} emptyText={noMoreBookings} />
+            </div>
+          )}
+
+          {moneyStrip && w?.finance && (
+            <section aria-label="Money today" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+              <Stat label="Money received today" value={money(w.finance.receivedTodayMinor)} icon={Wallet} href="/billing/payments" tone="success" />
+              <Stat label="This month" value={money(w.finance.receivedMonthMinor)} hint="Received since the 1st" icon={CalendarRange} href="/billing/payments" />
+              <Stat label="Clients owe" value={money(w.finance.outstandingMinor)} icon={Receipt} href="/billing" hint={w.finance.overdueInvoices ? `${w.finance.overdueInvoices} overdue invoice${w.finance.overdueInvoices === 1 ? '' : 's'}` : 'None overdue'} tone={w.finance.overdueInvoices ? 'warning' : 'default'} />
+              <Stat label="Not yet invoiced" value={money(w.finance.unbilledMinor)} icon={ListChecks} href="/billing/charges" hint={`${w.finance.unbilledCount} charge${w.finance.unbilledCount === 1 ? '' : 's'}, before tax`} tone={w.finance.unbilledCount ? 'warning' : 'default'} />
+            </section>
+          )}
+
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <AttentionList items={attention} />
+            <AttentionList items={attention} title={frontline ? 'Still to do' : 'Needs your attention'} />
             {glance.length > 0 && (
               <section aria-label="Today at a glance" className="grid content-start gap-2 rounded-lg border bg-card p-3 shadow-sm">
                 <h2 className="px-1 text-sm font-semibold">Today at a glance</h2>
@@ -132,9 +173,9 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {(w?.appointmentsToday || w?.clinicalWork || w?.tasks || (w?.surgery && w.surgery.today.length > 0)) && (
+          {((w?.appointmentsToday && !(frontline && w.frontDesk)) || w?.clinicalWork || w?.tasks || (w?.surgery && w.surgery.today.length > 0)) && (
             <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
-              {w.appointmentsToday && (
+              {w.appointmentsToday && !(frontline && w.frontDesk) && (
                 <Card>
                   <CardHeader>
                     <CardTitle>Next appointments</CardTitle>
@@ -158,7 +199,7 @@ export default function DashboardPage() {
                       ))}
                     </ul>
                   ) : (
-                    <EmptyState title="No more appointments today" className="py-8" action={<Link href="/calendar" className="text-sm font-medium text-primary hover:underline">Open the calendar</Link>} />
+                    <EmptyState title={noMoreBookings} className="py-8" action={<Link href="/calendar" className="text-sm font-medium text-primary hover:underline">Open the calendar</Link>} />
                   )}
                 </Card>
               )}
@@ -242,13 +283,13 @@ export default function DashboardPage() {
           )}
 
           {insights && (
-            <section aria-label="Business insights" className="grid gap-4">
+            <section aria-label="Money & stock" className="grid gap-4">
               <div className="flex flex-wrap items-end justify-between gap-2 border-t pt-4">
                 <div>
-                  <h2 className="text-base font-semibold">Business insights</h2>
+                  <h2 className="text-base font-semibold">Money & stock</h2>
                   <p className="text-xs text-muted-foreground">Money, stock and registrations · {rangeLabel}</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <NativeSelect aria-label="Branch scope" className="h-8 w-[170px] text-xs" value={scope} onChange={(e) => setScope(e.target.value as 'branch' | 'all')}>
                     <option value="all">All branches</option>
                     <option value="branch">{session.branch?.name ?? 'Current branch'}</option>
@@ -259,18 +300,18 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {w?.finance && (
+              {w?.finance && !moneyStrip && (
                 <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-                  <Stat label="Billed today" value={money(w.finance.billedTodayMinor)} icon={Receipt} href="/billing?tab=all" />
+                  <Stat label="Invoiced today" value={money(w.finance.billedTodayMinor)} icon={Receipt} href="/billing?tab=all" />
                   <Stat label="Received today" value={money(w.finance.receivedTodayMinor)} icon={Wallet} href="/billing/payments" tone="success" />
-                  <Stat label="Outstanding" value={money(w.finance.outstandingMinor)} icon={Receipt} href="/billing" hint={w.finance.overdueInvoices ? `${w.finance.overdueInvoices} overdue invoice${w.finance.overdueInvoices === 1 ? '' : 's'}` : 'None overdue'} tone={w.finance.overdueInvoices ? 'warning' : 'default'} />
-                  <Stat label="Unbilled charges" value={w.finance.unbilledCount} icon={ListChecks} href="/billing/charges" hint={`${money(w.finance.unbilledMinor)} before tax`} tone={w.finance.unbilledCount ? 'warning' : 'default'} />
+                  <Stat label="Clients owe" value={money(w.finance.outstandingMinor)} icon={Receipt} href="/billing" hint={w.finance.overdueInvoices ? `${w.finance.overdueInvoices} overdue invoice${w.finance.overdueInvoices === 1 ? '' : 's'}` : 'None overdue'} tone={w.finance.overdueInvoices ? 'warning' : 'default'} />
+                  <Stat label="Not yet invoiced" value={w.finance.unbilledCount} icon={ListChecks} href="/billing/charges" hint={`${money(w.finance.unbilledMinor)} before tax`} tone={w.finance.unbilledCount ? 'warning' : 'default'} />
                 </div>
               )}
 
               {w?.inventory && (
                 <div className="grid gap-4 xl:grid-cols-3">
-                  <Stat label="Stock value at cost" value={money(w.inventory.valueMinor)} icon={Boxes} href="/inventory" hint={`${w.inventory.lowStockCount} low · ${w.inventory.expiringCount} expiring within 60 days`} />
+                  <Stat label="Stock value (cost price)" value={money(w.inventory.valueMinor)} icon={Boxes} href="/inventory" hint={`${w.inventory.lowStockCount} low · ${w.inventory.expiringCount} expiring within 60 days`} />
                   <Card>
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-destructive" /> Low stock</CardTitle>
@@ -315,8 +356,8 @@ export default function DashboardPage() {
                   <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
                     <Stat label="Active clients" value={w.registrations.activeClients.toLocaleString()} hint="On file now" icon={Users} href="/clients" />
                     <Stat label="Active patients" value={w.registrations.activePatients.toLocaleString()} hint="On file now" icon={PawPrint} href="/patients" />
-                    <Stat label="Clients registered" value={w.registrations.newClients.toLocaleString()} hint={`${rangeLabel} · incl. since archived`} icon={UserPlus} tone="success" />
-                    <Stat label="Patients registered" value={w.registrations.newPatients.toLocaleString()} hint={`${rangeLabel} · incl. since archived`} icon={PawPrint} tone="success" />
+                    <Stat label="New clients" value={w.registrations.newClients.toLocaleString()} hint={rangeLabel} icon={UserPlus} tone="success" />
+                    <Stat label="New patients" value={w.registrations.newPatients.toLocaleString()} hint={rangeLabel} icon={PawPrint} tone="success" />
                   </div>
                   <div className="grid gap-4 xl:grid-cols-3">
                     <Card className="xl:col-span-2">
@@ -364,7 +405,10 @@ export default function DashboardPage() {
               )}
             </section>
           )}
-          <p className="text-right text-2xs text-muted-foreground">Updated {fmtRelative(q.data?.generatedAt)} · refreshes every minute</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <ShowSetupAgainLink />
+            <p className="ml-auto text-right text-2xs text-muted-foreground">Updated {fmtRelative(q.data?.generatedAt)} · refreshes every minute</p>
+          </div>
         </div>
       )}
     </>

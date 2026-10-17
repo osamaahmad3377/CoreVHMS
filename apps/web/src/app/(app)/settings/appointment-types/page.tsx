@@ -1,7 +1,8 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { APPOINTMENT_CATEGORIES, enumLabel, fromMinor, toMinor } from '@vcms/shared';
+import { APPOINTMENT_CATEGORIES, enumLabel } from '@vcms/shared';
 import { CalendarRange, Edit, Plus } from 'lucide-react';
+import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { DataTable } from '@/components/data-table';
@@ -29,7 +30,6 @@ function TypeDialog({ type, open, onOpenChange }: { type: AppointmentType | null
     category: type?.category ?? 'CONSULTATION',
     durationMinutes: type?.durationMinutes ?? 15,
     color: type?.color ?? '#0d7a70',
-    price: type?.priceMinor != null ? fromMinor(type.priceMinor, currency) : '',
     serviceId: type?.serviceId ?? '',
     requiresClinician: type?.requiresClinician ?? true,
     allowOnlineBooking: type?.allowOnlineBooking ?? false,
@@ -38,15 +38,18 @@ function TypeDialog({ type, open, onOpenChange }: { type: AppointmentType | null
   const [error, setError] = useState<string | null>(null);
   const portal = usePortalEnabled();
   const services = useQuery({ queryKey: ['services', 'active'], queryFn: () => api.get<Service[]>('/services') });
+  const linked = (services.data ?? []).find((x) => x.id === f.serviceId) ?? null;
   const save = useMutation({
     mutationFn: () => {
-      const { price, serviceId, ...rest } = f;
-      const body = { ...rest, serviceId: serviceId || null, priceMinor: price === '' ? null : toMinor(price, currency) };
+      // The price comes from the linked service (one price to maintain); the old indicative price is left as it is.
+      const { serviceId, ...rest } = f;
+      const body = { ...rest, serviceId: serviceId || null };
       return type ? api.patch(`/appointment-types/${type.id}`, body) : api.post('/appointment-types', body);
     },
     onSuccess: () => {
       toast.success('Appointment type saved');
       qc.invalidateQueries({ queryKey: ['appointment-types'] });
+      qc.invalidateQueries({ queryKey: ['services'] });
       onOpenChange(false);
     },
     onError: (e: Error) => setError(e.message),
@@ -55,7 +58,7 @@ function TypeDialog({ type, open, onOpenChange }: { type: AppointmentType | null
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{type ? `Edit ${type.name}` : 'New appointment type'}</DialogTitle>
+          <DialogTitle>{type ? `Edit ${type.name}` : 'Add appointment type'}</DialogTitle>
         </DialogHeader>
         <div className="grid gap-3">
           {error && <FormError message={error} />}
@@ -67,13 +70,18 @@ function TypeDialog({ type, open, onOpenChange }: { type: AppointmentType | null
               </NativeSelect>
             </Field>
             <Field label="Duration (minutes)" htmlFor="at-d" required><Input id="at-d" type="number" min={5} max={600} step={5} value={f.durationMinutes} onChange={(e) => setF({ ...f, durationMinutes: Number(e.target.value) })} /></Field>
-            <Field label={`Indicative price (${currency})`} htmlFor="at-p" hint="Shown at booking; invoices use the service catalogue."><Input id="at-p" inputMode="decimal" value={f.price} onChange={(e) => setF({ ...f, price: e.target.value })} /></Field>
-            <Field label="Billed service" htmlFor="at-svc" hint="Charged automatically when the consultation is completed." className="col-span-2">
+            <Field label="Charge for this appointment" htmlFor="at-svc" hint="Added to the bill automatically when the visit is finished." className="col-span-2">
               <NativeSelect id="at-svc" value={f.serviceId} onChange={(e) => setF({ ...f, serviceId: e.target.value })}>
                 <option value="">Not billed automatically</option>
-                {(services.data ?? []).filter((x) => x.isActive || x.id === f.serviceId).map((x) => <option key={x.id} value={x.id}>{x.code} · {x.name} ({fmtMoney(x.priceMinor, currency)})</option>)}
+                {(services.data ?? []).filter((x) => x.isActive || x.id === f.serviceId).map((x) => <option key={x.id} value={x.id}>{x.name} ({fmtMoney(x.priceMinor, currency)})</option>)}
               </NativeSelect>
             </Field>
+            {linked && (
+              <p className="col-span-2 rounded-md bg-muted/50 px-3 py-2 text-sm">
+                Charge for this appointment: <b>{linked.name}</b> — <span className="tabular">{fmtMoney(linked.priceMinor, currency)}</span> ·{' '}
+                <Link className="font-medium text-primary hover:underline" href="/settings/services">Edit price</Link>
+              </p>
+            )}
             <Field label="Colour" htmlFor="at-col"><Input id="at-col" type="color" className="h-9 p-1" value={f.color} onChange={(e) => setF({ ...f, color: e.target.value })} /></Field>
           </div>
           <div className="grid gap-2 text-sm">
@@ -101,7 +109,7 @@ export default function AppointmentTypesPage() {
       <Card>
         <CardHeader>
           <CardTitle>Appointment types</CardTitle>
-          <Button size="sm" onClick={() => setDlg({ open: true, type: null, key: Date.now() })}><Plus /> New type</Button>
+          <Button size="sm" onClick={() => setDlg({ open: true, type: null, key: Date.now() })}><Plus /> Add appointment type</Button>
         </CardHeader>
         <DataTable
           query={q}
@@ -111,7 +119,7 @@ export default function AppointmentTypesPage() {
             { key: 'name', header: 'Name', cell: (t) => <span className="flex items-center gap-2 font-medium"><span className="h-3 w-3 rounded-full" style={{ backgroundColor: t.color }} />{t.name}</span> },
             { key: 'cat', header: 'Category', cell: (t) => enumLabel(t.category) },
             { key: 'dur', header: 'Duration', cell: (t) => `${t.durationMinutes} min` },
-            { key: 'price', header: 'Price', cell: (t) => (t.priceMinor != null ? fmtMoney(t.priceMinor, currency) : '—') },
+            { key: 'price', header: 'Charge', cell: (t) => (t.service ? <span className="text-sm">{t.service.name} · <span className="tabular">{fmtMoney(t.service.priceMinor, currency)}</span></span> : <span className="text-xs text-muted-foreground">Not billed automatically</span>) },
             { key: 'opts', header: 'Options', cell: (t) => <span className="text-xs text-muted-foreground">{[t.requiresClinician && 'Clinician', portal && t.allowOnlineBooking && 'Online'].filter(Boolean).join(' · ')}</span> },
             { key: 'st', header: 'Status', cell: (t) => <StatusBadge status={t.isActive ? 'ACTIVE' : 'ARCHIVED'} /> },
             { key: 'act', header: '', className: 'text-right', cell: (t) => <Button size="icon-sm" variant="ghost" aria-label={`Edit ${t.name}`} onClick={() => setDlg({ open: true, type: t, key: Date.now() })}><Edit /></Button> },

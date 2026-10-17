@@ -14,6 +14,7 @@ import { TakePaymentDialog } from '@/components/billing/take-payment-dialog';
 import { useConfirm } from '@/components/confirm';
 import { receiptFromInvoice } from '@/components/receipts/receipt-document';
 import { useReceiptPrinter } from '@/components/receipts/use-receipt';
+import { splitRef } from '@/lib/labels';
 import { Field } from '@/components/forms/field';
 import { FormError } from '@/components/forms/form-error';
 import { DescriptionList, ErrorState, LoadingRows, PageHeader } from '@/components/page';
@@ -27,6 +28,14 @@ import { api } from '@/lib/api';
 import { fmtDate, fmtDateTime, fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { Invoice } from '@/lib/types';
+
+/** Payment line on a printed receipt, including the card slip / transfer number when one was given. */
+const toReceiptPayment = (a: Invoice['allocations'][number]) => ({
+  method: a.payment.method,
+  amountMinor: a.amountMinor,
+  receiptNo: a.payment.receiptNo,
+  reference: (a.payment as { reference?: string | null }).reference ?? null,
+});
 
 function CreditNoteDialog({ invoice, open, onOpenChange }: { invoice: Invoice; open: boolean; onOpenChange: (o: boolean) => void }) {
   const qc = useQueryClient();
@@ -52,7 +61,7 @@ function CreditNoteDialog({ invoice, open, onOpenChange }: { invoice: Invoice; o
       <DialogContent size="sm">
         <DialogHeader>
           <DialogTitle>Credit note for {invoice.invoiceNo}</DialogTitle>
-          <DialogDescription>Reduces what the client owes. If the invoice is already paid, the credited amount becomes account credit that can be refunded or used later.</DialogDescription>
+          <DialogDescription>Reduces what the client owes. If the invoice is already paid, this amount becomes credit for the client, to refund or use later.</DialogDescription>
         </DialogHeader>
         {error && <FormError message={error} />}
         <Field label="Amount (tax inclusive)" htmlFor="cn-amount" required hint={`Up to ${fmtMoney(max, invoice.currency)}`}>
@@ -97,7 +106,7 @@ function InvoiceView() {
   const confirm = useConfirm();
   const { can } = useSession();
   const receipts = useReceiptPrinter();
-  const [printing, setPrinting] = useState(false);
+  const [printing, setPrinting] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
   const [crediting, setCrediting] = useState(false);
   const q = useQuery({ queryKey: ['invoice', id], queryFn: () => api.get<Invoice>(`/invoices/${id}`) });
@@ -106,7 +115,7 @@ function InvoiceView() {
   const act = useMutation({
     mutationFn: ({ path, body, method }: { path: string; body?: object; method?: 'del' | 'patch' }) => (method === 'del' ? api.del(path) : method === 'patch' ? api.patch(path, body) : api.post(path, body)),
     onSuccess: (_d, v) => {
-      if (v.method === 'del') { toast.success('Draft discarded; its charges are unbilled again'); router.push('/billing'); return; }
+      if (v.method === 'del') { toast.success('Draft discarded; its items are back in “Not yet invoiced”'); router.push('/billing'); return; }
       refresh();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -117,6 +126,15 @@ function InvoiceView() {
   const i = q.data;
   const open = i.status === 'ISSUED' || i.status === 'PARTIALLY_PAID';
   const cur = i.currency;
+  /** Prints a small receipt showing the given payments (all of them, or the payments up to one row). */
+  const printReceipt = async (key: string, allocations: Invoice['allocations'], invoice: Invoice = i) => {
+    setPrinting(key);
+    try {
+      await receipts.print(receiptFromInvoice(invoice, allocations.map(toReceiptPayment)));
+    } finally {
+      setPrinting(null);
+    }
+  };
 
   return (
     <>
@@ -129,26 +147,22 @@ function InvoiceView() {
             <>
               {i.status === 'DRAFT' && can('billing.write') && (
                 <>
-                  <Button size="sm" variant="outline" onClick={async () => (await confirm({ title: 'Discard this draft?', description: 'Any captured charges on it return to the unbilled list.', destructive: true, confirmLabel: 'Discard' })).confirmed && act.mutate({ path: `/invoices/${i.id}`, method: 'del' })}><Trash2 /> Discard</Button>
-                  <Button size="sm" loading={act.isPending} onClick={async () => (await confirm({ title: `Issue invoice?`, description: 'An invoice number is assigned and the invoice can no longer be edited. Corrections are made with credit notes.', confirmLabel: 'Issue' })).confirmed && act.mutate({ path: `/invoices/${i.id}/issue` })}><Send /> Issue</Button>
+                  <Button size="sm" variant="outline" onClick={async () => (await confirm({ title: 'Discard this draft?', description: 'Its items go back to “Not yet invoiced”.', destructive: true, confirmLabel: 'Discard' })).confirmed && act.mutate({ path: `/invoices/${i.id}`, method: 'del' })}><Trash2 /> Discard</Button>
+                  <Button size="sm" loading={act.isPending} title="After this it can't be changed; corrections are made with a credit note" onClick={async () => (await confirm({ title: 'Finish this invoice?', description: "It gets an invoice number. After this it can't be changed; corrections are made with a credit note.", confirmLabel: 'Finish invoice', cancelLabel: 'Keep editing' })).confirmed && act.mutate({ path: `/invoices/${i.id}/issue` })}><Send /> Finish invoice</Button>
                 </>
               )}
               {open && can('payments.take') && <Button size="sm" onClick={() => setPaying(true)}><CreditCard /> Take payment</Button>}
               {i.status !== 'DRAFT' && i.status !== 'VOID' && can('billing.refund') && i.totalMinor > i.creditedMinor && <Button size="sm" variant="outline" onClick={() => setCrediting(true)}><FileMinus /> Credit note</Button>}
               {i.status !== 'DRAFT' && i.status !== 'VOID' && can('billing.void') && !i.creditNotes.length && (
                 <Button size="sm" variant="outline" onClick={async () => {
-                  const r = await confirm({ title: `Void ${i.invoiceNo}?`, description: 'Payments on this invoice return to the client as account credit, captured charges become unbilled again and counter-sale stock is returned. The invoice number is kept for the audit trail.', destructive: true, requireReason: true, confirmLabel: 'Void invoice' });
+                  const r = await confirm({ title: `Cancel ${i.invoiceNo}?`, description: 'Money paid on this invoice becomes credit for the client, its items go back to “Not yet invoiced” and shop-sale stock is returned. The invoice number is kept for the record.', destructive: true, requireReason: true, confirmLabel: 'Cancel invoice', cancelLabel: 'Keep invoice' });
                   if (r.confirmed) act.mutate({ path: `/invoices/${i.id}/void`, body: { reason: r.reason } });
-                }}><Ban /> Void</Button>
+                }}><Ban /> Cancel invoice</Button>
               )}
               {i.status !== 'DRAFT' && can('payments.take') && (
-                <Button size="sm" variant="outline" loading={printing} title="Print on the receipt printer (80 mm / 58 mm roll)" onClick={async () => {
-                  setPrinting(true);
-                  await receipts.print(receiptFromInvoice(i, i.allocations.map((a) => ({ method: a.payment.method, amountMinor: a.amountMinor, receiptNo: a.payment.receiptNo }))));
-                  setPrinting(false);
-                }}><ReceiptText /> Receipt</Button>
+                <Button size="sm" variant="outline" loading={printing === 'all'} title="Print on the receipt printer (80 mm / 58 mm roll)" onClick={() => printReceipt('all', i.allocations)}><ReceiptText /> Print receipt (small)</Button>
               )}
-              <Button size="sm" variant="outline" onClick={() => window.print()}><Printer /> Print A4</Button>
+              <Button size="sm" variant="outline" onClick={() => window.print()}><Printer /> Print invoice (A4)</Button>
             </>
           }
         />
@@ -162,7 +176,7 @@ function InvoiceView() {
                 <TBody>
                   {i.lines.map((l) => (
                     <TR key={l.id}>
-                      <TD><p className="text-sm">{l.description}</p><p className="text-2xs text-muted-foreground">{enumLabel(l.kind)}{l.chargeId && ' · captured charge'}</p></TD>
+                      <TD><p className="text-sm">{splitRef(l.description)[0]}</p><p className="text-2xs text-muted-foreground">{enumLabel(l.kind)}{splitRef(l.description)[1] && ` · ${splitRef(l.description)[1]}`}</p></TD>
                       <TD className="text-right tabular">{l.quantity}</TD>
                       <TD className="text-right tabular">{fmtMoney(l.unitPriceMinor, cur)}</TD>
                       <TD className="text-right tabular">{l.discountMinor ? fmtMoney(l.discountMinor, cur) : '—'}</TD>
@@ -182,7 +196,7 @@ function InvoiceView() {
                   <div className="flex justify-between border-t pt-1 text-base font-semibold"><dt>Total</dt><dd className="tabular">{fmtMoney(i.totalMinor, cur)}</dd></div>
                   {!!i.creditedMinor && <div className="flex justify-between text-muted-foreground"><dt>Credited</dt><dd className="tabular">−{fmtMoney(i.creditedMinor, cur)}</dd></div>}
                   {!!i.paidMinor && <div className="flex justify-between text-muted-foreground"><dt>Paid</dt><dd className="tabular">−{fmtMoney(i.paidMinor, cur)}</dd></div>}
-                  {i.status !== 'DRAFT' && i.status !== 'VOID' && <div className="flex justify-between font-semibold"><dt>Balance</dt><dd className="tabular">{fmtMoney(i.balanceMinor, cur)}</dd></div>}
+                  {i.status !== 'DRAFT' && i.status !== 'VOID' && <div className="flex justify-between font-semibold"><dt>Amount owed</dt><dd className="tabular">{fmtMoney(i.balanceMinor, cur)}</dd></div>}
                 </dl>
               </div>
             </Card>
@@ -194,10 +208,10 @@ function InvoiceView() {
                 <DescriptionList
                   className="sm:grid-cols-1"
                   items={[
-                    { label: 'Issued', value: i.issuedAt ? `${fmtDateTime(i.issuedAt)} by ${i.issuedByName}` : 'Not issued' },
+                    { label: 'Finished', value: i.issuedAt ? `${fmtDateTime(i.issuedAt)} by ${i.issuedByName}` : 'Not finished yet (draft)' },
                     { label: 'Due', value: fmtDate(i.dueAt) },
                     { label: 'Created by', value: i.createdByName },
-                    ...(i.status === 'VOID' ? [{ label: 'Voided', value: `${fmtDateTime(i.voidedAt)} by ${i.voidedByName}: ${i.voidReason}` }] : []),
+                    ...(i.status === 'VOID' ? [{ label: 'Cancelled', value: `${fmtDateTime(i.voidedAt)} by ${i.voidedByName}: ${i.voidReason}` }] : []),
                     ...(i.notes ? [{ label: 'Notes', value: <span className="whitespace-pre-wrap">{i.notes}</span> }] : []),
                   ]}
                 />
@@ -207,14 +221,17 @@ function InvoiceView() {
               <CardHeader><CardTitle>Payments</CardTitle></CardHeader>
               {i.allocations.length ? (
                 <ul className="divide-y border-t">
-                  {i.allocations.map((a) => (
-                    <li key={a.id} className="flex justify-between px-4 py-2 text-sm">
-                      <span><Link className="font-medium hover:underline" href={`/billing/payments?highlight=${a.payment.id}`}>{a.payment.receiptNo}</Link><span className="block text-xs text-muted-foreground">{enumLabel(a.payment.method)} · {fmtDate(a.payment.receivedAt)}</span></span>
+                  {i.allocations.map((a, idx) => (
+                    <li key={a.id} className="flex items-center gap-2 px-4 py-2 text-sm">
+                      <span className="min-w-0 flex-1"><Link className="font-medium hover:underline" href={`/billing/payments?highlight=${a.payment.id}`}>{a.payment.receiptNo}</Link><span className="block text-xs text-muted-foreground">{enumLabel(a.payment.method)} · {fmtDate(a.payment.receivedAt)}</span></span>
                       <span className="tabular">{fmtMoney(a.amountMinor, cur)}</span>
+                      {can('payments.take') && (
+                        <Button size="icon-sm" variant="ghost" loading={printing === a.id} aria-label={`Print receipt ${a.payment.receiptNo}`} title="Print receipt" onClick={() => printReceipt(a.id, i.allocations.slice(0, idx + 1))}><Printer /></Button>
+                      )}
                     </li>
                   ))}
                 </ul>
-              ) : <p className="px-4 pb-4 text-sm text-muted-foreground">No payments allocated.</p>}
+              ) : <p className="px-4 pb-4 text-sm text-muted-foreground">No payments yet.</p>}
             </Card>
             {!!i.creditNotes.length && (
               <Card>
@@ -239,14 +256,16 @@ function InvoiceView() {
         clientId={i.clientId}
         invoice={i}
         silent
-        onPaid={(p) => {
-          // Offer the receipt straight away, printed from the updated invoice.
-          toast.success(`Payment ${p.receiptNo} recorded`, {
+        onPaid={(payments, { changeMinor }) => {
+          // Offer the receipt straight away; each payment row also keeps its own "Print receipt" button.
+          const nos = payments.map((p) => p.receiptNo).join(', ');
+          toast.success(payments.length === 1 ? `Payment ${nos} recorded` : `${payments.length} payments recorded (${nos})`, {
+            description: changeMinor ? `Give ${fmtMoney(changeMinor, cur)} change` : undefined,
             action: {
               label: 'Print receipt',
               onClick: async () => {
                 const fresh = await q.refetch();
-                if (fresh.data) await receipts.print(receiptFromInvoice(fresh.data, fresh.data.allocations.map((a) => ({ method: a.payment.method, amountMinor: a.amountMinor, receiptNo: a.payment.receiptNo }))));
+                if (fresh.data) await printReceipt('all', fresh.data.allocations, fresh.data);
               },
             },
           });

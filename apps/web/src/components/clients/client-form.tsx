@@ -2,7 +2,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery } from '@tanstack/react-query';
 import { CLIENT_TYPES, CONTACT_CHANNELS, createClientSchema, enumLabel, updateClientSchema } from '@vcms/shared';
-import { AlertTriangle, MapPin, Trash2 } from 'lucide-react';
+import { AlertTriangle, ChevronDown, MapPin, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRef, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
@@ -14,6 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input, NativeSelect, Textarea } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useDebounce } from '@/hooks/use-debounce';
+import { useDiscardConfirm } from '@/hooks/use-discard-confirm';
 import { ApiError, api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import type { ClientDetail } from '@/lib/types';
@@ -22,11 +23,13 @@ type CreateValues = z.input<typeof createClientSchema>;
 
 interface Props {
   client?: ClientDetail;
-  onSaved: (client: { id: string }) => void;
+  onSaved: (client: { id: string; displayName?: string; clientNo?: string }) => void;
   onCancel?: () => void;
 }
 
 const ORG_TYPES = ['FARM', 'BREEDER', 'COMPANY', 'SHELTER', 'OTHER'];
+/** Fields under "More details (optional)"; the section opens by itself when one of them has an error. */
+const MORE_FIELDS = ['nationalId', 'taxNumber', 'homePhone', 'workPhone', 'preferredChannel', 'preferredLanguage', 'notes', 'referralSource', 'primaryBranchId'] as const;
 
 export function ClientForm({ client, onSaved, onCancel }: Props) {
   const editing = !!client;
@@ -64,6 +67,13 @@ export function ClientForm({ client, onSaved, onCancel }: Props) {
   const watched = useWatch({ control, name: ['firstName', 'lastName', 'organizationName', 'email', 'mobilePhone'] });
   const dupKey = useDebounce(JSON.stringify(watched), 500);
   const [wantAddress, setWantAddress] = useState(false);
+  const discard = useDiscardConfirm();
+  const [moreOpen, setMoreOpen] = useState(() => !!client && MORE_FIELDS.some((k) => k !== 'preferredChannel' && k !== 'primaryBranchId' && !!client[k as keyof ClientDetail]));
+  const moreHasError = MORE_FIELDS.some((k) => !!e[k]);
+  const showMore = moreOpen || moreHasError;
+  const cancel = async () => {
+    if (onCancel && (await discard(formState.isDirty || wantAddress))) onCancel();
+  };
   const formRef = useRef<HTMLFormElement>(null);
   /** Brings the first invalid field into view (errors may be far down a long form, or come back from the server). */
   const revealFirstError = () =>
@@ -108,7 +118,7 @@ export function ClientForm({ client, onSaved, onCancel }: Props) {
       if (!wantAddress || editing) delete body.address;
       if (!body.primaryBranchId) body.primaryBranchId = null;
       try {
-        const saved = editing ? await api.patch<{ id: string }>(`/clients/${client!.id}`, body) : await api.post<{ id: string }>('/clients', body);
+        const saved = editing ? await api.patch<{ id: string; displayName: string }>(`/clients/${client!.id}`, body) : await api.post<{ id: string; displayName: string; clientNo: string }>('/clients', body);
         onSaved(saved);
       } catch (err) {
         if (err instanceof ApiError) {
@@ -166,76 +176,28 @@ export function ClientForm({ client, onSaved, onCancel }: Props) {
               ))}
             </NativeSelect>
           </Field>
-          <Field label={isOrg ? 'Contact first name' : 'First name'} htmlFor="firstName" error={e.firstName}>
+          <Field label={isOrg ? 'Contact first name' : 'First name'} htmlFor="firstName" error={e.firstName} required={!isOrg}>
             <Input id="firstName" autoComplete="given-name" {...register('firstName')} />
           </Field>
-          <Field label={isOrg ? 'Contact surname' : 'Surname'} htmlFor="lastName" error={e.lastName} required={!isOrg}>
+          <Field label={isOrg ? 'Contact surname' : 'Surname (optional)'} htmlFor="lastName" error={e.lastName}>
             <Input id="lastName" autoComplete="family-name" {...register('lastName')} />
           </Field>
         </div>
         {isOrg && (
-          <Field label={type === 'FARM' ? 'Farm name' : 'Business / organization name'} htmlFor="organizationName" error={e.organizationName} required>
+          <Field label={type === 'FARM' ? 'Farm name' : 'Business name'} htmlFor="organizationName" error={e.organizationName} required>
             <Input id="organizationName" {...register('organizationName')} />
           </Field>
         )}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="National ID / CNIC" htmlFor="nationalId" error={e.nationalId}>
-            <Input id="nationalId" {...register('nationalId')} />
-          </Field>
-          <Field label={session.organization?.country === 'AU' ? 'ABN' : 'NTN / tax number'} htmlFor="taxNumber" error={e.taxNumber}>
-            <Input id="taxNumber" {...register('taxNumber')} />
-          </Field>
-        </div>
       </FormSection>
 
-      <FormSection title="Contact details" description="At least one phone number or email is required.">
+      <FormSection title="Contact details" description="A mobile number (or an email) is needed to reach the client.">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Mobile" htmlFor="mobilePhone" error={e.mobilePhone}>
-            <Input id="mobilePhone" type="tel" autoComplete="tel" placeholder={session.organization?.country === 'AU' ? '04xx xxx xxx' : '03xx xxxxxxx'} {...register('mobilePhone')} />
+            <Input id="mobilePhone" type="tel" autoComplete="tel" placeholder={session.organization?.country === 'AU' ? '0412 345 678' : '0300 1234567'} {...register('mobilePhone')} />
           </Field>
-          <Field label="Email" htmlFor="email" error={e.email}>
-            <Input id="email" type="email" autoComplete="email" {...register('email')} />
+          <Field label="Email (optional)" htmlFor="email" error={e.email}>
+            <Input id="email" type="email" autoComplete="email" placeholder="name@gmail.com" {...register('email')} />
           </Field>
-          <Field label="Home phone" htmlFor="homePhone" error={e.homePhone}>
-            <Input id="homePhone" type="tel" {...register('homePhone')} />
-          </Field>
-          <Field label="Work phone" htmlFor="workPhone" error={e.workPhone}>
-            <Input id="workPhone" type="tel" {...register('workPhone')} />
-          </Field>
-          <Field label="Preferred channel" htmlFor="preferredChannel" error={e.preferredChannel}>
-            <NativeSelect id="preferredChannel" {...register('preferredChannel')}>
-              {CONTACT_CHANNELS.map((c) => (
-                <option key={c} value={c}>
-                  {enumLabel(c)}
-                </option>
-              ))}
-            </NativeSelect>
-          </Field>
-          <Field label="Preferred language" htmlFor="preferredLanguage" error={e.preferredLanguage}>
-            <NativeSelect id="preferredLanguage" {...register('preferredLanguage')}>
-              <option value="">Default</option>
-              <option value="en">English</option>
-              <option value="ur">Urdu</option>
-              <option value="pa">Punjabi</option>
-            </NativeSelect>
-          </Field>
-        </div>
-        <div className="grid gap-2">
-          <ConsentRow
-            id="remindersConsent"
-            checked={!!useWatch({ control, name: 'remindersConsent' })}
-            onChange={(v) => setValue('remindersConsent', v, { shouldDirty: true })}
-            label="Clinical reminders"
-            hint="Vaccination, follow-up and appointment reminders."
-          />
-          <ConsentRow
-            id="marketingConsent"
-            checked={!!useWatch({ control, name: 'marketingConsent' })}
-            onChange={(v) => setValue('marketingConsent', v, { shouldDirty: true })}
-            label="Marketing messages"
-            hint="Promotions and newsletters. Only with explicit consent."
-          />
-          {client?.consentUpdatedAt && <p className="text-xs text-muted-foreground">Consent last updated {new Date(client.consentUpdatedAt).toLocaleString()}</p>}
         </div>
       </FormSection>
 
@@ -276,6 +238,75 @@ export function ClientForm({ client, onSaved, onCancel }: Props) {
         </FormSection>
       )}
 
+      <button
+        type="button"
+        onClick={() => setMoreOpen((o) => !o)}
+        aria-expanded={showMore}
+        aria-controls="client-more"
+        className="flex w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+      >
+        <ChevronDown className={`h-4 w-4 transition-transform ${showMore ? 'rotate-180' : ''}`} /> More details (optional)
+      </button>
+
+      <div id="client-more" className={showMore ? 'grid gap-6' : 'hidden'}>
+      <FormSection title="Identity and other phones" description="CNIC, tax number and extra phone numbers.">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="National ID / CNIC" htmlFor="nationalId" error={e.nationalId}>
+            <Input id="nationalId" {...register('nationalId')} />
+          </Field>
+          <Field label={session.organization?.country === 'AU' ? 'ABN' : 'NTN / tax number'} htmlFor="taxNumber" error={e.taxNumber}>
+            <Input id="taxNumber" {...register('taxNumber')} />
+          </Field>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Home phone" htmlFor="homePhone" error={e.homePhone}>
+            <Input id="homePhone" type="tel" {...register('homePhone')} />
+          </Field>
+          <Field label="Work phone" htmlFor="workPhone" error={e.workPhone}>
+            <Input id="workPhone" type="tel" {...register('workPhone')} />
+          </Field>
+        </div>
+      </FormSection>
+
+      <FormSection title="Messages" description="How the client likes to be contacted, and what they agree to receive.">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Preferred channel" htmlFor="preferredChannel" error={e.preferredChannel}>
+            <NativeSelect id="preferredChannel" {...register('preferredChannel')}>
+              {CONTACT_CHANNELS.map((c) => (
+                <option key={c} value={c}>
+                  {enumLabel(c)}
+                </option>
+              ))}
+            </NativeSelect>
+          </Field>
+          <Field label="Preferred language" htmlFor="preferredLanguage" error={e.preferredLanguage}>
+            <NativeSelect id="preferredLanguage" {...register('preferredLanguage')}>
+              <option value="">Default</option>
+              <option value="en">English</option>
+              <option value="ur">Urdu</option>
+              <option value="pa">Punjabi</option>
+            </NativeSelect>
+          </Field>
+        </div>
+        <div className="grid gap-2">
+          <ConsentRow
+            id="remindersConsent"
+            checked={!!useWatch({ control, name: 'remindersConsent' })}
+            onChange={(v) => setValue('remindersConsent', v, { shouldDirty: true })}
+            label="Clinical reminders"
+            hint="Vaccination, follow-up and appointment reminders."
+          />
+          <ConsentRow
+            id="marketingConsent"
+            checked={!!useWatch({ control, name: 'marketingConsent' })}
+            onChange={(v) => setValue('marketingConsent', v, { shouldDirty: true })}
+            label="Marketing messages"
+            hint="Promotions and newsletters. Only with explicit consent."
+          />
+          {client?.consentUpdatedAt && <p className="text-xs text-muted-foreground">Consent last updated {new Date(client.consentUpdatedAt).toLocaleString()}</p>}
+        </div>
+      </FormSection>
+
       <FormSection title="Practice" description="Internal information.">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Home branch" htmlFor="primaryBranchId">
@@ -296,15 +327,16 @@ export function ClientForm({ client, onSaved, onCancel }: Props) {
           <Textarea id="notes" rows={3} {...register('notes')} />
         </Field>
       </FormSection>
+      </div>
 
       <div className="sticky bottom-0 -mx-4 flex justify-end gap-2 border-t bg-card/95 px-4 py-3 backdrop-blur">
         {onCancel && (
-          <Button type="button" variant="outline" onClick={onCancel}>
+          <Button type="button" variant="outline" onClick={() => void cancel()}>
             Cancel
           </Button>
         )}
         <Button type="submit" loading={formState.isSubmitting}>
-          {editing ? 'Save changes' : 'Create client'}
+          {editing ? 'Save' : 'Add client'}
         </Button>
       </div>
     </form>

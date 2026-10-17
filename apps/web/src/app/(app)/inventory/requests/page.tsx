@@ -201,7 +201,7 @@ function Requests() {
     <>
       <PageHeader
         title="Item requests"
-        description="Staff ask for items to be ordered; procurement turns open requests into purchase orders."
+        description="Staff ask for items. The person who buys stock turns them into orders."
        
         actions={
           <div className="flex gap-2">

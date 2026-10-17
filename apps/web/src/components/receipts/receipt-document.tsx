@@ -157,7 +157,7 @@ export function ReceiptDocument({ ctx, data, logoUrl, copyLabel }: { ctx: Receip
       ))}
       {data.tenderedMinor !== undefined && !!data.changeMinor && (
         <>
-          <Row label="Cash tendered" value={fmtMoney(data.tenderedMinor, cur)} />
+          <Row label="Cash given" value={fmtMoney(data.tenderedMinor, cur)} />
           <Row label="Change" value={fmtMoney(data.changeMinor, cur)} bold />
         </>
       )}

@@ -1,27 +1,30 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
 import type { Paginated } from '@vcms/shared';
-import { Check, ChevronsUpDown, Loader2, Search } from 'lucide-react';
+import { Check, ChevronsUpDown, Loader2, Plus, Search } from 'lucide-react';
 import { useState } from 'react';
 import { useDebounce } from '@/hooks/use-debounce';
 import { api, qs } from '@/lib/api';
+import { useSession } from '@/lib/session';
 import type { PatientRow } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Button } from '../ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
+import { QuickAddClientPatient } from './quick-add-client-patient';
 
 export type PickedPatient = Pick<PatientRow, 'id' | 'name' | 'patientNo' | 'species' | 'owner' | 'alerts'>;
 
-/** Searchable patient selector (name, owner, microchip/tag, P-number). */
+/** Searchable patient selector (patient name, client name or phone, microchip/tag, P-number). */
 export function PatientPicker({
   value,
   onChange,
   excludeId,
   speciesId,
   ownerId,
-  placeholder = 'Search patient, owner, microchip…',
+  placeholder = 'Search by name, patient or phone (e.g. 0300 77…)',
   id,
   invalid,
+  allowCreate,
 }: {
   value: PickedPatient | null;
   onChange: (p: PickedPatient | null) => void;
@@ -31,9 +34,19 @@ export function PatientPicker({
   placeholder?: string;
   id?: string;
   invalid?: boolean;
+  /** Offer "New client and patient" when the search finds nothing (front desk: walk-ins and bookings). */
+  allowCreate?: boolean;
 }) {
+  const { can } = useSession();
+  const canCreate = !!allowCreate && !ownerId && can('clients.write') && can('patients.write');
   const [open, setOpen] = useState(false);
   const [term, setTerm] = useState('');
+  /** The search text the quick-add form started from; null while the form is closed. */
+  const [creating, setCreating] = useState<string | null>(null);
+  const startCreate = () => {
+    setOpen(false);
+    setCreating(term.trim());
+  };
   const q = useDebounce(term.trim(), 250);
   const browse = !!ownerId;
   const results = useQuery({
@@ -42,6 +55,20 @@ export function PatientPicker({
     enabled: open && (q.length >= 2 || browse),
   });
   const rows = (results.data?.data ?? []).filter((r) => r.id !== excludeId);
+
+  if (creating !== null) {
+    return (
+      <QuickAddClientPatient
+        seed={creating}
+        onCancel={() => setCreating(null)}
+        onCreated={(p) => {
+          setCreating(null);
+          setTerm('');
+          onChange(p);
+        }}
+      />
+    );
+  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -66,16 +93,31 @@ export function PatientPicker({
             autoFocus
             value={term}
             onChange={(e) => setTerm(e.target.value)}
-            placeholder={browse ? 'Filter…' : 'Type at least 2 characters…'}
+            placeholder={browse ? 'Filter…' : 'Name, client or phone — at least 2 characters'}
             className="h-10 flex-1 bg-transparent text-sm outline-none"
             aria-label="Search patients"
           />
           {results.isFetching && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
         </div>
         <ul className="max-h-64 overflow-y-auto p-1" role="listbox">
-          {!browse && q.length < 2 && <li className="px-3 py-4 text-center text-xs text-muted-foreground">Search by name, owner, microchip or P-number</li>}
+          {!browse && q.length < 2 && (
+            <li className="px-3 py-4 text-center text-xs text-muted-foreground">Search by patient name, client name or phone, microchip or P-number</li>
+          )}
           {(browse || q.length >= 2) && !results.isFetching && rows.length === 0 && (
-            <li className="px-3 py-4 text-center text-xs text-muted-foreground">No active patients found</li>
+            <li className="grid justify-items-center gap-2 px-3 py-4 text-center text-xs text-muted-foreground">
+              {q ? (
+                <span>
+                  No patient found for “{q}”. Check the spelling or phone number{canCreate ? ', or add a new client' : ''}.
+                </span>
+              ) : (
+                <span>This client has no active patients.</span>
+              )}
+              {canCreate && (
+                <Button type="button" size="sm" onClick={startCreate}>
+                  <Plus /> New client and patient
+                </Button>
+              )}
+            </li>
           )}
           {rows.map((r) => (
             <li key={r.id}>
@@ -95,12 +137,19 @@ export function PatientPicker({
                     {r.name} <span className="font-normal text-muted-foreground">· {r.species.name}{r.breed ? ` · ${r.breed}` : ''}</span>
                   </span>
                   <span className="block truncate text-xs text-muted-foreground">
-                    {r.patientNo} · {r.owner?.displayName ?? 'No owner'}
+                    {[r.patientNo, r.owner?.displayName ?? 'No client', r.owner?.mobilePhone].filter(Boolean).join(' · ')}
                   </span>
                 </span>
               </button>
             </li>
           ))}
+          {canCreate && rows.length > 0 && (
+            <li className="border-t pt-1">
+              <button type="button" onClick={startCreate} className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-primary hover:bg-muted">
+                <Plus className="h-4 w-4" /> Not listed? New client and patient
+              </button>
+            </li>
+          )}
         </ul>
       </PopoverContent>
     </Popover>

@@ -64,7 +64,7 @@ function BranchDialog({ branch, open, onOpenChange }: { branch?: Branch | null; 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="lg">
         <DialogHeader>
-          <DialogTitle>{branch ? `Edit ${branch.name}` : 'New branch'}</DialogTitle>
+          <DialogTitle>{branch ? `Edit ${branch.name}` : 'Add branch'}</DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="grid gap-3" noValidate>
           {error && <FormError message={error} />}
@@ -125,7 +125,7 @@ export default function BranchesPage() {
         <CardHeader>
           <CardTitle>Branches</CardTitle>
           <Button size="sm" onClick={() => setDlg({ open: true, branch: null })}>
-            <Plus /> New branch
+            <Plus /> Add branch
           </Button>
         </CardHeader>
         <DataTable

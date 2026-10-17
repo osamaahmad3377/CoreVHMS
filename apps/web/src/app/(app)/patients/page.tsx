@@ -68,7 +68,7 @@ function PatientsList() {
     { key: 'weight', header: 'Weight', cell: (p) => <span className="tabular text-sm">{fmtWeight(p.latestWeightKg)}</span> },
     {
       key: 'owner',
-      header: 'Owner',
+      header: 'Client',
       cell: (p) =>
         p.owner ? (
           <Link href={`/clients/${p.owner.id}`} className="text-sm hover:underline">
@@ -97,7 +97,7 @@ function PatientsList() {
     <>
       <PageHeader
         title="Patients"
-        description="Every animal under the practice's care"
+        description="All patients of the clinic"
         actions={
           can('patients.write') && (
             <Button size="sm" asChild>
@@ -110,7 +110,7 @@ function PatientsList() {
       />
       <Card>
         <div className="flex flex-col gap-2 border-b p-3 sm:flex-row sm:items-center">
-          <SearchInput value={params.q} onChange={(q) => url.set({ q, page: 1 })} placeholder="Name, owner, microchip/tag or P-number" />
+          <SearchInput value={params.q} onChange={(q) => url.set({ q, page: 1 })} placeholder="Search by name, patient or phone (e.g. 0300 77…)" />
           <NativeSelect aria-label="Species" className="sm:w-44" value={params.speciesId} onChange={(e) => url.set({ speciesId: e.target.value, page: 1 })}>
             <option value="">All species</option>
             {species.data?.map((s) => (

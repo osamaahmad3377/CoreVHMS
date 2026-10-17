@@ -14,6 +14,7 @@ import { CounterService, formatNumber } from '../../common/counter/counter.servi
 import { conflict, notFound, ruleViolation } from '../../common/http/errors';
 import { orderBy, pageArgs, paginated } from '../../common/http/pagination';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { phoneSearchDigits } from '../../common/util/phone';
 import type { ScopedTx } from '../../common/prisma/tenant-extension';
 
 export const patientNo = (n: number) => formatNumber('P', n);
@@ -92,10 +93,8 @@ export class PatientsService {
     ];
     const num = /^p-?0*(\d+)$/i.exec(t) ?? (/^\d{1,9}$/.test(t) ? [t, t] : null);
     if (num) clauses.push({ number: Number(num[1]) });
-    const digits = t.replace(/\D/g, '');
-    if (digits.length >= 6) {
-      clauses.push({ ownerships: { some: { endedAt: null, client: { phoneDigits: { contains: digits.slice(-10) } } } } });
-    }
+    const phone = phoneSearchDigits(t);
+    if (phone) clauses.push({ ownerships: { some: { endedAt: null, client: { phoneDigits: { contains: phone } } } } });
     return clauses;
   }
 

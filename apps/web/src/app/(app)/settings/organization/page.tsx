@@ -12,7 +12,8 @@ import { FormError } from '@/components/forms/form-error';
 import { ErrorState, LoadingRows } from '@/components/page';
 import { RequirePermission } from '@/components/require';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { ShowSetupAgainLink } from '@/components/dashboard/setup-checklist';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input, NativeSelect } from '@/components/ui/input';
 import { ApiError, api } from '@/lib/api';
 import { useSession } from '@/lib/session';
@@ -72,7 +73,7 @@ function OrgForm({ org }: { org: Org }) {
     setError(null);
     try {
       await api.patch('/organization', v);
-      toast.success('Organization updated');
+      toast.success('Clinic details saved');
       qc.invalidateQueries({ queryKey: ['organization'] });
       refresh();
     } catch (err) {
@@ -118,7 +119,7 @@ function OrgForm({ org }: { org: Org }) {
           </Button>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Practice name" htmlFor="name" error={e.name} required>
+          <Field label="Clinic name" htmlFor="name" error={e.name} required>
             <Input id="name" {...form.register('name')} />
           </Field>
           <Field label="Legal name" htmlFor="legalName" error={e.legalName}>
@@ -127,7 +128,7 @@ function OrgForm({ org }: { org: Org }) {
           <Field label="Registration no." htmlFor="reg" error={e.registrationNumber}>
             <Input id="reg" {...form.register('registrationNumber')} />
           </Field>
-          <Field label={org.country === 'AU' ? 'ABN' : 'NTN / STRN'} htmlFor="tax" error={e.taxNumber}>
+          <Field label={org.country === 'AU' ? 'ABN' : 'Tax number (NTN / STRN)'} htmlFor="tax" error={e.taxNumber}>
             <Input id="tax" {...form.register('taxNumber')} />
           </Field>
         </div>
@@ -163,7 +164,7 @@ function OrgForm({ org }: { org: Org }) {
       </FormSection>
       <FormSection title="Regional" description={`Country ${org.country} · currency ${org.currency} · default timezone ${org.defaultTimezone}`}>
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Date format (print)" htmlFor="df">
+          <Field label="Date format on printouts" htmlFor="df">
             <NativeSelect id="df" {...form.register('dateFormat')}>
               <option value="dd/MM/yyyy">dd/MM/yyyy</option>
               <option value="MM/dd/yyyy">MM/dd/yyyy</option>
@@ -198,8 +199,12 @@ export default function OrganizationSettings() {
   return (
     <RequirePermission anyOf={['org.manage']}>
       <Card>
-        <CardContent className="pt-5">{q.isLoading ? <LoadingRows /> : q.error ? <ErrorState error={q.error} onRetry={() => q.refetch()} /> : <OrgForm org={q.data!} />}</CardContent>
+        <CardHeader><CardTitle>Clinic details</CardTitle></CardHeader>
+        <CardContent>{q.isLoading ? <LoadingRows /> : q.error ? <ErrorState error={q.error} onRetry={() => q.refetch()} /> : <OrgForm org={q.data!} />}</CardContent>
       </Card>
+      <div className="mt-4 flex justify-end">
+        <ShowSetupAgainLink />
+      </div>
     </RequirePermission>
   );
 }

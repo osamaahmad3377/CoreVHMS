@@ -37,13 +37,13 @@ export default function RegisterPage() {
   });
 
   return (
-    <form onSubmit={onSubmit} className="grid gap-4" noValidate>
+    <form method="post" onSubmit={onSubmit} className="grid gap-4" noValidate>
       <div>
-        <h1 className="text-xl font-semibold">Create your practice</h1>
-        <p className="mt-1 text-sm text-muted-foreground">You will be the organization owner and can invite your team next.</p>
+        <h1 className="text-xl font-semibold">Create your clinic</h1>
+        <p className="mt-1 text-sm text-muted-foreground">You will be the clinic owner. You can add your staff next.</p>
       </div>
       {error && <FormError message={error} />}
-      <Field label="Practice / organization name" htmlFor="org" error={e.organizationName} required>
+      <Field label="Clinic name" htmlFor="org" error={e.organizationName} required>
         <Input id="org" {...form.register('organizationName')} />
       </Field>
       <div className="grid grid-cols-2 gap-3">
@@ -66,7 +66,7 @@ export default function RegisterPage() {
       <Field label="Password" htmlFor="pw" error={e.password} hint="At least 10 characters with upper-case, lower-case and a number." required>
         <Input id="pw" type="password" autoComplete="new-password" {...form.register('password')} />
       </Field>
-      <Button type="submit" loading={form.formState.isSubmitting}>Create organization</Button>
+      <Button type="submit" loading={form.formState.isSubmitting}>Create my clinic</Button>
       <p className="text-center text-sm text-muted-foreground">
         Already registered? <Link href="/login" className="font-medium text-primary hover:underline">Sign in</Link>
       </p>

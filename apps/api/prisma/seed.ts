@@ -145,7 +145,7 @@ async function seedOrg(opts: {
         firstName: c.first,
         lastName: c.last,
         organizationName: c.org,
-        displayName: isFarm && c.org ? c.org : `${c.last}, ${c.first}`,
+        displayName: isFarm && c.org ? c.org : [c.first, c.last].filter(Boolean).join(' '),
         email: c.email,
         mobilePhone: c.phone,
         phoneDigits: digitsKey(c.phone),

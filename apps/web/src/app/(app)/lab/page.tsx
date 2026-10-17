@@ -2,7 +2,7 @@
 import { useQuery } from '@tanstack/react-query';
 import type { Paginated } from '@vcms/shared';
 import { enumLabel } from '@vcms/shared';
-import { AlertOctagon, FlaskConical, Settings2 } from 'lucide-react';
+import { AlertOctagon, ArrowRight, FlaskConical, Settings2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Suspense } from 'react';
@@ -41,7 +41,7 @@ function Worklist() {
     <>
       <PageHeader
         help="lab"
-        title="Laboratory & imaging"
+        title="Lab & X-ray"
         description="Sample collection, result entry, validation and release"
         actions={can('settings.manage') && <Button size="sm" variant="outline" asChild><Link href="/lab/catalogue"><Settings2 /> Test catalogue</Link></Button>}
       />
@@ -71,6 +71,17 @@ function Worklist() {
             { key: 'samples', header: 'Samples', cell: (o) => <span className="font-mono text-xs">{o.samples.map((s) => s.barcode).join(', ') || '—'}</span> },
             { key: 'when', header: 'Ordered', cell: (o) => <span className="whitespace-nowrap text-xs">{fmtDateTime(o.createdAt)} · {o.orderedByName}</span> },
             { key: 'st', header: 'Status', cell: (o) => <LabStatusBadge status={o.status} /> },
+            {
+              key: 'open',
+              header: '',
+              cell: (o) => (
+                <Button size="sm" variant="outline" asChild>
+                  <Link href={`/lab/orders/${o.id}`} onClick={(e) => e.stopPropagation()}>
+                    Open <ArrowRight />
+                  </Link>
+                </Button>
+              ),
+            },
           ]}
         />
       </Card>

@@ -29,9 +29,9 @@ const readFolded = (): string[] => {
 };
 
 export function SidebarNav({ collapsed, onNavigate }: { collapsed?: boolean; onNavigate?: () => void }) {
-  const { canAny } = useSession();
+  const { canAny, session } = useSession();
   const pathname = usePathname();
-  const sections = visibleNav(canAny);
+  const sections = visibleNav(canAny, session.organization?.enabledModules);
   // Sections the user folded away (remembered on this computer); the section with the current page always shows.
   const [folded, setFolded] = useState<string[]>([]);
   useEffect(() => setFolded(readFolded()), []);

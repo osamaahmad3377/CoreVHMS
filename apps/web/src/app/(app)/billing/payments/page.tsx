@@ -45,10 +45,10 @@ function RefundDialog({ payment, onClose }: { payment: Payment | null; onClose: 
       <DialogContent size="sm">
         <DialogHeader>
           <DialogTitle>Refund {payment?.receiptNo}</DialogTitle>
-          <DialogDescription>Unallocated credit is refunded first. Refunding more re-opens the invoices this payment settled.</DialogDescription>
+          <DialogDescription>Unused credit is refunded first. Refunding more re-opens the invoices this payment settled.</DialogDescription>
         </DialogHeader>
         {error && <FormError message={error} />}
-        <Field label="Amount" htmlFor="rf-amount" required hint={payment ? `Unallocated ${fmtMoney(payment.unallocatedMinor, currency)} · refundable ${fmtMoney(max, currency)}` : undefined}>
+        <Field label="Amount" htmlFor="rf-amount" required hint={payment ? `Unused credit ${fmtMoney(payment.unallocatedMinor, currency)} · can refund up to ${fmtMoney(max, currency)}` : undefined}>
           <MoneyInput id="rf-amount" currency={currency} value={amount} onChange={(e) => setAmount(e.target.value)} />
         </Field>
         <Field label="Refund method" htmlFor="rf-method" required>
@@ -78,7 +78,7 @@ function Payments() {
   return (
     <>
       <PageHeader
-        help="payment" title="Payments" description="Receipts, allocations to invoices and refunds." />
+        help="payment" title="Payments" description="Money received, which invoice it paid, and refunds." />
       <SectionNav links={BILLING_LINKS} />
       <Card>
         <div className="flex border-b p-3">
@@ -98,7 +98,7 @@ function Payments() {
             { key: 'client', header: 'Client', cell: (r) => (r.client ? <Link className="text-sm hover:underline" href={`/clients/${r.client.id}?tab=account`}>{r.client.displayName}</Link> : <span className="text-sm text-muted-foreground">Counter sale</span>) },
             { key: 'when', header: 'Received', cell: (r) => <span className="whitespace-nowrap text-xs">{fmtDateTime(r.receivedAt)}<span className="block text-muted-foreground">{r.receivedByName}</span></span> },
             { key: 'method', header: 'Method', cell: (r) => <span className="text-sm">{enumLabel(r.method)}{r.reference && <span className="block text-xs text-muted-foreground">{r.reference}</span>}</span> },
-            { key: 'alloc', header: 'Applied to', cell: (r) => <span className="text-xs">{r.allocations.map((a) => <Link key={a.id} href={`/billing/invoices/${a.invoice.id}`} className="mr-2 hover:underline">{a.invoice.invoiceNo} ({fmtMoney(a.amountMinor, currency)})</Link>)}{r.unallocatedMinor > 0 && <span className="text-success">Credit {fmtMoney(r.unallocatedMinor, currency)}</span>}</span> },
+            { key: 'alloc', header: 'Paid off', cell: (r) => <span className="text-xs">{r.allocations.map((a) => <Link key={a.id} href={`/billing/invoices/${a.invoice.id}`} className="mr-2 hover:underline">{a.invoice.invoiceNo} ({fmtMoney(a.amountMinor, currency)})</Link>)}{r.unallocatedMinor > 0 && <span className="text-success">{fmtMoney(r.unallocatedMinor, currency)} credit</span>}</span> },
             { key: 'amt', header: 'Amount', className: 'text-right tabular', headerClassName: 'text-right', cell: (r) => <span>{fmtMoney(r.amountMinor, currency)}{r.refundedMinor > 0 && <span className="block text-xs text-destructive">refunded {fmtMoney(r.refundedMinor, currency)}</span>}</span> },
             { key: 'act', header: '', cell: (r) => can('billing.refund') && r.amountMinor > r.refundedMinor && <Button size="sm" variant="ghost" onClick={() => setRefunding(r)}>Refund</Button> },
           ]}

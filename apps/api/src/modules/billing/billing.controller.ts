@@ -50,11 +50,17 @@ const posCatalogQuery = z.object({
   categoryId: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(60),
 });
+const chargesByClientQuery = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(200).default(50),
+  q: z.string().trim().max(200).optional(),
+});
 const settingsSchema = z.object({
   allowNegativeStock: z.boolean().optional(),
   pricesIncludeTax: z.boolean().optional(),
   paymentTermsDays: z.coerce.number().int().min(0).max(365).optional(),
   requireCashSession: z.boolean().optional(),
+  poRequiresSecondApprover: z.boolean().optional(),
 });
 
 @ApiTags('billing')
@@ -142,6 +148,13 @@ export class BillingController {
   @ApiZodQuery(chargeListQuery)
   listCharges(@Query(zp(chargeListQuery)) q: z.infer<typeof chargeListQuery>) {
     return this.charges.list(q);
+  }
+
+  @Get('charges/by-client')
+  @RequirePermissions('billing.read')
+  @ApiZodQuery(chargesByClientQuery)
+  chargesByClient(@Query(zp(chargesByClientQuery)) q: z.infer<typeof chargesByClientQuery>) {
+    return this.charges.byClient(q);
   }
 
   @Post('charges/:id/waive')

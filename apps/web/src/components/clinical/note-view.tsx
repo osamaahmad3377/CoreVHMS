@@ -10,12 +10,12 @@ import { cn } from '@/lib/utils';
 
 const SECTIONS: { key: keyof ClinicalNote; label: string }[] = [
   { key: 'presentingComplaint', label: 'Presenting complaint' },
-  { key: 'history', label: 'History' },
-  { key: 'subjective', label: 'Subjective' },
-  { key: 'objective', label: 'Objective' },
-  { key: 'assessment', label: 'Assessment' },
-  { key: 'plan', label: 'Plan' },
-  { key: 'followUpInstructions', label: 'Client instructions' },
+  { key: 'history', label: 'Past history' },
+  { key: 'subjective', label: 'History — what the owner tells you' },
+  { key: 'objective', label: 'Examination findings' },
+  { key: 'assessment', label: 'Assessment — likely problem' },
+  { key: 'plan', label: 'Plan — tests, treatment, advice' },
+  { key: 'followUpInstructions', label: 'Instructions for the owner' },
 ];
 
 /** Read-only rendering of a signed or superseded note, with tamper-evidence check. */
@@ -30,7 +30,7 @@ export function NoteView({ note, onAmend, compact }: { note: ClinicalNote; onAme
   return (
     <article className={cn('grid gap-3', superseded && 'opacity-70')}>
       <header className="flex flex-wrap items-center gap-2">
-        <Badge variant={superseded ? 'secondary' : 'success'}>{superseded ? `Superseded · v${note.version}` : `Signed · v${note.version}`}</Badge>
+        <Badge variant={superseded ? 'secondary' : 'success'}>{superseded ? `Replaced by a correction · v${note.version}` : `Signed · v${note.version}`}</Badge>
         <span className="text-xs text-muted-foreground">
           {note.signedByName} · {fmtDateTime(note.signedAt)}
           {note.authorName !== note.signedByName && ` · drafted by ${note.authorName}`}

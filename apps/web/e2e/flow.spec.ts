@@ -2,12 +2,12 @@ import { expect, test } from '@playwright/test';
 import { login, uniq } from './helpers';
 
 test.describe('Everyday flow', () => {
-  test('“Needs your attention” only links to pages the role can open', async ({ page }) => {
+  test('“Still to do” / “Needs your attention” only links to pages the role can open', async ({ page }) => {
     test.setTimeout(300_000);
     for (const email of ['reception@demo.pk', 'vet@demo.pk', 'nurse@demo.pk']) {
       await page.context().clearCookies();
       await login(page, email);
-      const list = page.getByRole('region', { name: 'Needs your attention' });
+      const list = page.getByRole('region', { name: /^(Needs your attention|Still to do)$/ });
       const caughtUp = page.getByText('You’re all caught up');
       await expect(list.or(caughtUp)).toBeVisible();
       if (await caughtUp.isVisible()) continue;
@@ -26,9 +26,11 @@ test.describe('Everyday flow', () => {
     await login(page, 'vet@demo.pk');
     await expect(page.getByRole('heading', { name: /^Good (morning|afternoon|evening)/ })).toBeVisible();
     await page.keyboard.press('Meta+k');
-    await page.getByPlaceholder(/Search patients, owners/).fill('book');
-    await page.getByRole('option', { name: 'New appointment' }).click();
+    await page.getByPlaceholder(/Search by name, patient or phone/).fill('book');
+    await page.getByRole('option', { name: 'Book appointment' }).click();
     await expect(page).toHaveURL(/\/calendar/);
+    await expect(page.getByRole('dialog', { name: /Book appointment/ })).toBeVisible();
+    await page.keyboard.press('Escape');
 
     const complaint = uniq('E2E flow check ');
     await page.goto('/consultations');
@@ -41,7 +43,11 @@ test.describe('Everyday flow', () => {
     await dlg.locator('#sc-c').fill(complaint);
     await dlg.getByRole('button', { name: 'Start', exact: true }).click();
     await expect(page).toHaveURL(/\/consultations\/[0-9a-f-]{36}/);
-    await page.getByRole('button', { name: 'Complete consultation' }).click();
+    await page.getByRole('button', { name: 'Finish consultation' }).click();
+    const check = page.getByRole('dialog');
+    await expect(check.getByText('Before you finish')).toBeVisible();
+    await expect(check.getByText('No notes written yet')).toBeVisible();
+    await check.getByRole('button', { name: 'Finish consultation' }).click();
     const next = page.getByRole('region', { name: 'Next steps' });
     await expect(next).toBeVisible();
     await expect(next.getByRole('button', { name: /Book a recheck/ })).toBeVisible();

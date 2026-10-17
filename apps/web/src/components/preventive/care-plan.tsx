@@ -215,7 +215,7 @@ export function CarePlan({ patientId, active }: { patientId: string; active: boo
   });
   const remind = useMutation({
     mutationFn: (id: string) => api.post<{ status: string }>(`/care-items/${id}/remind`),
-    onSuccess: (r) => toast.success(r.status === 'OPTED_OUT' ? 'The owner has opted out of reminders' : r.status === 'SKIPPED' ? 'Not sent: no provider or contact for the preferred channel (see Communications)' : 'Reminder queued'),
+    onSuccess: (r) => toast.success(r.status === 'OPTED_OUT' ? 'The owner has opted out of reminders' : r.status === 'SKIPPED' ? 'Not sent: no provider or contact for the preferred channel (see Messages)' : 'Reminder queued'),
     onError: (e: Error) => toast.error(e.message),
   });
   const items = q.data?.items ?? [];

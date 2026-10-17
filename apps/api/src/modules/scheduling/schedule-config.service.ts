@@ -18,6 +18,8 @@ export class ScheduleConfigService {
   listTypes(includeInactive = false) {
     return this.prisma.db.appointmentType.findMany({
       where: includeInactive ? {} : { isActive: true },
+      // The linked service is what gets charged; its price is the one to show when booking.
+      include: { service: { select: { id: true, code: true, name: true, priceMinor: true, isActive: true } } },
       orderBy: [{ isActive: 'desc' }, { category: 'asc' }, { name: 'asc' }],
     });
   }

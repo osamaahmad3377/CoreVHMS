@@ -62,6 +62,7 @@ export function PosCart({
   onCharge,
   onHold,
   onClear,
+  onOtherItem,
 }: {
   lines: CartLine[];
   onChange: (lines: CartLine[]) => void;
@@ -75,6 +76,8 @@ export function PosCart({
   onCharge: () => void;
   onHold: () => void;
   onClear: () => void;
+  /** Opens "+ Other item" (an item typed in by name and price); only for staff allowed to set prices. */
+  onOtherItem?: () => void;
 }) {
   const [pickingClient, setPickingClient] = useState(false);
   const setQty = (key: string, quantity: number) => onChange(quantity <= 0 ? lines.filter((l) => l.key !== key) : lines.map((l) => (l.key === key ? { ...l, quantity } : l)));
@@ -152,6 +155,9 @@ export function PosCart({
       </div>
 
       <div className="border-t bg-muted/30 p-3">
+        {onOtherItem && (
+          <Button type="button" variant="outline" size="sm" className="mb-2 w-full border-dashed" onClick={onOtherItem}><Plus /> Other item</Button>
+        )}
         <dl className="grid gap-1 text-sm">
           <div className="flex justify-between text-muted-foreground"><dt>{items} item{items === 1 ? '' : 's'} · subtotal (excl. tax)</dt><dd className="tabular">{fmtMoney(totals.subtotalMinor, currency)}</dd></div>
           {!!totals.discountMinor && <div className="flex justify-between text-success"><dt>Discounts</dt><dd className="tabular">−{fmtMoney(totals.discountMinor, currency)}</dd></div>}
@@ -160,10 +166,10 @@ export function PosCart({
         </dl>
         {stockProblem && <p className="mt-2 text-xs text-destructive" role="alert">Only {qtyUnit(stockProblem.item.available ?? 0, stockProblem.item.unit)} of {stockProblem.item.name} in stock.</p>}
         <div className="mt-3 grid grid-cols-[auto_auto_minmax(0,1fr)] gap-2">
-          <Button variant="outline" disabled={!lines.length} onClick={onHold}>Hold</Button>
+          <Button variant="outline" disabled={!lines.length} onClick={onHold}>Pause sale</Button>
           <Button variant="outline" disabled={!lines.length && !client} onClick={onClear}>Clear</Button>
           <Button size="lg" className="h-12 min-w-0 px-3 text-base" disabled={!lines.length || totals.totalMinor <= 0 || !!stockProblem} onClick={onCharge}>
-            Charge {fmtMoney(totals.totalMinor, currency)} <span className="hidden rounded bg-primary-foreground/20 px-1.5 py-0.5 font-mono text-2xs xl:inline">F9</span>
+            Take payment {fmtMoney(totals.totalMinor, currency)} <span className="hidden rounded bg-primary-foreground/20 px-1.5 py-0.5 font-mono text-2xs xl:inline">F9</span>
           </Button>
         </div>
       </div>

@@ -1,10 +1,10 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { TRIAGE_PRIORITIES, enumLabel } from '@vcms/shared';
-import { AlertOctagon, CalendarPlus, Clock, DoorOpen, LogIn, Play, Siren, Stethoscope, UserPlus, Users } from 'lucide-react';
+import { AlertOctagon, CalendarPlus, Clock, DoorOpen, Info, LogIn, Phone, Play, Siren, Stethoscope, UserPlus, Users } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { Children, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Field } from '@/components/forms/field';
 import { FormError } from '@/components/forms/form-error';
@@ -13,6 +13,7 @@ import { PatientPicker, type PickedPatient } from '@/components/patients/patient
 import { RequirePermission } from '@/components/require';
 import { AppointmentDialog } from '@/components/scheduling/appointment-dialog';
 import { AppointmentStatusBadge, PriorityDot } from '@/components/scheduling/appointment-status';
+import { fmtWait, statusChangeMessage } from '@/components/scheduling/appointment-text';
 import { BookingDialog } from '@/components/scheduling/booking-dialog';
 import { TriageDialog } from '@/components/scheduling/triage-dialog';
 import { Stat } from '@/components/stat';
@@ -25,7 +26,7 @@ import { useAppointmentTypes, useClinicians } from '@/hooks/use-catalog';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { branchTime, dayLabel } from '@/lib/time';
-import type { Appointment } from '@/lib/types';
+import type { Appointment, PatientDetail } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 interface Queue {
@@ -38,7 +39,7 @@ interface Queue {
   stats: { total: number; averageWaitMinutes: number; noShows: number };
 }
 
-function WalkInDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+function WalkInDialog({ open, onOpenChange, initialPatient }: { open: boolean; onOpenChange: (o: boolean) => void; initialPatient?: PickedPatient | null }) {
   const { session } = useSession();
   const qc = useQueryClient();
   const types = useAppointmentTypes();
@@ -51,6 +52,9 @@ function WalkInDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o:
   const [priorityTouched, setPriorityTouched] = useState(false);
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (open && initialPatient) setPatient(initialPatient);
+  }, [open, initialPatient]);
   const chooseType = (id: string) => {
     setTypeId(id);
     if (priorityTouched) return;
@@ -69,7 +73,7 @@ function WalkInDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o:
         reason,
       }),
     onSuccess: (a) => {
-      toast.success(`${a.patient?.name} checked in as a walk-in`);
+      toast.success(`Checked in: ${a.patient?.name ?? a.client.displayName} as a walk-in (${a.appointmentNo})`);
       qc.invalidateQueries({ queryKey: ['queue'] });
       qc.invalidateQueries({ queryKey: ['appointments'] });
       setPatient(null);
@@ -90,7 +94,7 @@ function WalkInDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o:
         <div className="grid gap-3">
           {error && <FormError message={error} />}
           <Field label="Patient" htmlFor="wi-p" required>
-            <PatientPicker id="wi-p" value={patient} onChange={setPatient} />
+            <PatientPicker id="wi-p" value={patient} onChange={setPatient} allowCreate />
           </Field>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Visit type" htmlFor="wi-t">
@@ -98,16 +102,16 @@ function WalkInDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o:
                 {types.data?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </NativeSelect>
             </Field>
-            <Field label="Clinician" htmlFor="wi-c">
+            <Field label="Vet" htmlFor="wi-c">
               <NativeSelect id="wi-c" value={clinicianId} onChange={(e) => setClinicianId(e.target.value)}>
-                <option value="">Assign later</option>
+                <option value="">No vet yet</option>
                 {clinicians.data?.map((c) => <option key={c.membershipId} value={c.membershipId}>{c.name}</option>)}
               </NativeSelect>
             </Field>
           </div>
-          <Field label="Initial priority (optional — confirm with triage)" htmlFor="wi-pr">
+          <Field label="How urgent? (a vet will check)" htmlFor="wi-pr">
             <NativeSelect id="wi-pr" value={priority} onChange={(e) => { setPriority(e.target.value); setPriorityTouched(true); }}>
-              <option value="">Not triaged yet</option>
+              <option value="">Don’t know yet</option>
               {TRIAGE_PRIORITIES.map((p) => <option key={p} value={p}>{enumLabel(p)}</option>)}
             </NativeSelect>
           </Field>
@@ -117,6 +121,7 @@ function WalkInDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o:
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          {!patient && <p className="mr-auto self-center text-xs text-muted-foreground">Choose a patient to continue</p>}
           <Button disabled={!patient?.owner || !types.data?.length} loading={m.isPending} onClick={() => { setError(null); m.mutate(); }}>
             <LogIn /> Check in
           </Button>
@@ -141,7 +146,7 @@ function QueueCard({
   const urgent = pr === 'RESUSCITATION' || pr === 'EMERGENT';
   return (
     <li className={cn('rounded-md border bg-card p-3 shadow-sm', urgent && 'border-destructive/50 ring-1 ring-destructive/30')}>
-      <button onClick={onOpen} className="block w-full text-left">
+      <button onClick={onOpen} className="block w-full text-left" aria-label={`Details: ${a.patient?.name ?? a.client.displayName}`}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <p className="flex items-center gap-1.5 truncate font-medium">
@@ -149,8 +154,18 @@ function QueueCard({
               {a.patient?.name ?? a.client.displayName}
               <span className="text-xs font-normal text-muted-foreground">{a.patient?.species.name}</span>
             </p>
+            {a.patient && (
+              <p className="flex items-center gap-1 truncate text-xs">
+                {a.client.displayName}
+                {a.client.mobilePhone && (
+                  <span className="flex items-center gap-0.5 text-muted-foreground">
+                    · <Phone className="h-3 w-3" /> {a.client.mobilePhone}
+                  </span>
+                )}
+              </p>
+            )}
             <p className="truncate text-xs text-muted-foreground">
-              {branchTime(a.startsAt, tz)} · {a.appointmentType.name} · {a.clinician?.name ?? 'Unassigned'}
+              {branchTime(a.startsAt, tz)} · {a.appointmentType.name} · {a.clinician?.name ?? 'No vet yet'}
             </p>
             {a.reason && <p className="truncate text-xs">{a.reason}</p>}
           </div>
@@ -158,7 +173,7 @@ function QueueCard({
             <PriorityDot priority={pr} withLabel />
             {a.waitingMinutes !== null && a.waitingMinutes !== undefined && (
               <span className={cn('flex items-center gap-1 text-xs tabular', a.waitingMinutes >= 30 ? 'font-semibold text-destructive' : 'text-muted-foreground')}>
-                <Clock className="h-3 w-3" /> {a.waitingMinutes} min
+                <Clock className="h-3 w-3" /> {fmtWait(a.waitingMinutes)}
               </span>
             )}
             {a.source === 'WALK_IN' && <span className="text-2xs text-muted-foreground">Walk-in</span>}
@@ -168,8 +183,12 @@ function QueueCard({
           <div className="mt-1.5 flex flex-wrap gap-1">{a.patient.alerts.slice(0, 2).map((al) => <AlertChip key={al.id} alert={al} />)}</div>
         )}
       </button>
-      {/* Children.toArray drops false/null, so permission-gated actions that all render nothing leave no empty row. */}
-      {Children.toArray(children).length > 0 && <div className="mt-2 flex flex-wrap gap-1.5 border-t pt-2">{children}</div>}
+      <div className="mt-2 flex flex-wrap gap-1.5 border-t pt-2">
+        {children}
+        <Button size="sm" variant="ghost" onClick={onOpen}>
+          <Info /> Details
+        </Button>
+      </div>
     </li>
   );
 }
@@ -186,6 +205,28 @@ function FrontDesk() {
   });
   const [selected, setSelected] = useState<string | null>(null);
   const [walkIn, setWalkIn] = useState(false);
+  // "Check in now" after registering a patient: /front-desk?walkIn=<patientId> opens the walk-in form for them.
+  const walkInId = useSearchParams().get('walkIn');
+  const walkInPatient = useQuery({
+    queryKey: ['patient', walkInId],
+    queryFn: () => api.get<PatientDetail>(`/patients/${walkInId}`),
+    enabled: !!walkInId && can('appointments.checkin'),
+  });
+  const [preset, setPreset] = useState<PickedPatient | null>(null);
+  useEffect(() => {
+    const d = walkInPatient.data;
+    if (!d) return;
+    setPreset({
+      id: d.id,
+      name: d.name,
+      patientNo: d.patientNo,
+      species: d.species,
+      owner: d.owner ? { id: d.owner.id, displayName: d.owner.displayName, mobilePhone: d.owner.mobilePhone } : null,
+      alerts: d.alerts.filter((a) => a.isActive),
+    });
+    setWalkIn(true);
+    router.replace('/front-desk');
+  }, [walkInPatient.data]); // eslint-disable-line react-hooks/exhaustive-deps
   const [book, setBook] = useState(false);
   const [triage, setTriage] = useState<Appointment | null>(null);
   const act = useMutation({
@@ -194,7 +235,7 @@ function FrontDesk() {
       qc.invalidateQueries({ queryKey: ['queue'] });
       qc.invalidateQueries({ queryKey: ['appointments'] });
       if (v.action === 'start' && a.encounterId) router.push(`/consultations/${a.encounterId}`);
-      else toast.success(`${a.patient?.name ?? a.client.displayName}: ${enumLabel(a.status)}`);
+      else toast.success(statusChangeMessage(v.action, a, tz));
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -216,7 +257,7 @@ function FrontDesk() {
           <>
             {can('appointments.write') && (
               <Button size="sm" variant="outline" onClick={() => setBook(true)}>
-                <CalendarPlus /> Book
+                <CalendarPlus /> Book appointment
               </Button>
             )}
             {can('appointments.checkin') && (
@@ -236,7 +277,7 @@ function FrontDesk() {
           <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Stat label="Patients today" value={q.data!.stats.total} icon={Users} />
             <Stat label="Waiting now" value={q.data!.waiting.length} icon={Clock} tone={q.data!.waiting.length ? 'warning' : 'default'} />
-            <Stat label="Average wait" value={`${q.data!.stats.averageWaitMinutes} min`} icon={Clock} tone={q.data!.stats.averageWaitMinutes >= 30 ? 'danger' : 'default'} />
+            <Stat label="Average wait" value={fmtWait(q.data!.stats.averageWaitMinutes)} icon={Clock} tone={q.data!.stats.averageWaitMinutes >= 30 ? 'danger' : 'default'} />
             <Stat label="No-shows" value={q.data!.stats.noShows} icon={DoorOpen} />
           </div>
           <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-4">
@@ -290,7 +331,14 @@ function FrontDesk() {
           <p className="mt-2 text-right text-2xs text-muted-foreground">Refreshes every 30 seconds · waiting list sorted by triage priority, then arrival time</p>
         </>
       )}
-      <WalkInDialog open={walkIn} onOpenChange={setWalkIn} />
+      <WalkInDialog
+        open={walkIn}
+        onOpenChange={(o) => {
+          setWalkIn(o);
+          if (!o) setPreset(null);
+        }}
+        initialPatient={preset}
+      />
       <BookingDialog open={book} onOpenChange={setBook} />
       <AppointmentDialog id={selected} open={!!selected} onOpenChange={(o) => !o && setSelected(null)} />
       {triage?.patient && (
@@ -303,7 +351,9 @@ function FrontDesk() {
 export default function FrontDeskPage() {
   return (
     <RequirePermission anyOf={['appointments.checkin', 'appointments.read']}>
-      <FrontDesk />
+      <Suspense>
+        <FrontDesk />
+      </Suspense>
     </RequirePermission>
   );
 }

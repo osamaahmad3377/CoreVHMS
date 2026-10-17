@@ -83,6 +83,40 @@ export class ChargeCaptureService {
     };
   }
 
+  /**
+   * Work not yet invoiced, one row per client: how many items, their total before tax and when the latest was
+   * added. Newest activity first, so the client who has just finished at the clinic is at the top.
+   */
+  async byClient(q: { page: number; pageSize: number; q?: string }) {
+    const db = this.prisma.db;
+    const where: Prisma.ChargeWhereInput = { status: 'PENDING', ...(q.q ? { client: { displayName: { contains: q.q, mode: 'insensitive' } } } : {}) };
+    const rows = await db.charge.findMany({ where, select: { clientId: true, patientId: true, quantity: true, unitPriceMinor: true, createdAt: true } });
+    const groups = new Map<string, { clientId: string; itemCount: number; totalMinor: number; latestAt: Date; patientIds: Set<string> }>();
+    for (const r of rows) {
+      const g = groups.get(r.clientId) ?? { clientId: r.clientId, itemCount: 0, totalMinor: 0, latestAt: r.createdAt, patientIds: new Set<string>() };
+      g.itemCount += 1;
+      g.totalMinor += Math.round(Number(r.quantity) * r.unitPriceMinor);
+      if (r.createdAt > g.latestAt) g.latestAt = r.createdAt;
+      if (r.patientId) g.patientIds.add(r.patientId);
+      groups.set(r.clientId, g);
+    }
+    const sorted = [...groups.values()].sort((a, b) => b.latestAt.getTime() - a.latestAt.getTime());
+    const { skip, take } = pageArgs(q);
+    const page = sorted.slice(skip, skip + take);
+    const [clients, patients] = await Promise.all([
+      db.client.findMany({ where: { id: { in: page.map((g) => g.clientId) } }, select: { id: true, displayName: true } }),
+      db.patient.findMany({ where: { id: { in: page.flatMap((g) => [...g.patientIds]) } }, select: { id: true, name: true } }),
+    ]);
+    const data = page.map((g) => ({
+      client: clients.find((c) => c.id === g.clientId) ?? { id: g.clientId, displayName: 'Unknown client' },
+      itemCount: g.itemCount,
+      totalMinor: g.totalMinor,
+      latestAt: g.latestAt,
+      patients: patients.filter((p) => g.patientIds.has(p.id)).map((p) => p.name),
+    }));
+    return { ...paginated(data, sorted.length, q), totalMinor: sorted.reduce((n, g) => n + g.totalMinor, 0) };
+  }
+
   async waive(id: string, reason: string) {
     const c = await this.prisma.db.charge.findUnique({ where: { id } });
     if (!c) throw notFound('Charge');

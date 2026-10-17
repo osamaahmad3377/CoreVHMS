@@ -4,6 +4,7 @@ import {
   administrationSchema,
   createPrescriptionSchema,
   dispenseSchema,
+  pharmacySettingsSchema,
   doseReferenceSchema,
   prescriptionItemSchema,
   prescriptionListQuery,
@@ -36,6 +37,20 @@ export class PharmacyController {
     private readonly withdrawals: WithdrawalService,
     private readonly categories: ProductCategoriesService,
   ) {}
+
+  // ── Prescribing preferences ──
+  @Get('pharmacy-settings')
+  @RequireAnyPermission('prescriptions.read', 'prescriptions.write', 'formulary.manage')
+  pharmacySettings() {
+    return this.formulary.settings();
+  }
+
+  @Patch('pharmacy-settings')
+  @RequirePermissions('formulary.manage')
+  @ApiZodBody(pharmacySettingsSchema)
+  updatePharmacySettings(@Body(zp(pharmacySettingsSchema)) body: z.infer<typeof pharmacySettingsSchema>) {
+    return this.formulary.updateSettings(body);
+  }
 
   // ── Shop categories ──
   @Get('product-categories')

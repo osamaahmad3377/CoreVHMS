@@ -1,9 +1,6 @@
 import { z } from 'zod';
 import { DIAGNOSIS_STATUSES, DIAGNOSIS_TYPES, ENCOUNTER_TYPES, PROBLEM_STATUSES, SPECIES_CATEGORIES, TASK_TYPES } from '../enums';
-import { optDate, optInt, optText, optUuid, paginationQuery, reqText } from './common';
-
-const optDecimal = (min: number, max: number) =>
-  z.preprocess((v) => (v === '' ? null : v), z.coerce.number().min(min).max(max).nullish()) as z.ZodType<number | null | undefined, z.ZodTypeDef, unknown>;
+import { optDate, optText, optUuid, paginationQuery, reqText } from './common';
 
 export const startEncounterSchema = z.object({
   patientId: z.string().uuid(),
@@ -43,20 +40,80 @@ export type NoteContentInput = z.infer<typeof noteContentSchema>;
 
 export const amendNoteSchema = noteContentSchema.extend({ amendmentReason: reqText(500) });
 
+/**
+ * Plausibility limits for typed-in vital signs. These guard against typing mistakes (398 instead of 39.8);
+ * they are NOT normal ranges — those are clinic-configured, sourced references (VitalReference).
+ */
+export const VITAL_BOUNDS = {
+  temperatureC: { label: 'Temperature', unit: '°C', min: 25, max: 46, int: false },
+  heartRate: { label: 'Heart rate', unit: 'beats/min', min: 0, max: 400, int: true },
+  respiratoryRate: { label: 'Breathing rate', unit: 'breaths/min', min: 0, max: 200, int: true },
+  weightKg: { label: 'Weight', unit: 'kg', min: 0.001, max: 5000, int: false },
+  capillaryRefillSec: { label: 'Gum refill time (CRT)', unit: 'seconds', min: 0, max: 10, int: false },
+  painScore: { label: 'Pain score', unit: '', min: 0, max: 10, int: true },
+  systolicBp: { label: 'Blood pressure — systolic', unit: 'mmHg', min: 0, max: 400, int: true },
+  diastolicBp: { label: 'Blood pressure — diastolic', unit: 'mmHg', min: 0, max: 300, int: true },
+  meanBp: { label: 'Blood pressure — mean', unit: 'mmHg', min: 0, max: 300, int: true },
+  spo2: { label: 'Oxygen level (SpO₂)', unit: '%', min: 0, max: 100, int: true },
+  hydrationPercent: { label: 'Dehydration', unit: '%', min: 0, max: 20, int: false },
+} as const;
+export type VitalKey = keyof typeof VITAL_BOUNDS;
+
+/** "Temperature must be between 25 and 46 °C". */
+export function vitalRangeMessage(key: VitalKey) {
+  const b = VITAL_BOUNDS[key];
+  return `${b.label} must be between ${b.min} and ${b.max}${b.unit ? ` ${b.unit}` : ''}`;
+}
+
+/**
+ * Checks one typed value against the plausibility limits. Returns null when it is fine, otherwise a message
+ * and, when the value looks like a missing decimal point (398 → 39.8), the value that was probably meant.
+ */
+export function checkVital(key: VitalKey, raw: string | number | null | undefined): { message: string; suggestion: number | null } | null {
+  if (raw === null || raw === undefined || raw === '') return null;
+  const b = VITAL_BOUNDS[key];
+  const v = Number(raw);
+  if (!Number.isFinite(v)) return { message: `${b.label} must be a number`, suggestion: null };
+  if (b.int && !Number.isInteger(v)) return { message: `${b.label} must be a whole number`, suggestion: null };
+  if (v >= b.min && v <= b.max) return null;
+  let suggestion: number | null = null;
+  if (!b.int) {
+    for (const d of [10, 100]) {
+      const c = Math.round((v / d) * 1000) / 1000;
+      if (c >= b.min && c <= b.max && c > 0) {
+        suggestion = c;
+        break;
+      }
+    }
+  }
+  return { message: vitalRangeMessage(key), suggestion };
+}
+
+const vital = (key: VitalKey) => {
+  const b = VITAL_BOUNDS[key];
+  let n = z.coerce.number({ invalid_type_error: `${b.label} must be a number` });
+  if (b.int) n = n.int(`${b.label} must be a whole number`);
+  return z.preprocess((v) => (v === '' ? null : v), n.min(b.min, vitalRangeMessage(key)).max(b.max, vitalRangeMessage(key)).nullish()) as z.ZodType<
+    number | null | undefined,
+    z.ZodTypeDef,
+    unknown
+  >;
+};
+
 export const vitalsSchema = z.object({
   recordedAt: optDate(),
-  temperatureC: optDecimal(25, 46),
-  heartRate: optInt(0, 400),
-  respiratoryRate: optInt(0, 200),
-  weightKg: optDecimal(0.001, 5000),
+  temperatureC: vital('temperatureC'),
+  heartRate: vital('heartRate'),
+  respiratoryRate: vital('respiratoryRate'),
+  weightKg: vital('weightKg'),
   mucousMembranes: optText(40),
-  capillaryRefillSec: optDecimal(0, 10),
-  painScore: optInt(0, 10),
-  systolicBp: optInt(0, 400),
-  diastolicBp: optInt(0, 300),
-  meanBp: optInt(0, 300),
-  spo2: optInt(0, 100),
-  hydrationPercent: optDecimal(0, 20),
+  capillaryRefillSec: vital('capillaryRefillSec'),
+  painScore: vital('painScore'),
+  systolicBp: vital('systolicBp'),
+  diastolicBp: vital('diastolicBp'),
+  meanBp: vital('meanBp'),
+  spo2: vital('spo2'),
+  hydrationPercent: vital('hydrationPercent'),
   notes: optText(1000),
 });
 export type VitalsInput = z.infer<typeof vitalsSchema>;

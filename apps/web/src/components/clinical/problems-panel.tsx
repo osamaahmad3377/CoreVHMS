@@ -4,7 +4,7 @@ import { enumLabel } from '@vcms/shared';
 import { ListChecks, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { EmptyState, LoadingRows } from '../page';
+import { LoadingRows } from '../page';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Card, CardHeader, CardTitle } from '../ui/card';
@@ -78,7 +78,7 @@ export function ProblemsPanel({ patientId, editable }: { patientId: string; edit
           ))}
         </ul>
       ) : (
-        <EmptyState title="No problems recorded" className="py-6" />
+        <p className="px-3 py-2 text-xs text-muted-foreground">No long-term problems recorded.</p>
       )}
     </Card>
   );

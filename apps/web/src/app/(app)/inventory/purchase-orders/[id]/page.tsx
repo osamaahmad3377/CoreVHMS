@@ -28,25 +28,34 @@ function OrderView() {
   const org = useQuery({ queryKey: ['organization'], queryFn: () => api.get<ClinicHeader>('/organization'), staleTime: 300_000 });
   const act = useMutation({
     mutationFn: ({ action, reason }: { action: string; reason?: string }) => api.post(`/purchase-orders/${id}/${action}`, { reason }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['purchase-order', id] }); qc.invalidateQueries({ queryKey: ['purchase-orders'] }); },
+    onSuccess: (_d, v) => {
+      ['purchase-order', 'purchase-orders', 'stock', 'reorder-suggestions'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      const done: Record<string, string> = { submit: 'Sent for approval', approve: 'Order approved — print it or send it to the supplier', cancel: 'Order cancelled' };
+      if (done[v.action]) toast.success(done[v.action]);
+    },
     onError: (e: Error) => toast.error(e.message),
   });
   if (q.isLoading) return <LoadingRows />;
   if (q.error || !q.data) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
   const po = q.data;
-  const ownOrder = po.createdById === session.user.id;
+  const secondApprover = po.needsSecondApprover !== false;
+  const ownOrder = secondApprover && po.createdById === session.user.id;
   const deliverTo = po.location ? `${po.location.name}${po.location.branch ? ` · ${po.location.branch.name}` : ''}` : null;
   return (
     <>
       <div className="print:hidden">
       <PageHeader
         title={<span className="flex items-center gap-2">{po.poNo} <CommerceBadge status={po.status} /></span>}
-        breadcrumbs={[{ label: 'Inventory', href: '/inventory' }, { label: 'Purchase orders', href: '/inventory/purchase-orders' }, { label: po.poNo }]}
+        breadcrumbs={[{ label: 'Inventory', href: '/inventory' }, { label: 'Orders', href: '/inventory/purchase-orders' }, { label: po.poNo }]}
         description={po.supplier.name}
         actions={
           <>
             <Button size="sm" variant="outline" onClick={() => window.print()}><Printer /> Print</Button>
-            {po.status === 'DRAFT' && can('procurement.write') && <Button size="sm" onClick={() => act.mutate({ action: 'submit' })}><Send /> Submit for approval</Button>}
+            {po.status === 'DRAFT' && !secondApprover && can('procurement.approve') ? (
+              <Button size="sm" loading={act.isPending} onClick={() => act.mutate({ action: 'approve' })}><CheckCircle2 /> Approve &amp; send</Button>
+            ) : (
+              po.status === 'DRAFT' && can('procurement.write') && <Button size="sm" loading={act.isPending} onClick={() => act.mutate({ action: 'submit' })}><Send /> Send for approval</Button>
+            )}
             {po.status === 'SUBMITTED' && can('procurement.approve') && (
               <Button size="sm" disabled={ownOrder} title={ownOrder ? 'Orders must be approved by someone other than the person who raised them' : undefined} onClick={() => act.mutate({ action: 'approve' })}><CheckCircle2 /> Approve</Button>
             )}
@@ -57,12 +66,12 @@ function OrderView() {
           </>
         }
       />
-      {po.status === 'SUBMITTED' && ownOrder && <p className="mb-3 text-sm text-muted-foreground">You raised this order, so another authorised person must approve it.</p>}
+      {po.status === 'SUBMITTED' && ownOrder && <p className="mb-3 text-sm text-muted-foreground">You raised this order, so another person must approve it. (An owner can change this in Settings → Tax &amp; payments.)</p>}
       <div className="grid gap-4 xl:grid-cols-[1fr_320px]">
         <div className="grid content-start gap-4">
           <Card>
             <Table>
-              <THead><TR><TH>Product</TH><TH className="text-right">Ordered</TH><TH className="text-right">Received</TH><TH className="text-right">Unit cost</TH><TH className="text-right">Line total</TH></TR></THead>
+              <THead><TR><TH>Product</TH><TH className="text-right">Ordered</TH><TH className="text-right">Received</TH><TH className="text-right">Cost price (each)</TH><TH className="text-right">Line total</TH></TR></THead>
               <TBody>
                 {po.lines.map((l) => (
                   <TR key={l.id}>
@@ -83,7 +92,7 @@ function OrderView() {
               <ul className="divide-y border-t">
                 {po.receipts.map((r) => (
                   <li key={r.id} className="px-4 py-2 text-sm">
-                    <p className="flex justify-between"><span className="font-medium">{r.receiptNo}</span><span className="tabular">{fmtMoney(r.totalMinor, currency)}</span></p>
+                    <p className="flex justify-between"><span className="font-medium">Delivery <span className="text-xs font-normal text-muted-foreground">{r.receiptNo}</span></span><span className="tabular">{fmtMoney(r.totalMinor, currency)}</span></p>
                     <p className="text-xs text-muted-foreground">{fmtDateTime(r.receivedAt)} · {r.receivedByName} · {r.lines.map((l) => `${l.product.name} ${l.quantity} (batch ${l.batch.batchNumber}, exp ${fmtDate(l.batch.expiryDate)})`).join('; ')}</p>
                   </li>
                 ))}

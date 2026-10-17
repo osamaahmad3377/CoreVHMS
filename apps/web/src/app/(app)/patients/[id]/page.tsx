@@ -9,6 +9,9 @@ import {
   Camera,
   CalendarPlus,
   CheckCircle2,
+  LogIn,
+  PawPrint,
+  ShieldAlert,
   Siren,
   Stethoscope,
   Cross,
@@ -37,6 +40,7 @@ import {
   WeightDialog,
 } from '@/components/patients/patient-dialogs';
 import { PatientForm } from '@/components/patients/patient-form';
+import { SavedNextSteps } from '@/components/patients/saved-next-steps';
 import { PatientPicker, type PickedPatient } from '@/components/patients/patient-picker';
 import { AdministrationsPanel, LabOrdersPanel, PrescriptionsPanel, WithdrawalBanner } from '@/components/clinical/orders-panels';
 import { ProblemsPanel } from '@/components/clinical/problems-panel';
@@ -92,7 +96,10 @@ function PatientRecord() {
     enabled: can('hospital.read'),
   });
   const [admitOpen, setAdmitOpen] = useState(false);
-  const initialTab = useSearchParams().get('tab') ?? 'overview';
+  const params = useSearchParams();
+  const initialTab = params.get('tab') ?? 'overview';
+  // Just registered (from Add patient): offer the usual next steps once.
+  const [justSaved, setJustSaved] = useState(params.get('registered') === '1');
   const [dlg, setDlg] = useState<null | 'edit' | 'weight' | 'alert' | 'identifier' | 'deceased' | 'transfer' | 'coowner' | 'merge' | 'book' | 'consult' | 'triage'>(null);
   const photoRef = useRef<HTMLInputElement>(null);
   const refresh = () => {
@@ -145,7 +152,7 @@ function PatientRecord() {
         <div className="flex flex-wrap gap-2">
           {active && can('appointments.write') && (
             <Button size="sm" onClick={() => setDlg('book')}>
-              <CalendarPlus /> Book
+              <CalendarPlus /> Book appointment
             </Button>
           )}
           {stay ? (
@@ -189,18 +196,20 @@ function PatientRecord() {
             </Button>
           )}
           {editable && (
+            <Button size="sm" variant="outline" onClick={() => setDlg('alert')}>
+              <ShieldAlert /> Add medical alert
+            </Button>
+          )}
+          {editable && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="icon" variant="outline" aria-label="More actions">
-                  <MoreHorizontal />
+                <Button size="sm" variant="outline" aria-label="More actions" title="More actions: photo, identifier, ownership, archive">
+                  <MoreHorizontal /> More
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuItem onSelect={() => photoRef.current?.click()}>
                   <Camera /> {p.photoAttachmentId ? 'Change photo' : 'Add photo'}
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setDlg('alert')}>
-                  <Plus /> Add medical alert
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => setDlg('identifier')}>
                   <Plus /> Add identifier
@@ -263,6 +272,29 @@ function PatientRecord() {
         </div>
       </div>
 
+      {justSaved && (
+        <SavedNextSteps onDismiss={() => setJustSaved(false)}>
+          {active && can('appointments.write') && (
+            <Button size="sm" onClick={() => setDlg('book')}>
+              <CalendarPlus /> Book appointment
+            </Button>
+          )}
+          {active && can('appointments.checkin') && p.owner && (
+            <Button size="sm" variant="outline" asChild>
+              <Link href={`/front-desk?walkIn=${p.id}`}>
+                <LogIn /> Check in now
+              </Link>
+            </Button>
+          )}
+          {can('patients.write') && p.owner && (
+            <Button size="sm" variant="outline" asChild>
+              <Link href={`/patients/new?ownerId=${p.owner.id}`}>
+                <PawPrint /> Add another patient
+              </Link>
+            </Button>
+          )}
+        </SavedNextSteps>
+      )}
       <WithdrawalBanner patientId={p.id} />
       {p.status === 'MERGED' && p.mergedInto && (
         <div className="mb-4 rounded-md border border-info/30 bg-info/10 px-4 py-3 text-sm">
@@ -309,7 +341,7 @@ function PatientRecord() {
           )}
           <Card>
             <CardHeader>
-              <CardTitle>Signalment</CardTitle>
+              <CardTitle>Basic details</CardTitle>
             </CardHeader>
             <CardContent>
               <DescriptionList
@@ -321,7 +353,7 @@ function PatientRecord() {
                   { label: 'Colour', value: p.colour },
                   { label: 'Markings', value: p.markings },
                   { label: 'Blood type', value: p.bloodType },
-                  { label: 'Latest weight', value: fmtWeight(p.latestWeightKg) },
+                  { label: 'Latest weight', value: p.latestWeightKg == null ? 'Not recorded' : fmtWeight(p.latestWeightKg) },
                   { label: 'Insurance', value: [p.insuranceProvider, p.insurancePolicyNumber].filter(Boolean).join(' · ') },
                   { label: 'Registered', value: fmtDate(p.createdAt) },
                   { label: 'Notes', value: p.notes && <span className="whitespace-pre-wrap">{p.notes}</span> },

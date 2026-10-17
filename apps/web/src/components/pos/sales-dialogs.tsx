@@ -35,7 +35,7 @@ export function TodaySalesDialog({ open, onOpenChange, clinic, currency, onRepri
       <DialogContent size="xl">
         <DialogHeader>
           <DialogTitle>Today’s sales</DialogTitle>
-          <DialogDescription>{rows.length} counter sale{rows.length === 1 ? '' : 's'} at this branch today · {fmtMoney(total, currency)} excluding voids</DialogDescription>
+          <DialogDescription>{rows.length} counter sale{rows.length === 1 ? '' : 's'} at this branch today · {fmtMoney(total, currency)} not counting cancelled sales</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_360px]">
           <div className="max-h-[60vh] overflow-y-auto rounded-md border">
@@ -51,7 +51,7 @@ export function TodaySalesDialog({ open, onOpenChange, clinic, currency, onRepri
                       </span>
                       <span className="text-right">
                         <span className="block text-sm font-semibold tabular">{fmtMoney(r.totalMinor, r.currency)}</span>
-                        <span className="block text-2xs text-muted-foreground">{[...new Set(r.allocations.map((a) => enumLabel(a.payment.method)))].join(' + ') || 'Unpaid'}</span>
+                        <span className="block text-2xs text-muted-foreground">{[...new Set(r.allocations.map((a) => enumLabel(a.payment.method)))].join(' + ') || 'Not paid'}</span>
                       </span>
                       <CommerceBadge status={r.status} />
                     </button>
@@ -94,8 +94,8 @@ export function HeldSalesDialog({ open, onOpenChange, held, currency, onRecall, 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Held sales</DialogTitle>
-          <DialogDescription>Parked baskets are kept on this device only. Prices and stock are re-checked when you complete the sale.</DialogDescription>
+          <DialogTitle>Paused sales</DialogTitle>
+          <DialogDescription>Paused baskets are kept on this computer only. Prices and stock are checked again when you finish the sale.</DialogDescription>
         </DialogHeader>
         {held.length ? (
           <ul className="divide-y rounded-md border">
@@ -106,13 +106,13 @@ export function HeldSalesDialog({ open, onOpenChange, held, currency, onRecall, 
                   <span className="block text-sm font-medium">{h.client?.displayName ?? 'Walk-in'} · {fmtMoney(totalOf(h.lines), currency)}</span>
                   <span className="block truncate text-xs text-muted-foreground">{fmtRelative(h.at)} · {h.lines.map((l) => `${l.quantity}× ${l.item.name}`).join(', ')}</span>
                 </span>
-                <Button size="sm" onClick={() => onRecall(h)}><RotateCcw /> Recall</Button>
-                <Button size="icon-sm" variant="ghost" aria-label="Delete held sale" onClick={() => onDelete(h.id)}><Trash2 /></Button>
+                <Button size="sm" onClick={() => onRecall(h)}><RotateCcw /> Resume</Button>
+                <Button size="icon-sm" variant="ghost" aria-label="Delete paused sale" onClick={() => onDelete(h.id)}><Trash2 /></Button>
               </li>
             ))}
           </ul>
         ) : (
-          <EmptyState title="No held sales" />
+          <EmptyState title="No paused sales" />
         )}
       </DialogContent>
     </Dialog>

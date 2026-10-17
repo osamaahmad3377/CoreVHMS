@@ -77,7 +77,7 @@ function FlowboardView() {
       </div>
       {!d.wards.length && !d.admissions.length && (
         <Card>
-          <EmptyState icon={BedDouble} title="No wards set up" description="Add your wards and cages in Settings → Wards & cages, then admit patients here." action={can('settings.manage') && <Button size="sm" asChild><Link href="/settings/wards">Set up wards</Link></Button>} />
+          <EmptyState icon={BedDouble} title="No wards set up" description="Add your wards and cages in Settings → Hospital wards & cages, then admit patients here." action={can('settings.manage') && <Button size="sm" asChild><Link href="/settings/wards">Set up wards</Link></Button>} />
         </Card>
       )}
       <div className="grid gap-5">

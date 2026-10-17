@@ -11,7 +11,7 @@ import { Input, NativeSelect, Textarea } from '../ui/input';
 import { api } from '@/lib/api';
 import type { OutboundMessage } from '@/lib/types';
 
-/** Compose an email/SMS/WhatsApp message to a client. Delivery is tracked in Communications. */
+/** Compose an email/SMS/WhatsApp message to a client. Delivery is tracked in Messages. */
 export function SendMessageDialog({ client, open, onOpenChange }: { client: { id: string; displayName: string; email: string | null; mobilePhone: string | null; preferredChannel?: string }; open: boolean; onOpenChange: (o: boolean) => void }) {
   const qc = useQueryClient();
   const [channel, setChannel] = useState('EMAIL');

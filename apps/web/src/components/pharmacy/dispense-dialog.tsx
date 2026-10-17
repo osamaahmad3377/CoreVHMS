@@ -42,7 +42,10 @@ export function DispenseDialog({ rx, open, onOpenChange }: { rx: Prescription; o
           .map(([itemId, l]) => ({ itemId, quantity: Number(l.quantity), batchNumber: l.batchNumber || null, expiryDate: l.expiryDate || null })),
       }),
     onSuccess: (r) => {
-      toast.success(`${r.prescriptionNo}: ${r.status === 'DISPENSED' ? 'fully dispensed' : 'partly dispensed'}`);
+      toast.success(`${r.prescriptionNo}: ${r.status === 'DISPENSED' ? 'fully dispensed' : 'partly dispensed'}`, {
+        action: { label: r.items.length === 1 ? 'Print label' : 'Print labels', onClick: () => window.print() },
+        duration: 10_000,
+      });
       qc.invalidateQueries({ queryKey: ['prescription', rx.id] });
       qc.invalidateQueries({ queryKey: ['prescriptions'] });
       qc.invalidateQueries({ queryKey: ['product-batches'] });
@@ -62,7 +65,7 @@ export function DispenseDialog({ rx, open, onOpenChange }: { rx: Prescription; o
         {!!allergies.length && (
           <div role="alert" className="flex gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-2.5 text-sm">
             <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-            <p><span className="font-medium text-destructive">Check before handing over — {rx.patient.name} has {allergies.length === 1 ? 'an alert' : 'alerts'}:</span> {allergies.map((a) => a.title).join('; ')}</p>
+            <p><span className="font-medium text-destructive">Check before handing over — {rx.patient.name} has {allergies.length === 1 ? 'an alert' : 'alerts'}:</span> {allergies.map((a) => `${a.substance || a.title}${a.reaction ? ` (${a.reaction})` : ''}`).join('; ')}</p>
           </div>
         )}
         <div className="grid gap-3">
@@ -74,7 +77,11 @@ export function DispenseDialog({ rx, open, onOpenChange }: { rx: Prescription; o
                 <div>
                   <p className="text-sm font-medium">{i.product.name}</p>
                   <p className="text-xs text-muted-foreground">{remainingText(i)}</p>
-                  {!!matches.length && <p className="mt-1 text-xs font-medium text-destructive">Matches alert “{matches[0].title}”{i.overrideReason ? ` — prescribed with override: ${i.overrideReason}` : ''}</p>}
+                  {!!matches.length && (
+                    <p className="mt-1 rounded border border-destructive/40 bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive">
+                      ⚠ May conflict with allergy “{matches[0].substance || matches[0].title}” — ask the vet{i.overrideReason ? `. The vet's reason: ${i.overrideReason}` : ''}
+                    </p>
+                  )}
                 </div>
                 {i.remaining > 0 && l && (
                   <div className="grid gap-2 sm:grid-cols-[140px_1fr]">

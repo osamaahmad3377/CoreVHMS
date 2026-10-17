@@ -27,7 +27,7 @@ export default function SurgeryChecklistSettingsPage() {
       <div className="grid gap-4">
         <div>
           <h2 className="text-base font-semibold">Surgical safety checklist</h2>
-          <p className="text-sm text-muted-foreground">Items copied onto each new surgery. Surgery cannot start until “before induction” and “before incision” are ticked, nor move to recovery until “before leaving theatre” is ticked. Adapted from the WHO Surgical Safety Checklist.</p>
+          <p className="text-sm text-muted-foreground">Ticked before each surgery. Based on the WHO checklist.</p>
         </div>
         {CHECKLIST_PHASES.map((phase) => {
           const items = (q.data ?? []).filter((i) => i.phase === phase);

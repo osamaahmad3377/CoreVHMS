@@ -36,14 +36,14 @@ function UnitDialog({ unit, open, onOpenChange }: { unit: BoardingUnit | null; o
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogHeader><DialogTitle>{unit ? `Edit ${unit.name}` : 'New boarding unit'}</DialogTitle><DialogDescription>The nightly rate is fixed on each booking when it is made.</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>{unit ? `Edit ${unit.name}` : 'Add kennel'}</DialogTitle><DialogDescription>The nightly rate is fixed on each booking when it is made.</DialogDescription></DialogHeader>
         {error && <FormError message={error} />}
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Branch" htmlFor="bu-branch"><NativeSelect id="bu-branch" value={f.branchId} disabled={!!unit} onChange={(e) => setF({ ...f, branchId: e.target.value })}>{session.branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</NativeSelect></Field>
           <Field label="Type" htmlFor="bu-type"><NativeSelect id="bu-type" value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })}>{BOARDING_UNIT_TYPES.map((t) => <option key={t} value={t}>{t === 'KENNEL' ? 'Kennel' : enumLabel(t)}</option>)}</NativeSelect></Field>
           <Field label="Name" htmlFor="bu-name" required><Input id="bu-name" value={f.name} maxLength={60} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="e.g. Kennel 4, Cat suite A" /></Field>
           <Field label="Order" htmlFor="bu-order"><Input id="bu-order" inputMode="numeric" value={f.sortOrder} onChange={(e) => setF({ ...f, sortOrder: Number(e.target.value) || 0 })} /></Field>
-          <Field label="Nightly rate (service)" htmlFor="bu-svc" className="sm:col-span-2" hint="Create a “per night” boarding service in Services & fees first.">
+          <Field label="Nightly rate (service)" htmlFor="bu-svc" className="sm:col-span-2" hint="Create a “per night” boarding service in Services & prices first.">
             <NativeSelect id="bu-svc" value={f.nightlyServiceId} onChange={(e) => setF({ ...f, nightlyServiceId: e.target.value })}>
               <option value="">No charge</option>
               {(services.data ?? []).filter((s) => s.isActive).map((s) => <option key={s.id} value={s.id}>{s.name} — {fmtMoney(s.priceMinor, currency)}</option>)}
@@ -70,10 +70,10 @@ export default function BoardingUnitsPage() {
       <Card>
         <CardHeader className="flex-wrap">
           <div className="min-w-0">
-            <CardTitle>Boarding units</CardTitle>
+            <CardTitle>Boarding kennels</CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">Kennels, cattery pens and suites for boarders (separate from hospital cages).</p>
           </div>
-          <Button size="sm" onClick={() => setDlg({ open: true, unit: null })}><Plus /> New unit</Button>
+          <Button size="sm" onClick={() => setDlg({ open: true, unit: null })}><Plus /> Add kennel</Button>
         </CardHeader>
         {q.data?.length ? (
           <ul className="divide-y">

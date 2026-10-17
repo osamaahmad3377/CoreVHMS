@@ -1,6 +1,6 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
-import type { Paginated } from '@vcms/shared';
+import { allergyMatches, type AllergyAlertLike, type Paginated } from '@vcms/shared';
 import { Check, ChevronsUpDown, Loader2, Lock, Search } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '../ui/button';
@@ -21,11 +21,14 @@ export function ProductPicker({
   onChange,
   prescribable,
   id,
+  alerts,
   placeholder = 'Search by name, brand, generic name or SKU…',
 }: {
   value: Product | null;
   onChange: (p: Product | null) => void;
   prescribable?: boolean;
+  /** The patient's alerts: products that match an allergy are marked in the list before they are picked. */
+  alerts?: AllergyAlertLike[];
   id?: string;
   placeholder?: string;
 }) {
@@ -52,7 +55,7 @@ export function ProductPicker({
           {results.isFetching && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
         </div>
         <ul className="max-h-72 overflow-y-auto p-1" role="listbox">
-          {!results.isFetching && !results.data?.data.length && <li className="px-3 py-4 text-center text-xs text-muted-foreground">No matching products. Add them in Formulary.</li>}
+          {!results.isFetching && !results.data?.data.length && <li className="px-3 py-4 text-center text-xs text-muted-foreground">No matching products. Add them in Stock → Products.</li>}
           {results.data?.data.map((p) => (
             <li key={p.id}>
               <button
@@ -69,10 +72,14 @@ export function ProductPicker({
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1 truncate font-medium">
                     {p.name} {p.isControlled && <Lock className="h-3 w-3 text-warning" aria-label="Controlled" />}
+                    {!!alerts?.length && allergyMatches(alerts, p).length > 0 && (
+                      <span className="ml-auto shrink-0 rounded bg-destructive px-1.5 py-0.5 text-2xs font-semibold text-destructive-foreground">⚠ Allergy match</span>
+                    )}
                   </span>
                   <span className="block truncate text-xs text-muted-foreground">
                     {productStrength(p)}
                     {p.genericName && ` · ${p.genericName}`}
+                    {p.drugClass && ` · ${p.drugClass}`}
                     {!!p._count?.doseReferences && ` · ${p._count.doseReferences} approved dose ref.`}
                   </span>
                 </span>

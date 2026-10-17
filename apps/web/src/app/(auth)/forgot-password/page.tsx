@@ -39,7 +39,7 @@ export default function ForgotPasswordPage() {
     );
   }
   return (
-    <form onSubmit={submit} className="grid gap-4">
+    <form method="post" onSubmit={submit} className="grid gap-4">
       <div>
         <h1 className="text-xl font-semibold">Reset your password</h1>
         <p className="mt-1 text-sm text-muted-foreground">We will email you a single-use reset link.</p>

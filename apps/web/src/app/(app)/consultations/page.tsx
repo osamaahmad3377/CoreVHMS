@@ -41,7 +41,7 @@ function ConsultationsList() {
       <PageHeader
         help="consultation"
         title="Consultations"
-        description="Clinical encounters and their documentation status"
+        description="Consultations and whether their notes are finished"
         actions={
           can('clinical.write') && (
             <Button size="sm" onClick={() => setStart(true)}>

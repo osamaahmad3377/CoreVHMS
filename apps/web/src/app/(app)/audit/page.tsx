@@ -66,7 +66,7 @@ const ACTION_LABELS: Record<string, string> = {
   'membership.invitation_accepted': 'Staff invitation accepted',
   'membership.created_with_temporary_password': 'Staff account created (temporary password)',
   'membership.temporary_password_issued': 'Temporary password issued',
-  'audit.exported': 'Audit log exported',
+  'audit.exported': 'Activity log exported',
   'report.exported': 'Report exported',
   'livestock.mortality': 'Batch deaths recorded',
 };
@@ -119,9 +119,9 @@ const ACTION_FILTERS: [string, string][] = [
   ['patient.', 'Patients'],
   ['patient.viewed', 'Patient record views'],
   ['encounter.,note.,diagnosis.,problem.,vitals.', 'Consultations & notes'],
-  ['lab_,imaging.', 'Laboratory & imaging'],
+  ['lab_,imaging.', 'Lab & X-ray'],
   ['prescription.', 'Prescriptions'],
-  ['invoice.,payment.,charge.,estimate.,cash_session.,expense.', 'Billing & payments'],
+  ['invoice.,payment.,charge.,estimate.,cash_session.,expense.', 'Billing'],
   ['stock.,product.,purchase_order.,stock_count.', 'Inventory'],
   ['attachment.', 'Files'],
   ['membership.', 'Staff accounts'],
@@ -159,8 +159,8 @@ function AuditLog() {
   return (
     <>
       <PageHeader
-        title="Audit log"
-        description="Append-only record of sign-ins, record access, changes, exports and administrative actions."
+        title="Activity log"
+        description="Who signed in, what they opened and what they changed. Cannot be edited."
         actions={
           <Button size="sm" variant="outline" asChild>
             <a href={`/api/v1/audit-events/export.csv${qs({ q: params.q || undefined, actorId: params.actorId || undefined, action: params.action || undefined, entityType: params.entityType || undefined, from: params.from ? new Date(params.from).toISOString() : undefined, to: params.to ? new Date(params.to + 'T23:59:59').toISOString() : undefined })}`} download>

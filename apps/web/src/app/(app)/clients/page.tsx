@@ -6,6 +6,7 @@ import { Download, UserPlus, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Suspense } from 'react';
+import { AccountBalance } from '@/components/billing/money';
 import { DataTable, type Column } from '@/components/data-table';
 import { EmptyState, PageHeader } from '@/components/page';
 import { RequirePermission } from '@/components/require';
@@ -17,7 +18,6 @@ import { Card } from '@/components/ui/card';
 import { NativeSelect } from '@/components/ui/input';
 import { useUrlState } from '@/hooks/use-url-state';
 import { api, qs } from '@/lib/api';
-import { fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { ClientRow } from '@/lib/types';
 
@@ -68,7 +68,7 @@ function ClientsList() {
     },
     {
       key: 'patients',
-      header: 'Animals',
+      header: 'Patients',
       cell: (c) =>
         c.patients.length ? (
           <div className="flex max-w-[320px] flex-wrap gap-1">
@@ -85,11 +85,11 @@ function ClientsList() {
     },
     {
       key: 'balance',
-      header: 'Balance',
+      header: 'Amount owed',
       sortKey: 'balanceMinor',
       headerClassName: 'text-right',
       className: 'text-right tabular',
-      cell: (c) => <span className={c.balanceMinor > 0 ? 'font-medium text-warning' : 'text-muted-foreground'}>{fmtMoney(c.balanceMinor, currency)}</span>,
+      cell: (c) => <AccountBalance minor={c.balanceMinor} currency={currency} />,
     },
     { key: 'status', header: 'Status', cell: (c) => <StatusBadge status={c.status} /> },
   ];
@@ -99,7 +99,7 @@ function ClientsList() {
       <PageHeader
         help="register-client"
         title="Clients"
-        description="Pet owners, farms, breeders and organizations"
+        description="People, families, farms and businesses you treat animals for"
         actions={
           <>
             {can('clients.export') && (
@@ -112,7 +112,7 @@ function ClientsList() {
             {can('clients.write') && (
               <Button size="sm" asChild>
                 <Link href="/clients/new">
-                  <UserPlus /> New client
+                  <UserPlus /> Add client
                 </Link>
               </Button>
             )}
@@ -121,7 +121,7 @@ function ClientsList() {
       />
       <Card>
         <div className="flex flex-col gap-2 border-b p-3 sm:flex-row sm:items-center">
-          <SearchInput value={params.q} onChange={(q) => url.set({ q, page: 1 })} placeholder="Name, phone, email or client no." />
+          <SearchInput value={params.q} onChange={(q) => url.set({ q, page: 1 })} placeholder="Search by name, patient or phone (e.g. 0300 77…)" />
           <NativeSelect aria-label="Client type" className="sm:w-40" value={params.type} onChange={(e) => url.set({ type: e.target.value, page: 1 })}>
             <option value="">All types</option>
             {CLIENT_TYPES.map((t) => (
@@ -151,12 +151,12 @@ function ClientsList() {
             <EmptyState
               icon={Users}
               title={params.q ? `No clients match “${params.q}”` : 'No clients yet'}
-              description={params.q ? 'Try a phone number, surname or client number.' : 'Register your first client to get started.'}
+              description={params.q ? 'Check the spelling, or try the phone number or client number.' : 'Register your first client to get started.'}
               action={
                 can('clients.write') && (
                   <Button size="sm" asChild>
                     <Link href="/clients/new">
-                      <UserPlus /> New client
+                      <UserPlus /> Add client
                     </Link>
                   </Button>
                 )

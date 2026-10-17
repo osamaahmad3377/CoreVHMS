@@ -2,7 +2,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery } from '@tanstack/react-query';
 import { IDENTIFIER_TYPES, PATIENT_SEXES, createPatientSchema, enumLabel, updatePatientSchema } from '@vcms/shared';
-import { AlertTriangle, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import { useFieldArray, useForm, useWatch } from 'react-hook-form';
@@ -15,12 +15,16 @@ import { Checkbox } from '../ui/checkbox';
 import { Input, NativeSelect, Textarea } from '../ui/input';
 import { Label } from '../ui/label';
 import { useDebounce } from '@/hooks/use-debounce';
+import { useDiscardConfirm } from '@/hooks/use-discard-confirm';
 import { ApiError, api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import type { Breed, PatientDetail, Species } from '@/lib/types';
 import { localToday, localISODate } from '@/lib/time';
 
 type Values = z.input<typeof createPatientSchema>;
+
+/** Fields under "More details (optional)"; the section opens by itself when one of them has an error. */
+const MORE_FIELDS = ['breedText', 'colour', 'markings', 'bloodType', 'insuranceProvider', 'insurancePolicyNumber', 'notes', 'primaryBranchId', 'identifiers'] as const;
 
 function dateInput(d?: string | null) {
   return d ? d.slice(0, 10) : '';
@@ -34,7 +38,7 @@ export function PatientForm({
 }: {
   patient?: PatientDetail;
   initialOwner?: PickedClient | null;
-  onSaved: (p: { id: string }) => void;
+  onSaved: (p: { id: string; name?: string; patientNo?: string }) => void;
   onCancel?: () => void;
 }) {
   const editing = !!patient;
@@ -74,6 +78,15 @@ export function PatientForm({
   const speciesId = useWatch({ control, name: 'speciesId' });
   const name = useWatch({ control, name: 'name' });
   const identifierValues = useWatch({ control, name: 'identifiers' });
+  const discard = useDiscardConfirm();
+  const [moreOpen, setMoreOpen] = useState(
+    () => !!patient && !!(patient.breedText || patient.colour || patient.markings || patient.bloodType || patient.insuranceProvider || patient.insurancePolicyNumber || patient.notes),
+  );
+  const showMore = moreOpen || MORE_FIELDS.some((k) => !!e[k]);
+  const cancel = async () => {
+    const typed = formState.isDirty || (!editing && owner?.id !== initialOwner?.id) || !!ageYears || !!ageMonths;
+    if (onCancel && (await discard(typed))) onCancel();
+  };
 
   const breeds = useQuery({
     queryKey: ['breeds', speciesId],
@@ -102,7 +115,7 @@ export function PatientForm({
     const body: any = { ...values };
     if (!editing) {
       if (!owner) {
-        form.setError('ownerId', { message: 'Select the owner' });
+        form.setError('ownerId', { message: 'Choose the client who owns this patient' });
         return;
       }
       body.ownerId = owner.id;
@@ -129,7 +142,7 @@ export function PatientForm({
     for (const k of ['breedId', 'primaryBranchId']) if (!body[k]) body[k] = null;
     if (!body.dateOfBirth) body.dateOfBirth = null;
     try {
-      const saved = editing ? await api.patch<{ id: string }>(`/patients/${patient!.id}`, body) : await api.post<{ id: string }>('/patients', body);
+      const saved = editing ? await api.patch<{ id: string; name: string }>(`/patients/${patient!.id}`, body) : await api.post<{ id: string; name: string; patientNo: string }>('/patients', body);
       onSaved(saved);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -161,21 +174,21 @@ export function PatientForm({
       )}
 
       {!editing && (
-        <FormSection title="Owner" description="Legal owner responsible for the animal. Co-owners can be added afterwards.">
-          <Field label="Owner" htmlFor="owner" error={e.ownerId} required>
+        <FormSection title="Client" description="The owner (client) who is responsible for the patient and pays. Co-owners can be added afterwards.">
+          <Field label="Client" htmlFor="owner" error={e.ownerId} required>
             <ClientPicker id="owner" value={owner} onChange={(c) => { setOwner(c); if (c) form.clearErrors('ownerId'); }} invalid={!!e.ownerId} />
           </Field>
           <p className="-mt-2 text-xs text-muted-foreground">
-            Owner not registered yet?{' '}
+            Client not registered yet?{' '}
             <Link href="/clients/new" className="text-primary hover:underline">
-              Create the client first
+              Add the client first
             </Link>
             .
           </p>
         </FormSection>
       )}
 
-      <FormSection title="Animal" description="Identity and signalment.">
+      <FormSection title="Basic details" description="Name, species, breed, sex, age and weight.">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Name" htmlFor="name" error={e.name} required>
             <Input id="name" {...register('name')} />
@@ -207,9 +220,6 @@ export function PatientForm({
               ))}
             </NativeSelect>
           </Field>
-          <Field label="Breed (other / cross details)" htmlFor="breedText" error={e.breedText}>
-            <Input id="breedText" placeholder="e.g. Labrador × Pointer" {...register('breedText')} />
-          </Field>
           <Field label="Sex" htmlFor="sex" error={e.sex}>
             <NativeSelect id="sex" {...register('sex')}>
               {PATIENT_SEXES.map((s) => (
@@ -235,18 +245,43 @@ export function PatientForm({
               </div>
             )}
           </div>
+          {/* Weight belongs with the basic details; later weights are recorded from the patient's Weight tab. */}
+          {!editing && (
+            <Field label="Current weight (kg)" htmlFor="weight" error={e.initialWeightKg}>
+              <Input id="weight" type="number" step="0.001" min="0" inputMode="decimal" {...register('initialWeightKg')} />
+            </Field>
+          )}
+        </div>
+        {editing && (
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox checked={ageMode === 'age'} onCheckedChange={(v) => setAgeMode(v === true ? 'age' : 'dob')} />
+            Date of birth is an estimate
+          </label>
+        )}
+      </FormSection>
+
+      <button
+        type="button"
+        onClick={() => setMoreOpen((o) => !o)}
+        aria-expanded={showMore}
+        aria-controls="patient-more"
+        className="flex w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+      >
+        <ChevronDown className={`h-4 w-4 transition-transform ${showMore ? 'rotate-180' : ''}`} /> More details (optional)
+      </button>
+
+      <div id="patient-more" className={showMore ? 'grid gap-6' : 'hidden'}>
+      <FormSection title="Appearance" description="Breed details, colour, markings and blood type.">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Breed (other / cross details)" htmlFor="breedText" error={e.breedText}>
+            <Input id="breedText" placeholder="e.g. Labrador × Pointer" {...register('breedText')} />
+          </Field>
           <Field label="Colour" htmlFor="colour" error={e.colour}>
             <Input id="colour" {...register('colour')} />
           </Field>
           <Field label="Blood type" htmlFor="bloodType" error={e.bloodType}>
             <Input id="bloodType" placeholder="e.g. DEA 1.1+ / A" {...register('bloodType')} />
           </Field>
-          {/* Weight belongs with the signalment; later weights are recorded from the patient's Weight tab. */}
-          {!editing && (
-            <Field label="Current weight (kg)" htmlFor="weight" error={e.initialWeightKg}>
-              <Input id="weight" type="number" step="0.001" min="0" inputMode="decimal" {...register('initialWeightKg')} />
-            </Field>
-          )}
         </div>
         <Field label="Markings / distinguishing features" htmlFor="markings" error={e.markings}>
           <Input id="markings" {...register('markings')} />
@@ -254,7 +289,7 @@ export function PatientForm({
       </FormSection>
 
       {!editing && (
-        <FormSection title="Identification" description="Microchip, ear tag, RFID or tattoo. Each identifier can belong to only one animal.">
+        <FormSection title="Identification" description="Microchip, ear tag, RFID or tattoo. Each identifier can belong to only one patient.">
           {ids.fields.map((f, i) => (
             <div key={f.id} className="grid grid-cols-[150px_1fr_auto] items-start gap-2">
               <NativeSelect aria-label="Identifier type" {...register(`identifiers.${i}.type` as const)}>
@@ -301,22 +336,17 @@ export function PatientForm({
         <Field label="Notes" htmlFor="notes" hint="Non-clinical notes (diet, temperament, preferences). Clinical findings belong in consultations.">
           <Textarea id="notes" rows={3} {...register('notes')} />
         </Field>
-        {editing && (
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox checked={ageMode === 'age'} onCheckedChange={(v) => setAgeMode(v === true ? 'age' : 'dob')} />
-            Date of birth is an estimate
-          </label>
-        )}
       </FormSection>
+      </div>
 
       <div className="sticky bottom-0 -mx-4 flex justify-end gap-2 border-t bg-card/95 px-4 py-3 backdrop-blur">
         {onCancel && (
-          <Button type="button" variant="outline" onClick={onCancel}>
+          <Button type="button" variant="outline" onClick={() => void cancel()}>
             Cancel
           </Button>
         )}
         <Button type="submit" loading={formState.isSubmitting}>
-          {editing ? 'Save changes' : 'Add patient'}
+          {editing ? 'Save' : 'Add patient'}
         </Button>
       </div>
     </form>

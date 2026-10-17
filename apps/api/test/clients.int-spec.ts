@@ -20,7 +20,7 @@ describe('Clients', () => {
       address: { line1: '12 Mall Road', city: 'Lahore', country: 'PK' },
     });
     expect(c.clientNo).toMatch(/^C-\d{6}$/);
-    expect(c.displayName).toBe('Hussain, Bilal');
+    expect(c.displayName).toBe('Bilal Hussain');
     const detail = (await org.owner.get(`/clients/${c.id}`)).body;
     expect(detail.addresses[0]).toMatchObject({ line1: '12 Mall Road', isPrimary: true });
     const audit = (await org.owner.get(`/audit-events?entityId=${c.id}`)).body.data;
@@ -57,6 +57,38 @@ describe('Clients', () => {
     }
   });
 
+  it('accepts a single name and shows names first-name-first', async () => {
+    const org = await registerOrg();
+    const one = await org.owner.post('/clients', { type: 'INDIVIDUAL', firstName: 'Bilal', mobilePhone: '0300 5550001' });
+    expect(one.status).toBe(201);
+    expect(one.body.displayName).toBe('Bilal');
+    const none = await org.owner.post('/clients', { type: 'INDIVIDUAL', mobilePhone: '0300 5550002' });
+    expect(none.status).toBe(400);
+    const renamed = await org.owner.patch(`/clients/${one.body.id}`, { lastName: 'Hussain' });
+    expect(renamed.body.displayName).toBe('Bilal Hussain');
+    const byFullName = (await org.owner.get(`/clients?q=${encodeURIComponent('Bilal Hussain')}`)).body;
+    expect(byFullName.data.map((x: any) => x.id)).toContain(one.body.id);
+  });
+
+  it('finds clients and patients by phone typed with spaces, dashes or a +92 / 0 prefix', async () => {
+    const org = await registerOrg();
+    const c = await makeClient(org.owner, { firstName: 'Usman', lastName: 'Phonetest', mobilePhone: '0300 7712345' });
+    const other = await makeClient(org.owner, { firstName: 'Other', lastName: 'Person', mobilePhone: '0321 4400999' });
+    const pet = await makePatient(org.owner, c.id, { name: 'Moti' });
+    for (const q of ['0300 77', '0300-771', '+92 300 77', '+923007712345', '03007712345', '7712345', '300 7712']) {
+      const clients = (await org.owner.get(`/clients?q=${encodeURIComponent(q)}`)).body.data.map((x: any) => x.id);
+      expect({ q, found: clients.includes(c.id) }).toEqual({ q, found: true });
+      expect(clients).not.toContain(other.id);
+      const patients = (await org.owner.get(`/patients?q=${encodeURIComponent(q)}`)).body.data.map((x: any) => x.id);
+      expect({ q, found: patients.includes(pet.id) }).toEqual({ q, found: true });
+      const hits = (await org.owner.get(`/search?q=${encodeURIComponent(q)}`)).body.results;
+      expect(hits.some((h: any) => h.type === 'client' && h.id === c.id)).toBe(true);
+    }
+    // Global search tells the front desk what the client owes (0 here) without opening the record.
+    const hit = (await org.owner.get('/search?q=0300%2077')).body.results.find((h: any) => h.id === c.id);
+    expect(hit.balanceMinor).toBe(0);
+  });
+
   it('merges duplicates, moving patients and contacts, and prevents double merges', async () => {
     const org = await registerOrg();
     const keep = await makeClient(org.owner, { lastName: 'Keep' });
@@ -88,10 +120,11 @@ describe('Clients', () => {
 
   it('exports CSV with formula-injection protection and logs the export', async () => {
     const org = await registerOrg();
-    await makeClient(org.owner, { lastName: '=HYPERLINK("http://evil")', firstName: 'Mallory' });
+    // Names are shown first-name-first, so the formula goes in the first name to start the cell.
+    await makeClient(org.owner, { firstName: '=HYPERLINK("http://evil")', lastName: 'Mallory' });
     const res = await org.owner.get('/clients/export.csv');
     expect(res.status).toBe(200);
-    expect(res.text).toContain(`"'=HYPERLINK(""http://evil""), Mallory"`);
+    expect(res.text).toContain(`"'=HYPERLINK(""http://evil"") Mallory"`);
     const audit = (await org.owner.get('/audit-events?action=client.exported')).body.data;
     expect(audit).toHaveLength(1);
   });

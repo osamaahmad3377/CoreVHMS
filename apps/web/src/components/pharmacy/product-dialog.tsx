@@ -70,6 +70,7 @@ export function ProductDialog({ product, open, onOpenChange, onSaved, defaultTyp
     dispensingUnit: product?.dispensingUnit ?? 'tablet',
     minDispenseIncrement: String(product?.minDispenseIncrement ?? 1),
     activeIngredients: product?.activeIngredients.join(', ') ?? '',
+    drugClass: product?.drugClass ?? '',
     manufacturer: product?.manufacturer ?? '',
     requiresPrescription: product?.requiresPrescription ?? true,
     isControlled: product?.isControlled ?? false,
@@ -79,8 +80,12 @@ export function ProductDialog({ product, open, onOpenChange, onSaved, defaultTyp
     notes: product?.notes ?? '',
     isActive: product?.isActive ?? true,
   });
+  /** "Order more when below": saved to the stock settings after the product is created. */
+  const [reorderLevel, setReorderLevel] = useState('');
   const [error, setError] = useState<string | null>(null);
   const clinical = CLINICAL.has(f.type);
+  const askReorder = !product && can('inventory.write');
+  const reorderValid = reorderLevel.trim() === '' || (Number.isFinite(Number(reorderLevel)) && Number(reorderLevel) >= 0);
   const shop = SHOP.has(f.type);
   const categories = useQuery({ queryKey: ['product-categories'], queryFn: () => api.get<ProductCategory[]>('/product-categories'), enabled: open });
   const forType = (categories.data ?? []).filter((c) => !c.productType || c.productType === f.type);
@@ -112,15 +117,27 @@ export function ProductDialog({ product, open, onOpenChange, onSaved, defaultTyp
         strengthUnit: clinical && strengthValue !== '' ? strengthUnit : null,
         minDispenseIncrement: Number(f.minDispenseIncrement),
         activeIngredients: clinical || f.type === 'SUPPLEMENT' ? activeIngredients.split(',').map((s) => s.trim()).filter(Boolean) : [],
+        drugClass: clinical ? f.drugClass.trim() || null : null,
         sellPriceMinor: price === '' ? null : toMinor(price, currency),
         form: clinical ? f.form || null : null,
         requiresPrescription: clinical && f.requiresPrescription,
         isControlled: clinical && f.isControlled,
       };
-      return product ? api.patch<Product>(`/products/${product.id}`, body) : api.post<Product>('/products', body);
+      if (product) return api.patch<Product>(`/products/${product.id}`, body);
+      return api.post<Product>('/products', body).then(async (created) => {
+        if (askReorder && reorderLevel.trim() !== '') {
+          try {
+            await api.patch(`/stock/products/${created.id}/settings`, { reorderLevel: Number(reorderLevel) });
+          } catch {
+            toast.error('Product saved, but the reorder level was not. Set it on the product page.');
+          }
+        }
+        return created;
+      });
     },
     onSuccess: (p) => {
-      toast.success('Product saved');
+      toast.success(product ? 'Product saved' : `${p.name} added`);
+      qc.invalidateQueries({ queryKey: ['stock'] });
       qc.invalidateQueries({ queryKey: ['products'] });
       qc.invalidateQueries({ queryKey: ['product', p.id] });
       qc.invalidateQueries({ queryKey: ['product-categories'] });
@@ -212,10 +229,20 @@ export function ProductDialog({ product, open, onOpenChange, onSaved, defaultTyp
                   <Input id="p-ai" value={f.activeIngredients} onChange={set('activeIngredients')} />
                 </Field>
               )}
+              {clinical && (
+                <Field label="Drug class / family" htmlFor="p-dc" hint="e.g. Penicillins, Cephalosporins, NSAIDs — used for allergy checks">
+                  <Input id="p-dc" value={f.drugClass} onChange={set('drugClass')} />
+                </Field>
+              )}
               {clinical && <Field label="Manufacturer" htmlFor="p-m"><Input id="p-m" value={f.manufacturer} onChange={set('manufacturer')} /></Field>}
               <Field label={`Price per ${f.dispensingUnit} (${currency})`} htmlFor="p-pr" hint={shop && !f.price ? 'Needed to sell it at the shop counter' : undefined}>
                 <Input id="p-pr" inputMode="decimal" value={f.price} onChange={set('price')} />
               </Field>
+              {askReorder && (
+                <Field label={`Order more when below (${f.dispensingUnit})`} htmlFor="p-reorder" hint="Leave blank if you don't want a low-stock warning" error={reorderValid ? undefined : 'Enter a number'}>
+                  <Input id="p-reorder" inputMode="decimal" value={reorderLevel} onChange={(e) => setReorderLevel(e.target.value)} />
+                </Field>
+              )}
             </div>
             <fieldset>
               <legend className="mb-1 text-sm font-medium">{clinical ? 'Labelled for species groups (leave empty for any)' : 'Suitable for (leave empty for any)'}</legend>
@@ -245,7 +272,7 @@ export function ProductDialog({ product, open, onOpenChange, onSaved, defaultTyp
           {step === 'details' && !product && !defaultType && <Button variant="outline" className="mr-auto" onClick={() => setStep('type')}><ArrowLeft /> Change type</Button>}
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           {step === 'details' && (
-            <Button disabled={!f.name.trim() || !(Number(f.minDispenseIncrement) > 0)} loading={save.isPending} onClick={() => { setError(null); save.mutate(); }}>Save product</Button>
+            <Button disabled={!f.name.trim() || !(Number(f.minDispenseIncrement) > 0) || !reorderValid} loading={save.isPending} onClick={() => { setError(null); save.mutate(); }}>Save product</Button>
           )}
         </DialogFooter>
       </DialogContent>

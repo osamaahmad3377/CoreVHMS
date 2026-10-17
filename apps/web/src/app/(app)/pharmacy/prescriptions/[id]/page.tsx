@@ -1,5 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { allergyMatches } from '@vcms/shared';
 import { CheckCircle2, Copy, PackageCheck, Printer, ShieldAlert, ShieldCheck, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -11,7 +12,7 @@ import { DescriptionList, ErrorState, LoadingRows } from '@/components/page';
 import { DispenseDialog } from '@/components/pharmacy/dispense-dialog';
 import { PrescriptionLabels } from '@/components/pharmacy/prescription-label';
 import { productStrength } from '@/components/pharmacy/product-picker';
-import { RxStatusBadge } from '@/components/pharmacy/rx-status';
+import { AllergyConflictChip, RxStatusBadge } from '@/components/pharmacy/rx-status';
 import { RequirePermission } from '@/components/require';
 import { AlertChip } from '@/components/status';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api } from '@/lib/api';
 import { fmtDate, fmtDateTime, fmtWeight } from '@/lib/format';
+import { frequencyLabel, routeLabel } from '@/lib/labels';
 import { useSession } from '@/lib/session';
 import type { Prescription } from '@/lib/types';
 
@@ -58,7 +60,7 @@ function Detail() {
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <h1 className="text-xl font-semibold">{rx.prescriptionNo}</h1>
           <RxStatusBadge status={rx.status} />
-          {verify.data?.valid === true && <span className="flex items-center gap-1 text-xs text-success"><ShieldCheck className="h-3.5 w-3.5" /> Authorisation verified</span>}
+          {verify.data?.valid === true && <span className="flex items-center gap-1 text-xs text-success" title="The prescription has not changed since it was approved"><ShieldCheck className="h-3.5 w-3.5" /> Approved by {rx.authorizedByName ?? 'the vet'}</span>}
           {verify.data?.valid === false && <span className="flex items-center gap-1 text-xs font-medium text-destructive"><ShieldAlert className="h-3.5 w-3.5" /> Content does not match authorisation</span>}
           <div className="ml-auto flex flex-wrap gap-2">
             {rx.status === 'DRAFT' && can('prescriptions.authorize') && (
@@ -67,7 +69,7 @@ function Detail() {
               </Button>
             )}
             {dispensable && can('pharmacy.dispense') && <Button size="sm" onClick={() => setDispense(true)}><PackageCheck /> Dispense</Button>}
-            {rx.status !== 'DRAFT' && rx.status !== 'CANCELLED' && <Button size="sm" variant="outline" onClick={() => window.print()}><Printer /> Print labels</Button>}
+            {rx.status !== 'DRAFT' && rx.status !== 'CANCELLED' && <Button size="sm" variant="outline" onClick={() => window.print()}><Printer /> {rx.items.length === 1 ? 'Print label' : 'Print labels'}</Button>}
             {can('prescriptions.write') && rx.status !== 'DRAFT' && <Button size="sm" variant="outline" loading={act.isPending && act.variables?.path === 'repeat'} onClick={() => act.mutate({ path: 'repeat' })}><Copy /> Repeat</Button>}
             {['DRAFT', 'AUTHORIZED', 'PARTIALLY_DISPENSED'].includes(rx.status) && (can('prescriptions.write') || can('prescriptions.authorize')) && (
               <Button size="sm" variant="ghost" className="text-destructive" onClick={async () => { const r = await confirm({ title: `Cancel ${rx.prescriptionNo}?`, requireReason: true, destructive: true, confirmLabel: 'Cancel prescription' }); if (r.confirmed) act.mutate({ path: 'cancel', body: { reason: r.reason } }); }}>
@@ -86,6 +88,7 @@ function Detail() {
                     {i.product.name}
                     <span className="text-xs font-normal text-muted-foreground">{productStrength(i.product)}</span>
                     {i.product.isControlled && <Badge variant="warning">Controlled</Badge>}
+                    {rx.status !== 'CANCELLED' && allergyMatches(rx.patient.alerts, i.product).length > 0 && <AllergyConflictChip />}
                   </CardTitle>
                   <span className="text-xs text-muted-foreground">{i.quantityDispensed} / {i.quantity * (1 + i.repeats)} {i.product.dispensingUnit} dispensed</span>
                 </CardHeader>
@@ -94,8 +97,8 @@ function Detail() {
                   <DescriptionList
                     items={[
                       { label: 'Dose', value: `${i.doseValue} ${i.doseUnit}${i.weightKgUsed ? ` × ${i.weightKgUsed} kg` : ''}` },
-                      { label: 'Per administration', value: `${i.amountPerDose} ${i.product.dispensingUnit} ${i.route}` },
-                      { label: 'Frequency', value: `${i.frequencyText}${i.durationDays ? ` for ${i.durationDays} days` : ''}` },
+                      { label: 'Per administration', value: `${i.amountPerDose} ${i.product.dispensingUnit} · ${routeLabel(i.route)}` },
+                      { label: 'How often', value: `${frequencyLabel(i.frequencyText)}${i.durationDays ? ` for ${i.durationDays} days` : ''}` },
                       { label: 'Quantity', value: `${i.quantity} ${i.product.dispensingUnit}${i.repeats ? ` + ${i.repeats} repeat(s)` : ''}` },
                       { label: 'Dose reference', value: i.doseReference ? `${i.doseReference.doseMin}–${i.doseReference.doseMax} ${i.doseReference.doseUnit} (${i.doseReference.source})` : 'None approved for this species' },
                     ]}

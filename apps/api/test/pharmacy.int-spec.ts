@@ -60,7 +60,7 @@ describe('Prescriptions & pharmacy', () => {
     expect(rx.status).toBe(201);
     expect(rx.body).toMatchObject({ status: 'AUTHORIZED', weightKg: 12.4 });
     expect(rx.body.prescriptionNo).toMatch(/^RX-\d{6}$/);
-    expect(rx.body.items[0]).toMatchObject({ amountPerDose: 1.25, quantity: 17.5, frequencyText: 'Twice daily (BID)' });
+    expect(rx.body.items[0]).toMatchObject({ amountPerDose: 1.25, quantity: 17.5, frequencyText: '2 times a day (BID)' });
     expect((await vet.client.get(`/prescriptions/${rx.body.id}/verify`)).body).toEqual({ authorized: true, valid: true });
   });
 
@@ -76,6 +76,58 @@ describe('Prescriptions & pharmacy', () => {
     expect(ok.body.items[0].overrideReason).toBe('Mild GI upset only; owner consents');
     const audit = (await org.owner.get(`/audit-events?entityId=${ok.body.id}`)).body.data[0];
     expect(JSON.stringify(audit.changes)).toContain('owner consents');
+  });
+
+  it('matches an allergy to a drug family entered on the product, and checks again when a draft is authorised', async () => {
+    const { org, vet, patient } = await setup();
+    // Test data: the family is whatever the clinic types on the product; nothing is built in.
+    const amox = await org.owner.post('/products', {
+      name: 'Testcillin 250 mg tablets', type: 'MEDICINE', form: 'TABLET', strengthValue: 250, strengthUnit: 'mg', dispensingUnit: 'tablet',
+      minDispenseIncrement: 0.5, activeIngredients: ['testcillin'], drugClass: 'Testicillins',
+    });
+    expect(amox.status).toBe(201);
+    expect(amox.body.drugClass).toBe('Testicillins');
+    expect((await org.owner.get(`/products/${amox.body.id}`)).body.drugClass).toBe('Testicillins');
+    expect((await org.owner.patch(`/products/${amox.body.id}`, { drugClass: 'Testicillins, Beta-tests' })).body.drugClass).toBe('Testicillins, Beta-tests');
+
+    // A draft written before the allergy was known…
+    const draft = await vet.client.post('/prescriptions', { patientId: patient.id, items: [item(amox.body.id, { doseValue: 20 })] });
+    expect(draft.status).toBe(201);
+    await org.owner.post(`/patients/${patient.id}/alerts`, { type: 'ALLERGY', severity: 'CRITICAL', title: 'Drug allergy', substance: 'TESTICILLIN', reaction: 'Face swelling' });
+
+    const ev = await vet.client.post('/prescriptions/evaluate', { patientId: patient.id, item: item(amox.body.id, { doseValue: 20 }) });
+    const warning = ev.body.warnings.find((w: any) => w.code === 'ALLERGY');
+    expect(warning.message).toContain('drug family Testicillins');
+    expect(ev.body.requiresOverride).toBe(true);
+
+    // …cannot be authorised without a reason now.
+    const auth = await vet.client.post(`/prescriptions/${draft.body.id}/authorize`);
+    expect(auth.status).toBe(422);
+    expect(auth.body.error.code).toBe('SAFETY_OVERRIDE_REQUIRED');
+
+    const blocked = await vet.client.post('/prescriptions', { patientId: patient.id, authorize: true, items: [item(amox.body.id, { doseValue: 20 })] });
+    expect(blocked.status).toBe(422);
+    expect(blocked.body.error.code).toBe('SAFETY_OVERRIDE_REQUIRED');
+    expect(blocked.body.error.details.warnings[0].code).toBe('ALLERGY');
+
+    const ok = await vet.client.post('/prescriptions', { patientId: patient.id, authorize: true, items: [item(amox.body.id, { doseValue: 20, overrideReason: 'Skin test negative; owner informed' })] });
+    expect(ok.status).toBe(201);
+    expect(ok.body.status).toBe('AUTHORIZED');
+    expect(ok.body.items[0].overrideReason).toBe('Skin test negative; owner informed');
+    expect(ok.body.patient.alerts[0]).toMatchObject({ substance: 'TESTICILLIN', reaction: 'Face swelling' });
+  });
+
+  it('asks to confirm a large number of tablets per dose above the clinic setting (a prompt, not a limit)', async () => {
+    const { org, vet, patient, product } = await setup();
+    // 20 mg/kg × 12.4 kg ÷ 50 mg = 4.96 → 5 tablets; arithmetic fixture only.
+    let ev = await vet.client.post('/prescriptions/evaluate', { patientId: patient.id, item: item(product.id, { doseValue: 20 }) });
+    expect(ev.body.largeDose).toEqual({ amount: 5, unit: 'tablet', confirmAbove: 4 });
+    expect(ev.body.requiresOverride).toBe(false);
+    expect((await vet.client.patch('/pharmacy-settings', { confirmUnitsPerDoseAbove: 6 })).status).toBe(403);
+    expect((await org.owner.patch('/pharmacy-settings', { confirmUnitsPerDoseAbove: 6 })).body).toEqual({ confirmUnitsPerDoseAbove: 6 });
+    expect((await vet.client.get('/pharmacy-settings')).body).toEqual({ confirmUnitsPerDoseAbove: 6 });
+    ev = await vet.client.post('/prescriptions/evaluate', { patientId: patient.id, item: item(product.id, { doseValue: 20 }) });
+    expect(ev.body.largeDose).toBeNull();
   });
 
   it('uses only approved, sourced dose references and blocks out-of-range doses without a reason', async () => {

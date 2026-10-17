@@ -735,7 +735,7 @@ At the end of each milestone, report:
 
 ## 32. Decisions and Current Status
 
-_Last updated: 2026-10-16. The detailed status is kept in `docs/FEATURE_MATRIX.md` and the progress log in `docs/IMPLEMENTATION_PLAN.md`; this section records decisions that change or narrow the brief above._
+_Last updated: 2026-10-17. The detailed status is kept in `docs/FEATURE_MATRIX.md` and the progress log in `docs/IMPLEMENTATION_PLAN.md`; this section records decisions that change or narrow the brief above._
 
 ### Decisions
 - **AI (section 12, Milestone 9):** deferred; not started.
@@ -747,6 +747,20 @@ _Last updated: 2026-10-16. The detailed status is kept in `docs/FEATURE_MATRIX.m
   - Shared Zod schemas and permissions in `packages/shared`.
   - Docker images and Docker Compose for deployment.
 - **Clinical reference data:** no doses, schedules, reference ranges, gestation lengths or withdrawal periods are shipped. Each clinic enters them with a recorded source and approval.
+- **Language and wording:** the interface is English only (no Urdu or other translations), written in plain words for staff who speak English as a second language. One vocabulary is used everywhere:
+  - Client, Patient, Vet.
+  - Appointment (booked) and Consultation (the vet's record).
+  - Invoice statuses: Unpaid, Partly paid, Paid, Cancelled. Work done but not billed is "Not yet invoiced".
+  - Cash drawer, with starting cash and difference.
+  - Store room, Shop counter.
+  - Rs for money.
+  - British spelling.
+  - Buttons say "Add …" and "Save".
+  - Abbreviations follow the plain words, e.g. "By mouth (PO)".
+- **Optional services:** a clinic chooses what it offers (hospital, surgery, lab, farms, boarding, insurance) in Settings → Services you offer. Turning one off hides its menus, dashboard panels and settings; no data is deleted.
+- **New clinics:** an 11-step "Get your clinic ready" checklist, with Start and Skip for each step. New clinics get a starter price list (Consultation, Follow-up, Vaccination, Deworming at Rs 0, marked "Set your price") with linked appointment types, and a cash drawer per branch.
+- **Purchase-order approval:** a setting. Existing clinics keep the two-person rule; new clinics start with self-approval allowed.
+- **Allergy checks:** matched against the medicine name, ingredients and a clinic-entered drug family (e.g. "Penicillins"). The drug-family data is entered per product; none is hard-coded.
 
 ### Status
 - **Milestones 1–8:** complete.
@@ -763,6 +777,17 @@ _Last updated: 2026-10-16. The detailed status is kept in `docs/FEATURE_MATRIX.m
   - Receipt printing on 80/58 mm thermal paper with the clinic logo, configured in Settings → Receipts & printing.
   - Shop products: food, grooming, accessories and supplements, with clinic-managed categories, brand, pack size and photos at the shop counter, and a sales-by-category report.
   - QA pass across every role and phone width: broken layouts, midnight date errors, mismatched labels and dead-end links fixed; readable statements, CSV exports, stock history, reorder suggestions, dispensing batch picker, lab barcodes and many smaller polish items.
+  - Ease of use for first-day staff, based on usability walkthroughs as an untrained receptionist, vet, pharmacist, lab tech and owner:
+    - Dashboard by role: reception sees Waiting now and Arriving next with Check in; the owner sees Money today.
+    - Short menu names, and a grouped Settings home page.
+    - A new client and patient can be added from inside the walk-in and booking windows. Phone search ignores spaces and dashes. Names show first-name-first, and the surname is optional.
+    - Booking: "Any vet (first free)", quick date buttons, one-tap cancel reasons.
+    - Split card and cash payments on invoices. "Not yet invoiced" is grouped by client.
+    - Shop counter: an "Other item" option, and out-of-stock items are explained.
+    - Shop items are received without a batch or supplier. "Order these" from low stock, and "Add opening stock" after creating a product.
+    - One price per service.
+    - Clinical: "Finish consultation" signs the notes in the same step, field-level validation messages, large-dose confirmation, and plain-language owner labels.
+    - Sign-in and other password forms always post their data.
 - **Not yet built because they need outside parts:**
   - Laboratory analyser, DICOM/PACS and anaesthesia monitor connectors.
   - Drug-interaction checking (no validated data source).

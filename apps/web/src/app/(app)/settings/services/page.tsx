@@ -11,6 +11,7 @@ import { FormError } from '@/components/forms/form-error';
 import { EmptyState } from '@/components/page';
 import { RequirePermission } from '@/components/require';
 import { StatusBadge } from '@/components/status';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -33,14 +34,14 @@ function ServiceDialog({ service, open, onOpenChange }: { service: Service | nul
   const price = parseMoney(f.price, currency);
   const m = useMutation({
     mutationFn: () => { const body = { code: f.code, name: f.name, category: f.category, priceMinor: price, taxRateId: f.taxRateId || null, isActive: f.isActive }; return service ? api.patch(`/services/${service.id}`, body) : api.post('/services', body); },
-    onSuccess: () => { toast.success('Service saved'); qc.invalidateQueries({ queryKey: ['services'] }); onOpenChange(false); },
+    onSuccess: () => { toast.success('Service saved'); qc.invalidateQueries({ queryKey: ['services'] }); qc.invalidateQueries({ queryKey: ['appointment-types'] }); onOpenChange(false); },
     onError: (e: Error) => setError(e.message),
   });
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{service ? `Edit ${service.name}` : 'New service'}</DialogTitle>
+          <DialogTitle>{service ? `Edit ${service.name}` : 'Add service'}</DialogTitle>
           <DialogDescription>Price changes apply to new charges only. Charges already captured and issued invoices keep their price.</DialogDescription>
         </DialogHeader>
         {error && <FormError message={error} />}
@@ -77,8 +78,8 @@ export default function ServicesPage() {
     <RequirePermission anyOf={['settings.manage']}>
       <Card>
         <CardHeader>
-          <CardTitle>Services & fees</CardTitle>
-          <Button size="sm" onClick={() => setDlg({ open: true, service: null })}><Plus /> New service</Button>
+          <CardTitle>Services & prices</CardTitle>
+          <Button size="sm" onClick={() => setDlg({ open: true, service: null })}><Plus /> Add service</Button>
         </CardHeader>
         <DataTable
           query={q}
@@ -86,9 +87,9 @@ export default function ServicesPage() {
           empty={<EmptyState icon={Tags} title="No services" description="Add consultation, procedure and other fees. Link services to appointment types to bill consultations automatically." />}
           columns={[
             { key: 'code', header: 'Code', cell: (s) => <span className="font-mono text-xs">{s.code}</span> },
-            { key: 'name', header: 'Service', cell: (s) => <span className="font-medium">{s.name}</span> },
+            { key: 'name', header: 'Service', cell: (s) => <div><span className="font-medium">{s.name}</span>{!!s.appointmentTypes?.length && <p className="text-xs text-muted-foreground">Used by: {s.appointmentTypes.map((t) => t.name).join(', ')}</p>}</div> },
             { key: 'cat', header: 'Category', cell: (s) => <span className="text-sm">{enumLabel(s.category)}</span> },
-            { key: 'price', header: 'Price', className: 'text-right tabular', headerClassName: 'text-right', cell: (s) => fmtMoney(s.priceMinor, currency) },
+            { key: 'price', header: 'Price', className: 'text-right tabular', headerClassName: 'text-right', cell: (s) => (s.priceMinor === 0 ? <span className="inline-flex items-center justify-end gap-2">{fmtMoney(0, currency)} <Badge variant="warning">Set your price</Badge></span> : fmtMoney(s.priceMinor, currency)) },
             { key: 'tax', header: 'Tax', cell: (s) => <span className="text-xs">{rates.data?.find((r) => r.id === s.taxRateId)?.name ?? 'Default'}</span> },
             { key: 'st', header: 'Status', cell: (s) => <StatusBadge status={s.isActive ? 'ACTIVE' : 'ARCHIVED'} /> },
             { key: 'act', header: '', className: 'text-right', cell: (s) => <Button size="icon-sm" variant="ghost" aria-label={`Edit ${s.name}`} onClick={() => setDlg({ open: true, service: s })}><Edit /></Button> },
