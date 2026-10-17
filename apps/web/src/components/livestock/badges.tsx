@@ -1,7 +1,7 @@
 import { enumLabel } from '@vcms/shared';
 import { Badge, type BadgeProps } from '../ui/badge';
-import { fmtDate, fmtDateTime } from '@/lib/format';
-import type { ReproStatus, WithdrawalBoardRow } from '@/lib/types';
+import { fmtDate, fmtDateOnly, fmtDateTime } from '@/lib/format';
+import type { MovementRow, ReproStatus, WithdrawalBoardRow } from '@/lib/types';
 
 const REPRO: Record<ReproStatus['state'], { label: string; variant: BadgeProps['variant'] }> = {
   OPEN: { label: 'Open', variant: 'secondary' },
@@ -55,3 +55,18 @@ export const BREEDING_LABELS: Record<string, string> = {
   ABORTION: 'Abortion',
   DRY_OFF: 'Dried off',
 };
+
+/** "Milking buffaloes → Dry cows", or "Placed in Milking buffaloes" when there is no origin. */
+export function movementRoute(m: MovementRow) {
+  const from = m.fromGroup?.name ?? m.fromFarm?.name;
+  const to = m.toGroup?.name ?? m.toFarm?.name ?? m.counterparty;
+  if (from && to) return `${from} → ${to}`;
+  if (to) return `${m.type === 'PURCHASE' ? 'Bought into' : m.type === 'BIRTH' ? 'Born in' : 'Placed in'} ${to}`;
+  if (from) return `From ${from}`;
+  return '—';
+}
+/** Batch placements carry the placement date only (stored as UTC midnight) — show them as dates, not 05:00 the same day. */
+export function movementWhen(m: MovementRow) {
+  const dateOnly = m.occurredAt.endsWith('T00:00:00.000Z') || (m.type === 'PLACEMENT' && !m.patient);
+  return dateOnly ? fmtDateOnly(m.occurredAt) : fmtDateTime(m.occurredAt);
+}

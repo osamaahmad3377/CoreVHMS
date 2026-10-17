@@ -75,8 +75,13 @@ export class ProcurementService {
       },
     });
     if (!p) throw notFound('Purchase order');
+    const location = await this.prisma.db.stockLocation.findUnique({
+      where: { id: p.locationId },
+      select: { id: true, name: true, branch: { select: { name: true, addressLine1: true, addressLine2: true, city: true, phone: true } } },
+    });
     return {
       ...p,
+      location,
       poNo: poNo(p.number),
       lines: p.lines.map((l) => ({ ...l, quantity: Number(l.quantity), quantityReceived: Number(l.quantityReceived), outstanding: Number(l.quantity) - Number(l.quantityReceived) })),
       receipts: p.receipts.map((r) => ({ ...r, receiptNo: formatNumber('GRN', r.number), lines: r.lines.map((l) => ({ ...l, quantity: Number(l.quantity) })) })),
@@ -154,18 +159,29 @@ export class ProcurementService {
     return this.getOrder(id);
   }
 
-  /** Suggested reorder list: products at or below their reorder level with no open order. */
+  /**
+   * Suggested reorder list: products at or below their reorder level counting stock already on order, with the
+   * last cost paid and who supplied it so an order can be drafted without looking them up.
+   */
   async reorderSuggestions() {
     const products = await this.prisma.db.product.findMany({
       where: { isActive: true, trackStock: true, reorderLevel: { not: null } },
-      include: { stockLevels: { include: { batch: true } }, poLines: { where: { purchaseOrder: { status: { in: ['DRAFT', 'SUBMITTED', 'APPROVED', 'PARTIALLY_RECEIVED'] } } } } },
+      include: {
+        stockLevels: { include: { batch: true } },
+        poLines: { where: { purchaseOrder: { status: { in: ['DRAFT', 'SUBMITTED', 'APPROVED', 'PARTIALLY_RECEIVED'] } } } },
+        batches: { where: { unitCostMinor: { gt: 0 } }, orderBy: { receivedAt: 'desc' }, take: 1, select: { unitCostMinor: true, supplier: { select: { id: true, name: true } } } },
+      },
     });
     const today = new Date(new Date().toISOString().slice(0, 10));
     return products
       .map((p) => {
         const available = p.stockLevels.filter((l) => l.batch.status === 'AVAILABLE' && (!l.batch.expiryDate || l.batch.expiryDate >= today)).reduce((n, l) => n + Number(l.quantity), 0);
         const onOrder = p.poLines.reduce((n, l) => n + Number(l.quantity) - Number(l.quantityReceived), 0);
-        return { productId: p.id, name: p.name, dispensingUnit: p.dispensingUnit, available, onOrder, reorderLevel: Number(p.reorderLevel), suggested: Number(p.reorderQuantity ?? p.reorderLevel) };
+        const last = p.batches[0];
+        return {
+          productId: p.id, name: p.name, dispensingUnit: p.dispensingUnit, available, onOrder, reorderLevel: Number(p.reorderLevel), suggested: Number(p.reorderQuantity ?? p.reorderLevel),
+          lastCostMinor: last?.unitCostMinor ?? null, lastSupplier: last?.supplier ?? null,
+        };
       })
       .filter((p) => p.available + p.onOrder <= p.reorderLevel);
   }

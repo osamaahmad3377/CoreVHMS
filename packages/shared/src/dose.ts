@@ -41,6 +41,7 @@ export interface DoseError {
 
 const MASS: Record<string, number> = { mcg: 0.001, µg: 0.001, mg: 1, g: 1000 };
 const r4 = (n: number) => Math.round(n * 10000) / 10000;
+const r2 = (n: number) => Math.round(n * 100) / 100;
 
 function convert(value: number, from: string, to: string): number | null {
   if (from === to) return value;
@@ -89,13 +90,14 @@ export function calculateDose(input: DoseInput): DoseResult | DoseError {
   const units = rawAmount / increment;
   const roundedUnits = mode === 'down' ? Math.floor(units + 1e-9) : mode === 'up' ? Math.ceil(units - 1e-9) : Math.round(units);
   const amount = r4(roundedUnits * increment);
-  steps.push(`Rounded ${mode} to the nearest ${increment} ${dispensingUnit}: ${amount} ${dispensingUnit}`);
+  steps.push(mode === 'nearest' ? `Rounded to the nearest ${increment} ${dispensingUnit}: ${amount} ${dispensingUnit}` : `Rounded ${mode} to a multiple of ${increment} ${dispensingUnit}: ${amount} ${dispensingUnit}`);
   if (amount <= 0) return { ok: false, error: `The calculated amount (${r4(rawAmount)} ${dispensingUnit}) is below the smallest dispensable amount (${increment} ${dispensingUnit})` };
 
   const deliveredDose = deliveredUnit && input.strengthValue ? r4(amount * input.strengthValue) : base.toLowerCase() === dispensingUnit.toLowerCase() ? amount : null;
   const deliveredPerKg = perKg && deliveredDose !== null && input.weightKg ? r4(deliveredDose / input.weightKg) : null;
   const roundingPercent = r4(((amount - rawAmount) / rawAmount) * 100);
-  if (deliveredDose !== null) steps.push(`Delivers ${deliveredDose} ${deliveredUnit ?? dispensingUnit}${deliveredPerKg !== null ? ` (${deliveredPerKg} ${deliveredUnit ?? base}/kg)` : ''}`);
+  // The explanation shows the per-kg figure to 2 decimals; the returned value keeps full precision for range checks.
+  if (deliveredDose !== null) steps.push(`Delivers ${deliveredDose} ${deliveredUnit ?? dispensingUnit}${deliveredPerKg !== null ? ` (${r2(deliveredPerKg)} ${deliveredUnit ?? base}/kg)` : ''}`);
 
   return {
     ok: true,

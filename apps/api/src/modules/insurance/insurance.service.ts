@@ -8,11 +8,13 @@ import { CounterService, formatNumber } from '../../common/counter/counter.servi
 import { conflict, notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { ScopedTx } from '../../common/prisma/tenant-extension';
+import { branchToday } from '../../common/time/branch-timezone';
 import { PaymentsService } from '../billing/payments.service';
 import { ClinicalSummaryService } from './clinical-summary.service';
 
 export const claimNo = (n: number) => formatNumber('CLM', n, 5);
 export const preAuthNo = (n: number) => formatNumber('PA', n, 5);
+/** Normalises a date-only input (yyyy-MM-dd, parsed as UTC midnight). For "today" use `branchToday`. */
 const dateOnly = (d: Date) => new Date(d.toISOString().slice(0, 10));
 const OPEN_CLAIM = ['DRAFT', 'SUBMITTED', 'QUERIED', 'APPROVED', 'PARTIALLY_APPROVED', 'PAID', 'CLOSED'] as const;
 
@@ -22,8 +24,8 @@ const policyInclude = {
   client: { select: { id: true, displayName: true } },
 } satisfies Prisma.InsurancePolicyInclude;
 
-function policyState(p: { status: string; startDate: Date; endDate: Date | null }) {
-  const today = dateOnly(new Date());
+/** `today` is the branch-local calendar date, so a policy does not lapse or start a day early near midnight. */
+function policyState(p: { status: string; startDate: Date; endDate: Date | null }, today: Date) {
   if (p.status !== 'ACTIVE') return p.status;
   if (p.endDate && p.endDate < today) return 'EXPIRED';
   if (p.startDate > today) return 'NOT_STARTED';
@@ -88,7 +90,8 @@ export class InsuranceService {
 
   async policies(q: { patientId?: string; clientId?: string; providerId?: string }) {
     const rows = await this.prisma.db.insurancePolicy.findMany({ where: { patientId: q.patientId, clientId: q.clientId, providerId: q.providerId }, include: policyInclude, orderBy: [{ startDate: 'desc' }], take: 300 });
-    return rows.map((p) => ({ ...p, state: policyState(p) }));
+    const today = await branchToday(this.prisma);
+    return rows.map((p) => ({ ...p, state: policyState(p, today) }));
   }
 
   async createPolicy(input: z.infer<typeof policySchema>) {
@@ -99,11 +102,12 @@ export class InsuranceService {
     const owner = patient.ownerships[0];
     if (!owner) throw ruleViolation('NO_OWNER', 'This animal has no current owner');
     const ctx = RequestContext.require();
+    const today = await branchToday(this.prisma);
     try {
       return await this.prisma.db.$transaction(async (tx) => {
         const p = await tx.insurancePolicy.create({ data: { ...input, startDate: dateOnly(input.startDate), endDate: input.endDate ? dateOnly(input.endDate) : null, organizationId: ctx.organizationId!, clientId: owner.clientId, createdByName: ctx.userName }, include: policyInclude });
         await this.audit.record({ action: 'insurance_policy.created', entityType: 'Patient', entityId: patient.id, summary: `${provider.name} ${p.policyNumber}` }, tx);
-        return { ...p, state: policyState(p) };
+        return { ...p, state: policyState(p, today) };
       });
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw conflict('This policy number is already recorded for this insurer');
@@ -115,10 +119,11 @@ export class InsuranceService {
     const before = await this.prisma.db.insurancePolicy.findUnique({ where: { id } });
     if (!before) throw notFound('Policy');
     if (input.endDate && input.endDate < before.startDate) throw ruleViolation('INVALID_DATES', 'End date must be after the start date');
+    const today = await branchToday(this.prisma);
     return this.prisma.db.$transaction(async (tx) => {
       const after = await tx.insurancePolicy.update({ where: { id }, data: { ...input, endDate: input.endDate ? dateOnly(input.endDate) : input.endDate }, include: policyInclude });
       await this.audit.record({ action: 'insurance_policy.updated', entityType: 'Patient', entityId: before.patientId, summary: before.policyNumber, changes: diff(before, after, Object.keys(input)) }, tx);
-      return { ...after, state: policyState(after) };
+      return { ...after, state: policyState(after, today) };
     });
   }
 
@@ -142,7 +147,7 @@ export class InsuranceService {
 
   async createPreAuth(input: z.infer<typeof preAuthSchema>) {
     const p = await this.policy(input.policyId);
-    if (policyState(p) !== 'ACTIVE') throw ruleViolation('POLICY_NOT_ACTIVE', 'This policy is not currently active');
+    if (policyState(p, await branchToday(this.prisma)) !== 'ACTIVE') throw ruleViolation('POLICY_NOT_ACTIVE', 'This policy is not currently active');
     if (input.estimateId) {
       const est = await this.prisma.db.estimate.findUnique({ where: { id: input.estimateId } });
       if (!est || est.clientId !== p.clientId) throw ruleViolation('INVALID_ESTIMATE', 'The estimate must be for the same client');

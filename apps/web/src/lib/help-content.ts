@@ -10,7 +10,10 @@ export interface HelpGuide {
   anyOf: Permission[];
   steps: string[];
   tips?: string[];
-  links: { label: string; href: string }[];
+  /** Link buttons. Hidden when the user cannot open the page: `anyOf` if given, else the matching nav item's permissions. */
+  links: { label: string; href: string; anyOf?: Permission[] }[];
+  /** Extra search words and synonyms (e.g. "no show", "schedule"). */
+  keywords?: string[];
   /** Only shown when this optional product area is switched on. */
   feature?: 'clientPortal';
 }
@@ -72,7 +75,8 @@ export const GUIDES: HelpGuide[] = [
       'Enter the animal’s name, species, sex and date of birth — if it is unknown, click Enter estimated age instead.',
       'Add any allergies or warnings as alerts — they then show in red on every screen for that animal.',
     ],
-    links: [{ label: 'New client', href: '/clients/new' }, { label: 'Clients', href: '/clients' }],
+    links: [{ label: 'New client', href: '/clients/new', anyOf: ['clients.write'] }, { label: 'Clients', href: '/clients' }],
+    keywords: ['new client', 'owner', 'add patient', 'animal', 'pet', 'register'],
   },
   {
     id: 'book',
@@ -84,9 +88,11 @@ export const GUIDES: HelpGuide[] = [
       'Open Calendar and pick the day. Click an empty slot in the clinician’s column.',
       'Choose the client and animal, the appointment type and the reason, then save.',
       'To move it, open the appointment and choose a new time. To cancel, use Cancel appointment and give a reason.',
+      'If the client never arrived, open the appointment after its start time and click No-show.',
     ],
     tips: ['Times are always shown in the branch’s own time zone.', 'If the slot is outside the clinician’s rostered hours you will be asked to confirm.'],
     links: [{ label: 'Calendar', href: '/calendar' }],
+    keywords: ['schedule', 'reschedule', 'booking', 'slot', 'no show', 'did not arrive', 'cancel'],
   },
   {
     id: 'front-desk',
@@ -101,6 +107,7 @@ export const GUIDES: HelpGuide[] = [
       'Use Triage to record urgency — emergencies move to the top of the list.',
     ],
     links: [{ label: 'Front desk', href: '/front-desk' }],
+    keywords: ['arrival', 'waiting room', 'walk in', 'emergency', 'triage', 'no show', 'queue'],
   },
   {
     id: 'consultation',
@@ -134,6 +141,7 @@ export const GUIDES: HelpGuide[] = [
     ],
     tips: ['Daily hospital fees are added to the client’s unbilled charges automatically, once per started 24 hours, at the ward’s rate.', 'The flowboard refreshes itself every 30 seconds and shows overdue treatments in red.'],
     links: [{ label: 'Hospital', href: '/hospital' }],
+    keywords: ['admission', 'inpatient', 'ward', 'kennel', 'discharge', 'treatment sheet'],
   },
   {
     id: 'surgery',
@@ -167,6 +175,7 @@ export const GUIDES: HelpGuide[] = [
       'Preventive care → Due & overdue lists who needs reminding; Compliance shows how well each protocol is covered.',
     ],
     links: [{ label: 'Preventive care', href: '/preventive' }],
+    keywords: ['vaccine', 'vaccination', 'jab', 'booster', 'deworming', 'parasite', 'reminder'],
   },
   {
     id: 'communications',
@@ -215,6 +224,7 @@ export const GUIDES: HelpGuide[] = [
     ],
     tips: ['The system ships with no dose values. Your vets add approved dose references, with their source, in the Formulary.'],
     links: [{ label: 'Prescriptions & pharmacy', href: '/pharmacy' }],
+    keywords: ['medicine', 'drug', 'script', 'rx', 'medication'],
   },
   {
     id: 'dispense',
@@ -244,6 +254,7 @@ export const GUIDES: HelpGuide[] = [
     ],
     tips: ['Critical values create an urgent task for the vet who ordered the test.', 'Released results are final; corrections are amendments that keep the original value.'],
     links: [{ label: 'Laboratory', href: '/lab' }],
+    keywords: ['blood test', 'results', 'imaging', 'x ray', 'sample'],
   },
   {
     id: 'invoice',
@@ -272,6 +283,7 @@ export const GUIDES: HelpGuide[] = [
       'To refund, open Billing → Payments and click Refund next to the payment. Give a reason.',
     ],
     links: [{ label: 'Payments', href: '/billing/payments' }],
+    keywords: ['refund', 'pay', 'receipt', 'cash', 'card', 'credit', 'deposit'],
   },
   {
     id: 'receipt-printing',
@@ -308,6 +320,7 @@ export const GUIDES: HelpGuide[] = [
     ],
     tips: ['Hold parks a basket so you can serve someone else, then recall it from Held.', 'Prescription medicines and vaccines are not sold here — they are dispensed or given in the clinic.'],
     links: [{ label: 'Point of sale', href: '/pos' }],
+    keywords: ['sell', 'shop', 'counter', 'checkout', 'barcode', 'scan'],
   },
   {
     id: 'cash',
@@ -363,6 +376,7 @@ export const GUIDES: HelpGuide[] = [
       'Recall: open the product, ⋯ on the batch → Mark recalled. That batch will not be used again until released.',
     ],
     links: [{ label: 'Stock counts', href: '/inventory/counts' }, { label: 'Stock', href: '/inventory' }],
+    keywords: ['stocktake', 'write off', 'expired', 'recall', 'adjust'],
   },
   {
     id: 'purchase-order',
@@ -400,6 +414,7 @@ export const GUIDES: HelpGuide[] = [
       'Mistakes in breeding or production records are voided with a reason, never deleted.',
     ],
     links: [{ label: 'Livestock & farms', href: '/livestock' }],
+    keywords: ['farm', 'herd', 'flock', 'cattle', 'poultry', 'field visit', 'mortality'],
   },
   {
     id: 'boarding',
@@ -417,6 +432,7 @@ export const GUIDES: HelpGuide[] = [
       'Add the services, mark the job Ready (this bills the services) and Collected when the owner picks up. Upload before and after photos on the job.',
     ],
     links: [{ label: 'Boarding & grooming', href: '/boarding' }, { label: 'Boarding units', href: '/settings/boarding-units' }],
+    keywords: ['kennel', 'cattery', 'boarding', 'groom', 'bath', 'haircut', 'stay'],
   },
   {
     id: 'insurance',
@@ -434,6 +450,7 @@ export const GUIDES: HelpGuide[] = [
     ],
     tips: ['An invoice can only be on one open claim at a time.', 'Draft notes are never copied into letters or claims — only signed records.'],
     links: [{ label: 'Insurance & referrals', href: '/insurance' }],
+    keywords: ['claim', 'insurer', 'policy', 'referral letter', 'specialist'],
   },
   {
     id: 'reports',
@@ -472,6 +489,7 @@ export const GUIDES: HelpGuide[] = [
       'Under sessions, sign out any device you do not recognise.',
     ],
     links: [{ label: 'Account & security', href: '/account' }],
+    keywords: ['password', 'two factor', '2fa', 'sign in', 'login'],
   },
 ];
 

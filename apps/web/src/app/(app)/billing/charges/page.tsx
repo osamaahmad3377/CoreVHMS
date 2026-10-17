@@ -19,9 +19,9 @@ import { api, qs } from '@/lib/api';
 import { fmtDateTime, fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { Charge } from '@/lib/types';
+import { chargeSource } from '@/lib/labels';
 import { cn } from '@/lib/utils';
 
-const SOURCE_LABEL: Record<string, string> = { Dispensation: 'Dispensed', Administration: 'Administered', DiagnosticOrderItem: 'Lab test', Encounter: 'Consultation' };
 
 function Charges() {
   const { can, currency } = useSession();
@@ -38,7 +38,7 @@ function Charges() {
   return (
     <>
       <PageHeader
-        help="invoice" title="Unbilled charges" breadcrumbs={[{ label: 'Billing', href: '/billing' }, { label: 'Unbilled charges' }]} description="Captured automatically when medicines are dispensed or administered, lab tests ordered and consultations completed." />
+        help="invoice" title="Unbilled charges" description="Work done anywhere in the clinic (consultations, medicines, lab tests, hospital days, surgery, boarding, grooming, farm visits) waits here until it is invoiced." />
       <SectionNav links={BILLING_LINKS} />
       <Card>
         <div className="flex flex-wrap items-center gap-1 border-b p-3" role="tablist">
@@ -58,7 +58,7 @@ function Charges() {
           empty={<EmptyState icon={ListChecks} title="No charges" description="Nothing is waiting to be invoiced." />}
           columns={[
             { key: 'client', header: 'Client', cell: (r) => <Link className="text-sm font-medium hover:underline" href={`/clients/${r.client.id}?tab=account`}>{r.client.displayName}</Link> },
-            { key: 'item', header: 'Item', cell: (r) => <div><p className="text-sm">{r.description}</p><p className="text-xs text-muted-foreground">{SOURCE_LABEL[r.sourceType] ?? r.sourceType}{r.patient && ` · ${r.patient.name}`}{r.waivedReason && ` · waived: ${r.waivedReason}`}</p></div> },
+            { key: 'item', header: 'Item', cell: (r) => <div><p className="text-sm">{r.description}</p><p className="text-xs text-muted-foreground">{chargeSource(r.sourceType)}{r.patient && ` · ${r.patient.name}`}{r.waivedReason && ` · waived: ${r.waivedReason}`}</p></div> },
             { key: 'when', header: 'Captured', cell: (r) => <span className="whitespace-nowrap text-xs">{fmtDateTime(r.createdAt)}{r.createdByName && <span className="block text-muted-foreground">{r.createdByName}</span>}</span> },
             { key: 'amt', header: 'Amount', className: 'text-right tabular', headerClassName: 'text-right', cell: (r) => <span>{r.quantity} × {fmtMoney(r.unitPriceMinor, currency)}<span className="block font-medium">{fmtMoney(Math.round(r.quantity * r.unitPriceMinor), currency)}</span></span> },
             { key: 'st', header: 'Status', cell: (r) => <CommerceBadge status={r.status} /> },

@@ -20,6 +20,8 @@ function LetterView() {
   if (q.error || !q.data) return <ErrorState error={q.error} />;
   const { referral: r, organization: org, summary } = q.data;
   const p = r.patient;
+  // Same practice name in the letterhead and the sign-off.
+  const practice = org.legalName ?? org.name;
   return (
     <>
       <div className="no-print mb-4 flex items-center justify-between">
@@ -28,7 +30,7 @@ function LetterView() {
       </div>
       <article className="mx-auto max-w-3xl rounded-lg border bg-background p-10 text-sm leading-relaxed shadow-sm print:border-0 print:p-0 print:shadow-none">
         <header className="mb-8 flex items-start justify-between border-b pb-4">
-          <div><h1 className="text-lg font-semibold">{org.legalName ?? org.name}</h1><p className="text-muted-foreground">{[org.phone, org.email].filter(Boolean).join(' · ')}</p></div>
+          <div><h1 className="text-lg font-semibold">{practice}</h1><p className="text-muted-foreground">{[org.phone, org.email].filter(Boolean).join(' · ')}</p></div>
           <div className="text-right"><p className="font-semibold">Referral letter</p><p>{r.referralNo}</p><p className="text-muted-foreground">{fmtDate(r.sentAt ?? r.createdAt)}</p>{r.urgency !== 'ROUTINE' && <p className="font-semibold uppercase text-destructive">{r.urgency.toLowerCase()}</p>}</div>
         </header>
         {r.contact && <p className="mb-6">{r.contact.name}<br />{r.contact.practice}{r.contact.address && <><br />{r.contact.address}</>}</p>}
@@ -48,7 +50,7 @@ function LetterView() {
         <p className="mt-8">Kind regards,</p>
         <div className="mt-10 w-64 border-b" />
         <p>{r.sentByName ?? r.createdByName}</p>
-        <p className="text-muted-foreground">{org.name}</p>
+        <p className="text-muted-foreground">{practice}</p>
       </article>
     </>
   );

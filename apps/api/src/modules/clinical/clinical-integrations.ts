@@ -1,3 +1,4 @@
+import { formatInTimeZone } from 'date-fns-tz';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { RequestContext } from '../../common/context/request-context';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -134,12 +135,26 @@ export class ClinicalIntegrations implements OnModuleInit {
         const byStatus: Record<string, number> = {};
         rows.forEach((a) => (byStatus[a.status] = (byStatus[a.status] ?? 0) + 1));
         const emergencies = rows.filter((a) => ['RESUSCITATION', 'EMERGENT'].includes(a.priority ?? '') && ['CHECKED_IN', 'IN_CONSULTATION'].includes(a.status)).length;
+        // Booked patients more than 15 minutes late, and visits from earlier days nobody closed (still waiting / in consult / not marked).
+        const lateCutoff = new Date(Date.now() - 15 * 60_000);
+        const stale = await db().appointment.findMany({
+          where: { startsAt: { lt: start, gte: new Date(start.getTime() - 14 * 86400_000) }, status: { in: ['BOOKED', 'CONFIRMED', 'CHECKED_IN', 'IN_CONSULTATION'] }, ...(r.branchId ? { branchId: r.branchId } : {}) },
+          select: { startsAt: true, status: true },
+          orderBy: { startsAt: 'desc' },
+        });
+        const staleOpen = stale.filter((a) => ['CHECKED_IN', 'IN_CONSULTATION'].includes(a.status)).length;
+        const staleUnresolved = stale.length - staleOpen;
+        const staleDate = stale.length ? formatInTimeZone(stale[0].startsAt, tz, 'yyyy-MM-dd') : null;
         return {
           total: rows.filter((a) => a.status !== 'CANCELLED').length,
           byStatus,
           emergencies,
+          notArrived: rows.filter((a) => ['BOOKED', 'CONFIRMED'].includes(a.status) && a.startsAt < lateCutoff).length,
+          staleOpen,
+          staleUnresolved,
+          staleDate,
           upcoming: rows
-            .filter((a) => ['BOOKED', 'CONFIRMED', 'CHECKED_IN'].includes(a.status))
+            .filter((a) => ['BOOKED', 'CONFIRMED'].includes(a.status) && a.startsAt >= lateCutoff)
             .slice(0, 8)
             .map((a) => ({
               id: a.id,

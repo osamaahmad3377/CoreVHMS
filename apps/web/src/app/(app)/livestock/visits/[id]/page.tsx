@@ -20,7 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input, NativeSelect, Textarea } from '@/components/ui/input';
 import { api } from '@/lib/api';
-import { fmtDateTime, fmtMoney } from '@/lib/format';
+import { fmtDateTime, fmtMoney, fmtNumber } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { FarmDetail, FieldVisitDetail, GroupDetail, Invoice, Product, Service } from '@/lib/types';
 
@@ -142,9 +142,10 @@ function Visit() {
         actions={
           canWrite && openVisit && (
             <>
-              {v.status === 'SCHEDULED' && <Button size="sm" variant="outline" onClick={() => act.mutate({ action: 'start' })}><Play /> Start visit</Button>}
-              <Button size="sm" onClick={() => setDialog('complete')}><CheckCircle2 /> Complete</Button>
-              {!v.items.length && !v.treatments.length && <Button size="sm" variant="ghost" onClick={async () => { const c = await confirm({ title: 'Cancel this visit?', confirmLabel: 'Cancel visit', destructive: true, requireReason: true }); if (c.confirmed) act.mutate({ action: 'cancel', reason: c.reason }); }}><XCircle /> Cancel</Button>}
+              {!v.items.length && !v.treatments.length && <Button size="sm" variant="ghost" onClick={async () => { const c = await confirm({ title: 'Cancel this visit?', description: 'The visit stays on record as cancelled. No call-out fee is charged.', confirmLabel: 'Cancel visit', cancelLabel: 'Keep visit', destructive: true, requireReason: true }); if (c.confirmed) act.mutate({ action: 'cancel', reason: c.reason }); }}><XCircle /> Cancel visit</Button>}
+              {/* Until the visit is under way, starting it is the next step; completing comes after. */}
+              {v.status === 'SCHEDULED' && <Button size="sm" loading={act.isPending && act.variables?.action === 'start'} onClick={() => act.mutate({ action: 'start' })}><Play /> Start visit</Button>}
+              <Button size="sm" variant={v.status === 'SCHEDULED' ? 'outline' : 'default'} onClick={() => setDialog('complete')}><CheckCircle2 /> Complete visit</Button>
             </>
           )
         }
@@ -167,14 +168,14 @@ function Visit() {
                   <li key={i.id} className="flex items-center gap-3 px-4 py-2">
                     {i.kind === 'SERVICE' ? <Stethoscope className="h-4 w-4 text-muted-foreground" /> : <Package className="h-4 w-4 text-muted-foreground" />}
                     <span className="flex-1">{i.description}{i.patient && <span className="text-muted-foreground"> — {i.patient.name}</span>}</span>
-                    <span className="tabular text-muted-foreground">{i.quantity} × {fmtMoney(i.unitPriceMinor, currency)}</span>
+                    <span className="tabular text-muted-foreground">{fmtNumber(i.quantity)} × {fmtMoney(i.unitPriceMinor, currency)}</span>
                   </li>
                 ))}
                 {v.treatments.map((t) => (
                   <li key={t.id} className="flex items-center gap-3 px-4 py-2">
                     <Syringe className="h-4 w-4 text-muted-foreground" />
-                    <span className="flex-1">{t.productName} — {enumLabel(t.kind).toLowerCase()} of {t.headCount} head{t.group ? ` (${t.group.name})` : ''}</span>
-                    {t.quantityIssued != null && <span className="tabular text-muted-foreground">{t.quantityIssued} used</span>}
+                    <span className="flex-1">{t.productName} — {enumLabel(t.kind).toLowerCase()} of {fmtNumber(t.headCount)} head{t.group ? ` (${t.group.name})` : ''}</span>
+                    {t.quantityIssued != null && <span className="tabular text-muted-foreground">{fmtNumber(t.quantityIssued)} used</span>}
                   </li>
                 ))}
               </ul>
@@ -190,7 +191,10 @@ function Visit() {
               </CardContent>
             </Card>
           )}
-          <Card className="p-4"><AttachmentsPanel entityType="FieldVisit" entityId={v.id} canWrite={canWrite} /></Card>
+          <Card>
+            <CardHeader><CardTitle>Documents & photos</CardTitle></CardHeader>
+            <CardContent><AttachmentsPanel entityType="FieldVisit" entityId={v.id} canWrite={canWrite} /></CardContent>
+          </Card>
         </div>
         <div className="grid min-w-0 grid-cols-1 content-start gap-4">
           <Card>
@@ -213,7 +217,7 @@ function Visit() {
                 <div key={c.id} className="flex justify-between gap-2"><span className="min-w-0 truncate">{c.description}</span><span className="tabular">{fmtMoney(c.totalMinor, currency)}</span></div>
               )) : <p className="text-muted-foreground">No charges yet.{v.calloutServiceId && openVisit ? ' The call-out fee is added on completion.' : ''}</p>}
               {!!v.charges.length && <div className="flex justify-between border-t pt-2 font-medium"><span>Total (before tax)</span><span className="tabular">{fmtMoney(total, currency)}</span></div>}
-              {can('billing.write') && pending.length > 0 && <Button size="sm" className="mt-2" loading={invoice.isPending} onClick={() => invoice.mutate(pending.map((c) => c.id))}><Receipt /> Create invoice ({pending.length})</Button>}
+              {can('billing.write') && pending.length > 0 && <Button size="sm" className="mt-2" loading={invoice.isPending} onClick={() => invoice.mutate(pending.map((c) => c.id))}><Receipt /> Invoice {pending.length} {pending.length === 1 ? 'item' : 'items'}</Button>}
               {pending.length === 0 && v.charges.length > 0 && <p className="text-xs text-muted-foreground">All charges are invoiced.</p>}
             </CardContent>
           </Card>

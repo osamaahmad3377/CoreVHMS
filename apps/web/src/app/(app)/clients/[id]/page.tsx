@@ -42,7 +42,7 @@ import { NativeSelect, Textarea } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ApiError, api } from '@/lib/api';
-import { fmtAge, fmtDate, fmtDateTime, fmtMoney } from '@/lib/format';
+import { fmtAge, fmtCountry, fmtDate, fmtDateTime, fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { Address, ClientContact, ClientDetail } from '@/lib/types';
 
@@ -83,8 +83,11 @@ function ClientRecord() {
         breadcrumbs={[{ label: 'Clients', href: '/clients' }, { label: c.clientNo }]}
         title={
           <span className="flex flex-wrap items-center gap-2">
-            {c.title && <span className="text-muted-foreground">{c.title}</span>}
-            {c.displayName}
+            {/* displayName is surname-first ("Qureshi, Bilal"), so the title goes after it rather than reading "Mr Qureshi, …". */}
+            <span>
+              {c.displayName}
+              {c.title && <span className="font-normal text-muted-foreground"> ({c.title})</span>}
+            </span>
             <StatusBadge status={c.status} />
             {c.type !== 'INDIVIDUAL' && <Badge variant="secondary">{enumLabel(c.type)}</Badge>}
           </span>
@@ -114,7 +117,7 @@ function ClientRecord() {
             {can('patients.write') && c.status === 'ACTIVE' && (
               <Button size="sm" asChild>
                 <Link href={`/patients/new?ownerId=${c.id}`}>
-                  <PawPrint /> Add animal
+                  <PawPrint /> Add patient
                 </Link>
               </Button>
             )}
@@ -181,8 +184,8 @@ function ClientRecord() {
         </div>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[1fr_320px]">
-        <Tabs defaultValue={initialTab}>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <Tabs defaultValue={initialTab} className="min-w-0">
           <TabsList>
             <TabsTrigger value="animals">Animals ({c.patients.length})</TabsTrigger>
             <TabsTrigger value="contacts">Contacts & addresses</TabsTrigger>
@@ -232,7 +235,7 @@ function ClientRecord() {
                   c.status === 'ACTIVE' && (
                     <Button size="sm" asChild>
                       <Link href={`/patients/new?ownerId=${c.id}`}>
-                        <Plus /> Register an animal
+                        <Plus /> Add patient
                       </Link>
                     </Button>
                   )
@@ -257,7 +260,7 @@ function ClientRecord() {
                     <li key={ct.id} className="flex items-start gap-3 px-4 py-3">
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium">
-                          {ct.name} <Badge variant="secondary" className="ml-1">{enumLabel(ct.role)}</Badge>
+                          {ct.name} <Badge variant="secondary" className="ml-1">{enumLabel(ct.role, 'contactRole')}</Badge>
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {[ct.relationship, ct.phone, ct.email].filter(Boolean).join(' · ')}
@@ -310,7 +313,7 @@ function ClientRecord() {
                           {a.label ?? 'Address'} {a.isPrimary && <Badge className="ml-1">Primary</Badge>}
                         </p>
                         <p className="text-muted-foreground">
-                          {[a.line1, a.line2, a.city, a.state, a.postcode, a.country].filter(Boolean).join(', ')}
+                          {[a.line1, a.line2, a.city, a.state, a.postcode, fmtCountry(a.country)].filter(Boolean).join(', ')}
                         </p>
                       </div>
                       {writable && (
@@ -411,8 +414,8 @@ function ClientRecord() {
                     label: 'Consent',
                     value: (
                       <span className="flex flex-wrap gap-1">
-                        <Badge variant={c.remindersConsent ? 'success' : 'secondary'}>Reminders {c.remindersConsent ? 'yes' : 'no'}</Badge>
-                        <Badge variant={c.marketingConsent ? 'success' : 'secondary'}>Marketing {c.marketingConsent ? 'yes' : 'no'}</Badge>
+                        <Badge variant={c.remindersConsent ? 'success' : 'secondary'}>{c.remindersConsent ? 'Reminders allowed' : 'No reminders'}</Badge>
+                        <Badge variant={c.marketingConsent ? 'success' : 'secondary'}>{c.marketingConsent ? 'Marketing allowed' : 'No marketing'}</Badge>
                       </span>
                     ),
                   },

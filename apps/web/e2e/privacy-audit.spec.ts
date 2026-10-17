@@ -11,6 +11,7 @@ test.describe('Privacy requests and audit export', () => {
     await page.getByLabel('First name').fill('Sana');
     await page.locator('#lastName').fill(surname);
     await page.getByLabel('Mobile').fill(`0301 ${Math.floor(1000000 + Math.random() * 8999999)}`);
+    await page.getByRole('button', { name: 'Add address' }).click();
     await page.locator('#a1').fill('House 1, Street 2');
     await page.getByLabel('City / town / village').fill('Lahore');
     await page.getByRole('button', { name: 'Create client' }).click();
@@ -38,9 +39,9 @@ test.describe('Privacy requests and audit export', () => {
     await page.getByLabel('Action').selectOption({ label: 'Privacy requests' });
     await expect(page).toHaveURL(/action=client\.data_exported/);
     await expect(page.getByRole('link', { name: 'Export CSV' })).toHaveAttribute('href', /action=client\.data_exported%2Cclient\.anonymised/);
-    await expect(page.getByText('client.created')).toHaveCount(0);
-    await expect(page.getByText('client.anonymised').first()).toBeVisible();
-    await expect(page.getByText('client.data_exported').first()).toBeVisible();
+    await expect(page.getByText('Client created', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Client anonymised', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Client data exported', { exact: true }).first()).toBeVisible();
     await expect(page.getByText(/Email request, ref E2E/).first()).toBeVisible();
     const [csv] = await Promise.all([page.waitForEvent('download'), page.getByRole('link', { name: 'Export CSV' }).click()]);
     const text = await readFile((await csv.path())!, 'utf8');

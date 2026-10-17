@@ -4,7 +4,7 @@ import { TRIAGE_PRIORITIES, enumLabel } from '@vcms/shared';
 import { AlertOctagon, CalendarPlus, Clock, DoorOpen, LogIn, Play, Siren, Stethoscope, UserPlus, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { Children, useState } from 'react';
 import { toast } from 'sonner';
 import { Field } from '@/components/forms/field';
 import { FormError } from '@/components/forms/form-error';
@@ -47,8 +47,16 @@ function WalkInDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o:
   const [typeId, setTypeId] = useState('');
   const [clinicianId, setClinicianId] = useState('');
   const [priority, setPriority] = useState('');
+  // Once the user picks a priority themselves, changing the visit type no longer touches it.
+  const [priorityTouched, setPriorityTouched] = useState(false);
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const chooseType = (id: string) => {
+    setTypeId(id);
+    if (priorityTouched) return;
+    const emergency = types.data?.find((t) => t.id === id)?.category === 'EMERGENCY';
+    setPriority(emergency ? 'EMERGENT' : '');
+  };
   const m = useMutation({
     mutationFn: () =>
       api.post<Appointment>('/front-desk/walk-in', {
@@ -67,6 +75,7 @@ function WalkInDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o:
       setPatient(null);
       setReason('');
       setPriority('');
+      setPriorityTouched(false);
       onOpenChange(false);
     },
     onError: (e: Error) => setError(e.message),
@@ -85,7 +94,7 @@ function WalkInDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o:
           </Field>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Visit type" htmlFor="wi-t">
-              <NativeSelect id="wi-t" value={typeId} onChange={(e) => setTypeId(e.target.value)}>
+              <NativeSelect id="wi-t" value={typeId} onChange={(e) => chooseType(e.target.value)}>
                 {types.data?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </NativeSelect>
             </Field>
@@ -97,7 +106,7 @@ function WalkInDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o:
             </Field>
           </div>
           <Field label="Initial priority (optional — confirm with triage)" htmlFor="wi-pr">
-            <NativeSelect id="wi-pr" value={priority} onChange={(e) => setPriority(e.target.value)}>
+            <NativeSelect id="wi-pr" value={priority} onChange={(e) => { setPriority(e.target.value); setPriorityTouched(true); }}>
               <option value="">Not triaged yet</option>
               {TRIAGE_PRIORITIES.map((p) => <option key={p} value={p}>{enumLabel(p)}</option>)}
             </NativeSelect>
@@ -152,14 +161,15 @@ function QueueCard({
                 <Clock className="h-3 w-3" /> {a.waitingMinutes} min
               </span>
             )}
-            {a.source === 'WALK_IN' && <span className="text-2xs uppercase text-muted-foreground">Walk-in</span>}
+            {a.source === 'WALK_IN' && <span className="text-2xs text-muted-foreground">Walk-in</span>}
           </div>
         </div>
         {!!a.patient?.alerts.length && (
           <div className="mt-1.5 flex flex-wrap gap-1">{a.patient.alerts.slice(0, 2).map((al) => <AlertChip key={al.id} alert={al} />)}</div>
         )}
       </button>
-      {children && <div className="mt-2 flex flex-wrap gap-1.5 border-t pt-2">{children}</div>}
+      {/* Children.toArray drops false/null, so permission-gated actions that all render nothing leave no empty row. */}
+      {Children.toArray(children).length > 0 && <div className="mt-2 flex flex-wrap gap-1.5 border-t pt-2">{children}</div>}
     </li>
   );
 }
@@ -249,19 +259,15 @@ function FrontDesk() {
                               <LogIn /> Check in
                             </Button>
                           )}
-                          {c.key === 'waiting' && (
-                            <>
-                              {can('triage.write') && a.patient && (
-                                <Button size="sm" variant="outline" onClick={() => setTriage(a)}>
-                                  <Siren /> Triage
-                                </Button>
-                              )}
-                              {can('clinical.write') && a.patient && (
-                                <Button size="sm" onClick={() => act.mutate({ id: a.id, action: 'start' })}>
-                                  <Play /> Start
-                                </Button>
-                              )}
-                            </>
+                          {c.key === 'waiting' && can('triage.write') && a.patient && (
+                            <Button size="sm" variant="outline" onClick={() => setTriage(a)}>
+                              <Siren /> Triage
+                            </Button>
+                          )}
+                          {c.key === 'waiting' && can('clinical.write') && a.patient && (
+                            <Button size="sm" onClick={() => act.mutate({ id: a.id, action: 'start' })}>
+                              <Play /> Start
+                            </Button>
                           )}
                           {c.key === 'inConsultation' && a.encounter && (
                             <Button size="sm" variant="outline" asChild>
@@ -288,7 +294,7 @@ function FrontDesk() {
       <BookingDialog open={book} onOpenChange={setBook} />
       <AppointmentDialog id={selected} open={!!selected} onOpenChange={(o) => !o && setSelected(null)} />
       {triage?.patient && (
-        <TriageDialog open={!!triage} onOpenChange={(o) => !o && setTriage(null)} patientId={triage.patient.id} appointmentId={triage.id} patientName={triage.patient.name} />
+        <TriageDialog open={!!triage} onOpenChange={(o) => !o && setTriage(null)} patientId={triage.patient.id} appointmentId={triage.id} patientName={triage.patient.name} defaultComplaint={triage.triage?.presentingComplaint ?? triage.reason} />
       )}
     </>
   );

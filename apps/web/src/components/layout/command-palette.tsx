@@ -56,6 +56,9 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   const grouped = results.reduce<Record<string, Hit[]>>((acc, h) => ((acc[h.type] ??= []).push(h), acc), {});
   const pages = visibleNav(canAny).flatMap((s) => s.items);
   const needle = term.trim().toLowerCase();
+  // Typing, or the request is still in flight: say so rather than showing an empty list.
+  const searching = term.trim().length >= 2 && (term.trim() !== q || search.isFetching);
+  const matchedPages = needle.length >= 2 ? pages.filter((p) => p.label.toLowerCase().includes(needle)).slice(0, 5) : [];
   const actions = useCreateActions().filter((a) => !needle || `${a.label} ${a.keywords}`.toLowerCase().includes(needle));
 
   return (
@@ -63,19 +66,27 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
       <DialogContent size="lg" className="top-[15%] translate-y-0 gap-0 overflow-hidden p-0">
         <DialogTitle className="sr-only">Search</DialogTitle>
         <Command shouldFilter={false} className="flex flex-col" label="Global search">
-          <div className="flex items-center gap-2 border-b px-3">
-            <Search className="h-4 w-4 text-muted-foreground" />
+          <div className="flex items-center gap-2 border-b pl-3 pr-12">
+            <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
             <Command.Input
               value={term}
               onValueChange={setTerm}
               autoFocus
               placeholder="Search patients, owners, phone, microchip, or a number (C-, P-, INV-, RX-…)"
-              className="h-12 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              className="h-12 min-w-0 flex-1 border-0 bg-transparent text-sm shadow-none outline-none ring-0 placeholder:text-muted-foreground focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
             />
-            {search.isFetching && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+            {searching && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />}
           </div>
           <Command.List className="max-h-[60vh] overflow-y-auto p-2">
-            {q.length >= 2 && !search.isFetching && results.length === 0 && (
+            {searching && results.length === 0 && (
+              <Command.Loading>
+                <div className="flex items-center justify-center gap-2 px-3 py-8 text-sm text-muted-foreground" role="status"><Loader2 className="h-4 w-4 animate-spin" /> Searching…</div>
+              </Command.Loading>
+            )}
+            {q.length >= 2 && !searching && search.isError && (
+              <div className="px-3 py-8 text-center text-sm text-destructive" role="alert">Search is unavailable right now — try again in a moment.</div>
+            )}
+            {q.length >= 2 && !searching && !search.isError && results.length === 0 && matchedPages.length === 0 && (
               <Command.Empty className="px-3 py-8 text-center text-sm text-muted-foreground">No matches for “{q}”.</Command.Empty>
             )}
             {Object.entries(grouped).map(([type, hits]) => {
@@ -110,9 +121,9 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
                 ))}
               </Command.Group>
             )}
-            {q.length < 2 && (
+            {(q.length < 2 || matchedPages.length > 0) && (
               <Command.Group heading="Go to" className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1 [&_[cmdk-group-heading]]:text-2xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:text-muted-foreground">
-                {pages.map((p) => (
+                {(q.length < 2 ? pages : matchedPages).map((p) => (
                   <Command.Item
                     key={p.href}
                     value={p.href}

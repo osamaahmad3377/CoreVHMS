@@ -85,6 +85,12 @@ function PatientRecord() {
   const { can } = useSession();
   const key = ['patient', id];
   const q = useQuery({ queryKey: key, queryFn: () => api.get<PatientDetail>(`/patients/${id}`) });
+  // A current hospital stay replaces "Admit" with a link to the treatment sheet.
+  const inpatient = useQuery({
+    queryKey: ['admissions', 'current', id],
+    queryFn: () => api.get<{ data: { id: string; admissionNo: string }[] }>(`/admissions?patientId=${id}&status=ADMITTED&pageSize=1`),
+    enabled: can('hospital.read'),
+  });
   const [admitOpen, setAdmitOpen] = useState(false);
   const initialTab = useSearchParams().get('tab') ?? 'overview';
   const [dlg, setDlg] = useState<null | 'edit' | 'weight' | 'alert' | 'identifier' | 'deceased' | 'transfer' | 'coowner' | 'merge' | 'book' | 'consult' | 'triage'>(null);
@@ -119,6 +125,7 @@ function PatientRecord() {
   if (q.isLoading) return <LoadingRows />;
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
   const p = q.data!;
+  const stay = inpatient.data?.data[0];
   const editable = can('patients.write') && p.status !== 'MERGED';
   const active = p.status === 'ACTIVE';
   const farmAnimal = !!p.farmId || ['LIVESTOCK', 'POULTRY', 'EQUINE'].includes(p.species.category);
@@ -141,10 +148,18 @@ function PatientRecord() {
               <CalendarPlus /> Book
             </Button>
           )}
-          {active && can('hospital.write') && (
-            <Button size="sm" variant="outline" onClick={() => setAdmitOpen(true)}>
-              <BedDouble /> Admit
+          {stay ? (
+            <Button size="sm" variant="outline" asChild className="border-info/40 text-info">
+              <Link href={`/hospital/admissions/${stay.id}`}>
+                <BedDouble /> In hospital · {stay.admissionNo}
+              </Link>
             </Button>
+          ) : (
+            active && can('hospital.write') && (
+              <Button size="sm" variant="outline" onClick={() => setAdmitOpen(true)}>
+                <BedDouble /> Admit
+              </Button>
+            )
           )}
           {active && can('surgery.write') && (
             <Button size="sm" variant="outline" asChild>
@@ -267,7 +282,7 @@ function PatientRecord() {
       )}
 
       <Tabs defaultValue={initialTab}>
-        <TabsList>
+        <TabsList className="h-auto flex-wrap overflow-visible">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
           {can('clinical.read') && <TabsTrigger value="visits">Consultations</TabsTrigger>}
@@ -275,8 +290,8 @@ function PatientRecord() {
           {can('prescriptions.read') && <TabsTrigger value="medications">Medications</TabsTrigger>}
           {can('lab.read') && <TabsTrigger value="diagnostics">Diagnostics</TabsTrigger>}
           {can('preventive.read') && <TabsTrigger value="care">Care plan</TabsTrigger>}
-          {farmAnimal && can('livestock.read') && <TabsTrigger value="farm">Farm & breeding</TabsTrigger>}
-          {can('insurance.read') && <TabsTrigger value="insurance">Insurance & referrals</TabsTrigger>}
+          {farmAnimal && can('livestock.read') && <TabsTrigger value="farm">Farm</TabsTrigger>}
+          {can('insurance.read') && <TabsTrigger value="insurance">Insurance</TabsTrigger>}
           <TabsTrigger value="weight">Weight</TabsTrigger>
           <TabsTrigger value="alerts">
             Alerts {p.alerts.filter((a) => a.isActive).length > 0 && <Badge variant="destructive">{p.alerts.filter((a) => a.isActive).length}</Badge>}
@@ -286,7 +301,7 @@ function PatientRecord() {
           {can('audit.read') && <TabsTrigger value="history">History</TabsTrigger>}
         </TabsList>
 
-        <TabsContent value="overview" className="grid gap-4 xl:grid-cols-[1fr_360px]">
+        <TabsContent value="overview" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
           {can('clinical.read') && (
             <div className="xl:col-span-2">
               <ProblemsPanel patientId={p.id} editable={can('clinical.write') && p.status !== 'MERGED'} />
@@ -363,7 +378,7 @@ function PatientRecord() {
         )}
         {can('appointments.read') && (
           <TabsContent value="appointments">
-            <PatientAppointments patientId={p.id} />
+            <PatientAppointments patientId={p.id} onBook={active && can('appointments.write') ? () => setDlg('book') : undefined} />
           </TabsContent>
         )}
 
@@ -590,14 +605,14 @@ function PatientRecord() {
         onOpenChange={(o) => !o && setDlg(null)}
         onSaved={refresh}
       />
-      <BookingDialog open={dlg === 'book'} onOpenChange={(o) => !o && setDlg(null)} defaults={{ patient: {
+      {can('appointments.write') && <BookingDialog open={dlg === 'book'} onOpenChange={(o) => !o && setDlg(null)} defaults={{ patient: {
               id: p.id,
               name: p.name,
               patientNo: p.patientNo,
               species: p.species,
               owner: p.owner ? { id: p.owner.id, displayName: p.owner.displayName, mobilePhone: p.owner.mobilePhone } : null,
               alerts: p.alerts.filter((a) => a.isActive),
-            } }} />
+            } }} />}
       {dlg === 'consult' && (
         <StartConsultationDialog
           open
@@ -613,30 +628,59 @@ function PatientRecord() {
         />
       )}
       <TriageDialog open={dlg === 'triage'} onOpenChange={(o) => !o && setDlg(null)} patientId={p.id} patientName={p.name} />
-      <AdmitDialog open={admitOpen} onOpenChange={setAdmitOpen} patient={{ id: p.id, name: p.name, patientNo: p.patientNo, species: p.species, owner: p.owner, alerts: p.alerts } as never} />
+      {can('hospital.write') && <AdmitDialog open={admitOpen} onOpenChange={setAdmitOpen} patient={{ id: p.id, name: p.name, patientNo: p.patientNo, species: p.species, owner: p.owner, alerts: p.alerts } as never} />}
       <MergePatientDialog patient={p} open={dlg === 'merge'} onOpenChange={(o) => !o && setDlg(null)} onMerged={refresh} />
     </>
   );
 }
 
+const TIMELINE_KIND_LABEL: Record<string, string> = {
+  registration: 'Registration',
+  weight: 'Weight',
+  alert: 'Alerts',
+  ownership: 'Ownership',
+  document: 'Documents',
+  appointment: 'Appointments',
+  consultation: 'Consultations',
+  vitals: 'Vital signs',
+  prescription: 'Prescriptions',
+  medication: 'Medications',
+  lab: 'Lab',
+  preventive: 'Vaccines & preventive care',
+  hospital: 'Hospital',
+  surgery: 'Surgery',
+  boarding: 'Boarding',
+  grooming: 'Grooming',
+  breeding: 'Breeding',
+  'livestock-movement': 'Movements',
+  'insurance-claim': 'Insurance claims',
+  referral: 'Referrals',
+  billing: 'Billing',
+};
+const timelineKindLabel = (k: string) => TIMELINE_KIND_LABEL[k] ?? k.charAt(0).toUpperCase() + k.slice(1).replace(/[-_]/g, ' ');
+
 function TimelineTab({ patientId }: { patientId: string }) {
   const [kind, setKind] = useState<string>('');
-  const q = useQuery({
-    queryKey: ['timeline', patientId, kind],
-    queryFn: () => api.get<{ kinds: string[]; events: TimelineEvent[] }>(`/patients/${patientId}/timeline${kind ? `?kinds=${kind}` : ''}`),
-  });
-  if (q.isLoading) return <LoadingRows rows={4} />;
+  const fetchTimeline = (k: string) => api.get<{ kinds: string[]; events: TimelineEvent[] }>(`/patients/${patientId}/timeline${k ? `?kinds=${k}` : ''}`);
+  // The unfiltered list decides which filters to offer, so a dog never sees "Movements" or "Insurance claims" with nothing behind them.
+  const all = useQuery({ queryKey: ['timeline', patientId, ''], queryFn: () => fetchTimeline('') });
+  const filtered = useQuery({ queryKey: ['timeline', patientId, kind], queryFn: () => fetchTimeline(kind), enabled: !!kind });
+  const q = kind ? filtered : all;
+  if (q.isLoading || all.isLoading) return <LoadingRows rows={4} />;
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
   const { kinds, events } = q.data!;
+  const present = kinds.filter((k) => k === kind || all.data?.events.some((e) => e.kind === k));
   return (
     <Card>
-      <div className="flex flex-wrap gap-1 border-b p-3">
-        {['', ...kinds].map((k) => (
-          <Button key={k || 'all'} size="sm" variant={kind === k ? 'default' : 'ghost'} onClick={() => setKind(k)} className="capitalize">
-            {k || 'All'}
-          </Button>
-        ))}
-      </div>
+      {present.length > 1 && (
+        <div className="flex flex-wrap gap-1 border-b p-3">
+          {['', ...present].map((k) => (
+            <Button key={k || 'all'} size="sm" variant={kind === k ? 'default' : 'ghost'} onClick={() => setKind(k)}>
+              {k ? timelineKindLabel(k) : 'All'}
+            </Button>
+          ))}
+        </div>
+      )}
       <CardContent>
         {events.length ? (
           <ol className="relative grid gap-4 border-l pl-5">
@@ -651,7 +695,7 @@ function TimelineTab({ patientId }: { patientId: string }) {
                 <p className="text-sm font-medium">{e.href ? <Link href={e.href} className="hover:underline">{e.title}</Link> : e.title}</p>
                 {e.detail && <p className="text-sm text-muted-foreground">{e.detail}</p>}
                 <p className="text-xs text-muted-foreground">
-                  <span className="capitalize">{e.kind}</span> · {fmtDateTime(e.at)}
+                  {timelineKindLabel(e.kind)} · {fmtDateTime(e.at)}
                   {e.actor && ` · ${e.actor}`}
                 </p>
               </li>
@@ -668,7 +712,7 @@ function TimelineTab({ patientId }: { patientId: string }) {
 function WeightTab({ patient, onAdd }: { patient: PatientDetail; onAdd?: () => void }) {
   const data = [...patient.weights].reverse().map((w) => ({ date: fmtDate(w.measuredAt), kg: w.weightKg }));
   return (
-    <div className="grid gap-4 xl:grid-cols-[1fr_380px]">
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
       <Card>
         <CardHeader>
           <CardTitle>Weight trend</CardTitle>

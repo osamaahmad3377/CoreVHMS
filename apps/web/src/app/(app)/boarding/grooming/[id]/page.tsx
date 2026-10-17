@@ -15,7 +15,7 @@ import { AlertChip } from '@/components/status';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input, NativeSelect, Textarea } from '@/components/ui/input';
-import { useClinicians } from '@/hooks/use-catalog';
+import { useActiveStaff } from '@/hooks/use-catalog';
 import { api } from '@/lib/api';
 import { fmtDateTime, fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
@@ -24,10 +24,10 @@ import type { GroomingJob, Invoice, Service } from '@/lib/types';
 function Job() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { can, currency, session } = useSession();
+  const { can, canAny, currency, session } = useSession();
   const qc = useQueryClient();
   const confirm = useConfirm();
-  const staffList = useClinicians(session.branch?.id);
+  const staffList = useActiveStaff(session.branch?.id, canAny('staff.read', 'appointments.read'));
   const q = useQuery({ queryKey: ['grooming-job', id], queryFn: () => api.get<GroomingJob>(`/grooming/jobs/${id}`) });
   const services = useQuery({ queryKey: ['services', 'active'], queryFn: () => api.get<Service[]>('/services') });
   const [notes, setNotes] = useState({ groomerId: '', coatCondition: '', behaviour: '', groomerNotes: '' });
@@ -53,6 +53,10 @@ function Job() {
   const canWrite = can('boarding.write');
   const open = !['COLLECTED', 'CANCELLED'].includes(j.status);
   const pending = (j.charges ?? []).filter((c) => c.status === 'PENDING').map((c) => c.id);
+  const activeServices = (services.data ?? []).filter((s) => s.isActive);
+  const groomingServices = activeServices.filter((s) => s.category === 'GROOMING');
+  const serviceOptions = groomingServices.length ? groomingServices : activeServices;
+  const groomers = staffList.data ?? [];
   const changed = notes.groomerId !== (j.groomer?.id ?? '') || notes.coatCondition !== (j.coatCondition ?? '') || notes.behaviour !== (j.behaviour ?? '') || notes.groomerNotes !== (j.groomerNotes ?? '');
   return (
     <>
@@ -91,11 +95,17 @@ function Job() {
               {canWrite && open && (
                 <div className="mt-2 flex gap-2">
                   <NativeSelect aria-label="Add service" value={svc} onChange={(e) => setSvc(e.target.value)}>
-                    <option value="">Add a service…</option>
-                    {(services.data ?? []).filter((s) => s.isActive).sort((a, b) => (a.category === 'GROOMING' ? -1 : 1) - (b.category === 'GROOMING' ? -1 : 1)).map((s) => <option key={s.id} value={s.id}>{s.name} — {fmtMoney(s.priceMinor, currency)}</option>)}
+                    <option value="">{groomingServices.length ? 'Add a grooming service…' : 'Add a service…'}</option>
+                    {serviceOptions.map((s) => <option key={s.id} value={s.id}>{s.name} — {fmtMoney(s.priceMinor, currency)}</option>)}
                   </NativeSelect>
                   <Button size="sm" disabled={!svc} loading={add.isPending} onClick={() => add.mutate()}><Plus /> Add</Button>
                 </div>
+              )}
+              {canWrite && open && services.data && !groomingServices.length && (
+                <p className="text-xs text-muted-foreground">
+                  No services are in the Grooming category yet, so the whole price list is shown.
+                  {can('settings.manage') && <> Set the category in <Link href="/settings/services" className="text-primary hover:underline">Services &amp; fees</Link>.</>}
+                </p>
               )}
               {j.status === 'READY' && <p className="text-xs text-muted-foreground">Services added now are billed straight away.</p>}
             </CardContent>
@@ -103,14 +113,17 @@ function Job() {
           <Card>
             <CardHeader><CardTitle>Groomer’s notes</CardTitle></CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2">
-              <Field label="Groomer" htmlFor="gj-groomer"><NativeSelect id="gj-groomer" value={notes.groomerId} disabled={!canWrite || !open} onChange={(e) => setNotes({ ...notes, groomerId: e.target.value })}><option value="">Not assigned</option>{(staffList.data ?? []).map((c) => <option key={c.membershipId} value={c.membershipId}>{c.name}</option>)}</NativeSelect></Field>
+              <Field label="Groomer" htmlFor="gj-groomer"><NativeSelect id="gj-groomer" value={notes.groomerId} disabled={!canWrite || !open} onChange={(e) => setNotes({ ...notes, groomerId: e.target.value })}><option value="">Not assigned</option>{j.groomer && !groomers.some((g) => g.membershipId === j.groomer!.id) && <option value={j.groomer.id}>{j.groomer.name}</option>}{groomers.map((c) => <option key={c.membershipId} value={c.membershipId}>{c.name}{c.jobTitle ? ` — ${c.jobTitle}` : ''}</option>)}</NativeSelect></Field>
               <Field label="Coat & skin" htmlFor="gj-coat"><Input id="gj-coat" value={notes.coatCondition} disabled={!canWrite || !open} maxLength={500} onChange={(e) => setNotes({ ...notes, coatCondition: e.target.value })} placeholder="e.g. Matted behind ears, mild dandruff" /></Field>
               <Field label="Behaviour" htmlFor="gj-beh"><Input id="gj-beh" value={notes.behaviour} disabled={!canWrite || !open} maxLength={500} onChange={(e) => setNotes({ ...notes, behaviour: e.target.value })} /></Field>
               <Field label="Notes for the owner / next time" htmlFor="gj-notes" className="sm:col-span-2"><Textarea id="gj-notes" value={notes.groomerNotes} disabled={!canWrite || !open} maxLength={2000} onChange={(e) => setNotes({ ...notes, groomerNotes: e.target.value })} /></Field>
               {canWrite && open && changed && <Button size="sm" className="w-fit" loading={save.isPending} onClick={() => save.mutate()}>Save notes</Button>}
             </CardContent>
           </Card>
-          <Card className="p-4"><p className="mb-2 text-sm font-medium">Before & after photos</p><AttachmentsPanel entityType="GroomingJob" entityId={j.id} canWrite={canWrite} /></Card>
+          <Card>
+            <CardHeader><CardTitle>Before & after photos</CardTitle></CardHeader>
+            <CardContent><AttachmentsPanel entityType="GroomingJob" entityId={j.id} canWrite={canWrite} /></CardContent>
+          </Card>
         </div>
         <div className="grid min-w-0 grid-cols-1 content-start gap-4">
           <Card>

@@ -78,7 +78,7 @@ function Invoices() {
             )
           }
           columns={[
-            { key: 'no', header: 'Invoice', cell: (r) => <Link href={`/billing/invoices/${r.id}`} className="font-medium hover:underline">{r.invoiceNo}</Link> },
+            { key: 'no', header: 'Invoice', cell: (r) => <div><Link href={`/billing/invoices/${r.id}`} className="font-medium hover:underline">{r.number ? r.invoiceNo : 'Draft'}</Link>{!r.number && <p className="text-2xs text-muted-foreground">started {fmtDate(r.createdAt)}{r.createdByName ? ` by ${r.createdByName}` : ''}</p>}</div> },
             { key: 'client', header: 'Client', cell: (r) => <span className="text-sm">{r.client?.displayName ?? <span className="text-muted-foreground">Counter sale</span>}</span> },
             { key: 'date', header: 'Date', cell: (r) => <span className="whitespace-nowrap text-sm">{fmtDate(r.issuedAt ?? r.createdAt)}</span> },
             { key: 'due', header: 'Due', cell: (r) => <span className={cn('whitespace-nowrap text-sm', r.overdue && 'font-medium text-destructive')}>{fmtDate(r.dueAt)}</span> },

@@ -2,9 +2,9 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery } from '@tanstack/react-query';
 import { CLIENT_TYPES, CONTACT_CHANNELS, createClientSchema, enumLabel, updateClientSchema } from '@vcms/shared';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, MapPin, Trash2 } from 'lucide-react';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { Field, FormSection, applyServerErrors, errorAt } from '@/components/forms/field';
@@ -53,15 +53,34 @@ export function ClientForm({ client, onSaved, onCancel }: Props) {
       notes: client?.notes ?? '',
       referralSource: client?.referralSource ?? '',
       primaryBranchId: client?.primaryBranchId ?? session.branch?.id ?? '',
-      address: editing ? undefined : { line1: '', line2: '', city: '', state: '', postcode: '', country: session.organization?.country ?? 'PK', isPrimary: true },
+      // The address is optional and starts collapsed, so a quick name + phone registration validates.
+      address: undefined,
     },
   });
+  const blankAddress = { line1: '', line2: '', city: '', state: '', postcode: '', country: session.organization?.country ?? 'PK', isPrimary: true };
   const { register, formState, setError: setFieldError, control, setValue } = form;
   const e = formState.errors;
   const type = useWatch({ control, name: 'type' });
   const watched = useWatch({ control, name: ['firstName', 'lastName', 'organizationName', 'email', 'mobilePhone'] });
   const dupKey = useDebounce(JSON.stringify(watched), 500);
-  const [wantAddress, setWantAddress] = useState(!editing);
+  const [wantAddress, setWantAddress] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  /** Brings the first invalid field into view (errors may be far down a long form, or come back from the server). */
+  const revealFirstError = () =>
+    requestAnimationFrame(() => {
+      const el = formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+      if (!el) return;
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      el.focus({ preventScroll: true });
+    });
+  const toggleAddress = (on: boolean) => {
+    setWantAddress(on);
+    if (on) setValue('address', blankAddress);
+    else {
+      form.unregister('address');
+      form.clearErrors('address');
+    }
+  };
 
   const dupes = useQuery({
     queryKey: ['client-dupes', dupKey, client?.id],
@@ -82,26 +101,30 @@ export function ClientForm({ client, onSaved, onCancel }: Props) {
     })(),
   });
 
-  const onSubmit = form.handleSubmit(async (values) => {
-    setError(null);
-    const body: any = { ...values };
-    if (!wantAddress || editing) delete body.address;
-    if (!body.primaryBranchId) body.primaryBranchId = null;
-    try {
-      const saved = editing ? await api.patch<{ id: string }>(`/clients/${client!.id}`, body) : await api.post<{ id: string }>('/clients', body);
-      onSaved(saved);
-    } catch (err) {
-      if (err instanceof ApiError) {
-        applyServerErrors(err.fieldErrors, setFieldError);
-        setError(err.message);
-      } else setError('Could not save client');
-    }
-  });
+  const onSubmit = form.handleSubmit(
+    async (values) => {
+      setError(null);
+      const body: any = { ...values };
+      if (!wantAddress || editing) delete body.address;
+      if (!body.primaryBranchId) body.primaryBranchId = null;
+      try {
+        const saved = editing ? await api.patch<{ id: string }>(`/clients/${client!.id}`, body) : await api.post<{ id: string }>('/clients', body);
+        onSaved(saved);
+      } catch (err) {
+        if (err instanceof ApiError) {
+          applyServerErrors(err.fieldErrors, setFieldError);
+          setError(err.message);
+          revealFirstError();
+        } else setError('Could not save client');
+      }
+    },
+    revealFirstError,
+  );
 
   const isOrg = ORG_TYPES.includes(type ?? '');
 
   return (
-    <form onSubmit={onSubmit} className="grid gap-6" noValidate>
+    <form ref={formRef} onSubmit={onSubmit} className="grid gap-6" noValidate>
       {error && <FormError message={error} />}
       {!!dupes.data?.length && (
         <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm" role="status">
@@ -217,10 +240,10 @@ export function ClientForm({ client, onSaved, onCancel }: Props) {
       </FormSection>
 
       {!editing && (
-        <FormSection title="Address" description="Primary address. More can be added later.">
+        <FormSection title="Address" description="Optional. Add the primary address now or later from the client record.">
           {!wantAddress ? (
-            <Button type="button" variant="outline" size="sm" className="w-fit" onClick={() => setWantAddress(true)}>
-              Add address
+            <Button type="button" variant="outline" size="sm" className="w-fit" onClick={() => toggleAddress(true)}>
+              <MapPin /> Add address
             </Button>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
@@ -245,8 +268,8 @@ export function ClientForm({ client, onSaved, onCancel }: Props) {
                   <option value="AU">Australia</option>
                 </NativeSelect>
               </Field>
-              <Button type="button" variant="ghost" size="sm" className="w-fit" onClick={() => setWantAddress(false)}>
-                Remove address
+              <Button type="button" variant="outline" size="sm" className="w-fit text-destructive hover:text-destructive sm:col-span-2" onClick={() => toggleAddress(false)}>
+                <Trash2 /> Remove address
               </Button>
             </div>
           )}

@@ -163,6 +163,20 @@ describe('Prescriptions & pharmacy', () => {
     expect((await vet.client.post('/administrations', { patientId: dog.id, productId: inj.body.id, dose: 1, doseUnit: 'mL', route: 'IM', status: 'NOT_GIVEN' })).body.error.code).toBe('REASON_REQUIRED');
   });
 
+  it('charges an in-clinic dose recorded in mg in tablets, using the product strength', async () => {
+    const { vet, patient, product } = await setup(); // 50 mg per tablet, smallest amount 0.25 tablet
+    const a = await vet.client.post('/administrations', { patientId: patient.id, productId: product.id, dose: 100, doseUnit: 'mg', route: 'PO' });
+    expect(a.status).toBe(201);
+    const charge = await prisma().charge.findFirst({ where: { sourceType: 'Administration', sourceId: a.body.id } });
+    expect(Number(charge?.quantity)).toBe(2);
+    // 30 mg = 0.6 tablet → rounded up to the smallest dispensable amount (0.75)
+    const b = await vet.client.post('/administrations', { patientId: patient.id, productId: product.id, dose: 30, doseUnit: 'mg', route: 'PO' });
+    expect(Number((await prisma().charge.findFirst({ where: { sourceType: 'Administration', sourceId: b.body.id } }))?.quantity)).toBe(0.75);
+    // A unit that cannot be converted is neither deducted nor charged.
+    const c = await vet.client.post('/administrations', { patientId: patient.id, productId: product.id, dose: 1, doseUnit: 'mL', route: 'PO' });
+    expect(await prisma().charge.count({ where: { sourceType: 'Administration', sourceId: c.body.id } })).toBe(0);
+  });
+
   it('isolates prescriptions between organizations', async () => {
     const a = await setup();
     const b = await registerOrg();

@@ -1,7 +1,7 @@
 import { localDayBounds } from '../../common/time/tz';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { calcLine, sumLines, type LineInputBody } from '@vcms/shared';
+import { calcLine, enumLabel, sumLines, type LineInputBody } from '@vcms/shared';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { CounterService, formatNumber } from '../../common/counter/counter.service';
@@ -19,6 +19,7 @@ const include = {
   lines: { orderBy: { sortOrder: 'asc' }, include: { charge: { select: { id: true, sourceType: true, sourceId: true } } } },
   allocations: { include: { payment: { select: { id: true, number: true, method: true, receivedAt: true, receivedByName: true } } }, orderBy: { createdAt: 'asc' } },
   creditNotes: { orderBy: { createdAt: 'asc' } },
+  branch: { select: { id: true, name: true, addressLine1: true, addressLine2: true, city: true, postcode: true, phone: true, email: true } },
 } satisfies Prisma.InvoiceInclude;
 
 type Row = Prisma.InvoiceGetPayload<{ include: typeof include }>;
@@ -190,6 +191,16 @@ export class InvoicesService {
       if (!own) throw ruleViolation('INVALID_PATIENT', 'Patient does not belong to this client');
     }
     if (!input.chargeIds.length && !input.lines.length) throw ruleViolation('EMPTY_INVOICE', 'Add at least one item');
+    // Charges for a single animal (or a single visit) make it that animal's invoice, so it shows on its record.
+    let patientId = input.patientId ?? null;
+    let encounterId = input.encounterId ?? null;
+    if (input.chargeIds.length && (!patientId || !encounterId)) {
+      const from = await this.prisma.db.charge.findMany({ where: { id: { in: input.chargeIds } }, select: { patientId: true, encounterId: true } });
+      const patients = [...new Set(from.map((c) => c.patientId))];
+      const encounters = [...new Set(from.map((c) => c.encounterId))];
+      if (!patientId && patients.length === 1) patientId = patients[0];
+      if (!encounterId && encounters.length === 1 && patients.length === 1) encounterId = encounters[0];
+    }
     const resolved: Awaited<ReturnType<InvoicesService['resolveLine']>>[] = [];
     for (const l of input.lines) resolved.push(await this.resolveLine(l, input.isPos));
     const id = await this.prisma.db.$transaction(async (tx) => {
@@ -198,8 +209,8 @@ export class InvoicesService {
           organizationId: ctx.organizationId!,
           branchId: ctx.branchId!,
           clientId: input.clientId ?? null,
-          patientId: input.patientId ?? null,
-          encounterId: input.encounterId ?? null,
+          patientId,
+          encounterId,
           currency: org.currency,
           pricesIncludeTax: org.pricesIncludeTax,
           isPos: input.isPos,
@@ -355,8 +366,12 @@ export class InvoicesService {
       if (i.status === 'VOID') entries.push({ date: i.voidedAt!, type: 'VOID', reference: invoiceNo(i.number), description: 'Invoice voided', debitMinor: 0, creditMinor: i.totalMinor });
       for (const c of i.creditNotes) entries.push({ date: c.createdAt, type: 'CREDIT_NOTE', reference: formatNumber('CN', c.number), description: c.reason, debitMinor: 0, creditMinor: c.amountMinor });
     }
+    const numberOf = new Map(invoices.map((i) => [i.id, invoiceNo(i.number)]));
     for (const p of payments) {
-      entries.push({ date: p.receivedAt, type: 'PAYMENT', reference: formatNumber('RCPT', p.number), description: p.method, debitMinor: 0, creditMinor: p.amountMinor });
+      const paid = [...new Set(p.allocations.map((a) => numberOf.get(a.invoiceId)).filter(Boolean))];
+      const unallocated = p.amountMinor - p.allocations.reduce((n, a) => n + a.amountMinor, 0);
+      const description = `${enumLabel(p.method)} payment${paid.length ? ` for ${paid.join(', ')}` : ''}${unallocated > 0 && paid.length ? ' (part on account)' : !paid.length ? ' on account' : ''}`;
+      entries.push({ date: p.receivedAt, type: 'PAYMENT', reference: formatNumber('RCPT', p.number), description, debitMinor: 0, creditMinor: p.amountMinor });
       for (const r of p.refunds) entries.push({ date: r.refundedAt, type: 'REFUND', reference: formatNumber('RF', r.number), description: r.reason, debitMinor: r.amountMinor, creditMinor: 0 });
     }
     entries.sort((a, b) => a.date.getTime() - b.date.getTime());

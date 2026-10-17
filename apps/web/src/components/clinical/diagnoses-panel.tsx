@@ -66,10 +66,12 @@ export function DiagnosesPanel({ encounterId, diagnoses, editable, onSaved }: { 
       {diagnoses.length ? (
         <ul className="divide-y">
           {diagnoses.map((d) => (
-            <li key={d.id} className="flex flex-wrap items-center gap-2 px-3 py-2">
-              <span className={`text-sm font-medium ${d.status === 'RULED_OUT' ? 'text-muted-foreground line-through' : ''}`}>{d.term}</span>
-              {d.code && <span className="font-mono text-2xs text-muted-foreground">{d.code}</span>}
-              <div className="ml-auto flex items-center gap-1">
+            <li key={d.id} className="flex items-center gap-2 px-3 py-2">
+              <span className="min-w-0 flex-1 break-words">
+                <span className={`text-sm font-medium ${d.status === 'RULED_OUT' ? 'text-muted-foreground line-through' : ''}`}>{d.term}</span>
+                {d.code && <span className="ml-2 font-mono text-2xs text-muted-foreground">{d.code}</span>}
+              </span>
+              <div className="flex shrink-0 items-center gap-1">
                 {editable ? (
                   <>
                     <NativeSelect aria-label="Diagnosis type" className="h-7 w-32 text-xs" value={d.type} onChange={(e) => update.mutate({ id: d.id, type: e.target.value })}>

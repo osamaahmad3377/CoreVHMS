@@ -8,7 +8,7 @@ import { ErrorState, LoadingRows } from '@/components/page';
 import { RequirePermission } from '@/components/require';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
-import { fmtDate, fmtMoney } from '@/lib/format';
+import { fmtDate, fmtMoney, fmtNumber } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { ClinicalSummary, InsuranceClaim } from '@/lib/types';
 
@@ -27,6 +27,9 @@ function Form() {
   if (q.isLoading) return <LoadingRows />;
   if (q.error || !q.data) return <ErrorState error={q.error} />;
   const { claim: c, lines, history, organization: org } = q.data;
+  // One name for the practice everywhere on the form (header, payee), as on invoices.
+  const practice = org.legalName ?? org.name;
+  const lineTotal = (l: ClaimForm['lines'][number]) => l.grossMinor ?? l.lineTotalMinor ?? Math.round(l.quantity * l.unitPriceMinor);
   const row = (label: string, value: React.ReactNode) => <tr><th className="w-48 py-1 pr-3 text-left align-top font-medium text-muted-foreground">{label}</th><td className="py-1">{value}</td></tr>;
   return (
     <>
@@ -36,7 +39,7 @@ function Form() {
       </div>
       <article className="mx-auto max-w-3xl rounded-lg border bg-background p-8 text-sm shadow-sm print:border-0 print:p-0 print:shadow-none">
         <header className="mb-6 flex items-start justify-between border-b pb-4">
-          <div><h1 className="text-lg font-semibold">{org.legalName ?? org.name}</h1><p className="text-muted-foreground">{[org.phone, org.email].filter(Boolean).join(' · ')}</p>{org.taxNumber && <p className="text-muted-foreground">Tax no. {org.taxNumber}</p>}</div>
+          <div><h1 className="text-lg font-semibold">{practice}</h1><p className="text-muted-foreground">{[org.phone, org.email].filter(Boolean).join(' · ')}</p>{org.taxNumber && <p className="text-muted-foreground">Tax no. {org.taxNumber}</p>}</div>
           <div className="text-right"><p className="text-base font-semibold">Insurance claim</p><p>{c.claimNo}</p><p className="text-muted-foreground">{fmtDate(c.submittedAt ?? c.createdAt)}</p></div>
         </header>
         <section className="mb-5 grid gap-6 sm:grid-cols-2">
@@ -45,7 +48,7 @@ function Form() {
             {row('Policy number', c.policy.policyNumber)}
             {row('Policy holder', c.client.displayName)}
             {row('Contact', [c.client.mobilePhone, c.client.email].filter(Boolean).join(' · ') || '—')}
-            {row('Pay to', c.payee === 'CLINIC' ? org.name : c.client.displayName)}
+            {row('Pay to', c.payee === 'CLINIC' ? practice : c.client.displayName)}
           </tbody></table>
           <table><tbody>
             {row('Animal', c.patient.name)}
@@ -68,8 +71,8 @@ function Form() {
         <section className="mb-5">
           <h2 className="mb-1 font-semibold">Itemised costs</h2>
           <table className="w-full">
-            <thead className="border-b text-left text-xs text-muted-foreground"><tr><th className="py-1">Description</th><th className="py-1 text-right">Qty</th><th className="py-1 text-right">Unit price</th></tr></thead>
-            <tbody>{lines.map((l) => <tr key={l.id} className="border-b"><td className="py-1">{l.description}</td><td className="py-1 text-right tabular">{l.quantity}</td><td className="py-1 text-right tabular">{fmtMoney(l.unitPriceMinor, currency)}</td></tr>)}</tbody>
+            <thead className="border-b text-left text-xs text-muted-foreground"><tr><th className="py-1">Description</th><th className="py-1 text-right">Qty</th><th className="py-1 text-right">Unit price</th><th className="py-1 text-right">Line total</th></tr></thead>
+            <tbody>{lines.map((l) => <tr key={l.id} className="border-b"><td className="py-1 pr-2">{l.description}</td><td className="py-1 text-right tabular">{fmtNumber(l.quantity)}</td><td className="whitespace-nowrap py-1 pl-2 text-right tabular">{fmtMoney(l.unitPriceMinor, currency)}</td><td className="whitespace-nowrap py-1 pl-2 text-right tabular">{fmtMoney(lineTotal(l), currency)}</td></tr>)}</tbody>
           </table>
           <p className="mt-2 text-right">Total claimed: <b>{fmtMoney(c.claimedMinor, currency)}</b> <span className="text-xs text-muted-foreground">(per issued invoices, tax included)</span></p>
         </section>

@@ -69,8 +69,11 @@ export function NoteEditor({
   note,
   amending,
   onDone,
+  speciesCategory,
 }: {
   encounterId: string;
+  /** Patient's species category; templates restricted to another category are hidden. */
+  speciesCategory?: string | null;
   /** Draft being edited, or the signed note being amended. */
   note: ClinicalNote | null;
   amending?: boolean;
@@ -209,7 +212,7 @@ export function NoteEditor({
         {!amending && (
           <NativeSelect aria-label="Apply template" className="ml-auto h-8 w-56 text-xs" value="" onChange={(e) => e.target.value && applyTemplate(e.target.value)}>
             <option value="">Apply a template…</option>
-            {templates.data?.map((t) => (
+            {templates.data?.filter((t) => !t.speciesCategory || !speciesCategory || t.speciesCategory === speciesCategory).map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}
               </option>
@@ -316,6 +319,13 @@ export function NoteEditor({
             size="sm"
             loading={transition.isPending && transition.variables === 'sign'}
             onClick={async () => {
+              // Check what the server would reject before asking for confirmation.
+              if (amending && !noteId && !reason.trim()) {
+                setError('Enter the reason for the amendment before signing');
+                document.getElementById('amend-reason')?.focus();
+                return;
+              }
+              setError(null);
               const r = await confirm({
                 title: amending ? 'Sign this amendment?' : 'Sign this clinical note?',
                 description: 'Signed notes are locked and cannot be edited or deleted. Corrections require an amendment, which is recorded with your name and reason.',

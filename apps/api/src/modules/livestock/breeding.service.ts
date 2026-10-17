@@ -7,10 +7,11 @@ import { RequestContext } from '../../common/context/request-context';
 import { CounterService } from '../../common/counter/counter.service';
 import { conflict, notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { branchToday, resolveTimezone } from '../../common/time/branch-timezone';
+import { addDays, localDateOnly } from '../../common/time/tz';
 import { normalizeIdentifier, patientNo } from '../patients/patients.service';
 
 const DAY = 86400_000;
-const dateOnly = (d: Date) => new Date(d.toISOString().slice(0, 10));
 type BreedingInput = z.infer<typeof breedingEventSchema>;
 
 export type ReproductiveState = 'OPEN' | 'SERVED' | 'PREGNANT' | 'DUE_SOON' | 'OVERDUE' | 'DRY';
@@ -18,8 +19,9 @@ export type ReproductiveState = 'OPEN' | 'SERVED' | 'PREGNANT' | 'DUE_SOON' | 'O
 /**
  * Derives a female's current reproductive state from her (non-voided) breeding history, newest first.
  * Due dates come only from a recorded date or the species' configured, sourced gestation length.
+ * `today` is the branch-local calendar date (see `branchToday`).
  */
-export function reproductiveState(events: Pick<BreedingEvent, 'type' | 'occurredAt' | 'result' | 'expectedDueDate'>[], now = new Date()) {
+export function reproductiveState(events: Pick<BreedingEvent, 'type' | 'occurredAt' | 'result' | 'expectedDueDate'>[], today: Date, now = new Date()) {
   const latestOf = (...types: string[]) => events.find((e) => types.includes(e.type));
   const service = latestOf('SERVICE', 'INSEMINATION');
   const end = latestOf('BIRTH', 'ABORTION');
@@ -41,7 +43,7 @@ export function reproductiveState(events: Pick<BreedingEvent, 'type' | 'occurred
       }
     }
     if (state === 'PREGNANT' && expectedDueDate) {
-      const days = (expectedDueDate.getTime() - dateOnly(now).getTime()) / DAY;
+      const days = (expectedDueDate.getTime() - today.getTime()) / DAY;
       if (days < 0) state = 'OVERDUE';
       else if (days <= 30) state = 'DUE_SOON';
     }
@@ -91,10 +93,11 @@ export class BreedingService {
     let expectedDueDate = input.expectedDueDate ?? null;
     let dueDateSource: string | null = expectedDueDate ? 'Entered by clinician' : null;
     const gestation = dam.species.gestationDays;
+    const tz = await resolveTimezone(this.prisma);
     if (!expectedDueDate && gestation) {
       const from = input.type === 'SERVICE' || input.type === 'INSEMINATION' ? input.occurredAt : input.type === 'PREGNANCY_CHECK' && input.result === 'PREGNANT' && lastService ? lastService.occurredAt : null;
       if (from) {
-        expectedDueDate = dateOnly(new Date(from.getTime() + gestation * DAY));
+        expectedDueDate = addDays(localDateOnly(from, tz), gestation);
         dueDateSource = `${dam.species.name} gestation ${gestation} days — ${dam.species.gestationSource ?? 'clinic setting'}`;
       }
     }
@@ -149,7 +152,7 @@ export class BreedingService {
                 breedId: dam.breedId,
                 breedText: dam.breedText,
                 sex: o.sex,
-                dateOfBirth: dateOnly(input.occurredAt),
+                dateOfBirth: localDateOnly(input.occurredAt, tz),
                 status: o.alive ? 'ACTIVE' : 'DECEASED',
                 deceasedAt: o.alive ? null : input.occurredAt,
                 causeOfDeath: o.alive ? null : 'Stillborn',
@@ -212,7 +215,7 @@ export class BreedingService {
     const shapeRel = (r: { number: number } | null) => (r ? { ...r, patientNo: patientNo(r.number) } : null);
     return {
       events,
-      status: p.sex.startsWith('FEMALE') ? reproductiveState(own) : null,
+      status: p.sex.startsWith('FEMALE') ? reproductiveState(own, await branchToday(this.prisma)) : null,
       pedigree: { sire: shapeRel(p.sire), dam: shapeRel(p.dam), offspring: [...p.damOf, ...p.sireOf].map((o) => ({ ...o, patientNo: patientNo(o.number) })) },
     };
   }
@@ -230,7 +233,8 @@ export class BreedingService {
       },
       orderBy: { name: 'asc' },
     });
-    return females.map((f) => ({ id: f.id, name: f.name, patientNo: patientNo(f.number), tag: f.identifiers[0]?.value ?? null, group: f.group, species: f.species.name, dateOfBirth: f.dateOfBirth, ...reproductiveState(f.breedingEvents) }));
+    const today = await branchToday(this.prisma);
+    return females.map((f) => ({ id: f.id, name: f.name, patientNo: patientNo(f.number), tag: f.identifiers[0]?.value ?? null, group: f.group, species: f.species.name, dateOfBirth: f.dateOfBirth, ...reproductiveState(f.breedingEvents, today) }));
   }
 
   /** Births expected within the next `days` days (and overdue ones), across farms or for one farm. */
@@ -244,8 +248,9 @@ export class BreedingService {
         breedingEvents: { where: { voidedAt: null }, orderBy: { occurredAt: 'desc' }, take: 20, select: { type: true, occurredAt: true, result: true, expectedDueDate: true } },
       },
     });
+    const today = await branchToday(this.prisma);
     return rows
-      .map((r) => ({ id: r.id, name: r.name, patientNo: patientNo(r.number), tag: r.identifiers[0]?.value ?? null, farm: r.farm, ...reproductiveState(r.breedingEvents) }))
+      .map((r) => ({ id: r.id, name: r.name, patientNo: patientNo(r.number), tag: r.identifiers[0]?.value ?? null, farm: r.farm, ...reproductiveState(r.breedingEvents, today) }))
       .filter((r) => ['SERVED', 'PREGNANT', 'DUE_SOON', 'OVERDUE'].includes(r.state) && r.expectedDueDate && r.expectedDueDate.getTime() <= Date.now() + days * DAY)
       .sort((a, b) => a.expectedDueDate!.getTime() - b.expectedDueDate!.getTime());
   }

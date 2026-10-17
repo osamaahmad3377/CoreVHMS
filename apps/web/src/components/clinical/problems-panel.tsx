@@ -13,6 +13,7 @@ import { Input } from '../ui/input';
 import { api } from '@/lib/api';
 import { fmtDate } from '@/lib/format';
 import type { Problem } from '@/lib/types';
+import { localToday } from '@/lib/time';
 
 /** Patient-level problem list (chronic and ongoing conditions across visits). */
 export function ProblemsPanel({ patientId, editable }: { patientId: string; editable: boolean }) {
@@ -22,7 +23,7 @@ export function ProblemsPanel({ patientId, editable }: { patientId: string; edit
   const [term, setTerm] = useState('');
   const [chronic, setChronic] = useState(false);
   const add = useMutation({
-    mutationFn: () => api.post(`/patients/${patientId}/problems`, { term, isChronic: chronic, onsetDate: new Date().toISOString().slice(0, 10) }),
+    mutationFn: () => api.post(`/patients/${patientId}/problems`, { term, isChronic: chronic, onsetDate: localToday() }),
     onSuccess: () => {
       setTerm('');
       setChronic(false);

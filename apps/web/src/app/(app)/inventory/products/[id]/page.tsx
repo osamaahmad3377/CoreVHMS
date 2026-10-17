@@ -24,8 +24,11 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Input, NativeSelect } from '@/components/ui/input';
 import { api, qs } from '@/lib/api';
 import { fmtDate, fmtMoney } from '@/lib/format';
+import { qtyUnit } from '@/lib/labels';
 import { useSession } from '@/lib/session';
+import { cn } from '@/lib/utils';
 import type { Product, ProductStock, StockBatch, StockMovement, TaxRate } from '@/lib/types';
+import { localToday } from '@/lib/time';
 
 function Settings({ data }: { data: ProductStock }) {
   const qc = useQueryClient();
@@ -85,7 +88,7 @@ function ProductStockView() {
   if (q.isLoading) return <LoadingRows />;
   if (q.error || !q.data) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
   const { product: p, batches } = q.data;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localToday();
   const onHand = batches.reduce((n, b) => n + b.onHand, 0);
   const setStatus = async (b: StockBatch, s: 'AVAILABLE' | 'QUARANTINED' | 'RECALLED') => {
     if (s === 'AVAILABLE') return status.mutate({ batchId: b.id, status: s });
@@ -100,14 +103,14 @@ function ProductStockView() {
         description={
           <>
             {details.data && <>{PRODUCT_TYPE_LABELS[details.data.type as keyof typeof PRODUCT_TYPE_LABELS] ?? details.data.type}{details.data.productCategory && ` › ${details.data.productCategory.name}`}{details.data.brand && ` · ${details.data.brand}`}{details.data.packSize && ` · ${details.data.packSize}`} · </>}
-            {onHand} {p.dispensingUnit} on hand{p.sellPriceMinor != null && ` · sells at ${fmtMoney(p.sellPriceMinor, currency)}/${p.dispensingUnit}`}
+            {qtyUnit(onHand, p.dispensingUnit)} on hand{p.sellPriceMinor != null && ` · sells at ${fmtMoney(p.sellPriceMinor, currency)}/${p.dispensingUnit}`}
             {details.data && (PRESCRIBABLE_PRODUCT_TYPES as readonly string[]).includes(details.data.type) && <> · <Link className="hover:underline" href={`/pharmacy/formulary/${p.id}`}>Formulary record</Link></>}
           </>
         }
         actions={(can('inventory.write') || can('formulary.manage')) && details.data && <Button size="sm" variant="outline" onClick={() => setEditing(true)}><Edit /> Edit product</Button>}
       />
       {editing && details.data && <ProductDialog product={details.data} open={editing} onOpenChange={setEditing} onSaved={() => qc.invalidateQueries({ queryKey: ['stock-product', id] })} />}
-      <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="grid content-start gap-4">
           <Card>
             <CardHeader><CardTitle>Batches</CardTitle></CardHeader>
@@ -117,9 +120,9 @@ function ProductStockView() {
               empty={<EmptyState title="No batches received yet" />}
               columns={[
                 { key: 'b', header: 'Batch', cell: (b) => <div><p className="font-medium">{b.batchNumber}</p><p className="text-xs text-muted-foreground">Received {fmtDate(b.receivedAt)}{b.supplier && ` · ${b.supplier.name}`}</p></div> },
-                { key: 'exp', header: 'Expiry', cell: (b) => <span className={b.expiryDate && b.expiryDate.slice(0, 10) < today ? 'font-medium text-destructive' : 'text-sm'}>{fmtDate(b.expiryDate)}{b.expiryDate && b.expiryDate.slice(0, 10) < today && ' (expired)'}</span> },
-                { key: 'lv', header: 'Locations', cell: (b) => <span className="text-xs">{b.levels.filter((l) => l.quantity !== 0).map((l) => `${l.location.name}: ${l.quantity}`).join(' · ') || '—'}</span> },
-                { key: 'qty', header: 'On hand', className: 'text-right tabular', headerClassName: 'text-right', cell: (b) => <span className={b.onHand < 0 ? 'text-destructive' : ''}>{b.onHand}</span> },
+                { key: 'exp', header: 'Expiry', cell: (b) => <span className={b.expiryDate && b.expiryDate.slice(0, 10) < today ? 'whitespace-nowrap font-medium text-destructive' : 'whitespace-nowrap text-sm'}>{fmtDate(b.expiryDate)}{b.expiryDate && b.expiryDate.slice(0, 10) < today && ' (expired)'}</span> },
+                { key: 'lv', header: 'Locations', cell: (b) => { const at = b.levels.filter((l) => l.quantity !== 0); return at.length ? <ul className="grid gap-0.5 text-xs">{at.map((l) => <li key={l.location.name} className="flex justify-between gap-3"><span className="truncate">{l.location.name}</span><span className="tabular">{l.quantity}</span></li>)}</ul> : <span className="text-xs text-muted-foreground">—</span>; } },
+                { key: 'qty', header: 'On hand', className: 'text-right tabular', headerClassName: 'text-right', cell: (b) => <span className={cn('whitespace-nowrap', b.onHand < 0 && 'text-destructive')}>{qtyUnit(b.onHand, p.dispensingUnit)}</span> },
                 { key: 'cost', header: 'Unit cost', className: 'text-right tabular', headerClassName: 'text-right', cell: (b) => fmtMoney(b.unitCostMinor, currency) },
                 { key: 'st', header: 'Status', cell: (b) => <span title={b.statusReason ?? undefined}><CommerceBadge status={b.status} /></span> },
                 {

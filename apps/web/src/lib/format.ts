@@ -53,3 +53,39 @@ export function fmtBytes(n: number) {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
+
+/**
+ * Date-only values (Postgres `date`, sent as UTC midnight — e.g. a batch's placedOn): show the calendar
+ * date itself. Going through `new Date()` would shift it a day in time zones behind UTC.
+ */
+export function fmtDateOnly(d: string | Date | null | undefined, fallback = '—') {
+  if (!d) return fallback;
+  const day = (typeof d === 'string' ? d : isValid(d) ? d.toISOString() : '').slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? format(new Date(`${day}T00:00:00`), 'd MMM yyyy') : fallback;
+}
+
+const numberFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
+/** Counts and quantities with thousands separators: 2,909 · 4,416.5 */
+export function fmtNumber(n: number | string | null | undefined, fallback = '—') {
+  if (n === null || n === undefined || n === '') return fallback;
+  const v = Number(n);
+  return Number.isFinite(v) ? numberFormat.format(v) : fallback;
+}
+
+let regionNames: Intl.DisplayNames | null | undefined;
+/** Country name for an ISO 3166 code ("PK" → "Pakistan"); falls back to the code itself. */
+export function fmtCountry(code: string | null | undefined) {
+  if (!code) return '';
+  if (regionNames === undefined) {
+    try {
+      regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
+    } catch {
+      regionNames = null;
+    }
+  }
+  try {
+    return (/^[A-Za-z]{2}$/.test(code) && regionNames?.of(code.toUpperCase())) || code;
+  } catch {
+    return code;
+  }
+}

@@ -79,6 +79,13 @@ export class PharmacyController {
     return this.formulary.get(id);
   }
 
+  /** Read-only: issuable batches at the branch's stock location, first-expiring first (for dispensing and administration). */
+  @Get('products/:id/batches')
+  @RequireAnyPermission('pharmacy.dispense', 'clinical.write', 'hospital.write', 'preventive.write', 'inventory.read')
+  batches(@Param('id', UUID) id: string, @Query('branchId') branchId?: string) {
+    return this.formulary.availableBatches(id, branchId && /^[0-9a-f-]{36}$/i.test(branchId) ? branchId : undefined);
+  }
+
   @Post('products')
   @RequireAnyPermission('formulary.manage', 'inventory.write')
   @ApiZodBody(productSchema)

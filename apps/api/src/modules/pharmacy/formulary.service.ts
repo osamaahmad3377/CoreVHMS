@@ -54,6 +54,33 @@ export class FormularyService {
     return paginated(rows.map(decimalProduct), total, q);
   }
 
+  /**
+   * Batches that can be issued for a product at a branch's stock location (the same location and
+   * first-expiry-first-out order that dispensing and administration use), for batch pickers.
+   */
+  async availableBatches(productId: string, branchId?: string) {
+    const db = this.prisma.db;
+    const product = await db.product.findUnique({ where: { id: productId }, select: { id: true, name: true, dispensingUnit: true, trackStock: true } });
+    if (!product) throw notFound('Product');
+    const branch = branchId ?? RequestContext.require().branchId;
+    // Mirrors InventoryService.defaultLocation: the branch's default location, else its first active one.
+    const location = branch
+      ? ((await db.stockLocation.findFirst({ where: { branchId: branch, isActive: true, isDefault: true }, select: { id: true, name: true } })) ??
+        (await db.stockLocation.findFirst({ where: { branchId: branch, isActive: true }, orderBy: [{ type: 'asc' }, { createdAt: 'asc' }], select: { id: true, name: true } })))
+      : null;
+    if (!product.trackStock || !location) return { product, location, batches: [] };
+    // Same "not expired" rule as the stock engine's FEFO issue.
+    const today = new Date(new Date().toISOString().slice(0, 10));
+    const levels = await db.stockLevel.findMany({
+      where: { productId, locationId: location.id, quantity: { gt: 0 }, batch: { status: 'AVAILABLE', OR: [{ expiryDate: null }, { expiryDate: { gte: today } }] } },
+      include: { batch: { select: { id: true, batchNumber: true, expiryDate: true, receivedAt: true } } },
+    });
+    const batches = levels
+      .map((l) => ({ id: l.batch.id, batchNumber: l.batch.batchNumber, expiryDate: l.batch.expiryDate, receivedAt: l.batch.receivedAt, onHand: Number(l.quantity) }))
+      .sort((a, b) => (a.expiryDate?.getTime() ?? Infinity) - (b.expiryDate?.getTime() ?? Infinity) || a.receivedAt.getTime() - b.receivedAt.getTime());
+    return { product, location, batches };
+  }
+
   async get(id: string) {
     const p = await this.prisma.db.product.findUnique({
       where: { id },

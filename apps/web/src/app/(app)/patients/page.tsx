@@ -102,7 +102,7 @@ function PatientsList() {
           can('patients.write') && (
             <Button size="sm" asChild>
               <Link href="/patients/new">
-                <Plus /> Register patient
+                <Plus /> Add patient
               </Link>
             </Button>
           )

@@ -1,5 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { fromMinor } from '@vcms/shared';
 import { Plus, ShoppingBag, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -20,11 +21,12 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input, NativeSelect, Textarea } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { fmtDate, fmtMoney } from '@/lib/format';
-import { defaultLocation } from '@/lib/locations';
+import { defaultLocation, locationLabel, sortedLocations } from '@/lib/locations';
+import { qtyUnit } from '@/lib/labels';
 import { useSession } from '@/lib/session';
 import type { Product, PurchaseOrder, StockLocation, Supplier } from '@/lib/types';
 
-interface Suggestion { productId: string; name: string; dispensingUnit: string; available: number; onOrder: number; reorderLevel: number; suggested: number }
+interface Suggestion { productId: string; name: string; dispensingUnit: string; available: number; onOrder: number; reorderLevel: number; suggested: number; lastCostMinor: number | null; lastSupplier: { id: string; name: string } | null }
 interface PoLine { key: string; product: Pick<Product, 'id' | 'name' | 'dispensingUnit'> | null; quantity: string; cost: string }
 
 function PoDialog({ open, onOpenChange, seed }: { open: boolean; onOpenChange: (o: boolean) => void; seed: Suggestion[] }) {
@@ -42,8 +44,13 @@ function PoDialog({ open, onOpenChange, seed }: { open: boolean; onOpenChange: (
   useEffect(() => {
     if (!open) return;
     setError(null);
-    setLines(seed.length ? seed.map((s) => ({ key: s.productId, product: { id: s.productId, name: s.name, dispensingUnit: s.dispensingUnit }, quantity: String(s.suggested), cost: '' })) : [{ key: crypto.randomUUID(), product: null, quantity: '', cost: '' }]);
-  }, [open, seed]);
+    setLines(seed.length ? seed.map((s) => ({ key: s.productId, product: { id: s.productId, name: s.name, dispensingUnit: s.dispensingUnit }, quantity: String(s.suggested), cost: s.lastCostMinor != null ? fromMinor(s.lastCostMinor, currency) : '' })) : [{ key: crypto.randomUUID(), product: null, quantity: '', cost: '' }]);
+    // Suggestions from one supplier pre-select that supplier.
+    const from = [...new Set(seed.map((s) => s.lastSupplier?.id).filter(Boolean))];
+    setSupplierId(from.length === 1 ? from[0]! : '');
+    setExpectedAt('');
+    setNotes('');
+  }, [open, seed, currency]);
   useEffect(() => {
     if (!locationId && locations.data?.length) setLocationId(defaultLocation(locations.data, session.branch?.id)!.id);
   }, [locations.data, locationId, session.branch?.id]);
@@ -52,7 +59,7 @@ function PoDialog({ open, onOpenChange, seed }: { open: boolean; onOpenChange: (
   const total = valid.reduce((n, l) => n + Math.round(Number(l.quantity) * (parseMoney(l.cost, currency) ?? 0)), 0);
   const m = useMutation({
     mutationFn: () => api.post<PurchaseOrder>('/purchase-orders', { supplierId, locationId, expectedAt: expectedAt || null, notes: notes || null, lines: valid.map((l) => ({ productId: l.product!.id, quantity: Number(l.quantity), unitCostMinor: parseMoney(l.cost, currency) })) }),
-    onSuccess: (po) => { qc.invalidateQueries({ queryKey: ['purchase-orders'] }); router.push(`/inventory/purchase-orders/${po.id}`); },
+    onSuccess: (po) => { qc.invalidateQueries({ queryKey: ['purchase-orders'] }); qc.invalidateQueries({ queryKey: ['reorder-suggestions'] }); toast.success(`Draft ${po.poNo} saved — submit it for approval when ready`); router.push(`/inventory/purchase-orders/${po.id}`); },
     onError: (e: Error) => setError(e.message),
   });
   return (
@@ -72,12 +79,15 @@ function PoDialog({ open, onOpenChange, seed }: { open: boolean; onOpenChange: (
           </Field>
           <Field label="Deliver to" htmlFor="po-loc" required>
             <NativeSelect id="po-loc" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
-              {(locations.data ?? []).filter((l) => l.isActive).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              {sortedLocations(locations.data, session.branch?.id).filter((l) => l.isActive).map((l) => <option key={l.id} value={l.id}>{locationLabel(l, locations.data)}</option>)}
             </NativeSelect>
           </Field>
           <Field label="Expected delivery" htmlFor="po-exp"><Input id="po-exp" type="date" value={expectedAt} onChange={(e) => setExpectedAt(e.target.value)} /></Field>
         </div>
         <div className="grid max-h-[40vh] gap-2 overflow-y-auto">
+          <div aria-hidden className="hidden px-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground sm:grid sm:grid-cols-[minmax(0,1fr)_110px_140px_32px] sm:gap-2">
+            <span>Product</span><span>Quantity</span><span>Unit cost</span><span />
+          </div>
           {lines.map((l, idx) => (
             <div key={l.key} className="grid gap-2 rounded-md border p-2 sm:grid-cols-[minmax(0,1fr)_110px_140px_auto] sm:items-center">
               <ProductPicker value={l.product as Product | null} onChange={(p) => update(l.key, { product: p })} placeholder="Product…" />
@@ -105,25 +115,45 @@ function Orders() {
   const [creating, setCreating] = useState<Suggestion[] | null>(null);
   const query = useQuery({ queryKey: ['purchase-orders'], queryFn: () => api.get<PurchaseOrder[]>('/purchase-orders') });
   const suggestions = useQuery({ queryKey: ['reorder-suggestions'], queryFn: () => api.get<Suggestion[]>('/purchase-orders/reorder-suggestions') });
+  // One draft order per supplier: group suggestions by who supplied them last.
+  const bySupplier = Object.entries(
+    (suggestions.data ?? []).reduce<Record<string, Suggestion[]>>((acc, s) => ((acc[s.lastSupplier?.name ?? '—'] ??= []).push(s), acc), {}),
+  ).sort(([a], [b]) => (a === '—' ? 1 : b === '—' ? -1 : a.localeCompare(b)));
   return (
     <>
       <PageHeader
-        help="purchase-order" title="Purchase orders" breadcrumbs={[{ label: 'Inventory', href: '/inventory' }, { label: 'Purchase orders' }]} actions={can('procurement.write') && <Button size="sm" onClick={() => setCreating([])}><Plus /> New order</Button>} />
+        help="purchase-order" title="Purchase orders" actions={can('procurement.write') && <Button size="sm" onClick={() => setCreating([])}><Plus /> New order</Button>} />
       <SectionNav links={INVENTORY_LINKS} />
       {!!suggestions.data?.length && (
         <Card className="mb-4">
           <CardHeader>
-            <CardTitle>Reorder suggestions</CardTitle>
-            {can('procurement.write') && <Button size="sm" variant="outline" onClick={() => setCreating(suggestions.data)}>Create order from suggestions</Button>}
+            <div>
+              <CardTitle>Reorder suggestions</CardTitle>
+              <p className="text-xs text-muted-foreground">At or below their reorder level, counting stock already on order. Quantities and costs are prefilled from the last delivery.</p>
+            </div>
           </CardHeader>
-          <ul className="divide-y border-t">
-            {suggestions.data.map((s) => (
-              <li key={s.productId} className="flex justify-between px-4 py-2 text-sm">
-                <Link className="hover:underline" href={`/inventory/products/${s.productId}`}>{s.name}</Link>
-                <span className="text-muted-foreground">available {s.available} · on order {s.onOrder} · reorder at {s.reorderLevel} → suggest <b className="text-foreground">{s.suggested} {s.dispensingUnit}</b></span>
-              </li>
-            ))}
-          </ul>
+          {bySupplier.map(([supplier, items]) => (
+            <div key={supplier} className="border-t">
+              <div className="flex flex-wrap items-center justify-between gap-2 bg-muted/40 px-4 py-2">
+                <span className="text-xs font-semibold">{supplier === '—' ? 'No previous supplier' : supplier} <span className="font-normal text-muted-foreground">· {items.length} {items.length === 1 ? 'item' : 'items'}</span></span>
+                {can('procurement.write') && <Button size="sm" variant="outline" onClick={() => setCreating(items)}><Plus /> Draft order</Button>}
+              </div>
+              <ul className="divide-y">
+                {items.map((s) => (
+                  <li key={s.productId} className="grid gap-1 px-4 py-2 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-4">
+                    <Link className="truncate font-medium hover:underline" href={`/inventory/products/${s.productId}`}>{s.name}</Link>
+                    <span className="flex flex-wrap gap-x-3 text-xs text-muted-foreground tabular">
+                      <span>{qtyUnit(s.available, s.dispensingUnit)} left</span>
+                      {s.onOrder > 0 && <span>{qtyUnit(s.onOrder, s.dispensingUnit)} on order</span>}
+                      <span>reorder at {s.reorderLevel}</span>
+                      {s.lastCostMinor != null && <span>last cost {fmtMoney(s.lastCostMinor, currency)}</span>}
+                      <span className="font-medium text-foreground">order {qtyUnit(s.suggested, s.dispensingUnit)}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </Card>
       )}
       <Card>

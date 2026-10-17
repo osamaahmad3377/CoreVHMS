@@ -1,10 +1,11 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { branchToday } from '../../common/time/branch-timezone';
 import { DashboardService } from '../dashboard/dashboard.service';
 import { PatientMergeService } from '../patients/patient-merge.service';
 import { PatientTimelineService } from '../patients/patient-timeline.service';
 import { AdministrationsService } from '../pharmacy/administrations.service';
-import { CareService, todayUtc } from './care.service';
+import { CareService } from './care.service';
 import { ClientPrivacyService } from '../clients/client-privacy.service';
 
 @Injectable()
@@ -28,7 +29,7 @@ export class PreventiveIntegrations implements OnModuleInit {
       const a = await tx.medicationAdministration.findUniqueOrThrow({ where: { id: e.administrationId } });
       const item = await tx.careItem.findFirst({ where: { patientId: a.patientId, status: { in: ['DUE', 'DEFERRED'] }, administrationId: null, protocol: { productId: e.productId, status: 'APPROVED' } }, orderBy: { dueDate: 'asc' } });
       if (item) await this.care.markCompleted(tx, item.id, { completedAt: a.administeredAt, administrationId: a.id, batchNumber: e.batchNumber ?? null });
-    });
+    }, { late: true }); // after the stock issue, so the batch picked first-expiry-first is known
 
     this.timeline.register('preventive', async (id) =>
       (await db().careItem.findMany({ where: { patientId: id, status: { in: ['COMPLETED', 'CANCELLED'] } }, orderBy: { updatedAt: 'desc' }, take: 200 })).map((i) => ({
@@ -46,8 +47,8 @@ export class PreventiveIntegrations implements OnModuleInit {
     this.dashboard.register({
       key: 'preventive',
       permission: 'preventive.read',
-      load: async () => {
-        const today = todayUtc();
+      load: async (r) => {
+        const today = await branchToday(this.prisma, r.branchId);
         const week = new Date(today.getTime() + 7 * 86400_000);
         const active = { patient: { status: 'ACTIVE' as const } };
         const [overdue, dueWeek] = await Promise.all([

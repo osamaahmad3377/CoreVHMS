@@ -1,6 +1,6 @@
 import { enumLabel } from '@vcms/shared';
 import type { ClinicHeader } from '../billing/invoice-document';
-import { fmtDate } from '@/lib/format';
+import { fmtDate, fmtDateOnly } from '@/lib/format';
 import type { VaccinationCertificate } from '@/lib/types';
 
 /** Printable vaccination certificate built from recorded administrations (product, batch, date, vet). */
@@ -24,16 +24,16 @@ export function CertificateDocument({ cert, clinic }: { cert: VaccinationCertifi
       </dl>
       <table className="w-full border-collapse text-sm">
         <thead>
-          <tr className="border-y border-black text-left"><th className="py-1">Date</th><th>Vaccine</th><th>Product / manufacturer</th><th>Batch</th><th>Expiry</th><th>Given by</th></tr>
+          <tr className="border-y border-black text-left [&>th]:px-2 [&>th]:py-1 [&>th:first-child]:pl-0"><th>Date</th><th>Vaccine</th><th>Product / manufacturer</th><th>Batch</th><th>Expiry</th><th>Given by</th></tr>
         </thead>
         <tbody>
           {cert.given.map((g) => (
-            <tr key={g.id} className="border-b border-gray-300 align-top">
-              <td className="py-1">{fmtDate(g.date)}</td>
+            <tr key={g.id} className="border-b border-gray-300 align-top [&>td]:px-2 [&>td]:py-1 [&>td:first-child]:pl-0">
+              <td className="whitespace-nowrap">{fmtDate(g.date)}</td>
               <td>{g.title}</td>
               <td>{g.product ?? '—'}{g.manufacturer ? ` (${g.manufacturer})` : ''}</td>
-              <td>{g.batchNumber ?? '—'}</td>
-              <td>{fmtDate(g.expiryDate)}</td>
+              <td>{g.batchNumber || '—'}</td>
+              <td className="whitespace-nowrap">{fmtDateOnly(g.expiryDate)}</td>
               <td>{g.givenElsewhere ? 'Given elsewhere (owner record)' : g.givenBy}</td>
             </tr>
           ))}

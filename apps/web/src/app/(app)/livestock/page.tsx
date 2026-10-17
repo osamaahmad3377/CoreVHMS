@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useUrlState } from '@/hooks/use-url-state';
 import { api, qs } from '@/lib/api';
-import { fmtDate, fmtDateTime } from '@/lib/format';
+import { fmtDate, fmtDateTime, fmtNumber } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import { shiftDate, todayIn, zonedInstant } from '@/lib/time';
 import type { BirthDueRow, FarmRow, FieldVisitRow, OutbreakRow, WithdrawalBoardRow } from '@/lib/types';
@@ -30,6 +30,9 @@ const TABS = [
   { key: 'outbreaks', label: 'Outbreaks' },
 ];
 
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const sameName = (a: string, b: string) => norm(a) === norm(b);
+
 function Farms() {
   const router = useRouter();
   const url = useUrlState();
@@ -37,7 +40,7 @@ function Farms() {
   const farms = useQuery({ queryKey: ['farms', q], queryFn: () => api.get<FarmRow[]>(`/farms${qs({ q: q || undefined })}`) });
   return (
     <Card>
-      <div className="border-b p-3"><SearchInput value={q} onChange={(v) => url.set({ q: v })} placeholder="Search farm, owner, district or registration…" /></div>
+      <div className="border-b p-3"><SearchInput value={q} onChange={(v) => url.set({ q: v })} placeholder="Search farms, owners, districts…" /></div>
       <DataTable
         query={farms}
         rowKey={(f) => f.id}
@@ -45,9 +48,19 @@ function Farms() {
         empty={<EmptyState icon={Tractor} title="No farms yet" description="Add a farm for a farming client to keep herds, breeding, production and visits together." />}
         columns={[
           { key: 'name', header: 'Farm', cell: (f) => <div><Link href={`/livestock/farms/${f.id}`} className="font-medium hover:underline">{f.name}</Link><p className="text-xs text-muted-foreground">{f.farmNo}{f.district ? ` · ${f.district}` : ''}</p></div> },
-          { key: 'owner', header: 'Owner', cell: (f) => <span className="text-sm">{f.client.displayName}<span className="block text-xs text-muted-foreground">{f.client.mobilePhone}</span></span> },
-          { key: 'animals', header: 'Animals', cell: (f) => <span className="text-sm tabular">{f.animalCount ?? 0}<span className="text-xs text-muted-foreground"> in {f.groupCount} group{f.groupCount === 1 ? '' : 's'}</span></span> },
-          { key: 'alerts', header: 'Alerts', cell: (f) => <span className="flex flex-wrap gap-1">{!!f.openOutbreaks && <Badge variant="destructive">{f.openOutbreaks} outbreak{f.openOutbreaks === 1 ? '' : 's'}</Badge>}{!!f.animalsUnderWithdrawal && <Badge variant="warning">{f.animalsUnderWithdrawal} under withdrawal</Badge>}</span> },
+          {
+            key: 'owner',
+            header: 'Owner',
+            // A farm registered as its own client account would just repeat the farm name — show the contact number only.
+            cell: (f) => (
+              <span className="text-sm">
+                {sameName(f.client.displayName, f.name) ? <span className="text-muted-foreground">Farm’s own account</span> : f.client.displayName}
+                {f.client.mobilePhone && <span className="block text-xs text-muted-foreground">{f.client.mobilePhone}</span>}
+              </span>
+            ),
+          },
+          { key: 'animals', header: 'Animals', cell: (f) => <span className="whitespace-nowrap text-sm tabular">{fmtNumber(f.animalCount ?? 0)}<span className="text-xs text-muted-foreground"> in {fmtNumber(f.groupCount ?? 0)} group{f.groupCount === 1 ? '' : 's'}</span></span> },
+          { key: 'alerts', header: 'Alerts', cell: (f) => <span className="flex flex-wrap gap-1">{!!f.openOutbreaks && <Badge variant="destructive">{fmtNumber(f.openOutbreaks)} outbreak{f.openOutbreaks === 1 ? '' : 's'}</Badge>}{!!f.animalsUnderWithdrawal && <Badge variant="warning">{fmtNumber(f.animalsUnderWithdrawal)} under withdrawal</Badge>}</span> },
         ]}
       />
     </Card>
@@ -138,7 +151,7 @@ function Outbreaks() {
         columns={[
           { key: 'disease', header: 'Disease', cell: (o) => <div><span className="font-medium">{o.disease}</span>{o.notifiable && <Badge variant="destructive" className="ml-2">Notifiable</Badge>}<p className="text-xs text-muted-foreground">{o.outbreakNo}</p></div> },
           { key: 'farm', header: 'Farm', cell: (o) => <span className="text-sm">{o.farm.name}{o.group ? ` · ${o.group.name}` : ''}<span className="block text-xs text-muted-foreground">{o.farm.district}</span></span> },
-          { key: 'counts', header: 'Affected / dead', cell: (o) => <span className="text-sm tabular">{o.affectedCount} / {o.deathCount}{o.populationAtRisk ? <span className="text-xs text-muted-foreground"> of {o.populationAtRisk}</span> : null}</span> },
+          { key: 'counts', header: 'Affected / dead', cell: (o) => <span className="text-sm tabular">{fmtNumber(o.affectedCount)} / {fmtNumber(o.deathCount)}{o.populationAtRisk ? <span className="text-xs text-muted-foreground"> of {fmtNumber(o.populationAtRisk)}</span> : null}</span> },
           { key: 'seen', header: 'First seen', cell: (o) => <span className="text-sm">{fmtDate(o.firstSeenOn)}</span> },
           { key: 'st', header: 'Status', cell: (o) => <OutbreakStatusBadge status={o.status} /> },
         ]}
@@ -163,11 +176,11 @@ function Livestock() {
         actions={can('livestock.write') && <Button size="sm" onClick={() => setCreating(true)}><Plus /> New farm</Button>}
       />
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <Stat label="Active farms" value={o?.farms ?? '—'} icon={Tractor} />
-        <Stat label="Animals" value={o ? o.animals + o.batchHead : '—'} hint={o ? `${o.animals} registered · ${o.batchHead} in batches` : undefined} icon={Milk} />
-        <Stat label="Under withdrawal" value={o?.activeWithdrawals ?? '—'} icon={ShieldAlert} tone={o?.activeWithdrawals ? 'warning' : 'default'} href="/livestock?tab=withdrawals" />
-        <Stat label="Births due (30 days)" value={o?.birthsDue30Days ?? '—'} icon={Baby} href="/livestock?tab=births" />
-        <Stat label="Open outbreaks" value={o?.openOutbreaks ?? '—'} icon={AlertTriangle} tone={o?.openOutbreaks ? 'danger' : 'default'} href="/livestock?tab=outbreaks" />
+        <Stat label="Active farms" value={o ? fmtNumber(o.farms) : '—'} icon={Tractor} />
+        <Stat label="Animals" value={o ? fmtNumber(o.animals + o.batchHead) : '—'} hint={o ? `${fmtNumber(o.animals)} registered · ${fmtNumber(o.batchHead)} in batches` : undefined} icon={Milk} />
+        <Stat label="Under withdrawal" value={o ? fmtNumber(o.activeWithdrawals) : '—'} icon={ShieldAlert} tone={o?.activeWithdrawals ? 'warning' : 'default'} href="/livestock?tab=withdrawals" />
+        <Stat label="Births due (30 days)" value={o ? fmtNumber(o.birthsDue30Days) : '—'} icon={Baby} href="/livestock?tab=births" />
+        <Stat label="Open outbreaks" value={o ? fmtNumber(o.openOutbreaks) : '—'} icon={AlertTriangle} tone={o?.openOutbreaks ? 'danger' : 'default'} href="/livestock?tab=outbreaks" />
       </div>
       <div className="mb-4 flex gap-1 overflow-x-auto border-b" role="tablist">
         {TABS.map((t) => (

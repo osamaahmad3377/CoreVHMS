@@ -44,7 +44,7 @@ test.describe('Shop products: food, grooming and accessories', () => {
     await page.getByRole('tablist', { name: 'Shelves' }).getByRole('tab', { name: 'Dry food' }).click();
     const tile = page.getByRole('button', { name: `Add ${name}` });
     await expect(tile).toContainText('E2E Brand · 2 kg bag');
-    await expect(tile).toContainText('6 bag');
+    await expect(tile).toContainText('6 bags');
     await page.getByRole('tablist', { name: 'Shelves' }).getByRole('tab', { name: 'Wet food' }).click();
     await expect(page.getByRole('button', { name: `Add ${name}` })).toHaveCount(0);
     await page.getByRole('tablist', { name: 'Shelves' }).getByRole('tab', { name: 'Dry food' }).click();

@@ -19,9 +19,21 @@ export interface AttachmentTarget {
   auditDownloads?: boolean;
 }
 
+/**
+ * Records under a parent whose files are also shown, read-only, on the parent's list when asked
+ * (e.g. photos uploaded in a patient's consultations on the patient's Documents tab).
+ */
+export interface RelatedAttachments {
+  /** Attachment entity type of the child records; its own read permission still applies. */
+  childType: string;
+  /** Child record ids for the parent, each with a label for where the file came from ("Consultation E-000016"). */
+  children(parentId: string): Promise<{ id: string; label: string }[]>;
+}
+
 @Injectable()
 export class AttachmentsService {
   private readonly targets = new Map<string, AttachmentTarget>();
+  private readonly related = new Map<string, RelatedAttachments[]>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -56,6 +68,11 @@ export class AttachmentsService {
   /** Modules owning documents (encounters, lab results, …) register their entity type and permissions. */
   registerTarget(entityType: string, target: AttachmentTarget) {
     this.targets.set(entityType, target);
+  }
+
+  /** Modules add their child records' files to a parent's list (read-only; see `list(..., includeRelated)`). */
+  registerRelated(parentType: string, related: RelatedAttachments) {
+    this.related.set(parentType, [...(this.related.get(parentType) ?? []), related]);
   }
 
   private async authorize(entityType: string, entityId: string, mode: 'read' | 'write') {
@@ -112,13 +129,30 @@ export class AttachmentsService {
     }
   }
 
-  async list(entityType: string, entityId: string) {
+  /**
+   * Files on a record. With `includeRelated`, also files on its registered child records that the user may
+   * read, each labelled with its `source`. The result is a view only: every file keeps its own record.
+   */
+  async list(entityType: string, entityId: string, includeRelated = false) {
     await this.authorize(entityType, entityId, 'read');
     const rows = await this.prisma.db.attachment.findMany({
       where: { entityType, entityId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
     });
-    return rows.map(publicShape);
+    const own = rows.map((a) => ({ ...publicShape(a), source: null as { entityType: string; entityId: string; label: string } | null }));
+    if (!includeRelated) return own;
+    const permissions = RequestContext.require().permissions;
+    const extra: typeof own = [];
+    for (const r of this.related.get(entityType) ?? []) {
+      const target = this.targets.get(r.childType);
+      if (!target || !permissions.has(target.read)) continue;
+      const children = await r.children(entityId);
+      if (!children.length) continue;
+      const label = new Map(children.map((c) => [c.id, c.label]));
+      const childRows = await this.prisma.db.attachment.findMany({ where: { entityType: r.childType, entityId: { in: [...label.keys()] }, deletedAt: null } });
+      extra.push(...childRows.map((a) => ({ ...publicShape(a), source: { entityType: a.entityType, entityId: a.entityId, label: label.get(a.entityId) ?? a.entityType } })));
+    }
+    return [...own, ...extra].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
   async open(id: string) {

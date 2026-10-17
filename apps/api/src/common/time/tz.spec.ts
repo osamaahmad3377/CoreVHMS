@@ -1,4 +1,4 @@
-import { dayOfWeekOf, localDayBounds, localParts, zonedToUtc } from './tz';
+import { addDays, dayOfWeekOf, localDateOnly, localDayBounds, localParts, zonedToUtc } from './tz';
 
 describe('timezone helpers', () => {
   it('converts Karachi local time (UTC+5, no DST) to UTC', () => {
@@ -23,5 +23,17 @@ describe('timezone helpers', () => {
 
   it('gives the weekday of a calendar date', () => {
     expect(dayOfWeekOf('2026-10-14')).toBe(3);
+  });
+});
+
+describe('date-only helpers', () => {
+  it('uses the local calendar date, not the UTC one, just after local midnight', () => {
+    // 01:30 on 17 Oct in Karachi is still 16 Oct in UTC.
+    expect(localDateOnly(new Date('2026-10-16T20:30:00Z'), 'Asia/Karachi').toISOString()).toBe('2026-10-17T00:00:00.000Z');
+    expect(localDateOnly(new Date('2026-10-16T20:30:00Z'), 'UTC').toISOString()).toBe('2026-10-16T00:00:00.000Z');
+  });
+
+  it('adds whole days to a date-only value', () => {
+    expect(addDays(new Date('2026-10-17T00:00:00Z'), 365).toISOString()).toBe('2027-10-17T00:00:00.000Z');
   });
 });

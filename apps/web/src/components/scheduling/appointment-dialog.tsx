@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { enumLabel } from '@vcms/shared';
-import { CalendarClock, CheckCircle2, ClipboardCheck, LogIn, Play, Scissors, Siren, Stethoscope, Tractor, UserX, XCircle } from 'lucide-react';
+import { AlertTriangle, CalendarClock, CalendarPlus, CheckCircle2, ClipboardCheck, LogIn, Play, Scissors, Siren, Stethoscope, Tractor, UserX, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -15,6 +15,7 @@ import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Input, NativeSelect } from '../ui/input';
 import { AppointmentStatusBadge, PriorityDot } from './appointment-status';
+import { BookingDialog, type BookingDefaults } from './booking-dialog';
 import { TriageDialog } from './triage-dialog';
 import { GroomingCheckInDialog } from '../boarding/dialogs';
 import { VisitFromAppointmentDialog } from '../livestock/record-dialogs';
@@ -36,6 +37,7 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
   const clinicians = useClinicians(session.branch?.id);
   const [mode, setMode] = useState<'view' | 'reschedule'>('view');
   const [triageOpen, setTriageOpen] = useState(false);
+  const [rebook, setRebook] = useState<BookingDefaults | null>(null);
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [clinicianId, setClinicianId] = useState('');
@@ -72,9 +74,11 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
 
   const reschedule = useMutation({
     mutationFn: (override: { allowOverbook?: boolean; allowOutsideHours?: boolean }) =>
-      api.patch(`/appointments/${id}`, { startsAt: zonedInstant(date, parseHhmm(time), tz).toISOString(), clinicianId: clinicianId || null, ...override }),
-    onSuccess: () => {
-      toast.success('Appointment moved');
+      api.patch<Appointment>(`/appointments/${id}`, { startsAt: zonedInstant(date, parseHhmm(time), tz).toISOString(), clinicianId: clinicianId || null, ...override }),
+    onSuccess: (after) => {
+      // The API resets a confirmed appointment to Booked when its time changes, so the client should be asked again.
+      if (q.data?.status === 'CONFIRMED' && after.status === 'BOOKED') toast.warning('Time changed — confirmation reset to Booked');
+      else toast.success('Appointment moved');
       refresh();
       setMode('view');
     },
@@ -90,10 +94,24 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
         { key: 'start', label: 'Start consultation', icon: Play, show: ['BOOKED', 'CONFIRMED', 'CHECKED_IN'].includes(s!) && !!a.patient && can('clinical.write') },
         { key: 'complete', label: 'Complete', icon: CheckCircle2, show: (s === 'CHECKED_IN' || s === 'IN_CONSULTATION') && (can('clinical.write') || can('appointments.checkin')), variant: 'outline' },
         { key: 'no-show', label: 'No-show', icon: UserX, show: (s === 'BOOKED' || s === 'CONFIRMED') && new Date(a.startsAt) < new Date() && (can('appointments.write') || can('appointments.checkin')), variant: 'outline' },
-        { key: 'revert', label: 'Undo check-in', icon: XCircle, show: (s === 'CHECKED_IN' || s === 'NO_SHOW') && can('appointments.checkin'), variant: 'outline' },
+        { key: 'revert', label: s === 'NO_SHOW' ? 'Undo no-show' : 'Undo check-in', icon: XCircle, show: (s === 'CHECKED_IN' || s === 'NO_SHOW') && can('appointments.checkin'), variant: 'outline' },
         { key: 'cancel', label: 'Cancel appointment', icon: XCircle, show: ['BOOKED', 'CONFIRMED', 'CHECKED_IN'].includes(s!) && can('appointments.write'), variant: 'destructive', reason: true },
       ]
     : [];
+  const visibleActions = actions.filter((x) => x.show);
+  const canTriage = !!a?.patient && ['BOOKED', 'CONFIRMED', 'CHECKED_IN'].includes(s ?? '') && can('triage.write');
+  const canReschedule = ['BOOKED', 'CONFIRMED', 'CHECKED_IN'].includes(s ?? '') && can('appointments.write');
+  const canRebook = !!a?.patient && (s === 'CANCELLED' || s === 'NO_SHOW') && can('appointments.write');
+  const moduleLinks = a
+    ? [
+        a.groomingJob && can('boarding.read'),
+        !a.groomingJob && a.appointmentType.category === 'GROOMING' && ['BOOKED', 'CONFIRMED', 'CHECKED_IN'].includes(a.status) && can('boarding.write'),
+        a.fieldVisit && can('livestock.read'),
+        !a.fieldVisit && a.appointmentType.category === 'FIELD_VISIT' && !['CANCELLED', 'NO_SHOW'].includes(a.status) && can('livestock.write'),
+      ].some(Boolean)
+    : false;
+  const hasActions = !!a?.encounter || moduleLinks || visibleActions.length > 0 || canTriage || canReschedule || canRebook;
+  const softClash = error?.code === 'CLINICIAN_BUSY' || error?.code === 'OUTSIDE_WORKING_HOURS';
 
   return (
     <>
@@ -123,7 +141,8 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
                       { label: 'Phone', value: a.client.mobilePhone },
                       { label: 'Clinician', value: a.clinician?.name ?? 'Unassigned' },
                       { label: 'Rooms', value: a.resources.map((r) => r.name).join(', ') },
-                      { label: 'Number', value: `${a.appointmentNo} · ${enumLabel(a.source)}${a.isOverbooked ? ' · overbooked' : ''}` },
+                      // Walk-ins are always stored as overbooked (they sit alongside bookings), so the flag is noise for them.
+                      { label: 'Number', value: `${a.appointmentNo} · ${enumLabel(a.source)}${a.isOverbooked && a.source !== 'WALK_IN' ? ' · overbooked' : ''}` },
                       { label: 'Reason', value: a.reason },
                       { label: 'Notes', value: a.notes },
                       { label: 'Checked in', value: a.checkedInAt && fmtDateTime(a.checkedInAt) },
@@ -131,6 +150,7 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
                       ...(a.cancelReason ? [{ label: 'Cancelled', value: `${fmtDateTime(a.cancelledAt)} — ${a.cancelReason}` }] : []),
                     ]}
                   />
+                  {hasActions && (
                   <div className="flex flex-wrap gap-2 border-t pt-3">
                     {a.encounter && (
                       <Button size="sm" asChild>
@@ -143,7 +163,29 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
                     {!a.groomingJob && a.appointmentType.category === 'GROOMING' && ['BOOKED', 'CONFIRMED', 'CHECKED_IN'].includes(a.status) && can('boarding.write') && <Button size="sm" onClick={() => setModuleDlg('grooming')}><Scissors /> Check in for grooming</Button>}
                     {a.fieldVisit && can('livestock.read') && <Button size="sm" asChild><Link href={`/livestock/visits/${a.fieldVisit.id}`}><Tractor /> Open visit record</Link></Button>}
                     {!a.fieldVisit && a.appointmentType.category === 'FIELD_VISIT' && !['CANCELLED', 'NO_SHOW'].includes(a.status) && can('livestock.write') && <Button size="sm" onClick={() => setModuleDlg('visit')}><Tractor /> Open visit record</Button>}
-                    {actions.filter((x) => x.show).map((x) => (
+                    {canRebook && (
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          setRebook({
+                            patient: {
+                              id: a.patient!.id,
+                              name: a.patient!.name,
+                              patientNo: `P-${String(a.patient!.number).padStart(6, '0')}`,
+                              species: { id: '', name: a.patient!.species.name, category: '' },
+                              owner: { id: a.client.id, displayName: a.client.displayName, mobilePhone: a.client.mobilePhone },
+                              alerts: a.patient!.alerts,
+                            },
+                            appointmentTypeId: a.appointmentType.id,
+                            clinicianId: a.clinician?.id ?? null,
+                            reason: a.reason ?? undefined,
+                          })
+                        }
+                      >
+                        <CalendarPlus /> Book again
+                      </Button>
+                    )}
+                    {visibleActions.map((x) => (
                       <Button
                         key={x.key}
                         size="sm"
@@ -151,7 +193,7 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
                         loading={act.isPending && act.variables?.action === x.key}
                         onClick={async () => {
                           if (x.reason) {
-                            const r = await confirm({ title: `Cancel ${a.appointmentNo}?`, requireReason: true, reasonLabel: 'Cancellation reason', destructive: true, confirmLabel: 'Cancel appointment' });
+                            const r = await confirm({ title: `Cancel ${a.appointmentNo}?`, requireReason: true, reasonLabel: 'Cancellation reason', destructive: true, confirmLabel: 'Cancel appointment', cancelLabel: 'Keep appointment' });
                             if (r.confirmed) act.mutate({ action: x.key, reason: r.reason });
                           } else act.mutate({ action: x.key });
                         }}
@@ -159,25 +201,31 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
                         <x.icon /> {x.label}
                       </Button>
                     ))}
-                    {a.patient && ['BOOKED', 'CONFIRMED', 'CHECKED_IN'].includes(a.status) && can('triage.write') && (
+                    {canTriage && (
                       <Button size="sm" variant="outline" onClick={() => setTriageOpen(true)}>
                         <Siren /> Triage
                       </Button>
                     )}
-                    {['BOOKED', 'CONFIRMED', 'CHECKED_IN'].includes(a.status) && can('appointments.write') && (
+                    {canReschedule && (
                       <Button size="sm" variant="outline" onClick={() => setMode('reschedule')}>
                         <CalendarClock /> Reschedule
                       </Button>
                     )}
                   </div>
+                  )}
                 </>
               ) : (
                 <div className="grid gap-3">
-                  {error && <FormError message={error.message} />}
-                  {(error?.code === 'CLINICIAN_BUSY' || error?.code === 'OUTSIDE_WORKING_HOURS') && (
-                    <Button size="sm" variant="outline" className="w-fit" onClick={() => reschedule.mutate(error.code === 'CLINICIAN_BUSY' ? { allowOverbook: true } : { allowOutsideHours: true })}>
-                      Move anyway
-                    </Button>
+                  {error && !softClash && <FormError message={error.message} />}
+                  {error && softClash && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm" role="alert">
+                      <span className="flex items-center gap-2 text-warning">
+                        <AlertTriangle className="h-4 w-4 shrink-0" /> {error.message}
+                      </span>
+                      <Button size="sm" variant="outline" loading={reschedule.isPending} onClick={() => reschedule.mutate(error.code === 'CLINICIAN_BUSY' ? { allowOverbook: true } : { allowOutsideHours: true })}>
+                        Move anyway
+                      </Button>
+                    </div>
                   )}
                   <div className="grid gap-3 sm:grid-cols-3">
                     <Field label="Date" htmlFor="rs-date"><Input id="rs-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
@@ -209,8 +257,18 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
           patientId={a.patient.id}
           appointmentId={a.id}
           patientName={a.patient.name}
+          defaultComplaint={a.triage?.presentingComplaint ?? a.reason}
         />
       )}
+      <BookingDialog
+        open={!!rebook}
+        onOpenChange={(o) => !o && setRebook(null)}
+        defaults={rebook ?? undefined}
+        onBooked={() => {
+          setRebook(null);
+          onOpenChange(false);
+        }}
+      />
       {a && <GroomingCheckInDialog open={moduleDlg === 'grooming'} onOpenChange={(o) => !o && setModuleDlg(null)} appointment={{ id: a.id, patient: a.patient, reason: a.reason }} />}
       {a && <VisitFromAppointmentDialog open={moduleDlg === 'visit'} onOpenChange={(o) => !o && setModuleDlg(null)} appointment={a} onDone={(vid) => router.push(`/livestock/visits/${vid}`)} />}
     </>

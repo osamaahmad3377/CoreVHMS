@@ -70,7 +70,7 @@ function Locations() {
   const branchName = (id: string) => session.branches.find((b) => b.id === id)?.name ?? '—';
   return (
     <>
-      <PageHeader title="Stock locations" breadcrumbs={[{ label: 'Inventory', href: '/inventory' }, { label: 'Locations' }]} actions={editable && <Button size="sm" onClick={() => setEditing(null)}><Plus /> New location</Button>} />
+      <PageHeader title="Stock locations" actions={editable && <Button size="sm" onClick={() => setEditing(null)}><Plus /> New location</Button>} />
       <SectionNav links={INVENTORY_LINKS} />
       <Card>
         <DataTable

@@ -52,7 +52,7 @@ describe('Clinical activity report', () => {
     // CSV: one row per figure, formula-safe, and the download is audited.
     const csv = await org.owner.get(`/reports/clinical-activity?from=${from}&to=${to}&format=csv`);
     expect(csv.status).toBe(200);
-    expect(csv.text.split('\n')[0]).toBe('section,item,count,detail');
+    expect(csv.text.split('\r\n')[0]).toBe('\uFEFFSection,Item,Count,Detail');
     expect(csv.text).toContain('Diagnoses (top 15),Otitis externa,2,1 confirmed');
     expect((await org.owner.get('/audit-events?action=report.exported')).body.data[0].summary).toMatch(/^clinical-activity /);
 

@@ -79,3 +79,20 @@ export function dayOfWeekOf(date: string): number {
   const [y, m, d] = date.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
+
+/**
+ * Branch-local calendar date of `instant`, as a date-only value (UTC midnight — how Postgres `date`
+ * columns round-trip). Use this instead of `toISOString().slice(0, 10)`, which is the UTC date and a
+ * day off near local midnight (e.g. 01:00 in Karachi is still yesterday in UTC).
+ */
+export function localDateOnly(instant: Date, tz: string): Date {
+  return new Date(`${localParts(instant, tz).date}T00:00:00.000Z`);
+}
+
+/** A date-only value (UTC midnight) moved by whole calendar days. */
+export function addDays(date: Date, days: number): Date {
+  return new Date(date.getTime() + days * 86400_000);
+}
+
+/** A date-only input (yyyy-MM-dd parsed as UTC midnight) normalised to its calendar date. */
+export const dateOnlyInput = (d: Date) => new Date(d.toISOString().slice(0, 10));

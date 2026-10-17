@@ -1,3 +1,4 @@
+import { localParts } from '../src/common/time/tz';
 import { closeApp, inDays, makeClient, prisma, registerOrg, speciesId, staff, stockFixture, unique } from './helpers';
 
 const DAY = 86400_000;
@@ -119,7 +120,8 @@ describe('Livestock and farms', () => {
     expect((await vet.client.post('/breeding-events', { patientId: bull, type: 'HEAT', occurredAt: daysAgo(1) })).body.error.code).toBe('NOT_FEMALE');
     const service = await vet.client.post('/breeding-events', { patientId: cow, type: 'SERVICE', occurredAt: daysAgo(270), sireId: bull });
     expect(service.status).toBe(201);
-    const expected = new Date(Date.now() - 270 * DAY + 283 * DAY).toISOString().slice(0, 10);
+    // Calendar day of the service in the branch (Karachi), plus the gestation length.
+    const expected = localParts(new Date(Date.now() - 270 * DAY + 283 * DAY), 'Asia/Karachi').date;
     expect(service.body.expectedDueDate.slice(0, 10)).toBe(expected);
     expect(service.body.dueDateSource).toContain('283 days');
     await vet.client.post('/breeding-events', { patientId: cow, type: 'PREGNANCY_CHECK', occurredAt: daysAgo(220), result: 'PREGNANT', method: 'Rectal palpation' });

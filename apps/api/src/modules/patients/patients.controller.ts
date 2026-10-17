@@ -20,12 +20,14 @@ import { PatientTimelineService } from './patient-timeline.service';
 import { PatientsService } from './patients.service';
 
 const UUID = new ParseUUIDPipe();
+// The check runs while the form is being filled in, so a field not chosen yet ('' or null) is simply ignored.
+const optionalId = z.preprocess((v) => (v === '' || v === null ? undefined : v), z.string().uuid().optional());
 const duplicateQuery = z.object({
   name: z.string().max(80).optional(),
-  ownerId: z.string().uuid().optional(),
-  speciesId: z.string().uuid().optional(),
+  ownerId: optionalId,
+  speciesId: optionalId,
   identifiers: z.array(z.string().max(64)).max(10).optional(),
-  excludeId: z.string().uuid().optional(),
+  excludeId: optionalId,
 });
 
 @ApiTags('patients')

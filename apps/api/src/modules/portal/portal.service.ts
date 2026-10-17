@@ -5,7 +5,8 @@ import { notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AttachmentsService } from '../attachments/attachments.service';
 import { InvoicesService } from '../billing/invoices.service';
-import { CareService, effectiveDue, shapeItem, todayUtc } from '../preventive/care.service';
+import { CareService, effectiveDue, shapeItem } from '../preventive/care.service';
+import { branchToday } from '../../common/time/branch-timezone';
 import { AppointmentsService } from '../scheduling/appointments.service';
 import type { PortalContext } from './portal-auth.service';
 
@@ -39,7 +40,7 @@ export class PortalService {
   async overview(ctx: PortalContext) {
     const db = this.prisma.db;
     const ids = await this.petIds(ctx);
-    const today = todayUtc();
+    const today = await branchToday(this.prisma);
     const [client, pets, upcoming, care, unread, requests] = await Promise.all([
       db.client.findUniqueOrThrow({ where: { id: ctx.clientId }, select: { id: true, displayName: true, balanceMinor: true } }),
       db.patient.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, sex: true, dateOfBirth: true, status: true, species: { select: { name: true } }, breed: { select: { name: true } }, photoAttachmentId: true }, orderBy: { name: 'asc' } }),
@@ -61,6 +62,7 @@ export class PortalService {
   async pet(ctx: PortalContext, patientId: string) {
     await this.assertPet(ctx, patientId);
     const db = this.prisma.db;
+    const today = await branchToday(this.prisma);
     const [patient, items, labs, discharges, surgeries, prescriptions, weights] = await Promise.all([
       db.patient.findUniqueOrThrow({ where: { id: patientId }, select: { id: true, name: true, number: true, sex: true, dateOfBirth: true, dobEstimated: true, colour: true, latestWeightKg: true, status: true, species: { select: { name: true } }, breed: { select: { name: true } }, alerts: { where: { isActive: true, type: 'ALLERGY' }, select: { id: true, title: true, severity: true } } } }),
       db.careItem.findMany({ where: { patientId, status: { not: 'CANCELLED' } }, orderBy: { dueDate: 'desc' } }),
@@ -73,7 +75,7 @@ export class PortalService {
     const docs = await this.sharedDocuments(ctx, [patientId, ...discharges.map((d) => d.id), ...surgeries.map((s) => s.id), ...labs.map((l) => l.id)]);
     return {
       patient: { ...patient, latestWeightKg: dec(patient.latestWeightKg) },
-      care: items.map(shapeItem).map((i) => ({ id: i.id, title: i.title, kind: i.kind, status: i.status, dueDate: i.effectiveDueDate, overdue: i.overdue, completedAt: i.completedAt, givenElsewhere: i.givenElsewhere })),
+      care: items.map((i) => shapeItem(i, today)).map((i) => ({ id: i.id, title: i.title, kind: i.kind, status: i.status, dueDate: i.effectiveDueDate, overdue: i.overdue, completedAt: i.completedAt, givenElsewhere: i.givenElsewhere })),
       labReports: labs.map((o) => ({ id: o.id, orderNo: formatNumber('LAB', o.number), releasedAt: o.releasedAt, tests: o.items.map((i) => i.test.name) })),
       discharges: discharges.map((d) => ({ ...d, admissionNo: formatNumber('HOSP', d.number) })),
       surgeries: surgeries.map((s) => ({ ...s, surgeryNo: formatNumber('SURG', s.number) })),
@@ -165,7 +167,7 @@ export class PortalService {
 
   async requestAppointment(ctx: PortalContext, input: { patientId?: string | null; reason: string; preferredDate: Date; preferredTime: string; notes?: string | null }) {
     if (input.patientId) await this.assertPet(ctx, input.patientId);
-    if (input.preferredDate < todayUtc()) throw ruleViolation('PAST_DATE', 'Choose today or a future date');
+    if (input.preferredDate < (await branchToday(this.prisma))) throw ruleViolation('PAST_DATE', 'Choose today or a future date');
     return this.prisma.db.$transaction(async (tx) => {
       const r = await tx.appointmentRequest.create({ data: { ...input, patientId: input.patientId ?? null, organizationId: ctx.organizationId, clientId: ctx.clientId } });
       await this.audit.record({ action: 'portal.appointment_requested', entityType: 'Client', entityId: ctx.clientId, summary: input.reason }, tx);

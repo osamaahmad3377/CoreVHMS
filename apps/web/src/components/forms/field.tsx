@@ -19,7 +19,7 @@ export function Field({ label, htmlFor, error, hint, required, className, childr
   const message = typeof error === 'string' ? error : error?.message;
   const id = htmlFor;
   return (
-    <div className={cn('grid gap-1.5', className)}>
+    <div className={cn('grid content-start gap-1.5', className)}>
       <Label htmlFor={id} className={cn(message && 'text-destructive')}>
         {label}
         {required && (

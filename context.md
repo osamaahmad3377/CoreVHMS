@@ -762,6 +762,7 @@ _Last updated: 2026-10-16. The detailed status is kept in `docs/FEATURE_MATRIX.m
   - Easier everyday flow: a Today dashboard with “Needs your attention”, next-step prompts after consultations and in billing, ⌘K actions and foldable navigation.
   - Receipt printing on 80/58 mm thermal paper with the clinic logo, configured in Settings → Receipts & printing.
   - Shop products: food, grooming, accessories and supplements, with clinic-managed categories, brand, pack size and photos at the shop counter, and a sales-by-category report.
+  - QA pass across every role and phone width: broken layouts, midnight date errors, mismatched labels and dead-end links fixed; readable statements, CSV exports, stock history, reorder suggestions, dispensing batch picker, lab barcodes and many smaller polish items.
 - **Not yet built because they need outside parts:**
   - Laboratory analyser, DICOM/PACS and anaesthesia monitor connectors.
   - Drug-interaction checking (no validated data source).

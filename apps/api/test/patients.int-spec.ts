@@ -1,4 +1,4 @@
-import { closeApp, makeClient, makePatient, registerOrg, speciesId } from './helpers';
+import { closeApp, makeClient, makePatient, registerOrg, speciesId, staff } from './helpers';
 
 const PNG = Buffer.from(
   '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082',
@@ -34,6 +34,9 @@ describe('Patients', () => {
     expect(res.status).toBe(409);
     const dup = (await org.owner.post('/patients/duplicates', { identifiers: ['111222333'] })).body;
     expect(dup).toHaveLength(1);
+    // The form checks while it is being filled in: a species not chosen yet is sent as '' and ignored.
+    const partial = await org.owner.post('/patients/duplicates', { name: 'Copy', ownerId: owner.id, speciesId: '' });
+    expect(partial.status).toBe(200);
   });
 
   it('rejects a breed from a different species', async () => {
@@ -122,5 +125,20 @@ describe('Patients', () => {
     expect((await org.owner.post(`/patients/${p.id}/photo`, { attachmentId: up.body.id })).status).toBe(200);
     expect((await org.owner.del(`/attachments/${up.body.id}`)).status).toBe(204);
     expect((await org.owner.get(`/attachments/${up.body.id}/download`)).status).toBe(404);
+  });
+
+  it('lists files from the patient’s consultations on request, labelled with their source and only for users who may read them', async () => {
+    const org = await registerOrg();
+    const p = await makePatient(org.owner, (await makeClient(org.owner)).id);
+    const vet = await staff(org, 'veterinarian', { isClinician: true });
+    const e = await vet.client.post('/encounters', { patientId: p.id, chiefComplaint: 'Wound' });
+    const up = await vet.client.upload('/attachments', { entityType: 'Encounter', entityId: e.body.id, category: 'photo' }, { buffer: PNG, name: 'wound.png', type: 'image/png' });
+    expect(up.status).toBe(201);
+    expect((await vet.client.get(`/attachments?entityType=Patient&entityId=${p.id}`)).body).toHaveLength(0);
+    const all = (await vet.client.get(`/attachments?entityType=Patient&entityId=${p.id}&includeRelated=true`)).body;
+    expect(all).toHaveLength(1);
+    expect(all[0]).toMatchObject({ id: up.body.id, source: { entityType: 'Encounter', entityId: e.body.id, label: expect.stringMatching(/^Consultation E-\d+/) } });
+    const rec = await staff(org, 'receptionist'); // patients.read but no clinical.read
+    expect((await rec.client.get(`/attachments?entityType=Patient&entityId=${p.id}&includeRelated=true`)).body).toHaveLength(0);
   });
 });

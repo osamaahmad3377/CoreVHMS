@@ -19,14 +19,17 @@ export interface ClinicHeader {
 export function InvoiceDocument({ invoice: i, clinic }: { invoice: Invoice; clinic: ClinicHeader | null }) {
   const cur = i.currency;
   const addr = i.client?.addresses?.[0];
+  const b = i.branch;
   return (
     <article className="mx-auto max-w-3xl bg-white p-8 text-[10.5pt] text-black">
       <header className="flex justify-between gap-6 border-b border-black pb-4">
         <div>
-          <p className="text-lg font-bold">{clinic?.legalName || clinic?.name}</p>
-          {clinic?.legalName && clinic.legalName !== clinic.name && <p>{clinic.name}</p>}
-          <p>{[clinic?.addressLine1, clinic?.addressLine2, clinic?.city, clinic?.postcode].filter(Boolean).join(', ')}</p>
-          <p>{[clinic?.phone, clinic?.email].filter(Boolean).join(' · ')}</p>
+          {/* Same hierarchy as the till receipt: trading name, legal name, then the branch that issued it. */}
+          <p className="text-lg font-bold">{clinic?.name}</p>
+          {clinic?.legalName && clinic.legalName !== clinic.name && <p className="text-[9.5pt]">{clinic.legalName}</p>}
+          {b?.name && <p className="font-semibold">{b.name}</p>}
+          <p>{[b?.addressLine1 ?? clinic?.addressLine1, b ? b.addressLine2 : clinic?.addressLine2, b?.city ?? clinic?.city, b?.postcode ?? clinic?.postcode].filter(Boolean).join(', ')}</p>
+          <p>{[b?.phone ?? clinic?.phone, b?.email ?? clinic?.email].filter(Boolean).join(' · ')}</p>
           {clinic?.taxNumber && <p>Tax number: {clinic.taxNumber}</p>}
         </div>
         <div className="text-right">

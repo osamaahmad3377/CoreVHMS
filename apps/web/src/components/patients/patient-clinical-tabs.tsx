@@ -2,7 +2,7 @@
 import { useQuery } from '@tanstack/react-query';
 import type { Paginated } from '@vcms/shared';
 import { enumLabel } from '@vcms/shared';
-import { CalendarDays, Stethoscope } from 'lucide-react';
+import { CalendarDays, CalendarPlus, Stethoscope } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import { DataTable } from '../data-table';
@@ -10,6 +10,7 @@ import { EmptyState } from '../page';
 import { AppointmentDialog } from '../scheduling/appointment-dialog';
 import { AppointmentStatusBadge } from '../scheduling/appointment-status';
 import { Badge } from '../ui/badge';
+import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { api, qs } from '@/lib/api';
 import { fmtDateTime } from '@/lib/format';
@@ -38,7 +39,8 @@ export function PatientVisits({ patientId }: { patientId: string }) {
   );
 }
 
-export function PatientAppointments({ patientId }: { patientId: string }) {
+/** `onBook` is passed only when the user may book for this patient; it turns the empty state into a next step. */
+export function PatientAppointments({ patientId, onBook }: { patientId: string; onBook?: () => void }) {
   const { session } = useSession();
   const tz = session.branch?.timezone ?? 'UTC';
   const [selected, setSelected] = useState<string | null>(null);
@@ -60,7 +62,19 @@ export function PatientAppointments({ patientId }: { patientId: string }) {
         query={q}
         rowKey={(a) => a.id}
         onRowClick={(a) => setSelected(a.id)}
-        empty={<EmptyState icon={CalendarDays} title="No appointments in the last year" />}
+        empty={
+          <EmptyState
+            icon={CalendarDays}
+            title="No appointments in the last year"
+            action={
+              onBook && (
+                <Button size="sm" onClick={onBook}>
+                  <CalendarPlus /> Book appointment
+                </Button>
+              )
+            }
+          />
+        }
         columns={[
           { key: 'when', header: 'When', cell: (a) => <span className="whitespace-nowrap font-medium">{branchTime(a.startsAt, tz, 'd MMM yyyy, HH:mm')}</span> },
           { key: 'type', header: 'Type', cell: (a) => <span className="flex items-center gap-2 text-sm"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: a.appointmentType.color }} />{a.appointmentType.name}</span> },

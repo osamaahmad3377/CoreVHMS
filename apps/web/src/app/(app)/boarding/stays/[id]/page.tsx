@@ -150,7 +150,10 @@ function Stay() {
               </ul>
             ) : <CardContent><p className="text-sm text-muted-foreground">{s.status === 'CHECKED_IN' ? 'Nothing logged yet today.' : 'The log starts at check-in.'}</p></CardContent>}
           </Card>
-          <Card className="p-4"><AttachmentsPanel entityType="BoardingStay" entityId={s.id} canWrite={canWrite} /></Card>
+          <Card>
+            <CardHeader><CardTitle>Documents & photos</CardTitle></CardHeader>
+            <CardContent><AttachmentsPanel entityType="BoardingStay" entityId={s.id} canWrite={canWrite} /></CardContent>
+          </Card>
         </div>
         <div className="grid min-w-0 grid-cols-1 content-start gap-4">
           <Card>

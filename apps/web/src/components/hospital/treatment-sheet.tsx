@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { TREATMENT_KINDS, TREATMENT_SCHEDULES, enumLabel } from '@vcms/shared';
+import { TREATMENT_KINDS, TREATMENT_OVERDUE_GRACE_MINUTES, TREATMENT_SCHEDULES, enumLabel, treatmentTiming } from '@vcms/shared';
 import { Check, ChevronLeft, ChevronRight, Clock, Plus, Square, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -135,10 +135,10 @@ function OrderDialog({ admissionId, open, onOpenChange }: { admissionId: string;
         {error && <FormError message={error} />}
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Type" htmlFor="or-kind">
-            <NativeSelect id="or-kind" value={f.kind} onChange={set('kind')}>{kinds.map((k) => <option key={k} value={k}>{enumLabel(k)}</option>)}</NativeSelect>
+            <NativeSelect id="or-kind" value={f.kind} onChange={set('kind')}>{kinds.map((k) => <option key={k} value={k}>{enumLabel(k, 'treatment')}</option>)}</NativeSelect>
           </Field>
           <Field label="When" htmlFor="or-sched">
-            <NativeSelect id="or-sched" value={f.schedule} onChange={set('schedule')}>{TREATMENT_SCHEDULES.map((k) => <option key={k} value={k}>{enumLabel(k)}</option>)}</NativeSelect>
+            <NativeSelect id="or-sched" value={f.schedule} onChange={set('schedule')}>{TREATMENT_SCHEDULES.map((k) => <option key={k} value={k}>{enumLabel(k, 'treatment')}</option>)}</NativeSelect>
           </Field>
           {f.kind === 'MEDICATION' && (
             <>
@@ -169,8 +169,8 @@ function OrderDialog({ admissionId, open, onOpenChange }: { admissionId: string;
 }
 
 function TaskChip({ t, onClick }: { t: TreatmentTask; onClick: () => void }) {
-  const overdue = t.status === 'DUE' && new Date(t.dueAt) < new Date();
-  const title = t.status === 'DUE' ? `Due ${fmtDateTime(t.dueAt)}` : `${t.status === 'DONE' ? 'Done' : 'Not done'} ${fmtDateTime(t.doneAt)} by ${t.doneByName}${t.value ? ` — ${t.value}` : ''}${t.skipReason ? ` — ${t.skipReason}` : ''}`;
+  const timing = t.status === 'DUE' ? treatmentTiming(t.dueAt) : null;
+  const title = t.status === 'DUE' ? `${timing === 'OVERDUE' ? 'Overdue — was due' : timing === 'DUE_NOW' ? 'Due now —' : 'Due'} ${fmtDateTime(t.dueAt)}` : `${t.status === 'DONE' ? 'Done' : 'Not done'} ${fmtDateTime(t.doneAt)} by ${t.doneByName}${t.value ? ` — ${t.value}` : ''}${t.skipReason ? ` — ${t.skipReason}` : ''}`;
   return (
     <button
       type="button"
@@ -182,7 +182,7 @@ function TaskChip({ t, onClick }: { t: TreatmentTask; onClick: () => void }) {
         'flex h-7 w-7 items-center justify-center rounded-md border text-xs',
         t.status === 'DONE' && 'border-success/40 bg-success/15 text-success',
         t.status === 'SKIPPED' && 'border-warning/40 bg-warning/15 text-warning',
-        t.status === 'DUE' && (overdue ? 'animate-pulse border-destructive bg-destructive/10 text-destructive hover:bg-destructive/20' : 'border-primary/40 text-primary hover:bg-primary/10'),
+        t.status === 'DUE' && (timing === 'OVERDUE' ? 'animate-pulse border-destructive bg-destructive/10 text-destructive hover:bg-destructive/20' : timing === 'DUE_NOW' ? 'border-warning bg-warning/10 text-warning hover:bg-warning/20' : 'border-primary/40 text-primary hover:bg-primary/10'),
       )}
     >
       {t.status === 'DONE' ? <Check className="h-3.5 w-3.5" /> : t.status === 'SKIPPED' ? <X className="h-3.5 w-3.5" /> : <Square className="h-3 w-3" />}
@@ -233,15 +233,16 @@ export function TreatmentSheet({ admissionId, active }: { admissionId: string; a
           {due.length ? (
             <ul className="divide-y border-t">
               {due.map(({ t, o }) => {
-                const overdue = new Date(t.dueAt) < new Date();
+                const timing = treatmentTiming(t.dueAt);
                 return (
                   <li key={t.id} className="flex items-center gap-3 px-4 py-2">
-                    <span className={cn('w-14 text-sm font-semibold tabular', overdue ? 'text-destructive' : 'text-muted-foreground')}>{branchTime(t.dueAt, tz)}</span>
+                    <span className={cn('w-14 text-sm font-semibold tabular', timing === 'OVERDUE' ? 'text-destructive' : timing === 'DUE_NOW' ? 'text-warning' : 'text-muted-foreground')}>{branchTime(t.dueAt, tz)}</span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">{o.description}</span>
                       <span className="block truncate text-xs text-muted-foreground">{orderSummary(o)}{o.instructions ? ` · ${o.instructions}` : ''}</span>
                     </span>
-                    {overdue && <Badge variant="destructive">Overdue</Badge>}
+                    {timing === 'OVERDUE' && <Badge variant="destructive">Overdue</Badge>}
+                    {timing === 'DUE_NOW' && <Badge variant="warning">Due now</Badge>}
                     {writable && <Button size="sm" onClick={() => setRecording({ task: t, order: o })}>Record</Button>}
                   </li>
                 );
@@ -275,7 +276,7 @@ export function TreatmentSheet({ admissionId, active }: { admissionId: string; a
                 {sheet.data.orders.map((o) => (
                   <tr key={o.id} className={cn('border-b last:border-0', o.status !== 'ACTIVE' && 'opacity-60')}>
                     <td className="sticky left-0 z-10 bg-card px-3 py-2 align-top">
-                      <p className="font-medium">{o.description} <span className="text-2xs font-normal uppercase text-muted-foreground">{enumLabel(o.kind)}</span></p>
+                      <p className="font-medium">{o.description} <span className="whitespace-nowrap text-2xs font-normal text-muted-foreground">· {enumLabel(o.kind, 'treatment')}</span></p>
                       <p className="text-xs text-muted-foreground">{orderSummary(o)}</p>
                       <p className="text-2xs text-muted-foreground">{o.status === 'ACTIVE' ? `by ${o.orderedByName}` : `${enumLabel(o.status)}${o.stopReason ? `: ${o.stopReason}` : ''}`}</p>
                       {writable && o.status === 'ACTIVE' && (
@@ -308,7 +309,7 @@ export function TreatmentSheet({ admissionId, active }: { admissionId: string; a
           <p className="px-4 pb-4 text-sm text-muted-foreground">{sheet.isLoading ? 'Loading…' : 'No treatments on the sheet yet.'}</p>
         )}
         <p className="border-t px-4 py-2 text-2xs text-muted-foreground">
-          <Square className="mr-1 inline h-3 w-3 text-primary" />due · <Check className="mx-1 inline h-3 w-3 text-success" />done · <X className="mx-1 inline h-3 w-3 text-warning" />not done · red = overdue · times in {tz}
+          <Square className="mr-1 inline h-3 w-3 text-primary" />due · <Check className="mx-1 inline h-3 w-3 text-success" />done · <X className="mx-1 inline h-3 w-3 text-warning" />not done · amber = due now · red = overdue (more than {TREATMENT_OVERDUE_GRACE_MINUTES} min late) · times in {tz}
         </p>
       </Card>
       <TaskDialog task={recording?.task ?? null} order={recording?.order ?? null} onClose={() => setRecording(null)} />

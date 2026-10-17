@@ -81,13 +81,13 @@ function Estimates() {
   });
   return (
     <>
-      <PageHeader title="Estimates" breadcrumbs={[{ label: 'Billing', href: '/billing' }, { label: 'Estimates' }]} actions={can('billing.write') && <Button size="sm" onClick={() => setCreate(true)}><Plus /> New estimate</Button>} />
+      <PageHeader title="Estimates" description="Quotes for planned treatment. An accepted estimate becomes a draft invoice in one click." actions={can('billing.write') && <Button size="sm" onClick={() => setCreate(true)}><Plus /> New estimate</Button>} />
       <SectionNav links={BILLING_LINKS} />
       <Card>
         <DataTable
           query={query}
           rowKey={(r) => r.id}
-          empty={<EmptyState icon={FileText} title="No estimates" />}
+          empty={<EmptyState icon={FileText} title="No estimates yet" description="Give clients a written quote before surgery or a longer treatment plan." />}
           columns={[
             { key: 'no', header: 'Estimate', cell: (r) => <span className="font-medium">{r.estimateNo}</span> },
             { key: 'client', header: 'Client', cell: (r) => <Link className="text-sm hover:underline" href={`/clients/${r.client.id}`}>{r.client.displayName}</Link> },

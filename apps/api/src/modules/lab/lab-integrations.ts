@@ -51,6 +51,11 @@ export class LabIntegrations implements OnModuleInit {
       write: 'lab.result',
       exists: async (id) => !!(await db().diagnosticOrder.findUnique({ where: { id }, select: { id: true } })),
     });
+    // Lab and imaging files also appear (read-only) on the patient's Documents tab.
+    this.attachments.registerRelated('Patient', {
+      childType: 'DiagnosticOrder',
+      children: async (patientId) => (await db().diagnosticOrder.findMany({ where: { patientId }, select: { id: true, number: true }, take: 500 })).map((o) => ({ id: o.id, label: `Lab order ${labOrderNo(o.number)}` })),
+    });
 
     this.search.register(async (q, perms) => {
       if (!perms.has('lab.read') || !/^s\d{3,}$/i.test(q.trim())) return [];

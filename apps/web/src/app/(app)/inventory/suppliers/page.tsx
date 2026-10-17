@@ -90,7 +90,7 @@ function Suppliers() {
   const query = useQuery({ queryKey: ['suppliers', 'all'], queryFn: () => api.get<Supplier[]>('/suppliers?all=true') });
   return (
     <>
-      <PageHeader title="Suppliers" breadcrumbs={[{ label: 'Inventory', href: '/inventory' }, { label: 'Suppliers' }]} actions={can('procurement.write') && <Button size="sm" onClick={() => setEditing(null)}><Plus /> New supplier</Button>} />
+      <PageHeader title="Suppliers" actions={can('procurement.write') && <Button size="sm" onClick={() => setEditing(null)}><Plus /> New supplier</Button>} />
       <SectionNav links={INVENTORY_LINKS} />
       <Card>
         <DataTable

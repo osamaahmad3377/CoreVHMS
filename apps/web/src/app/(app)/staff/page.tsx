@@ -196,22 +196,33 @@ function Rosters() {
                 <thead className="bg-muted/60 text-xs text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2 text-left font-semibold">Staff</th>
-                    {DAYS.map((d) => <th key={d} className="px-2 py-2 text-left font-semibold">{DAY_NAMES[d]}</th>)}
+                    {DAYS.map((d) => <th key={d} className="whitespace-nowrap px-2 py-2 text-left font-semibold">{DAY_NAMES[d]}</th>)}
                     <th />
                   </tr>
                 </thead>
                 <tbody>
                   {roster.map((r) => (
                     <tr key={r.membershipId} className="border-t">
-                      <td className="px-3 py-2">
+                      <td className="min-w-[160px] px-3 py-2 align-top">
                         <p className="font-medium">{r.name}</p>
-                        <p className="text-xs text-muted-foreground">{r.jobTitle}{r.isClinician && <Badge variant="info" className="ml-1">Clinician</Badge>}</p>
+                        {(r.jobTitle || r.isClinician) && (
+                          <p className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                            {r.jobTitle && <span>{r.jobTitle}</span>}
+                            {r.isClinician && <Badge variant="info" className="normal-case tracking-normal">Clinician</Badge>}
+                          </p>
+                        )}
                       </td>
                       {DAYS.map((d) => {
                         const hrs = r.workingHours.filter((h) => h.dayOfWeek === d && h.branchId === session.branch?.id);
                         return (
                           <td key={d} className="px-2 py-2 align-top text-xs tabular">
-                            {hrs.length ? hrs.map((h) => <div key={h.id}>{hhmm(h.startMinute)}–{hhmm(h.endMinute)}</div>) : <span className="text-muted-foreground">—</span>}
+                            {hrs.length ? (
+                              <div className="grid justify-start gap-1">
+                                {hrs.map((h) => (
+                                  <span key={h.id} className="whitespace-nowrap rounded bg-muted px-1.5 py-0.5">{hhmm(h.startMinute)}–{hhmm(h.endMinute)}</span>
+                                ))}
+                              </div>
+                            ) : <span className="text-muted-foreground">—</span>}
                           </td>
                         );
                       })}

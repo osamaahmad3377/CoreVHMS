@@ -8,12 +8,14 @@ import { CounterService, formatNumber } from '../../common/counter/counter.servi
 import { conflict, notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { ScopedTx } from '../../common/prisma/tenant-extension';
+import { branchToday } from '../../common/time/branch-timezone';
 import { localParts } from '../../common/time/tz';
 import { ChargeCaptureService } from '../billing/charge-capture.service';
 
 export const stayNo = (n: number) => formatNumber('BRD', n, 5);
 const DAY = 86400_000;
 const ACTIVE = ['RESERVED', 'CHECKED_IN'] as const;
+/** Normalises a date-only input (yyyy-MM-dd, parsed as UTC midnight). For "today" use `branchToday`. */
 const dateOnly = (d: Date) => new Date(d.toISOString().slice(0, 10));
 
 const include = {
@@ -159,15 +161,15 @@ export class BoardingService {
     if (!s) throw notFound('Boarding stay');
     const [logs, overdue, charge] = await Promise.all([
       this.prisma.db.boardingLog.findMany({ where: { stayId: id }, orderBy: { recordedAt: 'desc' }, take: 300 }),
-      this.overdueVaccinations(s.patientId),
+      this.overdueVaccinations(s.patientId, s.branchId),
       this.prisma.db.charge.findFirst({ where: { sourceType: 'BoardingStay', sourceId: id }, select: { id: true, status: true, quantity: true, unitPriceMinor: true } }),
     ]);
     return { ...shape(s), logs, overdueVaccinations: overdue, charge: charge ? { ...charge, quantity: Number(charge.quantity) } : null };
   }
 
   /** Vaccinations due before today and not done (from the preventive-care plan). */
-  async overdueVaccinations(patientId: string) {
-    const today = dateOnly(new Date());
+  async overdueVaccinations(patientId: string, branchId?: string | null) {
+    const today = await branchToday(this.prisma, branchId);
     return this.prisma.db.careItem.findMany({
       where: { patientId, kind: 'VACCINATION', OR: [{ status: 'DUE', dueDate: { lt: today } }, { status: 'DEFERRED', deferredUntil: { lt: today } }] },
       select: { id: true, title: true, dueDate: true, status: true },
@@ -185,7 +187,7 @@ export class BoardingService {
     if (!owner) throw ruleViolation('NO_OWNER', 'This animal has no current owner');
     const start = dateOnly(input.startDate);
     const end = dateOnly(input.endDate);
-    if (end.getTime() < dateOnly(new Date()).getTime()) throw ruleViolation('PAST_DATES', 'This stay has already ended');
+    if (end.getTime() < (await branchToday(this.prisma, branchId)).getTime()) throw ruleViolation('PAST_DATES', 'This stay has already ended');
     const overlap = await this.prisma.db.boardingStay.findFirst({ where: { patientId: patient.id, status: { in: [...ACTIVE] }, startDate: { lt: end }, endDate: { gt: start } } });
     if (overlap) throw conflict(`${patient.name} already has a booking for these dates (${stayNo(overlap.number)})`);
     const unit = await this.unit(input.unitId, branchId);
@@ -247,7 +249,7 @@ export class BoardingService {
     if (s.status !== 'RESERVED') throw ruleViolation('NOT_RESERVED', 'Only reservations can be checked in');
     const unit = await this.unit(input.unitId ?? s.unitId, s.branchId);
     if (!unit) throw ruleViolation('UNIT_REQUIRED', 'Choose a kennel/unit for the animal');
-    const overdue = await this.overdueVaccinations(s.patientId);
+    const overdue = await this.overdueVaccinations(s.patientId, s.branchId);
     if (overdue.length && !input.vaccinationOverride) {
       throw ruleViolation('VACCINATIONS_OVERDUE', `Vaccinations overdue: ${overdue.map((o) => o.title).join(', ')}. Record them or note why the animal is accepted anyway.`, { overdue });
     }

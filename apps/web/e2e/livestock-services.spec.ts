@@ -49,13 +49,13 @@ test.describe('Livestock, boarding & grooming, insurance', () => {
     await ad.locator('#vi-qty').fill('5');
     await ad.getByRole('button', { name: 'Add', exact: true }).click();
     await expect(page.getByText('Added and billed to the farm owner')).toBeVisible();
-    await page.getByRole('button', { name: 'Complete' }).click();
+    await page.getByRole('button', { name: 'Complete visit' }).click();
     const cd = page.getByRole('dialog');
     await cd.locator('#fc-find').fill('All goats examined; worm burden moderate (E2E).');
     await cd.getByRole('button', { name: 'Complete visit' }).click();
     await expect(page.getByText('Visit completed').first()).toBeVisible();
     await expect(page.getByText('COMPLETED').first()).toBeVisible();
-    await page.getByRole('button', { name: /Create invoice/ }).click();
+    await page.getByRole('button', { name: /^Invoice \d+ items?$/ }).click();
     await expect(page).toHaveURL(/\/billing\/invoices\//);
   });
 

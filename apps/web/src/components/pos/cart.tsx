@@ -8,6 +8,7 @@ import { Button } from '../ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { blockReason, lineAmounts, type CartLine } from './model';
 import { fmtMoney } from '@/lib/format';
+import { qtyUnit } from '@/lib/labels';
 import { cn } from '@/lib/utils';
 
 function LineEditPopover({ line, currency, onSave }: { line: CartLine; currency: string; onSave: (patch: Partial<CartLine>) => void }) {
@@ -28,12 +29,12 @@ function LineEditPopover({ line, currency, onSave }: { line: CartLine; currency:
       <PopoverTrigger asChild>
         <Button variant="ghost" size="icon-sm" aria-label={`Edit price or discount for ${line.item.name}`}><Pencil /></Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="grid w-72 gap-3">
+      <PopoverContent align="end" collisionPadding={12} className="grid w-80 gap-3">
         <p className="text-sm font-medium">{line.item.name}</p>
         <label className="grid gap-1 text-xs text-muted-foreground">Unit price<MoneyInput currency={currency} value={price} onChange={(e) => setPrice(e.target.value)} /></label>
-        <div className="grid grid-cols-[1fr_90px] gap-2">
+        <div className="grid grid-cols-[minmax(0,1fr)_84px] gap-2">
           <label className="grid gap-1 text-xs text-muted-foreground">Discount<MoneyInput currency={currency} value={pct ? fromMinor(discountMinor, currency) : discount} disabled={!!pct} onChange={(e) => setDiscount(e.target.value)} /></label>
-          <label className="grid gap-1 text-xs text-muted-foreground">or %<input inputMode="decimal" className="h-9 rounded-md border border-input bg-card px-2 text-sm" value={pct} onChange={(e) => setPct(e.target.value.replace(/[^\d.]/g, ''))} /></label>
+          <label className="grid gap-1 text-xs text-muted-foreground">or %<input inputMode="decimal" aria-label="Discount percent" className="h-9 w-full min-w-0 rounded-md border border-input bg-card px-2 text-sm" value={pct} onChange={(e) => setPct(e.target.value.replace(/[^\d.]/g, ''))} /></label>
         </div>
         {line.item.priceMinor !== null && parseMoney(price, currency) !== line.item.priceMinor && <p className="text-2xs text-muted-foreground">Catalogue price {fmtMoney(line.item.priceMinor, currency)}. The change is recorded on the invoice.</p>}
         <Button
@@ -90,7 +91,7 @@ export function PosCart({
           </div>
         ) : pickingClient ? (
           <div className="flex gap-2">
-            <div className="min-w-0 flex-1"><ClientPicker value={client} onChange={(c) => { onClient(c); setPickingClient(false); }} /></div>
+            <div className="min-w-0 flex-1"><ClientPicker defaultOpen value={client} onChange={(c) => { onClient(c); setPickingClient(false); }} /></div>
             <Button variant="ghost" size="icon" aria-label="Cancel" onClick={() => setPickingClient(false)}><X /></Button>
           </div>
         ) : (
@@ -132,7 +133,7 @@ export function PosCart({
                       />
                       <Button variant="ghost" size="icon-sm" aria-label={`Increase ${l.item.name}`} disabled={atLimit} onClick={() => setQty(l.key, l.quantity + 1)}><Plus /></Button>
                     </div>
-                    {l.item.trackStock && l.item.available !== null && <span className={cn('text-2xs', l.quantity > l.item.available ? 'font-medium text-destructive' : 'text-muted-foreground')}>{l.item.available} in stock</span>}
+                    {l.item.trackStock && l.item.available !== null && <span className={cn('text-2xs', l.quantity > l.item.available ? 'font-medium text-destructive' : 'text-muted-foreground')}>{qtyUnit(l.item.available - l.quantity, l.item.unit)} left</span>}
                     <span className="ml-auto flex">
                       {allowOverrides && <LineEditPopover line={l} currency={currency} onSave={(patch) => onChange(lines.map((x) => (x.key === l.key ? { ...x, ...patch } : x)))} />}
                       <Button variant="ghost" size="icon-sm" aria-label={`Remove ${l.item.name}`} onClick={() => setQty(l.key, 0)}><Trash2 /></Button>
@@ -157,7 +158,7 @@ export function PosCart({
           <div className="flex justify-between text-muted-foreground"><dt>Tax{inclusive ? ' (included)' : ''}</dt><dd className="tabular">{fmtMoney(totals.taxMinor, currency)}</dd></div>
           <div className="mt-1 flex items-baseline justify-between border-t pt-2"><dt className="text-base font-semibold">Total</dt><dd className="text-2xl font-bold tabular tracking-tight">{fmtMoney(totals.totalMinor, currency)}</dd></div>
         </dl>
-        {stockProblem && <p className="mt-2 text-xs text-destructive" role="alert">Only {stockProblem.item.available} {stockProblem.item.unit} of {stockProblem.item.name} in stock.</p>}
+        {stockProblem && <p className="mt-2 text-xs text-destructive" role="alert">Only {qtyUnit(stockProblem.item.available ?? 0, stockProblem.item.unit)} of {stockProblem.item.name} in stock.</p>}
         <div className="mt-3 grid grid-cols-[auto_auto_minmax(0,1fr)] gap-2">
           <Button variant="outline" disabled={!lines.length} onClick={onHold}>Hold</Button>
           <Button variant="outline" disabled={!lines.length && !client} onClick={onClear}>Clear</Button>

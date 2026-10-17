@@ -34,7 +34,7 @@ function Counts() {
       <PageHeader
         help="stock-count"
         title="Stock counts"
-        breadcrumbs={[{ label: 'Inventory', href: '/inventory' }, { label: 'Stock counts' }]}
+       
         description="Count a location and post the differences as audited count adjustments."
         actions={
           can('inventory.adjust') && (

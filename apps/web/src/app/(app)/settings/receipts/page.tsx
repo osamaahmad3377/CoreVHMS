@@ -142,7 +142,7 @@ function ReceiptSettingsForm({ ctx }: { ctx: ReceiptContext }) {
               <Toggle label="Print a logo" checked={f.showLogo} onChange={(v) => set('showLogo', v)} />
               {f.showLogo && (
                 <>
-                  <div className="flex flex-wrap items-center gap-3">
+                  <div className="grid gap-2">
                     <Segmented
                       label="Logo source"
                       value={f.logoSource}
@@ -153,14 +153,14 @@ function ReceiptSettingsForm({ ctx }: { ctx: ReceiptContext }) {
                       <span className="text-xs text-muted-foreground">No branding logo yet — add one in <Link className="underline" href="/settings/organization">Organization</Link>.</span>
                     )}
                     {f.logoSource === 'CUSTOM' && (
-                      <>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-md border border-dashed p-3">
                         <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" aria-label="Receipt logo file" onChange={(e) => { const file = e.target.files?.[0]; if (file) upload.mutate(file); e.target.value = ''; }} />
                         <Button type="button" size="sm" variant="outline" loading={upload.isPending} onClick={() => fileRef.current?.click()}><ImagePlus /> {f.customLogoAttachmentId ? 'Replace logo' : 'Upload logo'}</Button>
-                        <span className="text-xs text-muted-foreground">Tip: a black-and-white version prints sharpest on thermal paper.</span>
-                      </>
+                        <span className="min-w-0 flex-1 basis-56 text-xs text-muted-foreground">{f.customLogoAttachmentId ? 'Receipt logo uploaded.' : 'PNG, JPG or WebP.'} A black-and-white version prints sharpest on thermal paper.</span>
+                      </div>
                     )}
                   </div>
-                  <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
                     <Field label={`Logo size: ${f.logoWidthPercent}% of the width`} htmlFor="rc-lw">
                       <input id="rc-lw" type="range" min={15} max={100} step={5} value={f.logoWidthPercent} onChange={(e) => set('logoWidthPercent', Number(e.target.value))} className="w-full accent-primary" />
                     </Field>

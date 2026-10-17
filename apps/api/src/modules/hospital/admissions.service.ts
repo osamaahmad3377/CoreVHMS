@@ -1,3 +1,4 @@
+import { overdueCutoff } from '@vcms/shared';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Admission, AdmissionOutcome, CprStatus, PatientCondition, Prisma } from '@prisma/client';
@@ -194,8 +195,9 @@ export class AdmissionsService {
     ]);
     const ids = admissions.map((a) => a.id);
     const [overdue, dueSoon, lastVitals, surgeries] = await Promise.all([
-      this.prisma.db.treatmentTask.groupBy({ by: ['admissionId'], where: { admissionId: { in: ids }, status: 'DUE', dueAt: { lt: now } }, _count: true }),
-      this.prisma.db.treatmentTask.groupBy({ by: ['admissionId'], where: { admissionId: { in: ids }, status: 'DUE', dueAt: { gte: now, lt: soon } }, _count: true }),
+      // Overdue only after the grace period; until then a treatment is "due now" (counted with due soon).
+      this.prisma.db.treatmentTask.groupBy({ by: ['admissionId'], where: { admissionId: { in: ids }, status: 'DUE', dueAt: { lt: overdueCutoff(now) } }, _count: true }),
+      this.prisma.db.treatmentTask.groupBy({ by: ['admissionId'], where: { admissionId: { in: ids }, status: 'DUE', dueAt: { gte: overdueCutoff(now), lt: soon } }, _count: true }),
       this.prisma.db.vitalSign.groupBy({ by: ['admissionId'], where: { admissionId: { in: ids } }, _max: { recordedAt: true } }),
       this.prisma.db.surgery.findMany({ where: { admissionId: { in: ids }, status: { in: ['SCHEDULED', 'PRE_OP', 'IN_PROGRESS', 'RECOVERY'] } }, select: { id: true, admissionId: true, procedure: true, status: true, scheduledAt: true } }),
     ]);
@@ -303,6 +305,8 @@ export class AdmissionsService {
     await this.prisma.db.$transaction(async (tx) => {
       await this.captureDayCharges(tx, a, now);
       await tx.treatmentOrder.updateMany({ where: { admissionId: id, status: 'ACTIVE' }, data: { status: 'COMPLETED', stoppedAt: now, stoppedByName: ctx.userName, stopReason: 'Patient discharged' } });
+      // Doses that were due but never recorded are closed too; the discharge dialog warns first and the audit keeps the count.
+      const missed = await tx.treatmentTask.count({ where: { admissionId: id, status: 'DUE', dueAt: { lt: now } } });
       await tx.treatmentTask.updateMany({ where: { admissionId: id, status: 'DUE' }, data: { status: 'CANCELLED' } });
       await tx.admission.update({
         where: { id },
@@ -317,7 +321,7 @@ export class AdmissionsService {
           data: { organizationId: a.organizationId, branchId: a.branchId, type: 'RECHECK', title: `Post-discharge check (${admissionNo(a.number)})`, dueAt: input.followUpAt, patientId: a.patientId, clientId: a.clientId, assigneeId: a.responsibleClinicianId, createdById: ctx.userId, createdByName: ctx.userName },
         });
       }
-      await this.audit.record({ action: 'admission.discharged', entityType: 'Patient', entityId: a.patientId, summary: `${admissionNo(a.number)}: ${input.outcome.toLowerCase().replace('_', ' ')}` }, tx);
+      await this.audit.record({ action: 'admission.discharged', entityType: 'Patient', entityId: a.patientId, summary: `${admissionNo(a.number)}: ${input.outcome.toLowerCase().replace('_', ' ')}${missed ? ` · ${missed} due treatment(s) never recorded` : ''}` }, tx);
     });
     return this.get(id);
   }

@@ -1,4 +1,5 @@
 import { enumLabel } from '@vcms/shared';
+import { STATUS_LABEL } from '@/lib/labels';
 import { Badge, type BadgeProps } from '../ui/badge';
 
 const VARIANTS: Record<string, BadgeProps['variant']> = {
@@ -31,5 +32,5 @@ const VARIANTS: Record<string, BadgeProps['variant']> = {
 
 export function CommerceBadge({ status, overdue }: { status: string; overdue?: boolean }) {
   if (overdue) return <Badge variant="destructive">Overdue</Badge>;
-  return <Badge variant={VARIANTS[status] ?? 'secondary'}>{enumLabel(status)}</Badge>;
+  return <Badge variant={VARIANTS[status] ?? 'secondary'}>{status === 'PENDING' ? 'Unbilled' : STATUS_LABEL[status] ?? enumLabel(status)}</Badge>;
 }

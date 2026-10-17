@@ -18,6 +18,7 @@ import { useDebounce } from '@/hooks/use-debounce';
 import { ApiError, api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import type { Breed, PatientDetail, Species } from '@/lib/types';
+import { localToday, localISODate } from '@/lib/time';
 
 type Values = z.input<typeof createPatientSchema>;
 
@@ -117,7 +118,7 @@ export function PatientForm({
       if (y || m) {
         const d = new Date();
         d.setMonth(d.getMonth() - (y * 12 + m));
-        body.dateOfBirth = d.toISOString().slice(0, 10);
+        body.dateOfBirth = localISODate(d);
         body.dobEstimated = true;
       } else {
         body.dobEstimated = !!body.dateOfBirth;
@@ -226,7 +227,7 @@ export function PatientForm({
               </button>
             </div>
             {ageMode === 'dob' ? (
-              <Input id="dob" type="date" max={new Date().toISOString().slice(0, 10)} {...register('dateOfBirth')} />
+              <Input id="dob" type="date" max={localToday()} {...register('dateOfBirth')} />
             ) : (
               <div className="flex gap-2">
                 <Input id="ageY" type="number" min={0} max={60} placeholder="Years" value={ageYears} onChange={(ev) => setAgeYears(ev.target.value)} />
@@ -240,6 +241,12 @@ export function PatientForm({
           <Field label="Blood type" htmlFor="bloodType" error={e.bloodType}>
             <Input id="bloodType" placeholder="e.g. DEA 1.1+ / A" {...register('bloodType')} />
           </Field>
+          {/* Weight belongs with the signalment; later weights are recorded from the patient's Weight tab. */}
+          {!editing && (
+            <Field label="Current weight (kg)" htmlFor="weight" error={e.initialWeightKg}>
+              <Input id="weight" type="number" step="0.001" min="0" inputMode="decimal" {...register('initialWeightKg')} />
+            </Field>
+          )}
         </div>
         <Field label="Markings / distinguishing features" htmlFor="markings" error={e.markings}>
           <Input id="markings" {...register('markings')} />
@@ -269,9 +276,6 @@ export function PatientForm({
           <Button type="button" variant="outline" size="sm" className="w-fit" onClick={() => ids.append({ type: 'MICROCHIP', value: '' })}>
             <Plus /> Add identifier
           </Button>
-          <Field label="Current weight (kg)" htmlFor="weight" error={e.initialWeightKg} className="max-w-[200px]">
-            <Input id="weight" type="number" step="0.001" min="0" inputMode="decimal" {...register('initialWeightKg')} />
-          </Field>
         </FormSection>
       )}
 
@@ -312,7 +316,7 @@ export function PatientForm({
           </Button>
         )}
         <Button type="submit" loading={formState.isSubmitting}>
-          {editing ? 'Save changes' : 'Register patient'}
+          {editing ? 'Save changes' : 'Add patient'}
         </Button>
       </div>
     </form>

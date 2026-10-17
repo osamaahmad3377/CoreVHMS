@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AlertOctagon, AlertTriangle, BedDouble, Boxes, CalendarClock, CalendarDays, CheckSquare, FileWarning, ListChecks, PawPrint, Receipt, Scissors, Stethoscope, Tractor, UserPlus, Users, Wallet } from 'lucide-react';
 import { enumLabel } from '@vcms/shared';
 import { PriorityDot } from '@/components/scheduling/appointment-status';
-import { branchTime } from '@/lib/time';
+import { branchTime, localDate } from '@/lib/time';
 import Link from 'next/link';
 import { useState } from 'react';
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -85,7 +85,14 @@ export default function DashboardPage() {
     w?.finance && { label: 'Received today', value: money(w.finance.receivedTodayMinor), icon: Wallet, href: '/billing/payments' },
   ].filter(Boolean) as { label: string; value: number | string; hint?: string; icon: React.ComponentType<{ className?: string }>; href: string; tone?: 'warning' }[];
   const insights = !!(w?.finance || w?.inventory || w?.registrations);
-  const today = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
+  // One row per patient, however many critical alerts they carry.
+  const alertsByPatient = Object.values(
+    (w?.criticalAlerts ?? []).reduce<Record<string, { patient: { id: string; name: string }; titles: string[] }>>((acc, a) => {
+      (acc[a.patient.id] ??= { patient: a.patient, titles: [] }).titles.push(a.title);
+      return acc;
+    }, {}),
+  );
+  const today = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
 
   return (
     <>
@@ -137,7 +144,7 @@ export default function DashboardPage() {
                     <ul className="divide-y">
                       {w.appointmentsToday.upcoming.map((a) => (
                         <li key={a.id}>
-                          <Link href={`/calendar?date=${a.startsAt.slice(0, 10)}`} className="flex items-center gap-3 px-4 py-2 hover:bg-muted/50">
+                          <Link href={`/calendar?date=${localDate(a.startsAt, session.branch?.timezone ?? 'UTC')}`} className="flex items-center gap-3 px-4 py-2 hover:bg-muted/50">
                             <span className="w-11 text-sm font-medium tabular">{branchTime(a.startsAt, session.branch?.timezone ?? 'UTC')}</span>
                             <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: a.type.color }} />
                             <span className="min-w-0 flex-1">
@@ -219,16 +226,16 @@ export default function DashboardPage() {
                     <CardTitle className="flex items-center gap-2"><AlertOctagon className="h-4 w-4 text-destructive" /> Critical patient alerts</CardTitle>
                   </CardHeader>
                   <ul className="divide-y">
-                    {w.criticalAlerts.slice(0, 5).map((a) => (
-                      <li key={a.id}>
-                        <Link href={`/patients/${a.patient.id}`} className="block px-4 py-2.5 hover:bg-muted/50">
-                          <p className="text-sm font-medium">{a.patient.name}</p>
-                          <p className="text-xs text-destructive">{a.title}</p>
+                    {alertsByPatient.slice(0, 5).map((g) => (
+                      <li key={g.patient.id}>
+                        <Link href={`/patients/${g.patient.id}`} className="block px-4 py-2.5 hover:bg-muted/50">
+                          <p className="text-sm font-medium">{g.patient.name}{g.titles.length > 1 && <span className="ml-1.5 text-xs font-normal text-muted-foreground">{g.titles.length} alerts</span>}</p>
+                          <p className="truncate text-xs text-destructive">{g.titles.join(' · ')}</p>
                         </Link>
                       </li>
                     ))}
                   </ul>
-                  {w.criticalAlerts.length > 5 && <p className="border-t px-4 py-2 text-xs text-muted-foreground">+{w.criticalAlerts.length - 5} more — shown in red on each patient’s record</p>}
+                  {alertsByPatient.length > 5 && <p className="border-t px-4 py-2 text-xs text-muted-foreground">+{alertsByPatient.length - 5} more patients — alerts show in red on each patient’s record</p>}
                 </Card>
               )}
             </div>
@@ -306,10 +313,10 @@ export default function DashboardPage() {
               {w?.registrations && (
                 <>
                   <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-                    <Stat label="Active clients" value={w.registrations.activeClients.toLocaleString()} icon={Users} href="/clients" />
-                    <Stat label="Active patients" value={w.registrations.activePatients.toLocaleString()} icon={PawPrint} href="/patients" />
-                    <Stat label="New clients" value={w.registrations.newClients} hint={rangeLabel} icon={UserPlus} tone="success" />
-                    <Stat label="New patients" value={w.registrations.newPatients} hint={rangeLabel} icon={PawPrint} tone="success" />
+                    <Stat label="Active clients" value={w.registrations.activeClients.toLocaleString()} hint="On file now" icon={Users} href="/clients" />
+                    <Stat label="Active patients" value={w.registrations.activePatients.toLocaleString()} hint="On file now" icon={PawPrint} href="/patients" />
+                    <Stat label="Clients registered" value={w.registrations.newClients.toLocaleString()} hint={`${rangeLabel} · incl. since archived`} icon={UserPlus} tone="success" />
+                    <Stat label="Patients registered" value={w.registrations.newPatients.toLocaleString()} hint={`${rangeLabel} · incl. since archived`} icon={PawPrint} tone="success" />
                   </div>
                   <div className="grid gap-4 xl:grid-cols-3">
                     <Card className="xl:col-span-2">

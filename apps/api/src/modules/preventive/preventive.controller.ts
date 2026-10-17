@@ -8,6 +8,7 @@ import { RequestContext } from '../../common/context/request-context';
 import { forbidden, notFound } from '../../common/http/errors';
 import { ApiZodBody, ApiZodQuery, zp } from '../../common/http/zod';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { branchToday } from '../../common/time/branch-timezone';
 import { MessagesService } from '../comms/messages.service';
 import { CareService, effectiveDue } from './care.service';
 
@@ -133,14 +134,15 @@ export class PreventiveController {
     const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: RequestContext.orgId() } });
     const channel = client.preferredChannel === 'EMAIL' || !client.mobilePhone ? 'EMAIL' : client.preferredChannel === 'WHATSAPP' ? 'WHATSAPP' : 'SMS';
     const due = effectiveDue(item);
-    const overdue = due < new Date(new Date().toISOString().slice(0, 10));
+    const today = await branchToday(this.prisma);
+    const overdue = due < today;
     return db.$transaction(async (tx) => {
       const m = await this.messages.enqueueTemplate(
         tx,
         overdue ? 'CARE_OVERDUE' : 'CARE_REMINDER',
         channel,
         { clinicName: org.name, clinicPhoneLine: org.phone ? ` on ${org.phone}` : '', clientName: client.displayName, petNames: item.patient.name, items: `• ${item.patient.name}: ${item.title} — ${due.toISOString().slice(0, 10)}`, itemsShort: item.title },
-        { clientId: client.id, patientId: item.patientId, recipient: channel === 'EMAIL' ? client.email : client.mobilePhone, dedupeKey: `manual-care:${item.id}:${new Date().toISOString().slice(0, 10)}`, sourceType: 'CareItem', sourceId: item.id },
+        { clientId: client.id, patientId: item.patientId, recipient: channel === 'EMAIL' ? client.email : client.mobilePhone, dedupeKey: `manual-care:${item.id}:${today.toISOString().slice(0, 10)}`, sourceType: 'CareItem', sourceId: item.id },
       );
       await tx.careItem.update({ where: { id }, data: overdue ? { overdueRemindedAt: new Date() } : { remindedAt: new Date() } });
       await this.audit.record({ action: 'care_item.reminder_sent', entityType: 'Patient', entityId: item.patientId, summary: item.title }, tx);

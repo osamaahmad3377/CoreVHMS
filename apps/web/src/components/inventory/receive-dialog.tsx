@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input, NativeSelect } from '../ui/input';
 import { api } from '@/lib/api';
 import { fmtMoney } from '@/lib/format';
-import { defaultLocation } from '@/lib/locations';
+import { defaultLocation, locationLabel, sortedLocations } from '@/lib/locations';
 import { useSession } from '@/lib/session';
 import type { Product, PurchaseOrder, StockLocation, Supplier } from '@/lib/types';
 
@@ -100,12 +100,15 @@ export function ReceiveStockDialog({ open, onOpenChange, order }: { open: boolea
           </Field>
           <Field label="Into location" htmlFor="rcv-loc" required>
             <NativeSelect id="rcv-loc" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
-              {(locations.data ?? []).filter((l) => l.isActive).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              {sortedLocations(locations.data, session.branch?.id).filter((l) => l.isActive).map((l) => <option key={l.id} value={l.id}>{locationLabel(l, locations.data)}</option>)}
             </NativeSelect>
           </Field>
           <Field label="Supplier invoice / delivery no." htmlFor="rcv-inv"><Input id="rcv-inv" value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} maxLength={80} /></Field>
         </div>
         <div className="grid max-h-[45vh] gap-2 overflow-y-auto">
+          <div aria-hidden className="hidden px-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground lg:grid lg:grid-cols-[minmax(0,1fr)_130px_140px_90px_130px_32px] lg:gap-2">
+            <span>Product</span><span>Batch / lot</span><span>Expiry</span><span>Quantity</span><span>Unit cost</span><span />
+          </div>
           {lines.map((l, idx) => (
             <div key={l.key} className="grid gap-2 rounded-md border p-2 lg:grid-cols-[minmax(0,1fr)_130px_140px_90px_130px_auto] lg:items-center">
               {order ? <p className="text-sm font-medium">{l.product?.name}</p> : <ProductPicker value={l.product as Product | null} onChange={(p) => update(l.key, { product: p })} placeholder="Product…" />}

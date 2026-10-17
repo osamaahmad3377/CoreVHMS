@@ -90,7 +90,7 @@ export function TenderDialog({
         </DialogHeader>
         <div className="grid grid-cols-3 gap-2 rounded-lg bg-muted/50 p-3 text-center">
           <div><p className="text-xs text-muted-foreground">Total due</p><p className="text-xl font-bold tabular">{fmtMoney(dueMinor, currency)}</p></div>
-          <div><p className="text-xs text-muted-foreground">Paid</p><p className="text-xl font-semibold tabular">{fmtMoney(pendingPaid, currency)}</p></div>
+          <div><p className="text-xs text-muted-foreground">Tendered</p><p className="text-xl font-semibold tabular">{fmtMoney(pendingPaid, currency)}</p></div>
           <div>
             <p className="text-xs text-muted-foreground">{change > 0 ? 'Change due' : 'Remaining'}</p>
             <p className={cn('text-xl font-bold tabular', change > 0 ? 'text-success' : pendingPaid < dueMinor ? 'text-warning' : '')}>{fmtMoney(change > 0 ? change : Math.max(0, dueMinor - pendingPaid), currency)}</p>

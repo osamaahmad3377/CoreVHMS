@@ -50,17 +50,18 @@ export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () 
 
       <button
         onClick={onSearch}
-        className="flex h-9 w-full max-w-md items-center gap-2 rounded-md border bg-muted/50 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted"
+        aria-label="Search patients, owners, phone"
+        className="flex h-9 min-w-0 shrink items-center gap-2 rounded-md border bg-muted/50 px-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted sm:w-full sm:max-w-md sm:px-3"
       >
-        <Search className="h-4 w-4" />
-        <span className="flex-1 truncate text-left">Search patients, owners, phone…</span>
+        <Search className="h-4 w-4 shrink-0" />
+        <span className="hidden flex-1 truncate text-left sm:block">Search patients, owners, phone…</span>
         <span className="hidden items-center gap-0.5 sm:flex">
           <Kbd>⌘</Kbd>
           <Kbd>K</Kbd>
         </span>
       </button>
 
-      <div className="ml-auto flex items-center gap-1.5">
+      <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
         <Button variant="ghost" size="icon" asChild title="Help centre — guides for every task">
           <Link href="/help" aria-label="Help centre"><CircleHelp /></Link>
         </Button>
@@ -124,6 +125,7 @@ export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () 
         <Button
           variant="ghost"
           size="icon"
+          className="hidden sm:inline-flex"
           onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
           aria-label="Toggle dark mode"
         >
@@ -135,8 +137,8 @@ export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () 
             <button className="flex items-center gap-2 rounded-md p-1 hover:bg-muted" aria-label="Account menu">
               <Avatar name={session.user.name} />
               <span className="hidden text-left leading-tight xl:block">
-                <span className="block max-w-[160px] truncate text-sm font-medium">{session.user.name}</span>
-                <span className="block max-w-[160px] truncate text-2xs text-muted-foreground">{session.roles.map((r) => r.name).join(', ')}</span>
+                <span className="block max-w-[200px] truncate text-sm font-medium">{session.user.name}</span>
+                <span className="block max-w-[200px] truncate text-2xs text-muted-foreground" title={session.roles.map((r) => r.name).join(', ')}>{session.roles.map((r) => r.name.replace(/ & procurement officer$/, ' officer')).join(', ')}</span>
               </span>
             </button>
           </DropdownMenuTrigger>
@@ -145,7 +147,21 @@ export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () 
               <div className="truncate text-sm font-medium text-foreground">{session.user.name}</div>
               <div className="truncate text-xs">{session.user.email}</div>
             </DropdownMenuLabel>
+            {session.branches.length > 1 && (
+              <div className="md:hidden">
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Branch</DropdownMenuLabel>
+                {session.branches.map((b) => (
+                  <DropdownMenuItem key={b.id} onSelect={() => session.organization && switchCtx.mutate({ organizationId: session.organization.id, branchId: b.id })}>
+                    <Check className={b.id === session.branch?.id ? 'opacity-100' : 'opacity-0'} /> {b.name}
+                  </DropdownMenuItem>
+                ))}
+              </div>
+            )}
             <DropdownMenuSeparator />
+            <DropdownMenuItem className="sm:hidden" onSelect={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}>
+              {resolvedTheme === 'dark' ? <Sun /> : <Moon />} {resolvedTheme === 'dark' ? 'Light mode' : 'Dark mode'}
+            </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link href="/account">
                 <Shield /> Account & security

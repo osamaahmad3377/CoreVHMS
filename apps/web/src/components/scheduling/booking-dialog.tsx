@@ -24,6 +24,7 @@ export interface BookingDefaults {
   patient?: PickedPatient | null;
   followUpOfId?: string;
   reason?: string;
+  appointmentTypeId?: string;
 }
 
 type Override = { allowOverbook?: boolean; allowOutsideHours?: boolean };
@@ -68,6 +69,7 @@ export function BookingDialog({
     setDate(defaults?.date ?? todayIn(tz));
     setTime(defaults?.minute !== undefined ? hhmm(defaults.minute) : '09:00');
     setReason(defaults?.reason ?? '');
+    if (defaults?.appointmentTypeId) setTypeId(defaults.appointmentTypeId);
     setNotes('');
     setDuration('');
     setResourceIds([]);
@@ -127,6 +129,10 @@ export function BookingDialog({
     },
   });
 
+  // Back-dated entries are allowed (e.g. recording a visit after the fact), but make it obvious.
+  const startInstant = date && /^\d{1,2}:\d{2}$/.test(time) ? zonedInstant(date, parseHhmm(time), tz) : null;
+  const inPast = !!startInstant && startInstant.getTime() < Date.now();
+
   const canSubmit = !!patient?.owner && !!typeId && (!type?.requiresClinician || !!clinicianId) && !!date && !!time;
 
   return (
@@ -143,7 +149,8 @@ export function BookingDialog({
         <div className="grid gap-3">
           {error && (
             <div className="grid gap-2">
-              <FormError message={error.message} />
+              {/* A soft warning (double-booking, outside hours) gets one amber box with its override, not a red error as well. */}
+              {!error.override && <FormError message={error.message} />}
               {error.problems && (
                 <ul className="ml-4 list-disc text-xs text-muted-foreground">
                   {error.problems.map((p) => (
@@ -156,8 +163,11 @@ export function BookingDialog({
               {error.override && (
                 <div className="flex items-center justify-between gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
                   <span className="flex items-center gap-2 text-warning">
-                    <AlertTriangle className="h-4 w-4" />
-                    {error.override.allowOverbook ? 'Double-book this clinician?' : 'Book outside rostered hours?'}
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <span>
+                      {error.message}
+                      <span className="block text-xs">{error.override.allowOverbook ? 'Double-book anyway?' : 'Book outside rostered hours?'}</span>
+                    </span>
                   </span>
                   <Button size="sm" variant="outline" loading={book.isPending} onClick={() => book.mutate(error.override!)}>
                     Book anyway
@@ -202,6 +212,11 @@ export function BookingDialog({
               </Field>
             </div>
           </div>
+          {inPast && (
+            <p className="flex items-center gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning" role="status">
+              <AlertTriangle className="h-4 w-4 shrink-0" /> This time has already passed. Book it only to record a visit that already happened.
+            </p>
+          )}
           {clinicianId && (
             <div>
               <p className="mb-1 text-xs font-medium text-muted-foreground">Free times for this clinician</p>

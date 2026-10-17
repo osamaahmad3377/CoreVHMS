@@ -58,9 +58,9 @@ function Ref() {
             {canWrite && r.status === 'DRAFT' && !edit && <Button size="sm" variant="outline" onClick={() => setEdit({ reason: r.reason, clinicalSummary: r.clinicalSummary ?? '', questions: r.questions ?? '' })}><Pencil /> Edit</Button>}
             {canWrite && r.status === 'DRAFT' && r.contact?.email && <Button size="sm" onClick={() => move.mutate({ action: 'send', email: true })}><Mail /> Email letter</Button>}
             {canWrite && r.status === 'DRAFT' && <Button size="sm" variant={r.contact?.email ? 'outline' : 'default'} onClick={() => move.mutate({ action: 'send', email: false })}><Send /> Mark sent</Button>}
-            {canWrite && (r.status === 'SENT' || r.status === 'RECEIVED') && <Button size="sm" variant="outline" onClick={() => { setError(null); setForm({ appointmentAt: '', outcome: '' }); setDlg('accept'); }}><ThumbsUp /> Accepted</Button>}
-            {canWrite && ['SENT', 'RECEIVED', 'ACCEPTED'].includes(r.status) && <Button size="sm" onClick={() => { setError(null); setForm({ appointmentAt: '', outcome: '' }); setDlg('complete'); }}><CheckCircle2 /> Complete</Button>}
-            {canWrite && !closed && <Button size="sm" variant="ghost" onClick={async () => { const c = await confirm({ title: r.status === 'DRAFT' ? 'Cancel this referral?' : 'Close this referral?', description: 'Choose decline if the specialist could not take the case.', confirmLabel: r.status === 'DRAFT' ? 'Cancel referral' : 'Declined / cancelled', destructive: true, requireReason: true }); if (c.confirmed) move.mutate({ action: r.status === 'DRAFT' ? 'cancel' : 'decline', reason: c.reason }); }}><XCircle /> {r.status === 'DRAFT' ? 'Cancel' : 'Declined'}</Button>}
+            {canWrite && (r.status === 'SENT' || r.status === 'RECEIVED') && <Button size="sm" variant="outline" onClick={() => { setError(null); setForm({ appointmentAt: '', outcome: '' }); setDlg('accept'); }}><ThumbsUp /> Mark accepted</Button>}
+            {canWrite && ['SENT', 'RECEIVED', 'ACCEPTED'].includes(r.status) && <Button size="sm" onClick={() => { setError(null); setForm({ appointmentAt: '', outcome: '' }); setDlg('complete'); }}><CheckCircle2 /> Mark completed</Button>}
+            {canWrite && !closed && <Button size="sm" variant="ghost" onClick={async () => { const c = await confirm({ title: r.status === 'DRAFT' ? 'Cancel this referral?' : 'Mark this referral as declined?', description: r.status === 'DRAFT' ? 'The draft is kept on record as cancelled.' : 'Use this when the specialist could not take the case or the referral was withdrawn.', confirmLabel: r.status === 'DRAFT' ? 'Cancel referral' : 'Mark declined', destructive: true, requireReason: true }); if (c.confirmed) move.mutate({ action: r.status === 'DRAFT' ? 'cancel' : 'decline', reason: c.reason }); }}><XCircle /> {r.status === 'DRAFT' ? 'Cancel referral' : 'Mark declined'}</Button>}
           </>
         }
       />
@@ -86,7 +86,10 @@ function Ref() {
             </CardContent>
           </Card>
           {r.outcome && <Card><CardHeader><CardTitle>Outcome</CardTitle></CardHeader><CardContent><p className="whitespace-pre-wrap text-sm">{r.outcome}</p></CardContent></Card>}
-          <Card className="p-4"><p className="mb-2 text-sm font-medium">Documents (radiographs, reports)</p><AttachmentsPanel entityType="Referral" entityId={r.id} canWrite={canWrite} /></Card>
+          <Card>
+            <CardHeader><CardTitle>Documents</CardTitle><p className="text-xs text-muted-foreground">Radiographs, reports and letters</p></CardHeader>
+            <CardContent><AttachmentsPanel entityType="Referral" entityId={r.id} canWrite={canWrite} /></CardContent>
+          </Card>
         </div>
         <div className="grid min-w-0 grid-cols-1 content-start gap-4">
           <Card>
@@ -108,7 +111,7 @@ function Ref() {
       </div>
       <Dialog open={!!dlg} onOpenChange={(o) => !o && setDlg(null)}>
         <DialogContent>
-          <DialogHeader><DialogTitle>{dlg === 'accept' ? 'Referral accepted' : 'Complete referral'}</DialogTitle><DialogDescription>{dlg === 'complete' ? 'Summarise the specialist’s findings or the report received. Attach the report under Documents.' : 'Record the appointment date if known.'}</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{dlg === 'accept' ? 'Mark referral accepted' : 'Mark referral completed'}</DialogTitle><DialogDescription>{dlg === 'complete' ? 'Summarise the specialist’s findings or the report received. Attach the report under Documents.' : 'Record the appointment date if known.'}</DialogDescription></DialogHeader>
           {error && <FormError message={error} />}
           {dlg === 'accept' ? (
             <Field label="Appointment" htmlFor="ra-at"><Input id="ra-at" type="datetime-local" value={form.appointmentAt} onChange={(e) => setForm({ ...form, appointmentAt: e.target.value })} /></Field>
@@ -117,7 +120,7 @@ function Ref() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDlg(null)}>Cancel</Button>
-            <Button loading={move.isPending} disabled={dlg === 'complete' && !form.outcome.trim()} onClick={() => { setError(null); move.mutate(dlg === 'accept' ? { action: 'accept', appointmentAt: form.appointmentAt ? new Date(form.appointmentAt).toISOString() : null } : { action: 'complete', outcome: form.outcome }); }}>Save</Button>
+            <Button loading={move.isPending} disabled={dlg === 'complete' && !form.outcome.trim()} onClick={() => { setError(null); move.mutate(dlg === 'accept' ? { action: 'accept', appointmentAt: form.appointmentAt ? new Date(form.appointmentAt).toISOString() : null } : { action: 'complete', outcome: form.outcome }); }}>{dlg === 'accept' ? 'Mark accepted' : 'Mark completed'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

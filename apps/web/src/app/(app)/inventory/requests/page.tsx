@@ -15,6 +15,7 @@ import { FormError } from '@/components/forms/form-error';
 import { EmptyState, PageHeader } from '@/components/page';
 import { ProductPicker } from '@/components/pharmacy/product-picker';
 import { RequirePermission } from '@/components/require';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -23,7 +24,7 @@ import { Input, NativeSelect, Textarea } from '@/components/ui/input';
 import { useUrlState } from '@/hooks/use-url-state';
 import { api, qs } from '@/lib/api';
 import { fmtDate } from '@/lib/format';
-import { defaultLocation } from '@/lib/locations';
+import { defaultLocation, locationLabel, sortedLocations } from '@/lib/locations';
 import { useSession } from '@/lib/session';
 import type { Product, StockLocation, Supplier } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -130,7 +131,7 @@ function OrderDialog({ requests, open, onOpenChange, onDone }: { requests: Purch
         <DialogHeader>
           <DialogTitle>Create purchase order</DialogTitle>
           <DialogDescription>
-            {requests.length} request{requests.length === 1 ? '' : 's'} become one draft order. Requests for the same product are combined. Leave a unit cost empty to use the last price paid.
+            {requests.length === 1 ? '1 request becomes' : `${requests.length} requests become`} one draft order. Requests for the same product are combined. Leave a unit cost empty to use the last price paid.
           </DialogDescription>
         </DialogHeader>
         {error && <FormError message={error} />}
@@ -143,7 +144,7 @@ function OrderDialog({ requests, open, onOpenChange, onDone }: { requests: Purch
           </Field>
           <Field label="Deliver to" htmlFor="ro-loc" required>
             <NativeSelect id="ro-loc" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
-              {(locations.data ?? []).filter((l) => l.isActive).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              {sortedLocations(locations.data, session.branch?.id).filter((l) => l.isActive).map((l) => <option key={l.id} value={l.id}>{locationLabel(l, locations.data)}</option>)}
             </NativeSelect>
           </Field>
           <Field label="Expected delivery" htmlFor="ro-exp"><Input id="ro-exp" type="date" value={expectedAt} onChange={(e) => setExpectedAt(e.target.value)} /></Field>
@@ -201,7 +202,7 @@ function Requests() {
       <PageHeader
         title="Item requests"
         description="Staff ask for items to be ordered; procurement turns open requests into purchase orders."
-        breadcrumbs={[{ label: 'Inventory', href: '/inventory' }, { label: 'Item requests' }]}
+       
         actions={
           <div className="flex gap-2">
             {manage && <Button size="sm" variant="outline" disabled={!chosen.length} onClick={() => setOrdering(true)}><ShoppingCart /> Order selected ({chosen.length})</Button>}
@@ -233,7 +234,13 @@ function Requests() {
               header: 'Status',
               cell: (r) => (
                 <div className="text-xs">
-                  <CommerceBadge status={r.status} />
+                  {r.status === 'ORDERED' && r.purchaseOrder && ['DRAFT', 'SUBMITTED'].includes(r.purchaseOrder.status) ? (
+                    <Badge variant="info" title="The purchase order has not been approved and sent yet">{r.purchaseOrder.status === 'DRAFT' ? 'On draft order' : 'Awaiting approval'}</Badge>
+                  ) : r.status === 'ORDERED' && r.purchaseOrder?.status === 'RECEIVED' ? (
+                    <Badge variant="success">Received</Badge>
+                  ) : (
+                    <CommerceBadge status={r.status} />
+                  )}
                   {r.purchaseOrder && <Link className="ml-1 text-primary hover:underline" href={`/inventory/purchase-orders/${r.purchaseOrder.id}`}>{r.purchaseOrder.poNo}</Link>}
                   {r.decisionNote && <p className="mt-0.5 text-muted-foreground">{r.decidedByName}: {r.decisionNote}</p>}
                 </div>

@@ -53,11 +53,12 @@ export default function VitalReferencesPage() {
       <div className="mb-4 flex gap-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
         <p>
-          Reference intervals are clinical content. Enter values from a validated, current veterinary reference and name the source. NextCore ships with <b>no</b> default ranges; values without a configured range are never flagged. Saving requires the <code>clinical.sign</code> permission and records you as the reviewer.
+          Reference intervals are clinical content. Enter values from a validated, current veterinary reference and name the source. NextCore ships with <b>no</b> default ranges; values without a configured range are never flagged. Only vets who can sign clinical notes can edit these; saving records you as the reviewer.
         </p>
       </div>
       <Card>
         <CardHeader><CardTitle>Vital-sign reference intervals</CardTitle></CardHeader>
+        {!can('clinical.sign') && <p className="border-b px-4 py-2 text-xs text-muted-foreground">You can view these ranges. Only vets who can sign clinical notes can add or remove them.</p>}
         {can('clinical.sign') && (
           <form className="grid gap-2 border-b p-3" onSubmit={(e) => { e.preventDefault(); setError(null); save.mutate(); }}>
             {error && <FormError message={error} />}
@@ -72,7 +73,7 @@ export default function VitalReferencesPage() {
               <Input aria-label="Low" placeholder="Low" className="w-24" inputMode="decimal" value={f.low} onChange={(e) => setF({ ...f, low: e.target.value })} />
               <Input aria-label="High" placeholder="High" className="w-24" inputMode="decimal" value={f.high} onChange={(e) => setF({ ...f, high: e.target.value })} />
               <Input aria-label="Source" placeholder="Source (reference text, edition, page)" className="min-w-[220px] flex-1" value={f.source} onChange={(e) => setF({ ...f, source: e.target.value })} />
-              <Button type="submit" size="sm" disabled={!f.speciesId || !f.low || !f.high || !f.source.trim()} loading={save.isPending}><Plus /> Save</Button>
+              <Button type="submit" size="sm" disabled={!f.speciesId || !f.low || !f.high || !f.source.trim()} loading={save.isPending}><Plus /> Add</Button>
             </div>
           </form>
         )}

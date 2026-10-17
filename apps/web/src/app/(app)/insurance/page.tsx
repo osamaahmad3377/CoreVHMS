@@ -39,7 +39,7 @@ function Filters({ value, onChange, options }: { value: string; onChange: (v: st
 
 function Claims() {
   const router = useRouter();
-  const { currency } = useSession();
+  const { can, currency } = useSession();
   const url = useUrlState();
   const status = url.get('status', 'OPEN');
   const statusParam = status === 'OPEN' ? 'DRAFT,SUBMITTED,QUERIED,APPROVED,PARTIALLY_APPROVED' : status === 'ALL' ? undefined : status;
@@ -51,7 +51,7 @@ function Claims() {
         query={q}
         rowKey={(c) => c.id}
         onRowClick={(c) => router.push(`/insurance/claims/${c.id}`)}
-        empty={<EmptyState icon={FileText} title="No claims" description="Create claims from an animal’s Insurance tab or with New claim." />}
+        empty={<EmptyState icon={FileText} title="No claims" description={can('insurance.write') ? 'Create claims with New claim, or from an animal’s Insurance tab.' : 'Claims appear here once a colleague with insurance access creates them.'} />}
         columns={[
           { key: 'claim', header: 'Claim', cell: (c) => <div><Link href={`/insurance/claims/${c.id}`} className="font-medium hover:underline">{c.condition}</Link><p className="text-xs text-muted-foreground">{c.claimNo} · {c.patient.name} · {c.client.displayName}</p></div> },
           { key: 'ins', header: 'Insurer', cell: (c) => <span className="text-sm">{c.policy.provider.name}<span className="block text-xs text-muted-foreground">{c.policy.policyNumber}</span></span> },
@@ -97,14 +97,14 @@ function PreAuths() {
 }
 
 function Policies() {
-  const { currency } = useSession();
+  const { can, currency } = useSession();
   const q = useQuery({ queryKey: ['policies', 'all'], queryFn: () => api.get<InsurancePolicy[]>('/insurance/policies') });
   return (
     <Card>
       <DataTable
         query={q}
         rowKey={(p) => p.id}
-        empty={<EmptyState icon={ShieldCheck} title="No policies recorded" description="Add a policy from the animal’s Insurance tab." />}
+        empty={<EmptyState icon={ShieldCheck} title="No policies recorded" description={can('insurance.write') ? 'Add a policy from the animal’s Insurance tab.' : 'Policies appear here once they are added on an animal’s Insurance tab.'} />}
         columns={[
           { key: 'a', header: 'Animal', cell: (p) => <div><Link href={`/patients/${p.patient.id}?tab=insurance`} className="font-medium hover:underline">{p.patient.name}</Link><p className="text-xs text-muted-foreground">{p.patient.species.name} · {p.client.displayName}</p></div> },
           { key: 'i', header: 'Insurer', cell: (p) => <span className="text-sm">{p.provider.name}<span className="block text-xs text-muted-foreground">{p.policyNumber}{p.planName ? ` · ${p.planName}` : ''}</span></span> },

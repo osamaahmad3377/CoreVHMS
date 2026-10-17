@@ -173,7 +173,7 @@ export class AppointmentsService {
     r: Resolved,
     startsAt: Date,
     endsAt: Date,
-    opts: { allowOverbook: boolean; allowOutsideHours: boolean; excludeId?: string },
+    opts: { allowOverbook: boolean; allowOutsideHours: boolean; excludeId?: string; patientId?: string | null },
   ) {
     if (r.clinician) {
       const leave = await this.prisma.db.staffLeave.findFirst({
@@ -209,11 +209,12 @@ export class AppointmentsService {
           include: { patient: { select: { name: true } } },
         });
         if (clash) {
-          throw conflict(`${r.clinician.name} already has ${appointmentNo(clash.number)}${clash.patient ? ` (${clash.patient.name})` : ''} at that time`, {
-            code: 'CLINICIAN_BUSY',
-            appointmentId: clash.id,
-            canOverride: true,
-          });
+          // Booking the same animal twice is usually a duplicate, so say so plainly.
+          const samePatient = !!opts.patientId && clash.patientId === opts.patientId;
+          const message = samePatient
+            ? `${clash.patient!.name} is already booked at this time (${appointmentNo(clash.number)} with ${r.clinician.name})`
+            : `${r.clinician.name} already has ${appointmentNo(clash.number)}${clash.patient ? ` (${clash.patient.name})` : ''} at that time`;
+          throw conflict(message, { code: 'CLINICIAN_BUSY', appointmentId: clash.id, samePatient, canOverride: true });
         }
       }
     }
@@ -257,7 +258,7 @@ export class AppointmentsService {
     const problems: { startsAt: Date; message: string }[] = [];
     for (const s of slots) {
       try {
-        await this.checkSlot(r, s.startsAt, s.endsAt, { allowOverbook: input.allowOverbook, allowOutsideHours: input.allowOutsideHours });
+        await this.checkSlot(r, s.startsAt, s.endsAt, { allowOverbook: input.allowOverbook, allowOutsideHours: input.allowOutsideHours, patientId: input.patientId });
       } catch (e: any) {
         if (occurrences === 1) throw e;
         problems.push({ startsAt: s.startsAt, message: e?.response?.message ?? e.message });
@@ -330,7 +331,7 @@ export class AppointmentsService {
     const endsAt = new Date(startsAt.getTime() + duration * 60_000);
     const timeChanged = startsAt.getTime() !== a.startsAt.getTime() || endsAt.getTime() !== a.endsAt.getTime();
     const overbook = input.allowOverbook || (a.isOverbooked && !timeChanged && r.clinician?.id === a.clinicianId);
-    await this.checkSlot(r, startsAt, endsAt, { allowOverbook: overbook, allowOutsideHours: input.allowOutsideHours, excludeId: id });
+    await this.checkSlot(r, startsAt, endsAt, { allowOverbook: overbook, allowOutsideHours: input.allowOutsideHours, excludeId: id, patientId: input.patientId === undefined ? a.patientId : input.patientId });
 
     await this.prisma.db.$transaction(async (tx) => {
       const after = await tx.appointment.update({
@@ -403,6 +404,22 @@ export class AppointmentsService {
         from('BOOKED', 'CONFIRMED', 'CHECKED_IN');
         if (!a.patientId) throw ruleViolation('NO_PATIENT', 'Add a patient to the appointment before starting a consultation');
         data = { status: 'IN_CONSULTATION', startedAt: now, checkedInAt: a.checkedInAt ?? now };
+        // An unassigned appointment (typically a walk-in) is taken by the clinician who starts it.
+        if (!a.clinicianId && ctx.membershipId) {
+          const me = await this.prisma.db.membership.findUnique({ where: { id: ctx.membershipId }, select: { id: true, status: true, isClinician: true } });
+          if (me?.status === 'ACTIVE' && me.isClinician) {
+            data.clinicianId = me.id;
+            // Taking the patient alongside the clinician's own bookings must not trip the no-overlap constraint.
+            if (!a.isOverbooked) {
+              const clash = await this.prisma.db.appointment.findFirst({
+                where: { clinicianId: me.id, isOverbooked: false, status: { notIn: ['CANCELLED', 'NO_SHOW'] }, startsAt: { lt: a.endsAt }, endsAt: { gt: a.startsAt }, id: { not: a.id } },
+                select: { id: true },
+              });
+              if (clash) data.isOverbooked = true;
+            }
+            a.clinicianId = me.id; // the encounter opened below inherits it
+          }
+        }
         break;
       case 'complete':
         need('clinical.write', 'appointments.checkin');

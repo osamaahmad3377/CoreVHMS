@@ -24,7 +24,7 @@ function Register() {
   const tz = session.branch?.timezone ?? 'UTC';
   const url = useUrlState();
   const today = todayIn(tz);
-  const from = url.get('from', shiftDate(today, -30));
+  const from = url.get('from', shiftDate(today, -29));
   const to = url.get('to', today);
   const range = { from: zonedInstant(from, 0, tz).toISOString(), to: zonedInstant(shiftDate(to, 1), 0, tz).toISOString() };
   const q = useQuery({ queryKey: ['controlled-register', range], queryFn: () => api.get<StockMovement[]>(`/stock/controlled-register${qs(range)}`) });
@@ -34,7 +34,7 @@ function Register() {
       <div className="no-print">
         <PageHeader
           title="Controlled medicines register"
-          breadcrumbs={[{ label: 'Inventory', href: '/inventory' }, { label: 'Controlled register' }]}
+         
           description="Every receipt, issue, adjustment and count of controlled products. Entries are permanent and cannot be edited."
           actions={<Button size="sm" variant="outline" onClick={() => window.print()}><Printer /> Print</Button>}
         />

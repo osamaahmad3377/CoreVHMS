@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ASA_GRADES, SURGERY_ROLES, enumLabel } from '@vcms/shared';
-import { BedDouble, Check, CheckCircle2, Circle, Lock, Pill, Printer, Syringe, Trash2 } from 'lucide-react';
+import { BedDouble, Check, CheckCircle2, Circle, Lock, Pill, Printer, Syringe, Trash2, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
@@ -266,7 +266,7 @@ function SurgeryView() {
                   <Button size="sm" onClick={async () => (await confirm({ title: 'Complete and sign this surgical record?', description: 'The report, checklist and anaesthesia record are locked. Later corrections are added as addenda. The procedure fee is added to the client’s unbilled charges.', confirmLabel: 'Complete & sign' })).confirmed && go('complete')}>Complete & sign</Button>
                 )}
                 {writable && ['SCHEDULED', 'PRE_OP'].includes(s.status) && (
-                  <Button size="sm" variant="ghost" onClick={async () => { const r = await confirm({ title: 'Cancel this surgery?', description: 'The theatre booking is released.', requireReason: true, destructive: true, confirmLabel: 'Cancel surgery' }); if (r.confirmed) go('cancel', r.reason); }}>Cancel</Button>
+                  <Button size="sm" variant="ghost" onClick={async () => { const r = await confirm({ title: 'Cancel this surgery?', description: 'The theatre booking is released.', requireReason: true, destructive: true, confirmLabel: 'Cancel surgery', cancelLabel: 'Keep surgery' }); if (r.confirmed) go('cancel', r.reason); }}><XCircle /> Cancel surgery</Button>
                 )}
                 {can('hospital.write') && !s.admission && ['RECOVERY', 'COMPLETED', 'IN_PROGRESS'].includes(s.status) && <Button size="sm" variant="outline" onClick={() => setAdmitting(true)}><BedDouble /> Admit to hospital</Button>}
                 {s.status === 'COMPLETED' && <Button size="sm" variant="outline" onClick={() => window.print()}><Printer /> Print report</Button>}
@@ -276,7 +276,7 @@ function SurgeryView() {
               <ol className="grid grid-cols-5 gap-1" aria-label="Progress">
                 {STEPS.map((st, i) => (
                   <li key={st} className={cn('flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs', i < stepIdx ? 'bg-success/10 text-success' : i === stepIdx ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>
-                    {i < stepIdx ? <Check className="h-3.5 w-3.5" /> : <Circle className="h-3 w-3" />} {enumLabel(st)}
+                    {i < stepIdx ? <Check className="h-3.5 w-3.5" /> : <Circle className="h-3 w-3" />} {enumLabel(st, 'surgery')}
                   </li>
                 ))}
               </ol>
@@ -361,11 +361,14 @@ function SurgeryView() {
                 {!locked && s.encounterId && can('clinical.write') && <Button size="sm" variant="outline" onClick={() => setGiving(true)}><Pill /> Record drug</Button>}
               </CardHeader>
               <CardContent>
-                {!s.encounterId && <p className="text-sm text-muted-foreground">Drugs can be recorded once the surgery has started.</p>}
+                {!s.encounterId && <p className="text-sm text-muted-foreground">{s.status === 'COMPLETED' || s.status === 'CANCELLED' ? 'No drugs were recorded for this surgery.' : 'Drugs can be recorded once the surgery has started.'}</p>}
                 {!!s.administrations?.length && (
                   <ul className="divide-y rounded-md border text-sm">
                     {s.administrations.map((a) => <li key={a.id} className="flex justify-between px-3 py-2"><span><b>{a.product}</b> {a.dose} {a.doseUnit} {a.route}{a.status !== 'GIVEN' && ' (not given)'}</span><span className="text-xs text-muted-foreground">{branchTime(a.administeredAt, tz)} · {a.administeredByName}</span></li>)}
                   </ul>
+                )}
+                {s.encounterId && !s.administrations?.length && (
+                  <p className="text-sm text-muted-foreground">{s.status === 'COMPLETED' || s.status === 'CANCELLED' ? 'No drugs were recorded for this surgery.' : 'No drugs recorded yet.'}</p>
                 )}
               </CardContent>
             </Card>

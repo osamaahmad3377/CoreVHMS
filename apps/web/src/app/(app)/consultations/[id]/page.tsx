@@ -25,11 +25,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api } from '@/lib/api';
 import { fmtDateTime } from '@/lib/format';
 import { useSession } from '@/lib/session';
+import { shiftDate, todayIn } from '@/lib/time';
 import type { ClinicalNote, Encounter } from '@/lib/types';
 
 function Workspace() {
   const { id } = useParams<{ id: string }>();
-  const { can } = useSession();
+  const { can, session } = useSession();
   const router = useRouter();
   const qc = useQueryClient();
   const confirm = useConfirm();
@@ -99,11 +100,11 @@ function Workspace() {
                 size="sm"
                 variant="ghost"
                 onClick={async () => {
-                  const r = await confirm({ title: 'Cancel this consultation?', description: 'Only possible while nothing has been signed.', requireReason: true, destructive: true, confirmLabel: 'Cancel consultation' });
+                  const r = await confirm({ title: 'Cancel this consultation?', description: 'Only possible while nothing has been signed.', requireReason: true, destructive: true, confirmLabel: 'Cancel consultation', cancelLabel: 'Keep consultation' });
                   if (r.confirmed) cancel.mutate(r.reason!);
                 }}
               >
-                <XCircle /> Cancel
+                <XCircle /> Cancel consultation
               </Button>
               <Button size="sm" loading={close.isPending} onClick={() => close.mutate()}>
                 <CheckCircle2 /> Complete consultation
@@ -123,8 +124,8 @@ function Workspace() {
         />
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <div className="grid content-start gap-4">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="grid min-w-0 grid-cols-1 content-start gap-4 [&>*]:min-w-0">
           {drafts
             .filter((d) => !d.amendsId)
             .map((d) => (
@@ -133,7 +134,7 @@ function Workspace() {
                   <CardTitle>Clinical note</CardTitle>
                   <span className="text-xs text-muted-foreground">Drafted by {d.authorName}</span>
                 </CardHeader>
-                <CardContent>{writable ? <NoteEditor encounterId={e.id} note={d} /> : <p className="text-sm text-muted-foreground">Draft in progress.</p>}</CardContent>
+                <CardContent>{writable ? <NoteEditor encounterId={e.id} speciesCategory={e.patient.species.category} note={d} /> : <p className="text-sm text-muted-foreground">Draft in progress.</p>}</CardContent>
               </Card>
             ))}
 
@@ -145,7 +146,7 @@ function Workspace() {
                   <NoteView note={n} onAmend={can('clinical.amend') && !pendingAmendment && amending?.id !== n.id ? () => setAmending(n) : undefined} />
                   {(amending?.id === n.id || pendingAmendment) && (
                     <div className="rounded-md border-2 border-dashed border-warning/50 p-3">
-                      <NoteEditor encounterId={e.id} note={pendingAmendment ?? n} amending={!pendingAmendment} onDone={() => setAmending(null)} />
+                      <NoteEditor encounterId={e.id} speciesCategory={e.patient.species.category} note={pendingAmendment ?? n} amending={!pendingAmendment} onDone={() => setAmending(null)} />
                     </div>
                   )}
                 </CardContent>
@@ -159,7 +160,7 @@ function Workspace() {
                 <CardTitle>New clinical note</CardTitle>
               </CardHeader>
               <CardContent>
-                <NoteEditor encounterId={e.id} note={null} onDone={() => setNewNote(false)} />
+                <NoteEditor encounterId={e.id} speciesCategory={e.patient.species.category} note={null} onDone={() => setNewNote(false)} />
               </CardContent>
             </Card>
           )}
@@ -182,7 +183,7 @@ function Workspace() {
           )}
         </div>
 
-        <div className="grid content-start gap-4">
+        <div className="grid min-w-0 grid-cols-1 content-start gap-4 [&>*]:min-w-0">
           <VitalsPanel encounterId={e.id} vitals={e.vitals} editable={writable} onSaved={refresh} />
           <DiagnosesPanel encounterId={e.id} diagnoses={e.diagnoses} editable={writable} onSaved={refresh} />
           <PrescriptionsPanel patient={e.patient} encounterId={e.id} editable={e.status !== 'CANCELLED'} />
@@ -214,6 +215,8 @@ function Workspace() {
         onOpenChange={setFollowUp}
         defaults={{
           clinicianId: e.clinician?.id,
+          // No recheck interval is configured on templates, so suggest a week from today (branch time).
+          date: shiftDate(todayIn(session.branch?.timezone ?? 'UTC'), 7),
           followUpOfId: e.appointmentId ?? undefined,
           reason: `Recheck${e.chiefComplaint ? `: ${e.chiefComplaint}` : ''}`,
           patient: {
@@ -252,7 +255,7 @@ function NextSteps({ steps }: { steps: (Step | false)[] }) {
           const inner = (
             <>
               <span className={`rounded-md p-1.5 ${st.primary ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary'}`}><st.icon className="h-4 w-4" /></span>
-              <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{st.title}</span><span className="block truncate text-xs text-muted-foreground">{st.text}</span></span>
+              <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{st.title}</span><span className="block text-xs text-muted-foreground">{st.text}</span></span>
               <ArrowRight className="h-4 w-4 text-muted-foreground" />
             </>
           );

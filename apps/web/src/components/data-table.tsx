@@ -108,7 +108,7 @@ export function DataTable<T>({
             {onPageSize && (
               <NativeSelect
                 aria-label="Rows per page"
-                className="h-8 w-[84px] text-xs"
+                className="h-8 w-[104px] text-xs"
                 value={pageSize}
                 onChange={(e) => onPageSize(Number(e.target.value))}
               >

@@ -77,14 +77,14 @@ function Expenses() {
   const total = (query.data ?? []).reduce((n, e) => n + e.amountMinor, 0);
   return (
     <>
-      <PageHeader title="Expenses" breadcrumbs={[{ label: 'Billing', href: '/billing' }, { label: 'Expenses' }]} actions={can('expenses.write') && <Button size="sm" onClick={() => setCreate(true)}><Plus /> Record expense</Button>} />
+      <PageHeader title="Expenses" description="Rent, utilities, wages and payments to suppliers, so reports show your real profit." actions={can('expenses.write') && <Button size="sm" onClick={() => setCreate(true)}><Plus /> Record expense</Button>} />
       <SectionNav links={BILLING_LINKS} />
       <Card>
         {!!query.data?.length && <p className="border-b p-3 text-sm text-muted-foreground">Showing the latest {query.data.length} · total <b className="tabular text-foreground">{fmtMoney(total, currency)}</b></p>}
         <DataTable
           query={query}
           rowKey={(r) => r.id}
-          empty={<EmptyState icon={ReceiptText} title="No expenses recorded" />}
+          empty={<EmptyState icon={ReceiptText} title="No expenses recorded" description="Record what the clinic spends to see operating profit in Reports." />}
           columns={[
             { key: 'date', header: 'Date', cell: (r) => <span className="whitespace-nowrap text-sm">{fmtDate(r.date)}</span> },
             { key: 'cat', header: 'Category', cell: (r) => <span className="text-sm">{enumLabel(r.category)}</span> },

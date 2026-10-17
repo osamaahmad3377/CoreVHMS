@@ -20,7 +20,7 @@ const NativeSelect = React.forwardRef<HTMLSelectElement, React.SelectHTMLAttribu
     ref={ref}
     className={cn(
       inputClass,
-      'appearance-none bg-[url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22%236b7b80%22%3E%3Cpath%20d%3D%22M5.3%207.3a1%201%200%20011.4%200L10%2010.6l3.3-3.3a1%201%200%20111.4%201.4l-4%204a1%201%200%2001-1.4%200l-4-4a1%201%200%20010-1.4z%22%2F%3E%3C%2Fsvg%3E")] bg-[length:1.1rem] bg-[right_0.5rem_center] bg-no-repeat pr-8',
+      'appearance-none bg-[image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22%236b7b80%22%3E%3Cpath%20d%3D%22M5.3%207.3a1%201%200%20011.4%200L10%2010.6l3.3-3.3a1%201%200%20111.4%201.4l-4%204a1%201%200%2001-1.4%200l-4-4a1%201%200%20010-1.4z%22%2F%3E%3C%2Fsvg%3E")] bg-[length:1.1rem] bg-[right_0.5rem_center] bg-no-repeat pr-8',
       className,
     )}
     {...props}

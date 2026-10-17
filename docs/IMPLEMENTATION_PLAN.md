@@ -212,3 +212,51 @@ Items from the feature matrix that need no external device, data source or provi
 - **Navigation:** the ⌘K box lists actions (new client, book, walk-in, counter sale, new invoice, receive stock, request an item) filtered as you type, shared with the top bar's New menu (`components/layout/create-actions.ts`). Sidebar sections can be folded; the section with the current page always stays open; the choice is remembered on that computer.
 - **Loading:** the app's outline (sidebar, top bar, page placeholders) shows immediately instead of a blank "Loading NextCore…" screen.
 - **Tests executed:** Playwright `flow.spec.ts` (every attention link opens for reception, vet and nurse without "Access denied"; ⌘K action; complete a consultation → Next steps → Bill this visit opens the invoice for the right client); ESLint and `tsc` clean; full browser suite run (results in the session report).
+
+### 2026-10-17 — QA pass: broken and unprofessional flows fixed
+- **Requested by the clinic:** test every flow and fix anything broken or unprofessional.
+- **How:** four role-based QA passes in the browser (front desk, clinical, commercial, services/admin/mobile) at desktop and phone width, about 110 findings; each was checked in the code before fixing.
+- **Broken flows fixed:**
+  - Phone layout: the top bar, client page, patient tabs and shop counter overflowed (sign-out was off-screen). The counter now has a Charge bar at the bottom on phones.
+  - Dates near midnight: dates were taken from UTC, so between 00:00 and 05:00 in Pakistan they were a day early. This affected date of birth, problem onset, task due dates, farm reports and the next due date of vaccinations (364 days). Dates now use the branch's local date, on both web and server.
+  - Labels: one shared label map gave grooming jobs the badge "In surgery" and wards "General message". Labels are now per domain (`enumLabel(value, scope)`).
+  - Links people could not open: Help, the dashboard "Validate" item and the prescription → consultation link now check permissions. Pharmacy staff no longer get 403 errors on patient pages.
+  - Front desk and consultation:
+    - Starting a consultation now assigns the clinician and copies the triage complaint and vitals into it.
+    - Administered mass doses (e.g. 200 mg of a 200 mg tablet) are now charged and deducted from stock.
+    - Vaccinations record their batch, so it shows on the certificate.
+    - The consultation page no longer scrolls sideways once a prescription exists.
+- **Professional polish (examples):**
+  - Dashboard:
+    - Lists booked patients who are late, and visits from earlier days that were never closed.
+    - Groups critical alerts per patient; next appointments exclude patients already checked in.
+  - Front desk and appointments:
+    - "Undo no-show", "Keep appointment", "Book again"; a warning when booking in the past; same-patient clash wording.
+    - A new client's address is optional.
+  - Billing and stock:
+    - Statements say "Card payment for INV-…"; invoices made from charges are filed against the animal.
+    - Report CSVs have named columns, amounts in major units, local dates, totals and a header row even when empty (UTF-8 BOM for Excel).
+    - Stock movements link to the sale, delivery, count or return that caused them.
+    - Reorder suggestions are grouped by last supplier, with last cost prefilled, and purchase orders can be printed.
+  - Clinical:
+    - The dispensing batch picker shows expiry and quantity on hand.
+    - Lab samples have a Code 128 barcode, and samples are split by sample type.
+    - Lab reports and medication labels carry the clinic's details.
+    - Treatments are "Due now" for 30 minutes before counting as overdue; discharge warns about unrecorded treatments.
+    - The patient Documents tab includes files from consultations, stays and lab orders.
+  - Services and admin:
+    - Help search matches words, not exact phrases.
+    - The staff table fits its card, with row actions in a menu.
+    - Farm production charts are split by unit.
+    - The audit log shows readable actions and records, with search.
+    - Tabs switch instantly.
+  - App-wide:
+    - Sentence-case badges.
+    - "Searching…" state in ⌘K.
+    - Dark-mode selects.
+    - Aligned form fields.
+    - A4 invoice header matches the receipt.
+- **Configuration gap found (needs a decision, not code):** a consultation started directly rather than from an appointment or walk-in has no consultation-fee source, because the fee comes from the appointment type's service.
+- **Demo data:** repeated E2E runs have left test records in the Pakistan demo clinic (E2E-*, "Temp Receptionist" staff, "Allergy to …"). Only re-seeding with `npm run db:seed -- --reset` removes them, and it also removes data added by hand, so it has not been run.
+- **Tests executed:** shared 27/27; API full run 31 suites — 29 passed first time, and the 2 that failed (the new `qa-polish.int-spec.ts`, whose test data needed an open cash register and a non-prescription item, and a security assertion affected by a statement wording change that was then reverted) pass on re-run, 162 tests in all. New tests: `qa-polish.int-spec.ts` (statement wording, invoice filed against the animal, sales-by-item names/totals/CSV, empty CSV header, movement references, reorder last cost/supplier), scheduling (triage carried into the consultation, starting clinician, same-patient clash), preventive (local-day next due), pharmacy (mass-dose charging), patients (empty duplicate filters, related documents), `tz.spec`. ESLint and `tsc` clean. Playwright `clients-patients.spec.ts` 4/4; the remaining browser specs were still running at commit time on a heavily loaded machine.
+

@@ -92,7 +92,7 @@ function Cash() {
   return (
     <>
       <PageHeader
-        help="cash" title="Cash registers" breadcrumbs={[{ label: 'Billing', href: '/billing' }, { label: 'Cash registers' }]} description="Open a register with a float at the start of the day and reconcile it at close." />
+        help="cash" title="Cash registers" description="Open a register with a float at the start of the day and reconcile it at close." />
       <SectionNav links={BILLING_LINKS} />
       <div className="grid gap-4 lg:grid-cols-3">
         {(registers.data ?? []).map((r) => {

@@ -16,6 +16,7 @@ import { api, qs } from '@/lib/api';
 import { fmtDate, fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { InsuranceClaim, InsurancePolicy, InsuranceProvider, Invoice, Referral, ReferralContact } from '@/lib/types';
+import { localToday } from '@/lib/time';
 
 // Claim and referral statuses get their own wording here (the shared labels are used across modules).
 const CLAIM_LABEL: Record<string, string> = { DRAFT: 'Draft', SUBMITTED: 'Submitted', QUERIED: 'Query from insurer', APPROVED: 'Approved', PARTIALLY_APPROVED: 'Partly approved', REJECTED: 'Rejected', DECLINED: 'Declined', PAID: 'Paid', CLOSED: 'Closed' };
@@ -126,7 +127,7 @@ export function ClaimDialog({ open, onOpenChange, policies }: { open: boolean; o
   const [picked, setPicked] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const policy = policies.find((x) => x.id === f.policyId);
-  useEffect(() => { if (open) { setError(null); setPicked([]); const first = policies.find((x) => x.state === 'ACTIVE'); setF({ policyId: first?.id ?? '', condition: '', treatmentFrom: '', treatmentTo: new Date().toISOString().slice(0, 10), payee: 'CLINIC', clinicalSummary: '' }); } }, [open, policies]);
+  useEffect(() => { if (open) { setError(null); setPicked([]); const first = policies.find((x) => x.state === 'ACTIVE'); setF({ policyId: first?.id ?? '', condition: '', treatmentFrom: '', treatmentTo: localToday(), payee: 'CLINIC', clinicalSummary: '' }); } }, [open, policies]);
   const invoices = useQuery({
     queryKey: ['invoices', 'claimable', policy?.client.id],
     queryFn: async () => (await api.get<Paginated<Invoice>>(`/invoices${qs({ clientId: policy!.client.id, pageSize: 100 })}`)).data.filter((i) => ['ISSUED', 'PARTIALLY_PAID', 'PAID'].includes(i.status)),

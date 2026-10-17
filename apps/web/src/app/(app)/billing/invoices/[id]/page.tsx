@@ -233,7 +233,25 @@ function InvoiceView() {
         </div>
       </div>
       <div className="hidden print:block"><InvoiceDocument invoice={i} clinic={org.data ?? null} /></div>
-      <TakePaymentDialog open={paying} onOpenChange={setPaying} clientId={i.clientId} invoice={i} />
+      <TakePaymentDialog
+        open={paying}
+        onOpenChange={setPaying}
+        clientId={i.clientId}
+        invoice={i}
+        silent
+        onPaid={(p) => {
+          // Offer the receipt straight away, printed from the updated invoice.
+          toast.success(`Payment ${p.receiptNo} recorded`, {
+            action: {
+              label: 'Print receipt',
+              onClick: async () => {
+                const fresh = await q.refetch();
+                if (fresh.data) await receipts.print(receiptFromInvoice(fresh.data, fresh.data.allocations.map((a) => ({ method: a.payment.method, amountMinor: a.amountMinor, receiptNo: a.payment.receiptNo }))));
+              },
+            },
+          });
+        }}
+      />
       <CreditNoteDialog invoice={i} open={crediting} onOpenChange={setCrediting} />
     </>
   );

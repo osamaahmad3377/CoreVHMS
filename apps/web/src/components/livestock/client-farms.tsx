@@ -7,6 +7,7 @@ import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { FarmDialog } from './farm-dialogs';
 import { api } from '@/lib/api';
+import { fmtNumber } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { FarmRow } from '@/lib/types';
 
@@ -25,7 +26,7 @@ export function ClientFarms({ client }: { client: { id: string; displayName: str
       <CardContent className="grid gap-2 text-sm">
         {q.data?.length ? q.data.map((f) => (
           <Link key={f.id} href={`/livestock/farms/${f.id}`} className="flex justify-between gap-2 hover:underline">
-            <span>{f.name}</span><span className="text-xs text-muted-foreground">{f.animalCount ?? 0} animals</span>
+            <span>{f.name}</span><span className="text-xs text-muted-foreground">{fmtNumber(f.animalCount ?? 0)} {f.animalCount === 1 ? 'animal' : 'animals'}</span>
           </Link>
         )) : <p className="text-muted-foreground">No farm registered yet.</p>}
       </CardContent>

@@ -87,8 +87,8 @@ export function AdmitDialog({ open, onOpenChange, patient, encounterId, cageId }
           </Field>
           <Field label="Responsible vet" htmlFor="adm-vet">
             <NativeSelect id="adm-vet" value={f.responsibleClinicianId} onChange={(e) => setF({ ...f, responsibleClinicianId: e.target.value })}>
-              <option value="">Me</option>
-              {(clinicians.data ?? []).map((c) => <option key={c.membershipId} value={c.membershipId}>{c.name}</option>)}
+              <option value="">Me ({session.user.name})</option>
+              {(clinicians.data ?? []).filter((c) => c.userId !== session.user.id).map((c) => <option key={c.membershipId} value={c.membershipId}>{c.name}</option>)}
             </NativeSelect>
           </Field>
           <Field label="Expected discharge" htmlFor="adm-exp"><Input id="adm-exp" type="datetime-local" value={f.expectedDischargeAt} onChange={(e) => setF({ ...f, expectedDischargeAt: e.target.value })} /></Field>

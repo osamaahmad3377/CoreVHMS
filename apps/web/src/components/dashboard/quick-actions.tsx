@@ -6,7 +6,7 @@ import { useSession } from '@/lib/session';
 
 const ACTIONS: { label: string; hint: string; href: string; icon: LucideIcon; anyOf: Permission[] }[] = [
   { label: 'Front desk', hint: 'Check in & waiting room', href: '/front-desk', icon: ClipboardList, anyOf: ['appointments.checkin'] },
-  { label: 'Book appointment', hint: 'Find a free slot', href: '/calendar', icon: CalendarPlus, anyOf: ['appointments.write'] },
+  { label: 'Book visit', hint: 'Book an appointment in a free slot', href: '/calendar', icon: CalendarPlus, anyOf: ['appointments.write'] },
   { label: 'New client', hint: 'Owner and animals', href: '/clients/new', icon: UserPlus, anyOf: ['clients.write'] },
   { label: 'Consultations', hint: 'Notes, prescribing, tests', href: '/consultations', icon: Stethoscope, anyOf: ['clinical.write'] },
   { label: 'Hospital', hint: 'Inpatients & treatments', href: '/hospital', icon: BedDouble, anyOf: ['hospital.write'] },
@@ -31,7 +31,7 @@ export function QuickActions() {
         <Link key={a.href} href={a.href} title={a.hint} className="group flex items-center gap-2.5 rounded-lg border bg-card px-3 py-2.5 shadow-sm transition-colors hover:border-primary/50 hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-ring">
           <span className="rounded-md bg-primary/10 p-1.5 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground"><a.icon className="h-4 w-4" /></span>
           <span className="min-w-0">
-            <span className="block text-sm font-semibold leading-tight">{a.label}</span>
+            <span className="block truncate text-sm font-semibold leading-tight">{a.label}</span>
           </span>
         </Link>
       ))}

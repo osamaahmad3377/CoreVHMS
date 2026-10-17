@@ -206,12 +206,18 @@ export class EncountersService {
   }
 
   /** Called when an appointment is started from the calendar/front desk. */
+  /**
+   * Opens the consultation for an appointment (idempotent). A new encounter is seeded from the
+   * latest triage on the appointment: its presenting complaint becomes the chief complaint (falling
+   * back to the booking/walk-in reason) and its measurements are carried over as a vital-signs row.
+   */
   async ensureForAppointment(tx: ScopedTx, appt: Appointment): Promise<string> {
     const existing = await tx.encounter.findUnique({ where: { appointmentId: appt.id } });
     if (existing) return existing.id;
     const ctx = RequestContext.require();
     const owner = await tx.patientOwnership.findFirst({ where: { patientId: appt.patientId!, endedAt: null, isPrimary: true } });
     const type = await tx.appointmentType.findUnique({ where: { id: appt.appointmentTypeId } });
+    const triage = await tx.triageAssessment.findFirst({ where: { appointmentId: appt.id, patientId: appt.patientId! }, orderBy: { assessedAt: 'desc' } });
     const number = await this.counters.next(tx, 'encounter');
     const e = await tx.encounter.create({
       data: {
@@ -223,11 +229,40 @@ export class EncountersService {
         appointmentId: appt.id,
         clinicianId: appt.clinicianId ?? (await this.clinicianFor(null)),
         type: CATEGORY_TO_TYPE[type?.category ?? ''] ?? 'CONSULTATION',
-        chiefComplaint: appt.reason,
+        chiefComplaint: triage?.presentingComplaint?.trim() || appt.reason,
         createdById: ctx.userId,
       },
     });
     await this.audit.record({ action: 'encounter.started', entityType: 'Encounter', entityId: e.id, summary: encounterNo(number) }, tx);
+    if (triage) {
+      const measured = {
+        temperatureC: triage.temperatureC,
+        heartRate: triage.heartRate,
+        respiratoryRate: triage.respiratoryRate,
+        mucousMembranes: triage.mucousMembranes,
+        capillaryRefillSec: triage.capillaryRefillSec,
+        painScore: triage.painScore,
+      };
+      const values = Object.entries(measured).filter(([, v]) => v !== null && v !== undefined && v !== '');
+      if (values.length) {
+        await tx.vitalSign.create({
+          data: {
+            ...measured,
+            organizationId: ctx.organizationId!,
+            patientId: appt.patientId!,
+            encounterId: e.id,
+            recordedAt: triage.assessedAt,
+            notes: 'From triage',
+            recordedById: triage.assessedById,
+            recordedByName: triage.assessedByName,
+          },
+        });
+        await this.audit.record(
+          { action: 'vitals.recorded', entityType: 'Patient', entityId: appt.patientId!, summary: `From triage: ${values.map(([k, v]) => `${k}=${v}`).join(', ')}` },
+          tx,
+        );
+      }
+    }
     return e.id;
   }
 

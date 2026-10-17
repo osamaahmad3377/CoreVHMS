@@ -79,7 +79,7 @@ function Options() {
     <Card>
       <CardHeader><div><CardTitle>Billing options</CardTitle><CardDescription>Currency: {d.currency}</CardDescription></div></CardHeader>
       <CardContent className="divide-y">
-        {toggle('pricesIncludeTax', 'Prices include tax', 'Catalogue prices already contain tax (common for GST in Australia). Tax is extracted on invoices instead of added.')}
+        {toggle('pricesIncludeTax', 'Prices include tax', 'Catalogue prices already contain tax (as with GST or VAT-inclusive pricing). Tax is extracted on invoices instead of added.')}
         {toggle('requireCashSession', 'Require an open cash register for cash', 'Cash payments, refunds and expenses are blocked unless a register session is open at the branch.')}
         {toggle('allowNegativeStock', 'Allow negative stock', 'Lets dispensing and sales proceed when the system shows insufficient stock. Leave off unless stock records are still being set up.')}
         <div className="flex items-end gap-2 py-3">

@@ -1,7 +1,10 @@
+import { localParts, zonedToUtc } from '../src/common/time/tz';
 import { closeApp, makeClient, makePatient, prisma, registerOrg, speciesId, staff } from './helpers';
 
 // Intervals, ages and doses below are arbitrary test values, not veterinary recommendations.
-const daysFrom = (d: number) => new Date(Date.now() + d * 86400_000).toISOString().slice(0, 10);
+// Test orgs are in Pakistan, so calendar dates are Karachi dates (UTC+5), not UTC ones.
+const TZ = 'Asia/Karachi';
+const daysFrom = (d: number) => localParts(new Date(Date.now() + d * 86400_000), TZ).date;
 
 async function setup() {
   const org = await registerOrg();
@@ -52,6 +55,20 @@ describe('Preventive care', () => {
     expect(cert.nextDue[0].dueDate.slice(0, 10)).toBe(daysFrom(365));
     await expect(prisma().careItem.update({ where: { id: plan.items[0].id }, data: { title: 'changed' } })).rejects.toThrow(/cannot be changed/);
     expect((await s.vet.client.post(`/care-items/${plan.items[0].id}/complete`, { mode: 'DONE' })).body.error.code).toBe('NOT_OPEN');
+  });
+
+  it('counts the next due date from the local calendar day it was given, even just after local midnight', async () => {
+    const s = await setup();
+    await s.vet.client.post(`/care-protocols/${s.protocol.id}/status`, { status: 'APPROVED' });
+    await s.vet.client.post(`/patients/${s.patient.id}/care-plan/apply`, {});
+    const item = (await s.vet.client.get(`/patients/${s.patient.id}/care-plan`)).body.items[0];
+    // 00:30 yesterday in Karachi is still the day before in UTC.
+    const givenAt = zonedToUtc(daysFrom(-1), 30, TZ);
+    expect(givenAt.toISOString().slice(0, 10)).toBe(daysFrom(-2));
+    const done = await s.vet.client.post(`/care-items/${item.id}/complete`, { mode: 'DONE', completedAt: givenAt.toISOString() });
+    expect(done.status).toBe(200);
+    const next = (await s.vet.client.get(`/patients/${s.patient.id}/care-plan`)).body.items.find((i: any) => i.status === 'DUE');
+    expect(next.dueDate.slice(0, 10)).toBe(daysFrom(364)); // yesterday + 365 days
   });
 
   it('completes the care item automatically when the vaccine is given elsewhere in the system', async () => {

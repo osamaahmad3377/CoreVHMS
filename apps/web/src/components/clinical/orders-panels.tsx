@@ -16,10 +16,10 @@ import { Card, CardHeader, CardTitle } from '../ui/card';
 import { api, qs } from '@/lib/api';
 import { fmtDateTime } from '@/lib/format';
 import { useSession } from '@/lib/session';
-import type { ActiveWithdrawal, Administration, DiagnosticOrder, Prescription } from '@/lib/types';
+import type { ActiveWithdrawal, Administration, AlertSummary, DiagnosticOrder, Prescription } from '@/lib/types';
 
 interface Ctx {
-  patient: { id: string; name: string; latestWeightKg: number | null };
+  patient: { id: string; name: string; latestWeightKg: number | null; alerts?: AlertSummary[] };
   encounterId?: string | null;
   editable: boolean;
 }

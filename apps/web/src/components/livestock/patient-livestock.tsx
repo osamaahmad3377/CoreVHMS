@@ -93,7 +93,7 @@ export function PatientLivestock({ patient, ownerId, active }: { patient: { id: 
               {movements.data.map((m) => (
                 <li key={m.id} className="flex items-center gap-3 px-4 py-2">
                   <span className="w-36 shrink-0 text-muted-foreground">{fmtDateTime(m.occurredAt)}</span>
-                  <Badge variant={m.type === 'DEATH' || m.type === 'CULL' ? 'destructive' : 'secondary'}>{enumLabel(m.type)}</Badge>
+                  <Badge variant={m.type === 'DEATH' || m.type === 'CULL' ? 'destructive' : 'secondary'}>{enumLabel(m.type, 'movement')}</Badge>
                   <span className="flex-1 text-xs text-muted-foreground">{m.fromGroup?.name ?? m.fromFarm?.name ?? ''}{(m.toGroup || m.toFarm) && ` → ${m.toGroup?.name ?? m.toFarm?.name}`}{m.counterparty ? ` · ${m.counterparty}` : ''}{m.reason ? ` · ${m.reason}` : ''}</span>
                 </li>
               ))}

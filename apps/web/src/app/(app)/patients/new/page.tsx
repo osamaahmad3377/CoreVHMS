@@ -19,8 +19,8 @@ function NewPatient() {
   return (
     <>
       <PageHeader
-        title="Register patient"
-        breadcrumbs={[{ label: 'Patients', href: '/patients' }, { label: 'Register' }]}
+        title="Add patient"
+        breadcrumbs={[{ label: 'Patients', href: '/patients' }, { label: 'New' }]}
         description={initialOwner ? `Owner: ${initialOwner.displayName}` : undefined}
       />
       <Card className="max-w-5xl">

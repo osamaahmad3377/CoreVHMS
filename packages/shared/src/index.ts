@@ -2,6 +2,8 @@ export * from './permissions';
 export * from './enums';
 export * from './money';
 export * from './dose';
+export * from './allergy';
+export * from './treatment';
 export * from './schemas/common';
 export * from './schemas/auth';
 export * from './schemas/admin';

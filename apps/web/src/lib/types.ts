@@ -188,6 +188,8 @@ export interface Attachment {
   createdAt: string;
   url: string;
   sharedWithClient?: boolean;
+  /** Set when listed from a related record (includeRelated), e.g. a consultation's photo on the patient. */
+  source?: { entityType: string; entityId: string; label: string } | null;
 }
 
 export interface AuditEvent {
@@ -520,8 +522,9 @@ export interface Prescription {
   createdByName: string | null;
   createdAt: string;
   encounterId: string | null;
+  encounterNo?: string | null;
   patient: { id: string; name: string; number: number; sex: string; dateOfBirth: string | null; latestWeightKg: number | null; species: { id: string; name: string; category: string }; alerts: AlertSummary[] };
-  client: { id: string; displayName: string; mobilePhone: string | null };
+  client: { id: string; displayName: string; title?: string | null; firstName?: string | null; lastName?: string | null; organizationName?: string | null; mobilePhone: string | null };
   prescriber: { id: string; name: string; registration: string | null } | null;
   items: PrescriptionItem[];
 }
@@ -698,6 +701,8 @@ export interface StockMovement {
   reason: string | null;
   referenceType: string | null;
   referenceId: string | null;
+  /** What caused it, e.g. "Counter sale INV-000012", with a link when there is a page for it. */
+  reference?: { label: string; href: string | null } | null;
   createdAt: string;
   createdByName: string | null;
   product: { name: string; dispensingUnit: string; controlledSchedule?: string | null };
@@ -748,6 +753,7 @@ export interface PurchaseOrder {
   status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CANCELLED';
   supplierId: string;
   locationId: string;
+  location?: { id: string; name: string; branch?: { name: string; addressLine1?: string | null; addressLine2?: string | null; city?: string | null; phone?: string | null } | null } | null;
   supplier: { id: string; name: string } & Partial<Supplier>;
   totalMinor: number;
   expectedAt: string | null;
@@ -831,6 +837,7 @@ export interface Invoice {
   status: 'DRAFT' | 'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'VOID';
   isPos: boolean;
   branchId?: string;
+  branch?: { id: string; name: string; addressLine1?: string | null; addressLine2?: string | null; city?: string | null; postcode?: string | null; phone?: string | null; email?: string | null } | null;
   currency: string;
   pricesIncludeTax: boolean;
   clientId: string | null;

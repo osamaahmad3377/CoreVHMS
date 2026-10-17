@@ -70,7 +70,7 @@ export const NAV: NavSection[] = [
       { label: 'Consultations', href: '/consultations', icon: Stethoscope, anyOf: ['clinical.read'], ready: true },
       { label: 'Prescriptions & pharmacy', href: '/pharmacy', icon: Pill, anyOf: ['prescriptions.read', 'pharmacy.dispense'], ready: true },
       { label: 'Laboratory & imaging', href: '/lab', icon: FlaskConical, anyOf: ['lab.read'], ready: true },
-      { label: 'Hospitalization', href: '/hospital', icon: Bed, anyOf: ['hospital.read'], ready: true },
+      { label: 'Hospitalisation', href: '/hospital', icon: Bed, anyOf: ['hospital.read'], ready: true },
       { label: 'Surgery & anaesthesia', href: '/surgery', icon: HeartPulse, anyOf: ['surgery.read'], ready: true },
       { label: 'Preventive care', href: '/preventive', icon: Syringe, anyOf: ['preventive.read'], ready: true },
     ],
@@ -138,4 +138,17 @@ export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyO
 
 export function visibleNav(canAny: (...p: Permission[]) => boolean): NavSection[] {
   return NAV.map((s) => ({ ...s, items: s.items.filter((i) => i.ready && (!i.anyOf.length || canAny(...i.anyOf))) })).filter((s) => s.items.length);
+}
+
+/**
+ * Permissions needed to open an in-app link, taken from the most specific nav item whose href is a
+ * prefix of it (e.g. /settings/boarding-units → settings.manage). Empty = anyone signed in.
+ */
+export function hrefPermissions(href: string): Permission[] {
+  const path = href.split(/[?#]/)[0];
+  let best: { href: string; anyOf: Permission[] } | undefined;
+  for (const item of [...NAV.flatMap((s) => s.items), ...SETTINGS_NAV]) {
+    if ((path === item.href || path.startsWith(`${item.href}/`)) && (!best || item.href.length > best.href.length)) best = item;
+  }
+  return best?.anyOf ?? [];
 }

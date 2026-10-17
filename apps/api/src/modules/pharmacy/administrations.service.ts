@@ -12,7 +12,7 @@ export type AdministrationHook = (tx: ScopedTx, e: { administrationId: string; p
 /** Medication given in the clinic (injections, in-clinic doses, vaccines). */
 @Injectable()
 export class AdministrationsService {
-  private readonly hooks: AdministrationHook[] = [];
+  private readonly hooks: { hook: AdministrationHook; late: boolean }[] = [];
 
   constructor(
     private readonly prisma: PrismaService,
@@ -20,8 +20,12 @@ export class AdministrationsService {
     private readonly withdrawals: WithdrawalService,
   ) {}
 
-  registerHook(h: AdministrationHook) {
-    this.hooks.push(h);
+  /**
+   * Runs `h` inside the administration's transaction. `late` hooks run after the others, so they see
+   * what those recorded (e.g. the batch actually issued from stock), whatever the module start-up order.
+   */
+  registerHook(h: AdministrationHook, opts: { late?: boolean } = {}) {
+    this.hooks.push({ hook: h, late: !!opts.late });
   }
 
   async record(input: {
@@ -79,7 +83,7 @@ export class AdministrationsService {
         },
       });
       if (input.status === 'GIVEN') {
-        for (const h of this.hooks) await h(tx, { administrationId: a.id, productId: product.id, dose: input.dose, doseUnit: input.doseUnit, batchNumber: input.batchNumber, branchId: ctx.branchId! });
+        for (const { hook } of [...this.hooks.filter((h) => !h.late), ...this.hooks.filter((h) => h.late)]) await hook(tx, { administrationId: a.id, productId: product.id, dose: input.dose, doseUnit: input.doseUnit, batchNumber: input.batchNumber, branchId: ctx.branchId! });
         await this.withdrawals.record(tx, { patientId: patient.id, speciesId: patient.speciesId, productId: product.id, sourceType: 'ADMINISTRATION', sourceId: a.id, treatedAt: at });
       }
       // Callers (e.g. the hospital treatment sheet) can record their own changes in the same transaction.

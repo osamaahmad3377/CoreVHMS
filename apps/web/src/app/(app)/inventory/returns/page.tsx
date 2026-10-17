@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input, NativeSelect, Textarea } from '@/components/ui/input';
 import { api, qs } from '@/lib/api';
 import { fmtDate, fmtDateTime, fmtMoney } from '@/lib/format';
-import { defaultLocation } from '@/lib/locations';
+import { defaultLocation, locationLabel, sortedLocations } from '@/lib/locations';
 import { useSession } from '@/lib/session';
 import type { StockLocation, Supplier } from '@/lib/types';
 
@@ -83,7 +83,7 @@ function ReturnDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o:
           </Field>
           <Field label="From location" htmlFor="sr-loc" required>
             <NativeSelect id="sr-loc" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
-              {(locations.data ?? []).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              {sortedLocations(locations.data, session.branch?.id).filter((l) => l.isActive).map((l) => <option key={l.id} value={l.id}>{locationLabel(l, locations.data)}</option>)}
             </NativeSelect>
           </Field>
         </div>
@@ -135,7 +135,7 @@ function Returns() {
       <PageHeader
         title="Supplier returns"
         description="Stock sent back to suppliers: recalls, damage, short-dated or wrong items."
-        breadcrumbs={[{ label: 'Inventory', href: '/inventory' }, { label: 'Supplier returns' }]}
+       
         actions={can('procurement.write') && can('inventory.adjust') && <Button size="sm" onClick={() => setCreating(true)}><Undo2 /> Return to supplier</Button>}
       />
       <SectionNav links={INVENTORY_LINKS} />

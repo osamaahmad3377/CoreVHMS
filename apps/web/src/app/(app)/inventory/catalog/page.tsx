@@ -52,9 +52,10 @@ function CategoriesDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
     onSuccess: refresh,
     onError: (e: Error) => toast.error(e.message),
   });
-  const rename = (c: ProductCategory) => {
-    const next = window.prompt('Category name', c.name)?.trim();
-    if (next && next !== c.name) update.mutate({ id: c.id, body: { name: next } });
+  const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
+  const saveName = () => {
+    if (editing && editing.name.trim()) update.mutate({ id: editing.id, body: { name: editing.name.trim() } });
+    setEditing(null);
   };
   const groups = [...PRODUCT_TYPES, null].map((t) => ({ t, rows: (list.data ?? []).filter((c) => c.productType === t) })).filter((g) => g.rows.length);
   return (
@@ -84,11 +85,24 @@ function CategoriesDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
               <ul className="divide-y rounded-md border">
                 {g.rows.map((c) => (
                   <li key={c.id} className={cn('flex items-center gap-2 px-3 py-2 text-sm', !c.isActive && 'text-muted-foreground')}>
-                    <span className="flex-1">{c.name}{!c.isActive && ' (hidden)'}</span>
+                    {editing?.id === c.id ? (
+                      <Input
+                        autoFocus
+                        aria-label={`New name for ${c.name}`}
+                        className="h-8 flex-1"
+                        value={editing.name}
+                        maxLength={60}
+                        onChange={(e) => setEditing({ id: c.id, name: e.target.value })}
+                        onKeyDown={(e) => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') { e.stopPropagation(); setEditing(null); } }}
+                        onBlur={saveName}
+                      />
+                    ) : (
+                      <span className="flex-1">{c.name}{!c.isActive && ' (hidden)'}</span>
+                    )}
                     <span className="text-xs text-muted-foreground tabular">{c.productCount ?? 0} product{c.productCount === 1 ? '' : 's'}</span>
                     {editable && (
                       <>
-                        <Button size="sm" variant="ghost" onClick={() => rename(c)}>Rename</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditing({ id: c.id, name: c.name })}>Rename</Button>
                         <Button size="sm" variant="ghost" onClick={() => update.mutate({ id: c.id, body: { isActive: !c.isActive } })}>{c.isActive ? 'Hide' : 'Show'}</Button>
                       </>
                     )}
@@ -131,7 +145,7 @@ function Catalog() {
       <PageHeader
         title="Products"
         description="Everything the clinic stocks and sells: food, grooming and accessories as well as medicines and supplies."
-        breadcrumbs={[{ label: 'Inventory', href: '/inventory' }, { label: 'Products' }]}
+       
         actions={
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => setManaging(true)}><Tags /> Categories</Button>
@@ -140,7 +154,7 @@ function Catalog() {
         }
       />
       <SectionNav links={INVENTORY_LINKS} />
-      <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Product type">
+      <div className="mb-3 flex flex-wrap gap-1.5" role="tablist" aria-label="Product type">
         {TABS.map((t) => (
           <button
             key={t.key}

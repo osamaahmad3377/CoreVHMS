@@ -17,7 +17,11 @@ import { api, qs } from '@/lib/api';
 import { fmtDate, fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import { shiftDate, todayIn, zonedInstant } from '@/lib/time';
+import { STATUS_LABEL } from '@/lib/labels';
 import { cn } from '@/lib/utils';
+
+/** 34000 → 34k, 1250000 → 1.3M (chart axes). */
+const compact = (v: number) => new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(v);
 
 const REPORTS: { key: string; label: string; perm: Permission[]; ranged: boolean }[] = [
   { key: 'financial-summary', label: 'Financial summary', perm: ['reports.financial'], ranged: true },
@@ -56,7 +60,7 @@ function SummaryView({ d, currency }: { d: Summary; currency: string }) {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={d.paymentsByMethod.map((p) => ({ name: enumLabel(p.method), value: Number(fromMinor(p.amountMinor, currency)) }))} margin={{ left: -10 }}>
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={compact} width={48} />
                   <Tooltip formatter={(v: number) => m(toMinor(v, currency))} contentStyle={{ fontSize: 12, borderRadius: 6 }} />
                   <Bar dataKey="value" name="Received" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} maxBarSize={44} />
                 </BarChart>
@@ -115,7 +119,7 @@ function ClinicalView({ d }: { d: Clinical }) {
     <div className="grid gap-4">
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <Stat label="Consultations" value={d.consultations.total} hint={`${d.consultations.completed} completed`} />
-        <Stat label="Hospital admissions" value={d.hospital.admitted} hint={`${d.hospital.discharged} discharged${d.hospital.averageStayDays === null ? '' : ` · average stay ${d.hospital.averageStayDays} days`}`} />
+        <Stat label="Hospital admissions" value={d.hospital.admitted} hint={`${d.hospital.discharged} discharged${d.hospital.averageStayDays === null ? '' : ` · average stay ${d.hospital.averageStayDays < 1 ? 'under a day' : `${d.hospital.averageStayDays} day${d.hospital.averageStayDays === 1 ? '' : 's'}`}`}`} />
         <Stat label="Surgeries completed" value={d.surgery.completed} hint={`${d.surgery.withComplications} with complications recorded`} />
         <Stat label="New patients" value={d.newPatients.total} hint="All branches" />
       </div>
@@ -146,23 +150,60 @@ function ClinicalView({ d }: { d: Clinical }) {
   );
 }
 
-function GenericTable({ rows, currency }: { rows: Record<string, unknown>[]; currency: string }) {
-  if (!rows.length) return <EmptyState title="No data for this period" />;
-  const cols = Object.keys(rows[0]).filter((c) => !['id', 'productId', 'organizationId', 'batchId', 'locationId', 'branchId'].includes(c) && typeof rows[0][c] !== 'object');
+type Col = { key: string; header: string; kind?: 'money' | 'number' | 'date'; sub?: string; total?: boolean; unit?: string };
+const n = (v: unknown) => (typeof v === 'number' ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—');
+const SALES: Col[] = [
+  { key: 'netMinor', header: 'Net sales', kind: 'money', total: true },
+  { key: 'taxMinor', header: 'Tax', kind: 'money', total: true },
+  { key: 'grossMinor', header: 'Incl. tax', kind: 'money', total: true },
+];
+/** What each table report shows, in order; internal ids and nested objects never reach the screen. */
+const COLUMNS: Record<string, Col[]> = {
+  'sales-by-item': [{ key: 'item', header: 'Item', sub: 'code' }, { key: 'type', header: 'Type' }, { key: 'quantity', header: 'Qty', kind: 'number' }, ...SALES],
+  'sales-by-category': [{ key: 'group', header: 'Category' }, { key: 'lines', header: 'Lines', kind: 'number', total: true }, { key: 'quantity', header: 'Qty', kind: 'number' }, ...SALES],
+  'aged-receivables': [{ key: 'invoiceNo', header: 'Invoice' }, { key: 'client', header: 'Client' }, { key: 'dueAt', header: 'Due', kind: 'date' }, { key: 'daysOverdue', header: 'Days overdue', kind: 'number' }, { key: 'bucket', header: 'Age' }, { key: 'balanceMinor', header: 'Balance', kind: 'money', total: true }],
+  'stock-valuation': [{ key: 'name', header: 'Product' }, { key: 'quantity', header: 'On hand', kind: 'number', unit: 'unit' }, { key: 'valueMinor', header: 'Value at cost', kind: 'money', total: true }],
+  'write-offs': [{ key: 'date', header: 'Date', kind: 'date' }, { key: 'product', header: 'Product' }, { key: 'batch', header: 'Batch' }, { key: 'quantity', header: 'Qty', kind: 'number', unit: 'unit' }, { key: 'reason', header: 'Reason' }, { key: 'costMinor', header: 'Cost', kind: 'money', total: true }],
+};
+
+function ReportTable({ rows, columns, currency, ranged = true }: { rows: Record<string, unknown>[]; columns: Col[]; currency: string; ranged?: boolean }) {
+  if (!rows.length) return <EmptyState title={ranged ? 'Nothing recorded in this period' : 'Nothing to show right now'} description={ranged ? 'Try a longer date range.' : undefined} />;
+  const right = (c: Col) => c.kind === 'money' || c.kind === 'number';
+  const show = (c: Col, r: Record<string, unknown>) => {
+    const v = r[c.key];
+    if (c.kind === 'money') return fmtMoney((v as number) ?? 0, currency);
+    if (c.kind === 'number') return c.unit && r[c.unit] ? `${n(v)} ${r[c.unit]}` : n(v);
+    if (c.kind === 'date') return fmtDate(v as string);
+    return v === null || v === undefined || v === '' ? '—' : String(v);
+  };
+  const hasTotals = columns.some((c) => c.total);
   return (
-    <Table>
-      <THead><TR>{cols.map((c) => <TH key={c} className={c.endsWith('Minor') || typeof rows[0][c] === 'number' ? 'text-right' : ''}>{enumLabel(c.replace(/Minor$/, '').replace(/([A-Z])/g, '_$1').toUpperCase())}</TH>)}</TR></THead>
-      <TBody>
-        {rows.map((r, i) => (
-          <TR key={i}>
-            {cols.map((c) => {
-              const v = r[c];
-              return <TD key={c} className={typeof v === 'number' ? 'text-right tabular' : 'text-sm'}>{c.endsWith('Minor') ? fmtMoney(v as number, currency) : typeof v === 'string' && /^\d{4}-\d\d-\d\dT/.test(v) ? fmtDate(v) : typeof v === 'number' ? (Number.isInteger(v) ? v : v.toFixed(2)) : String(v ?? '—')}</TD>;
-            })}
-          </TR>
-        ))}
-      </TBody>
-    </Table>
+    <div className="overflow-x-auto">
+      <Table>
+        <THead><TR>{columns.map((c) => <TH key={c.key} className={right(c) ? 'text-right' : ''}>{c.header}</TH>)}</TR></THead>
+        <TBody>
+          {rows.map((r, i) => (
+            <TR key={i}>
+              {columns.map((c) => (
+                <TD key={c.key} className={right(c) ? 'whitespace-nowrap text-right tabular' : 'text-sm'}>
+                  {show(c, r)}
+                  {c.sub && r[c.sub] ? <span className="block text-2xs text-muted-foreground">{String(r[c.sub])}</span> : null}
+                </TD>
+              ))}
+            </TR>
+          ))}
+          {hasTotals && rows.length > 1 && (
+            <TR className="border-t-2 bg-muted/40 font-semibold hover:bg-muted/40">
+              {columns.map((c, i) => (
+                <TD key={c.key} className={right(c) ? 'whitespace-nowrap text-right tabular' : 'text-sm'}>
+                  {i === 0 ? `Total · ${rows.length} rows` : c.total ? (c.kind === 'money' ? fmtMoney(rows.reduce((t, r) => t + ((r[c.key] as number) ?? 0), 0), currency) : n(rows.reduce((t, r) => t + ((r[c.key] as number) ?? 0), 0))) : ''}
+                </TD>
+              ))}
+            </TR>
+          )}
+        </TBody>
+      </Table>
+    </div>
   );
 }
 
@@ -179,7 +220,7 @@ function Reports() {
   const params = { from: zonedInstant(from, 0, tz).toISOString(), to: zonedInstant(shiftDate(to, 1), 0, tz).toISOString(), branchId: scope === 'branch' ? session.branch?.id : undefined };
   const q = useQuery({ queryKey: ['report', report?.key, params], queryFn: () => api.get<any>(`/reports/${report!.key}${qs(params)}`), enabled: !!report });
   if (!report) return <EmptyState title="No reports available for your role" />;
-  const rows: Record<string, unknown>[] = !q.data ? [] : Array.isArray(q.data) ? q.data : report.key === 'aged-receivables' ? q.data.invoices.map((i: any) => ({ invoiceNo: i.invoiceNo, client: i.client?.displayName, dueAt: i.dueAt, daysOverdue: i.daysOverdue, bucket: BUCKETS[i.bucket as keyof typeof BUCKETS], balanceMinor: i.balanceMinor })) : report.key === 'write-offs' ? q.data.rows.map((r: any) => ({ date: r.createdAt, product: r.product.name, batch: r.batch.batchNumber, quantity: -r.quantity, reason: r.reason, costMinor: r.costMinor })) : q.data.rows ?? [];
+  const rows: Record<string, unknown>[] = !q.data ? [] : Array.isArray(q.data) ? q.data : report.key === 'aged-receivables' ? q.data.invoices.map((i: any) => ({ invoiceNo: i.invoiceNo, client: i.client?.displayName, dueAt: i.dueAt, daysOverdue: i.daysOverdue, bucket: BUCKETS[i.bucket as keyof typeof BUCKETS], balanceMinor: i.balanceMinor })) : report.key === 'write-offs' ? q.data.rows.map((r: any) => ({ date: r.createdAt, product: r.product.name, batch: r.batch.batchNumber, quantity: -r.quantity, unit: r.product.dispensingUnit, reason: r.reason, costMinor: r.costMinor })) : q.data.rows ?? [];
   return (
     <>
       <PageHeader
@@ -188,13 +229,14 @@ function Reports() {
         description={report.ranged ? `${fmtDate(from)} – ${fmtDate(to)} (${tz})` : 'As of now'}
         actions={<Button size="sm" variant="outline" asChild><a href={`/api/v1/reports/${report.key}${qs({ ...params, format: 'csv' })}`} download><Download /> CSV</a></Button>}
       />
-      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end">
-        <div className="flex flex-wrap gap-1" role="tablist">
+      <div className="mb-4 grid gap-3">
+        <div className="flex flex-wrap gap-1 border-b pb-3" role="tablist" aria-label="Report">
           {available.map((r) => (
             <button key={r.key} role="tab" aria-selected={r.key === report.key} onClick={() => url.set({ report: r.key })} className={cn('rounded-md px-3 py-1.5 text-sm', r.key === report.key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>{r.label}</button>
           ))}
         </div>
-        <div className="flex flex-wrap items-end gap-2 lg:ml-auto">
+        <div className="flex min-h-[52px] flex-wrap items-end gap-2">
+          {!report.ranged && <p className="self-center text-sm text-muted-foreground">Shows the position as of now — no date range needed.</p>}
           {report.ranged && (
             <>
               <label className="grid gap-1 text-xs">From<Input type="date" value={from} max={to} onChange={(e) => url.set({ from: e.target.value })} /></label>
@@ -217,6 +259,16 @@ function Reports() {
           <Stat label="No-show rate" value={`${(q.data.noShowRate * 100).toFixed(1)}%`} hint={`${q.data.byStatus.NO_SHOW ?? 0} no-shows`} />
           <Stat label="Cancellation rate" value={`${(q.data.cancellationRate * 100).toFixed(1)}%`} hint={`${q.data.byStatus.CANCELLED ?? 0} cancelled`} />
           <Stat label="Completed" value={q.data.byStatus.COMPLETED ?? 0} />
+          <Card className="col-span-2 xl:col-span-4">
+            <CardHeader><CardTitle>By status</CardTitle></CardHeader>
+            <Table>
+              <TBody>
+                {Object.entries(q.data.byStatus as Record<string, number>).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
+                  <TR key={k}><TD className="text-sm">{STATUS_LABEL[k] ?? enumLabel(k)}</TD><TD className="text-right tabular">{v}</TD><TD className="w-24 text-right text-xs text-muted-foreground tabular">{q.data.total ? `${((v / q.data.total) * 100).toFixed(0)}%` : ''}</TD></TR>
+                ))}
+              </TBody>
+            </Table>
+          </Card>
         </div>
       ) : (
         <Card>
@@ -227,8 +279,7 @@ function Reports() {
               ))}
             </div>
           )}
-          {'totalMinor' in (q.data ?? {}) && <p className="border-b px-4 py-2 text-sm">Total <b className="tabular">{fmtMoney(q.data.totalMinor, currency)}</b></p>}
-          <GenericTable rows={rows} currency={currency} />
+          <ReportTable rows={rows} columns={COLUMNS[report.key] ?? []} currency={currency} ranged={report.ranged} />
           {report.key === 'aged-receivables' && <p className="p-3 text-xs text-muted-foreground">Open an invoice from <Link className="underline" href="/billing?tab=overdue">Billing</Link> to take payment.</p>}
         </Card>
       )}

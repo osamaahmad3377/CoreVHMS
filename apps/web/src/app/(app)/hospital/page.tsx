@@ -84,11 +84,11 @@ function FlowboardView() {
         {d.wards.map((w) => (
           <section key={w.id} aria-label={w.name}>
             <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold">{w.name} <span className="text-xs font-normal text-muted-foreground">{w.cages.filter((c) => c.admissionId).length}/{w.cages.length} occupied</span></h2>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               {w.cages.map((c) => {
                 const a = byId(c.admissionId);
                 return (
-                  <div key={c.id} className="grid gap-1">
+                  <div key={c.id} className="grid content-start gap-1">
                     <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">{c.name}</span>
                     {a ? (
                       <PatientCard a={a} />

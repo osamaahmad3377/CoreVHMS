@@ -1,10 +1,10 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CPR_STATUSES, PATIENT_CONDITIONS, enumLabel } from '@vcms/shared';
-import { ArrowRightLeft, BellRing, LogOut, Printer, Scissors, XCircle } from 'lucide-react';
+import { ArrowRight, ArrowRightLeft, BellRing, CalendarPlus, CheckCircle2, LogOut, Printer, Receipt, Scissors, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import type { ClinicHeader } from '@/components/billing/invoice-document';
 import { useConfirm } from '@/components/confirm';
@@ -14,6 +14,7 @@ import { Observations } from '@/components/hospital/observations';
 import { TreatmentSheet } from '@/components/hospital/treatment-sheet';
 import { DescriptionList, ErrorState, LoadingRows } from '@/components/page';
 import { RequirePermission } from '@/components/require';
+import { BookingDialog } from '@/components/scheduling/booking-dialog';
 import { AttachmentsPanel } from '@/components/shared/attachments-panel';
 import { AlertChip } from '@/components/status';
 import { Badge } from '@/components/ui/badge';
@@ -25,7 +26,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api, qs } from '@/lib/api';
 import { fmtDate, fmtDateTime, fmtWeight } from '@/lib/format';
 import { useSession } from '@/lib/session';
-import type { Admission, WardRow } from '@/lib/types';
+import { shiftDate, todayIn } from '@/lib/time';
+import type { Admission, AlertSummary, WardRow } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 function MoveDialog({ a, open, onOpenChange }: { a: Admission; open: boolean; onOpenChange: (o: boolean) => void }) {
@@ -106,9 +108,11 @@ function AdmissionView() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const confirm = useConfirm();
-  const { can } = useSession();
+  const { can, session } = useSession();
+  const tz = session.branch?.timezone ?? 'UTC';
   const [moving, setMoving] = useState(false);
   const [discharging, setDischarging] = useState(false);
+  const [booking, setBooking] = useState(false);
   const q = useQuery({ queryKey: ['admission', id], queryFn: () => api.get<Admission>(`/admissions/${id}`), refetchInterval: 60_000 });
   const org = useQuery({ queryKey: ['organization'], queryFn: () => api.get<ClinicHeader>('/organization'), staleTime: 300_000 });
   const act = useMutation({
@@ -136,12 +140,18 @@ function AdmissionView() {
                 <ConditionBadge condition={a.condition} />
                 <CprBadge status={a.cprStatus} />
                 {a.isolation && <IsolationBadge />}
-                {!active && <Badge variant="secondary">{a.status === 'DISCHARGED' ? `Discharged · ${enumLabel(a.outcome)}` : 'Cancelled'}</Badge>}
+                {!active && <Badge variant="secondary">{a.status === 'DISCHARGED' ? (a.outcome ? enumLabel(a.outcome, 'outcome') : 'Discharged') : 'Cancelled'}</Badge>}
               </div>
               <p className="text-sm text-muted-foreground">
                 {a.patient.species.name}{a.patient.breed ? ` · ${a.patient.breed.name}` : ''} · {fmtWeight(a.patient.latestWeightKg)} · Owner <Link className="hover:underline" href={`/clients/${a.client.id}`}>{a.client.displayName}</Link>{a.client.mobilePhone ? ` (${a.client.mobilePhone})` : ''}
               </p>
-              <p className="mt-1 text-sm">{a.ward ? <><b>{a.ward.name}</b>{a.cage ? ` · ${a.cage.name}` : ''}</> : 'No ward assigned'} · Day {a.daysInHospital} · admitted {fmtDateTime(a.admittedAt)} by {a.admittedByName}</p>
+              {active ? (
+                <p className="mt-1 text-sm">{a.ward ? <><b>{a.ward.name}</b>{a.cage ? ` · ${a.cage.name}` : ''}</> : 'No ward assigned'} · Day {a.daysInHospital} · admitted {fmtDateTime(a.admittedAt)} by {a.admittedByName}</p>
+              ) : (
+                <p className="mt-1 text-sm">
+                  {a.status === 'DISCHARGED' ? <><b>Discharged {fmtDateTime(a.dischargedAt)}</b>{a.dischargedByName ? ` by ${a.dischargedByName}` : ''}</> : <b>Admission cancelled</b>} · admitted {fmtDateTime(a.admittedAt)}{a.ward ? ` · was in ${a.ward.name}${a.cage ? ` · ${a.cage.name}` : ''}` : ''}
+                </p>
+              )}
               <div className="mt-2 flex flex-wrap gap-1">{a.patient.alerts.length ? a.patient.alerts.map((al) => <AlertChip key={al.id} alert={al} />) : <span className="text-xs text-muted-foreground">No active alerts</span>}</div>
             </div>
             <div className="flex flex-wrap gap-2 lg:max-w-md lg:justify-end">
@@ -164,6 +174,28 @@ function AdmissionView() {
             </div>
           </CardContent>
         </Card>
+
+        {a.status === 'DISCHARGED' && (can('billing.write') || can('appointments.write')) && (
+          <section aria-label="Next steps" className="mb-4 rounded-lg border border-success/30 bg-success/5 p-3">
+            <p className="mb-2 flex items-center gap-2 text-sm font-medium"><CheckCircle2 className="h-4 w-4 text-success" /> {a.patient.name} was discharged — next steps</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {can('billing.write') && (
+                <Link href={`/billing/invoices/new?clientId=${a.client.id}`} className="flex items-center gap-3 rounded-md border bg-card px-3 py-2.5 shadow-sm transition-colors hover:border-primary/50 hover:bg-primary/5">
+                  <span className="rounded-md bg-primary p-1.5 text-primary-foreground"><Receipt className="h-4 w-4" /></span>
+                  <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">Bill this stay</span><span className="block text-xs text-muted-foreground">Hospital days, treatments and medicines are waiting to be invoiced for {a.client.displayName}</span></span>
+                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                </Link>
+              )}
+              {can('appointments.write') && a.outcome !== 'DECEASED' && a.outcome !== 'EUTHANASED' && (
+                <button type="button" onClick={() => setBooking(true)} className="flex items-center gap-3 rounded-md border bg-card px-3 py-2.5 text-left shadow-sm transition-colors hover:border-primary/50 hover:bg-primary/5">
+                  <span className="rounded-md bg-primary/10 p-1.5 text-primary"><CalendarPlus className="h-4 w-4" /></span>
+                  <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">Book a recheck</span><span className="block text-xs text-muted-foreground">{a.followUpAt ? `Follow-up planned for ${fmtDate(a.followUpAt)}` : 'Find a free slot for the post-discharge check'}</span></span>
+                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                </button>
+              )}
+            </div>
+          </section>
+        )}
 
         <Tabs defaultValue="sheet">
           <TabsList>
@@ -190,7 +222,7 @@ function AdmissionView() {
                     ...(a.surgeries?.length ? [{ label: 'Surgeries', value: <span className="grid">{a.surgeries.map((s) => <Link key={s.id} className="hover:underline" href={`/surgery/${s.id}`}>{s.surgeryNo} · {s.procedure} · {enumLabel(s.status)}</Link>)}</span> }] : []),
                     ...(a.status === 'DISCHARGED'
                       ? [
-                          { label: 'Discharged', value: `${fmtDateTime(a.dischargedAt)} by ${a.dischargedByName} — ${enumLabel(a.outcome)}` },
+                          { label: 'Discharged', value: `${fmtDateTime(a.dischargedAt)} by ${a.dischargedByName} — ${enumLabel(a.outcome, 'outcome')}` },
                           { label: 'Discharge summary', value: <span className="whitespace-pre-wrap">{a.dischargeSummary}</span> },
                           { label: 'Home-care instructions', value: a.homeCareInstructions && <span className="whitespace-pre-wrap">{a.homeCareInstructions}</span> },
                           { label: 'Follow-up', value: fmtDate(a.followUpAt) },
@@ -208,8 +240,32 @@ function AdmissionView() {
       {a.status === 'DISCHARGED' && <div className="hidden print:block"><DischargeSummary admission={a} clinic={org.data ?? null} /></div>}
       <MoveDialog a={a} open={moving} onOpenChange={setMoving} />
       <DischargeDialog admission={a} open={discharging} onOpenChange={setDischarging} />
+      {a.status === 'DISCHARGED' && <RecheckBooking a={a} tz={tz} open={booking} onOpenChange={setBooking} />}
     </>
   );
+}
+
+/** Post-discharge recheck booking. Defaults are memoised so the 60-second refresh does not reset the form. */
+function RecheckBooking({ a, tz, open, onOpenChange }: { a: Admission; tz: string; open: boolean; onOpenChange: (o: boolean) => void }) {
+  const defaults = useMemo(
+    () => ({
+      clinicianId: a.responsibleClinician?.id,
+      // The follow-up date chosen at discharge, else a week from today.
+      date: a.followUpAt ? a.followUpAt.slice(0, 10) : shiftDate(todayIn(tz), 7),
+      reason: `Post-discharge recheck (${a.admissionNo})`,
+      patient: {
+        id: a.patient.id,
+        name: a.patient.name,
+        patientNo: `P-${String(a.patient.number).padStart(6, '0')}`,
+        species: { id: '', ...a.patient.species },
+        owner: { id: a.client.id, displayName: a.client.displayName, mobilePhone: a.client.mobilePhone },
+        alerts: a.patient.alerts as AlertSummary[],
+      },
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [a.id, a.followUpAt, tz],
+  );
+  return <BookingDialog open={open} onOpenChange={onOpenChange} defaults={defaults} />;
 }
 
 export default function AdmissionPage() {

@@ -1,3 +1,4 @@
+import { overdueCutoff } from '@vcms/shared';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { RequestContext } from '../../common/context/request-context';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -58,6 +59,15 @@ export class HospitalIntegrations implements OnModuleInit {
 
     this.attachments.registerTarget('Admission', { read: 'hospital.read', write: 'hospital.write', exists: async (id) => !!(await db().admission.findUnique({ where: { id }, select: { id: true } })) });
     this.attachments.registerTarget('Surgery', { read: 'surgery.read', write: 'surgery.write', exists: async (id) => !!(await db().surgery.findUnique({ where: { id }, select: { id: true } })) });
+    // Files on hospital stays and surgeries also appear (read-only) on the patient's Documents tab.
+    this.attachments.registerRelated('Patient', {
+      childType: 'Admission',
+      children: async (patientId) => (await db().admission.findMany({ where: { patientId }, select: { id: true, number: true }, take: 500 })).map((a) => ({ id: a.id, label: `Hospital stay ${admissionNo(a.number)}` })),
+    });
+    this.attachments.registerRelated('Patient', {
+      childType: 'Surgery',
+      children: async (patientId) => (await db().surgery.findMany({ where: { patientId }, select: { id: true, number: true, procedure: true }, take: 500 })).map((x) => ({ id: x.id, label: `Surgery ${surgeryNo(x.number)} · ${x.procedure}` })),
+    });
 
     this.search.register(async (q, perms) => {
       const m = q.trim().match(/^(hosp|surg)-?(\d+)$/i);
@@ -83,7 +93,7 @@ export class HospitalIntegrations implements OnModuleInit {
         const [inpatients, critical, overdue] = await Promise.all([
           db().admission.count({ where: { ...b, status: 'ADMITTED' } }),
           db().admission.findMany({ where: { ...b, status: 'ADMITTED', condition: 'CRITICAL' }, include: { patient: { select: { id: true, name: true } } }, take: 5 }),
-          db().treatmentTask.count({ where: { status: 'DUE', dueAt: { lt: now }, admission: { ...b, status: 'ADMITTED' } } }),
+          db().treatmentTask.count({ where: { status: 'DUE', dueAt: { lt: overdueCutoff(now) }, admission: { ...b, status: 'ADMITTED' } } }),
         ]);
         return { inpatients, overdueTreatments: overdue, critical: critical.map((a) => ({ id: a.id, admissionNo: admissionNo(a.number), patient: a.patient })) };
       },

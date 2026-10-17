@@ -80,7 +80,10 @@ function Claim() {
               ) : <p className="whitespace-pre-wrap text-sm">{c.clinicalSummary || <span className="text-muted-foreground">No summary yet.</span>}</p>}
             </CardContent>
           </Card>
-          <Card className="p-4"><p className="mb-2 text-sm font-medium">Supporting documents</p><AttachmentsPanel entityType="InsuranceClaim" entityId={c.id} canWrite={canWrite} /></Card>
+          <Card>
+            <CardHeader><CardTitle>Supporting documents</CardTitle></CardHeader>
+            <CardContent><AttachmentsPanel entityType="InsuranceClaim" entityId={c.id} canWrite={canWrite} /></CardContent>
+          </Card>
         </div>
         <div className="grid min-w-0 grid-cols-1 content-start gap-4">
           <Card>

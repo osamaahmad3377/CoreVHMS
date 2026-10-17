@@ -1,6 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, FileText, Globe, Image as ImageIcon, Paperclip, Trash2, Upload } from 'lucide-react';
+import Link from 'next/link';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirm } from '../confirm';
@@ -14,7 +15,19 @@ import type { Attachment } from '@/lib/types';
 
 const CATEGORIES = ['photo', 'consent', 'certificate', 'report', 'lab', 'imaging', 'referral', 'correspondence', 'other'];
 
-export function AttachmentsPanel({ entityType, entityId, canWrite }: { entityType: string; entityId: string; canWrite: boolean }) {
+/** Where a related record's file lives, so its source label can link there. */
+const SOURCE_HREF: Record<string, (id: string) => string> = {
+  Encounter: (id) => `/consultations/${id}`,
+  Admission: (id) => `/hospital/admissions/${id}`,
+  Surgery: (id) => `/surgery/${id}`,
+  DiagnosticOrder: (id) => `/lab/orders/${id}`,
+};
+
+/**
+ * Files on a record. `includeRelated` (default for patients) also lists, read-only, the files on related
+ * records the user may see — consultations, hospital stays, surgeries, lab orders — labelled with their source.
+ */
+export function AttachmentsPanel({ entityType, entityId, canWrite, includeRelated = entityType === 'Patient' }: { entityType: string; entityId: string; canWrite: boolean; includeRelated?: boolean }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
   const portal = usePortalEnabled();
@@ -22,7 +35,7 @@ export function AttachmentsPanel({ entityType, entityId, canWrite }: { entityTyp
   const [category, setCategory] = useState('other');
   const [description, setDescription] = useState('');
   const key = ['attachments', entityType, entityId];
-  const list = useQuery({ queryKey: key, queryFn: () => api.get<Attachment[]>(`/attachments${qs({ entityType, entityId })}`) });
+  const list = useQuery({ queryKey: [...key, includeRelated], queryFn: () => api.get<Attachment[]>(`/attachments${qs({ entityType, entityId, includeRelated: includeRelated ? 'true' : undefined })}`) });
 
   const upload = useMutation({
     mutationFn: (file: File) => {
@@ -96,7 +109,10 @@ export function AttachmentsPanel({ entityType, entityId, canWrite }: { entityTyp
         <EmptyState icon={Paperclip} title="No documents" description="Consent forms, certificates, photos and reports appear here." />
       ) : (
         <ul className="divide-y rounded-md border">
-          {list.data.map((a) => (
+          {list.data.map((a) => {
+            // Files from a related record are managed there; here they are only listed.
+            const own = !a.source;
+            return (
             <li key={a.id} className="flex items-center gap-3 px-3 py-2">
               {a.mimeType.startsWith('image/') ? <ImageIcon className="h-4 w-4 text-muted-foreground" /> : <FileText className="h-4 w-4 text-muted-foreground" />}
               <div className="min-w-0 flex-1">
@@ -108,9 +124,15 @@ export function AttachmentsPanel({ entityType, entityId, canWrite }: { entityTyp
                   {a.description && <>{a.description} · </>}
                   {fmtBytes(a.sizeBytes)} · {a.uploadedByName} · {fmtDateTime(a.createdAt)}
                 </p>
+                {a.source && (
+                  <p className="truncate text-xs">
+                    From{' '}
+                    {SOURCE_HREF[a.source.entityType] ? <Link className="text-primary hover:underline" href={SOURCE_HREF[a.source.entityType](a.source.entityId)}>{a.source.label}</Link> : a.source.label}
+                  </p>
+                )}
               </div>
               {portal && a.sharedWithClient && <span className="rounded bg-info/10 px-1.5 py-0.5 text-2xs font-medium text-info">Shared with client</span>}
-              {portal && canWrite && (
+              {portal && canWrite && own && (
                 <Button
                   variant="ghost"
                   size="icon-sm"
@@ -127,7 +149,7 @@ export function AttachmentsPanel({ entityType, entityId, canWrite }: { entityTyp
                   <Download />
                 </a>
               </Button>
-              {canWrite && (
+              {canWrite && own && (
                 <Button
                   variant="ghost"
                   size="icon-sm"
@@ -141,7 +163,8 @@ export function AttachmentsPanel({ entityType, entityId, canWrite }: { entityTyp
                 </Button>
               )}
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </div>

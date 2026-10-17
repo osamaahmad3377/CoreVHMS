@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, Product } from '@prisma/client';
-import { FREQUENCIES, calculateDose, compareToRange, courseQuantity, type CreatePrescriptionInput, type PrescriptionItemInput } from '@vcms/shared';
+import { FREQUENCIES, allergyMatches, calculateDose, compareToRange, courseQuantity, type CreatePrescriptionInput, type PrescriptionItemInput } from '@vcms/shared';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { sha256 } from '../../common/crypto/crypto';
@@ -37,7 +37,8 @@ const include = {
       alerts: { where: { isActive: true }, select: { id: true, severity: true, title: true, type: true } },
     },
   },
-  client: { select: { id: true, displayName: true, mobilePhone: true } },
+  client: { select: { id: true, displayName: true, title: true, firstName: true, lastName: true, organizationName: true, mobilePhone: true } },
+  encounter: { select: { id: true, number: true } },
   prescriber: { select: { id: true, professionalRegistration: true, user: { select: { name: true } } } },
   items: {
     orderBy: { createdAt: 'asc' },
@@ -57,6 +58,7 @@ export function shapePrescription(p: Row) {
   return {
     ...p,
     prescriptionNo: prescriptionNo(p.number),
+    encounterNo: p.encounter ? formatNumber('E', p.encounter.number) : null,
     weightKg: n(p.weightKg),
     patient: { ...p.patient, latestWeightKg: n(p.patient.latestWeightKg) },
     prescriber: p.prescriber ? { id: p.prescriber.id, name: p.prescriber.user.name, registration: p.prescriber.professionalRegistration } : null,
@@ -76,15 +78,8 @@ export function shapePrescription(p: Row) {
   };
 }
 
-/** Case-insensitive match of allergy alerts against a product's name and active ingredients. */
-export function allergyMatches(alerts: { type: string; title: string; substance?: string | null }[], product: { name: string; genericName?: string | null; activeIngredients: string[] }) {
-  const terms = [product.name, product.genericName ?? '', ...product.activeIngredients].map((t) => t.toLowerCase()).filter((t) => t.length >= 3);
-  return alerts.filter((a) => {
-    if (a.type !== 'ALLERGY' && a.type !== 'MEDICATION') return false;
-    const hay = `${a.substance ?? ''} ${a.title}`.toLowerCase();
-    return terms.some((t) => hay.includes(t) || (a.substance && a.substance.length >= 3 && t.includes(a.substance.toLowerCase())));
-  });
-}
+/** Case-insensitive match of allergy alerts against a product's name and active ingredients (shared with the web). */
+export { allergyMatches };
 
 @Injectable()
 export class PrescriptionsService {

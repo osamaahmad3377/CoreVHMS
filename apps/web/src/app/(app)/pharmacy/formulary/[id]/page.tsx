@@ -132,7 +132,7 @@ function Detail() {
                 { label: 'Strength', value: productStrength(p) },
                 { label: 'Smallest amount', value: `${p.minDispenseIncrement} ${p.dispensingUnit}` },
                 { label: 'Price', value: p.sellPriceMinor != null && `${fmtMoney(p.sellPriceMinor, currency)} per ${p.dispensingUnit}` },
-                { label: 'Labelled species', value: p.targetSpecies.map(enumLabel).join(', ') || 'Any' },
+                { label: 'Labelled species', value: p.targetSpecies.map((v) => enumLabel(v)).join(', ') || 'Any' },
                 { label: 'Legal category', value: [p.requiresPrescription ? 'Prescription-only' : 'OTC', p.isControlled && `Controlled${p.controlledSchedule ? ` (${p.controlledSchedule})` : ''}`].filter(Boolean).join(' · ') },
                 { label: 'SKU / barcode', value: [p.sku, p.barcode].filter(Boolean).join(' · ') },
                 { label: 'Manufacturer', value: p.manufacturer },

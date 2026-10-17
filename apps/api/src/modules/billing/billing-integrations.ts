@@ -1,3 +1,5 @@
+import type { Product } from '@prisma/client';
+import { calculateDose } from '@vcms/shared';
 import type { Allocation } from '../inventory/stock.engine';
 import { RequestContext } from '../../common/context/request-context';
 import { localDayBounds } from '../../common/time/tz';
@@ -26,6 +28,26 @@ import { ClientPrivacyService } from '../clients/client-privacy.service';
 function traceability(issued: Allocation[]) {
   const expiries = issued.map((i) => i.expiryDate).filter(Boolean) as Date[];
   return { batchNumber: [...new Set(issued.map((i) => i.batchNumber))].join(', ').slice(0, 120), expiryDate: expiries.sort((a, b) => a.getTime() - b.getTime())[0] ?? null };
+}
+
+/**
+ * A dose expressed in the product's dispensing units: as recorded, or converted from a mass dose with the
+ * product's configured strength (200 mg of a 200 mg/tablet product = 1 tablet), rounded up to the smallest
+ * dispensable amount. Null when it cannot be converted (e.g. 1 mL of a per-dose vaccine, or a per-kg dose).
+ */
+export function dispensingQuantity(product: Pick<Product, 'dispensingUnit' | 'strengthValue' | 'strengthUnit' | 'minDispenseIncrement'>, dose: number, doseUnit: string): number | null {
+  if (doseUnit.toLowerCase() === product.dispensingUnit.toLowerCase()) return dose;
+  if (/\/kg$/i.test(doseUnit.trim())) return null;
+  const r = calculateDose({
+    doseValue: dose,
+    doseUnit,
+    strengthValue: product.strengthValue === null ? null : Number(product.strengthValue),
+    strengthUnit: product.strengthUnit,
+    dispensingUnit: product.dispensingUnit,
+    increment: Number(product.minDispenseIncrement),
+    rounding: 'up',
+  });
+  return r.ok ? r.amount : null;
 }
 
 @Injectable()
@@ -70,14 +92,16 @@ export class BillingIntegrations implements OnModuleInit {
     this.administrations.registerHook(async (tx, e) => {
       const product = await tx.product.findUniqueOrThrow({ where: { id: e.productId } });
       const a = await tx.medicationAdministration.findUniqueOrThrow({ where: { id: e.administrationId } });
-      // Stock is deducted only when the dose is expressed in the product's dispensing unit.
-      if (e.doseUnit.toLowerCase() === product.dispensingUnit.toLowerCase() && !a.prescriptionItemId) {
-        const issued = await this.inventory.issueForEvent(tx, { productId: product.id, quantity: e.dose, branchId: e.branchId, type: 'ADMINISTER', referenceType: 'Administration', referenceId: a.id, preferredBatchNumber: e.batchNumber });
+      // Stock and charge need the amount in dispensing units: the dose as recorded, or a mass dose converted
+      // with the product's strength. A dose that cannot be converted (e.g. mL of a per-dose vaccine) is neither.
+      const quantity = dispensingQuantity(product, e.dose, e.doseUnit);
+      if (quantity !== null && !a.prescriptionItemId) {
+        const issued = await this.inventory.issueForEvent(tx, { productId: product.id, quantity, branchId: e.branchId, type: 'ADMINISTER', referenceType: 'Administration', referenceId: a.id, preferredBatchNumber: e.batchNumber });
         if (issued.length) await tx.medicationAdministration.update({ where: { id: a.id }, data: traceability(issued) });
       }
       if (a.prescriptionItemId) return; // charged when the prescription was dispensed
       const owner = await tx.patientOwnership.findFirst({ where: { patientId: a.patientId, endedAt: null, isPrimary: true } });
-      if (!owner || e.doseUnit.toLowerCase() !== product.dispensingUnit.toLowerCase()) return;
+      if (!owner || quantity === null) return;
       await this.charges.capture(tx, {
         sourceType: 'Administration',
         sourceId: a.id,
@@ -88,7 +112,7 @@ export class BillingIntegrations implements OnModuleInit {
         kind: 'PRODUCT',
         productId: product.id,
         description: `${product.name} — administered`,
-        quantity: e.dose,
+        quantity,
         unitPriceMinor: product.sellPriceMinor ?? 0,
         taxRateBasisPoints: await this.charges.taxFor(tx, product.taxRateId),
       });

@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FREQUENCIES, ROUTES } from '@vcms/shared';
+import { FREQUENCIES, ROUTES, allergyMatches } from '@vcms/shared';
 import { AlertTriangle, Calculator, Info, Plus, ShieldAlert, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -13,8 +13,9 @@ import { Label } from '../ui/label';
 import { ProductPicker, productStrength } from './product-picker';
 import { useDebounce } from '@/hooks/use-debounce';
 import { ApiError, api } from '@/lib/api';
+import { qtyUnit, routeLabel } from '@/lib/labels';
 import { useSession } from '@/lib/session';
-import type { DoseEvaluation, Prescription, Product } from '@/lib/types';
+import type { AlertSummary, DoseEvaluation, Prescription, Product } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 interface Line {
@@ -56,10 +57,13 @@ function lineBody(l: Line) {
 
 function autoInstructions(l: Line) {
   const f = FREQUENCIES.find((x) => x.code === l.frequencyCode);
-  return `${l.route === 'PO' ? 'Give by mouth' : `Give ${l.route}`} ${f?.label.toLowerCase() ?? ''}${l.durationDays ? ` for ${l.durationDays} days` : ''}.`;
+  const how = l.route === 'PO' ? 'Give by mouth' : /^[A-Z]{2}$/.test(l.route) ? `Give ${l.route}` : `Give by the ${routeLabel(l.route).toLowerCase()} route`;
+  // Lower-case only the first letter, so abbreviations stay upper case: "twice daily (BID)".
+  const often = f ? f.label.charAt(0).toLowerCase() + f.label.slice(1) : '';
+  return `${how} ${often}${l.durationDays ? ` for ${l.durationDays} days` : ''}.`;
 }
 
-function LineEditor({ line, patientId, weightKg, onChange, onRemove, onEvaluated }: { line: Line; patientId: string; weightKg: number | null; onChange: (l: Line) => void; onRemove?: () => void; onEvaluated: (e: DoseEvaluation | null) => void }) {
+function LineEditor({ line, patientId, weightKg, alerts, onChange, onRemove, onEvaluated }: { line: Line; patientId: string; weightKg: number | null; alerts: AlertSummary[]; onChange: (l: Line) => void; onRemove?: () => void; onEvaluated: (e: DoseEvaluation | null) => void }) {
   const ready = !!line.product && Number(line.doseValue) > 0;
   const key = useDebounce(JSON.stringify({ ...line, overrideReason: '', weightKg }), 350);
   const ev = useQuery({
@@ -72,6 +76,8 @@ function LineEditor({ line, patientId, weightKg, onChange, onRemove, onEvaluated
   const set = (patch: Partial<Line>) => onChange({ ...line, ...patch });
   const e = ev.data;
   const err = ev.error instanceof ApiError ? ev.error.message : null;
+  // Warn as soon as the product is picked; the full check (with override) runs once a dose is entered.
+  const allergies = line.product ? allergyMatches(alerts, line.product) : [];
 
   return (
     <div className="grid gap-3 rounded-md border p-3">
@@ -101,7 +107,7 @@ function LineEditor({ line, patientId, weightKg, onChange, onRemove, onEvaluated
             <div className="grid gap-1">
               <Label className="text-xs">Route</Label>
               <NativeSelect className="h-8 text-xs" value={line.route} onChange={(ev) => set({ route: ev.target.value })} aria-label="Route">
-                {ROUTES.map((r) => <option key={r}>{r}</option>)}
+                {ROUTES.map((r) => <option key={r} value={r}>{routeLabel(r)}</option>)}
               </NativeSelect>
             </div>
             <div className="grid gap-1 sm:col-span-2">
@@ -115,6 +121,11 @@ function LineEditor({ line, patientId, weightKg, onChange, onRemove, onEvaluated
               <Input type="number" min={1} className="h-8" value={line.durationDays} onChange={(ev) => set({ durationDays: ev.target.value })} aria-label="Duration days" />
             </div>
           </div>
+          {!!allergies.length && !e && (
+            <p role="alert" className="flex items-start gap-1.5 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs font-medium text-destructive">
+              <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" /> Patient alert “{allergies[0].title}” matches {line.product.name}. Prescribing it needs a documented override reason.
+            </p>
+          )}
           <div className="rounded-md bg-muted/60 p-2.5 text-sm">
             {!ready ? (
               <p className="text-xs text-muted-foreground">Enter a dose to calculate.</p>
@@ -125,8 +136,8 @@ function LineEditor({ line, patientId, weightKg, onChange, onRemove, onEvaluated
             ) : e ? (
               <div className="grid gap-1.5">
                 <p className="flex flex-wrap items-center gap-x-3 font-medium">
-                  <span className="flex items-center gap-1"><Calculator className="h-3.5 w-3.5" /> {e.calculation.amount} {e.calculation.dispensingUnit} per dose</span>
-                  <span className="text-muted-foreground">Supply {e.quantity} {e.calculation.dispensingUnit}</span>
+                  <span className="flex items-center gap-1"><Calculator className="h-3.5 w-3.5" /> {qtyUnit(e.calculation.amount, e.calculation.dispensingUnit)} per dose</span>
+                  <span className="text-muted-foreground">Supply {qtyUnit(e.quantity, e.calculation.dispensingUnit)}</span>
                   {Math.abs(e.calculation.roundingPercent) >= 0.01 && <span className="text-xs text-muted-foreground">rounding {e.calculation.roundingPercent > 0 ? '+' : ''}{e.calculation.roundingPercent.toFixed(1)}%</span>}
                 </p>
                 <ol className="list-decimal pl-5 text-xs text-muted-foreground">
@@ -172,7 +183,8 @@ export function PrescriptionDialog({
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  patient: { id: string; name: string; latestWeightKg: number | null };
+  /** Pass `alerts` (as the consultation's patient has them) to warn about allergies as soon as a product is picked. */
+  patient: { id: string; name: string; latestWeightKg: number | null; alerts?: AlertSummary[] };
   encounterId?: string | null;
   onCreated?: (rx: Prescription) => void;
 }) {
@@ -232,6 +244,7 @@ export function PrescriptionDialog({
               line={l}
               patientId={patient.id}
               weightKg={weightKg}
+              alerts={patient.alerts ?? []}
               onChange={(nl) => setLines(lines.map((x, j) => (j === i ? nl : x)))}
               onRemove={lines.length > 1 ? () => setLines(lines.filter((_, j) => j !== i)) : undefined}
               onEvaluated={(e) => setEvals((s) => ({ ...s, [l.key]: e }))}

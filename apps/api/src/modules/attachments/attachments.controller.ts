@@ -29,7 +29,12 @@ const uploadMeta = z.object({
   description: z.string().trim().max(300).optional().nullable(),
 });
 
-const listQuery = z.object({ entityType: z.string().regex(/^[A-Za-z]{2,40}$/), entityId: z.string().uuid() });
+const listQuery = z.object({
+  entityType: z.string().regex(/^[A-Za-z]{2,40}$/),
+  entityId: z.string().uuid(),
+  /** Also list (read-only) files on related records, e.g. a patient's consultations and hospital stays. */
+  includeRelated: z.enum(['true', 'false']).optional(),
+});
 
 @ApiTags('attachments')
 @Controller('attachments')
@@ -49,7 +54,7 @@ export class AttachmentsController {
   @Get()
   @RequireAnyPermission('clients.read', 'patients.read', 'dashboard.view')
   list(@Query(zp(listQuery)) q: z.infer<typeof listQuery>) {
-    return this.attachments.list(q.entityType, q.entityId);
+    return this.attachments.list(q.entityType, q.entityId, q.includeRelated === 'true');
   }
 
   @Get(':id/download')

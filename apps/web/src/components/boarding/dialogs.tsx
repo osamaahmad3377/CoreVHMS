@@ -23,8 +23,9 @@ export function StayStatusBadge({ status }: { status: string }) {
   return <Badge variant={STAY[status] ?? 'secondary'}>{status === 'CHECKED_IN' ? 'Boarding' : enumLabel(status)}</Badge>;
 }
 const GROOM: Record<string, BadgeProps['variant']> = { WAITING: 'info', IN_PROGRESS: 'warning', READY: 'success', COLLECTED: 'secondary', CANCELLED: 'secondary' };
+const GROOM_LABEL: Record<string, string> = { WAITING: 'Waiting', IN_PROGRESS: 'Being groomed', READY: 'Ready for collection', COLLECTED: 'Collected' };
 export function GroomingStatusBadge({ status }: { status: string }) {
-  return <Badge variant={GROOM[status] ?? 'secondary'}>{enumLabel(status)}</Badge>;
+  return <Badge variant={GROOM[status] ?? 'secondary'}>{GROOM_LABEL[status] ?? enumLabel(status)}</Badge>;
 }
 
 /** Reserve a boarding stay: animal, dates and (optionally) a free unit, plus care instructions. */

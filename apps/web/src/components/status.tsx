@@ -1,5 +1,6 @@
 import { AlertOctagon, AlertTriangle, Info } from 'lucide-react';
 import { enumLabel } from '@vcms/shared';
+import { STATUS_LABEL } from '@/lib/labels';
 import { Badge, type BadgeProps } from './ui/badge';
 import { cn } from '@/lib/utils';
 
@@ -16,7 +17,7 @@ const STATUS_VARIANTS: Record<string, BadgeProps['variant']> = {
 export function StatusBadge({ status, className }: { status: string; className?: string }) {
   return (
     <Badge variant={STATUS_VARIANTS[status] ?? 'secondary'} className={className}>
-      {enumLabel(status)}
+      {STATUS_LABEL[status] ?? enumLabel(status)}
     </Badge>
   );
 }

@@ -18,6 +18,8 @@ import { useSession } from '@/lib/session';
 import { todayIn, zonedInstant, parseHhmm } from '@/lib/time';
 import type { Service, Surgery } from '@/lib/types';
 
+const PROCEDURE_FEE_CATEGORIES = ['SURGERY', 'PROCEDURE', 'DENTAL'];
+
 /** Schedules a surgery: books the surgeon and theatre in the calendar (with double-booking protection). */
 export function ScheduleSurgeryDialog({ open, onOpenChange, patient, admissionId }: { open: boolean; onOpenChange: (o: boolean) => void; patient?: PickedPatient | null; admissionId?: string | null }) {
   const router = useRouter();
@@ -38,6 +40,14 @@ export function ScheduleSurgeryDialog({ open, onOpenChange, patient, admissionId
     setError(null);
     setF((s) => ({ ...s, procedure: '', serviceId: '', estimate: '', allowOutsideHours: false, appointmentTypeId: s.appointmentTypeId || surgeryTypes[0]?.id || '', theatreId: s.theatreId || theatres[0]?.id || '' }));
   }, [open, patient]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The surgeon defaults to the signed-in user when they are a clinician at this branch.
+  useEffect(() => {
+    if (!open) return;
+    const me = clinicians.data?.find((c) => c.userId === session.user.id);
+    if (me) setF((s) => (s.surgeonId ? s : { ...s, surgeonId: me.membershipId }));
+  }, [open, clinicians.data, session.user.id]);
+  // Procedure fees: surgical, procedural and dental services only (not grooming, boarding or consultations).
+  const procedureFees = (services.data ?? []).filter((s) => s.isActive && PROCEDURE_FEE_CATEGORIES.includes(s.category));
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
   const m = useMutation({
     mutationFn: () =>
@@ -88,7 +98,7 @@ export function ScheduleSurgeryDialog({ open, onOpenChange, patient, admissionId
             <NativeSelect id="sx-prio" value={f.priority} onChange={set('priority')}>{SURGERY_PRIORITIES.map((s) => <option key={s} value={s}>{enumLabel(s)}</option>)}</NativeSelect>
           </Field>
           <Field label="Procedure fee (service)" htmlFor="sx-svc" hint="Charged when the surgery is completed.">
-            <NativeSelect id="sx-svc" value={f.serviceId} onChange={set('serviceId')}><option value="">No fee</option>{(services.data ?? []).filter((s) => s.isActive).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</NativeSelect>
+            <NativeSelect id="sx-svc" value={f.serviceId} onChange={set('serviceId')}><option value="">No fee</option>{procedureFees.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</NativeSelect>
           </Field>
           <Field label="Estimate given to owner" htmlFor="sx-est"><MoneyInput id="sx-est" currency={currency} value={f.estimate} onChange={set('estimate')} /></Field>
           <label className="flex items-center gap-2 text-sm sm:col-span-2"><Checkbox checked={f.allowOutsideHours} onCheckedChange={(v) => setF((s) => ({ ...s, allowOutsideHours: !!v }))} /> Allow outside the surgeon’s rostered hours (emergencies)</label>

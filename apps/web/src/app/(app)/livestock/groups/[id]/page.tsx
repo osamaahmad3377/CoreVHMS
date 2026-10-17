@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { api } from '@/lib/api';
-import { fmtAge, fmtDate, fmtWeight } from '@/lib/format';
+import { fmtAge, fmtDateOnly, fmtNumber, fmtWeight } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { FarmDetail, GroupDetail, ProductionRow } from '@/lib/types';
 
@@ -37,7 +37,7 @@ function Group() {
   const refresh = () => { setSelected(new Set()); qc.invalidateQueries({ queryKey: ['animal-group', id] }); qc.invalidateQueries({ queryKey: ['farm'] }); qc.invalidateQueries({ queryKey: ['production'] }); };
   const close = useMutation({
     mutationFn: (reason: string) => api.post(`/animal-groups/${id}/close`, { reason }),
-    onSuccess: () => { toast.success('Group closed'); refresh(); },
+    onSuccess: () => { toast.success(q.data?.tracksIndividuals === false ? 'Batch closed' : 'Group closed'); refresh(); },
     onError: (e: Error) => toast.error(e.message),
   });
   if (q.isLoading) return <LoadingRows />;
@@ -47,6 +47,7 @@ function Group() {
   const males = g.animals.filter((a) => a.sex.startsWith('MALE'));
   const allSelected = g.animals.length > 0 && selected.size === g.animals.length;
   const open = g.status === 'ACTIVE';
+  const closeLabel = g.tracksIndividuals ? 'Close group' : 'Close batch';
   return (
     <>
       <PageHeader
@@ -61,16 +62,16 @@ function Group() {
               <Button size="sm" variant="outline" onClick={() => setDialog('treat')}><Syringe /> Treat group</Button>
               {g.purpose === 'DAIRY' && g.tracksIndividuals && <Button size="sm" variant="outline" onClick={() => setDialog('milk')}><Milk /> Milk sheet</Button>}
               {!g.tracksIndividuals && <Button size="sm" variant="outline" onClick={() => setDialog('move')}><ArrowRightLeft /> Move / sell</Button>}
-              <Button size="sm" variant="ghost" onClick={async () => { const c = await confirm({ title: `Close ${g.name}?`, description: 'Closed groups stay in reports but no longer take records. The group must be empty.', confirmLabel: 'Close group', requireReason: true }); if (c.confirmed) close.mutate(c.reason!); }}><Lock /> Close</Button>
+              <Button size="sm" variant="ghost" onClick={async () => { const c = await confirm({ title: `Close ${g.name}?`, description: 'Closed groups stay in reports but no longer take records. The group must be empty.', confirmLabel: closeLabel, requireReason: true }); if (c.confirmed) close.mutate(c.reason!); }}><Lock /> {closeLabel}</Button>
             </>
           )
         }
       />
-      {!open && <p className="mb-4 rounded-md bg-muted px-3 py-2 text-sm">This group is closed{g.closedReason ? `: ${g.closedReason}` : ''}.</p>}
+      {!open && <p className="mb-4 rounded-md bg-muted px-3 py-2 text-sm">This {g.tracksIndividuals ? 'group' : 'batch'} is closed{g.closedReason ? `: ${g.closedReason}` : ''}.</p>}
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label={g.tracksIndividuals ? 'Animals' : 'Head count'} value={g.population} icon={Users} />
-        {!g.tracksIndividuals && <Stat label="Placed" value={g.initialCount ?? '—'} hint={g.placedOn ? `${fmtDate(g.placedOn)} · day ${g.ageDays}` : undefined} />}
-        {!g.tracksIndividuals && g.initialCount ? <Stat label="Cumulative losses" value={`${Math.round(((g.initialCount - g.headCount) / g.initialCount) * 1000) / 10}%`} hint={`${g.initialCount - g.headCount} head`} tone={g.initialCount - g.headCount > g.initialCount * 0.05 ? 'warning' : 'default'} /> : null}
+        <Stat label={g.tracksIndividuals ? 'Animals' : 'Head count'} value={fmtNumber(g.population)} icon={Users} />
+        {!g.tracksIndividuals && <Stat label="Placed" value={fmtNumber(g.initialCount)} hint={g.placedOn ? `${fmtDateOnly(g.placedOn)} · day ${fmtNumber(g.ageDays)}` : undefined} />}
+        {!g.tracksIndividuals && g.initialCount ? <Stat label="Cumulative losses" value={`${Math.round(((g.initialCount - g.headCount) / g.initialCount) * 1000) / 10}%`} hint={`${fmtNumber(g.initialCount - g.headCount)} head`} tone={g.initialCount - g.headCount > g.initialCount * 0.05 ? 'warning' : 'default'} /> : null}
         {g.tracksIndividuals && <Stat label="Females" value={g.animals.filter((a) => a.sex.startsWith('FEMALE')).length} />}
         {g.tracksIndividuals && <Stat label="Males" value={males.length} />}
       </div>
@@ -125,10 +126,10 @@ function Group() {
           <ul className="divide-y text-sm">
             {recent.data.slice(0, 30).map((r) => (
               <li key={r.id} className="flex items-center gap-3 px-4 py-2">
-                <span className="w-24 text-muted-foreground">{fmtDate(r.recordedOn)}</span>
+                <span className="w-24 whitespace-nowrap text-muted-foreground">{fmtDateOnly(r.recordedOn)}</span>
                 <span className="flex-1">{enumLabel(r.kind)}{r.patient ? ` — ${r.patient.name}` : ''}</span>
-                <span className="tabular">{r.quantity} {r.unit}</span>
-                {r.kind === 'MORTALITY' && <Badge variant="destructive">deaths</Badge>}
+                <span className="tabular">{fmtNumber(r.quantity)} {r.unit}</span>
+                {r.kind === 'MORTALITY' && <Badge variant="destructive">Deaths</Badge>}
               </li>
             ))}
           </ul>

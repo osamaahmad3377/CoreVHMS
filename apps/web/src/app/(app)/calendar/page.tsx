@@ -182,12 +182,14 @@ function CalendarView() {
   const drag = useRef<{ id: string; grabMinutes: number } | null>(null);
   const [dropKey, setDropKey] = useState<string | null>(null);
   const move = useMutation({
-    mutationFn: (v: { id: string; startsAt: string; clinicianId?: string | null; allowOverbook?: boolean; allowOutsideHours?: boolean }) => {
-      const { id, ...body } = v;
+    mutationFn: (v: { id: string; startsAt: string; clinicianId?: string | null; allowOverbook?: boolean; allowOutsideHours?: boolean; wasConfirmed?: boolean }) => {
+      const { id, wasConfirmed: _wasConfirmed, ...body } = v;
       return api.patch<Appointment>(`/appointments/${id}`, body);
     },
-    onSuccess: () => {
-      toast.success('Appointment moved');
+    onSuccess: (after, v) => {
+      // The API resets a confirmed appointment to Booked when its time changes.
+      if (v.wasConfirmed && after.status === 'BOOKED') toast.warning('Time changed — confirmation reset to Booked');
+      else toast.success('Appointment moved');
       qc.invalidateQueries({ queryKey: ['appointments'] });
       qc.invalidateQueries({ queryKey: ['queue'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
@@ -218,7 +220,7 @@ function CalendarView() {
     // Day view columns are clinicians; in week view the clinician only changes when a clinician filter is set.
     const clinicianId = view === 'day' || clinicianFilter ? col.clinicianId : undefined;
     if (startsAt === new Date(a.startsAt).toISOString() && (clinicianId === undefined || clinicianId === (a.clinician?.id ?? null))) return;
-    move.mutate({ id: a.id, startsAt, ...(clinicianId !== undefined ? { clinicianId } : {}) });
+    move.mutate({ id: a.id, startsAt, wasConfirmed: a.status === 'CONFIRMED', ...(clinicianId !== undefined ? { clinicianId } : {}) });
   };
 
   const stepBy = (n: number) => (view === 'month' ? shiftMonth(date, n) : shiftDate(date, n * (view === 'day' ? 1 : 7)));

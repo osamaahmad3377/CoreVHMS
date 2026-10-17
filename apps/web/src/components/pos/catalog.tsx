@@ -8,6 +8,7 @@ import { Kbd } from '../ui/misc';
 import { CATEGORIES, blockReason } from './model';
 import { fmtMoney } from '@/lib/format';
 import type { PosItem, ProductCategory } from '@/lib/types';
+import { qtyUnit } from '@/lib/labels';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -33,7 +34,7 @@ export const PosCatalog = React.forwardRef<HTMLInputElement, Props>(function Pos
   // Prescription-only items are only shown when searching, so staff understand why they cannot be sold here.
   const visible = p.search.trim() ? p.items : p.items.filter((i) => !i.rxOnly);
   return (
-    <div className="flex min-h-0 flex-col gap-3">
+    <div className="flex min-h-0 min-w-0 flex-col gap-3">
       <div className="relative">
         <ScanBarcode className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
         <input
@@ -56,7 +57,7 @@ export const PosCatalog = React.forwardRef<HTMLInputElement, Props>(function Pos
           <Kbd>F2</Kbd>
         </span>
       </div>
-      <div className="flex gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Categories">
+      <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Categories">
         {CATEGORIES.map((c) => (
           <button
             key={c.key}
@@ -70,7 +71,7 @@ export const PosCatalog = React.forwardRef<HTMLInputElement, Props>(function Pos
         ))}
       </div>
       {p.shelves.length > 0 && (
-        <div className="-mt-1 flex gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Shelves">
+        <div className="-mt-1 flex flex-wrap gap-1.5" role="tablist" aria-label="Shelves">
           {[{ id: '', name: 'All' }, ...p.shelves].map((s) => (
             <button
               key={s.id || 'all'}
@@ -122,7 +123,7 @@ export const PosCatalog = React.forwardRef<HTMLInputElement, Props>(function Pos
                     {blocked ? (
                       <span className="flex items-center gap-1 text-2xs font-medium text-destructive">{item.rxOnly ? <Lock className="h-3 w-3" /> : <Ban className="h-3 w-3" />}{blocked}</span>
                     ) : item.trackStock && item.available !== null ? (
-                      <span className={cn('text-2xs font-medium tabular', low ? 'text-warning' : 'text-muted-foreground')}>{item.available - inCart} {item.unit}{low ? ' · low' : ''}</span>
+                      <span className={cn('text-2xs font-medium tabular', low ? 'text-warning' : 'text-muted-foreground')}>{qtyUnit(item.available - inCart, item.unit)}{low ? ' · low' : ''}</span>
                     ) : null}
                   </span>
                 </button>

@@ -27,6 +27,7 @@ export function TakePaymentDialog({
   clientId,
   invoice,
   onPaid,
+  silent = false,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -34,6 +35,8 @@ export function TakePaymentDialog({
   /** Pre-select this invoice (and for counter sales, the only allowed invoice). */
   invoice?: Invoice;
   onPaid?: (p: Payment) => void;
+  /** The caller shows its own confirmation (e.g. with a "Print receipt" button). */
+  silent?: boolean;
 }) {
   const qc = useQueryClient();
   const { currency } = useSession();
@@ -42,6 +45,8 @@ export function TakePaymentDialog({
   const [amount, setAmount] = useState('');
   const [reference, setReference] = useState('');
   const [alloc, setAlloc] = useState<Record<string, string>>({});
+  // Allocations follow the amount (oldest invoice first) until the user edits an allocation themselves.
+  const [manual, setManual] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const outstanding = useQuery({
@@ -57,6 +62,7 @@ export function TakePaymentDialog({
     setMethod('CASH');
     setReference('');
     setError(null);
+    setManual(false);
     if (invoice) {
       setAmount(fromMinor(invoice.balanceMinor, currency));
       setAlloc({ [invoice.id]: fromMinor(invoice.balanceMinor, currency) });
@@ -85,12 +91,18 @@ export function TakePaymentDialog({
     }
     setAlloc(next);
   };
+  useEffect(() => {
+    if (!open || manual || amountMinor === null) return;
+    autoAllocate(Math.max(0, amountMinor));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amountMinor, invoices, manual, open]);
+  const editAlloc = (fn: (s: Record<string, string>) => Record<string, string>) => { setManual(true); setAlloc(fn); };
 
   const m = useMutation({
     mutationFn: () =>
       api.post<Payment>('/payments', { clientId, amountMinor, method, reference: reference || null, allocations, idempotencyKey: key }),
     onSuccess: (p) => {
-      toast.success(`Payment ${p.receiptNo} recorded`);
+      if (!silent) toast.success(`Payment ${p.receiptNo} recorded`);
       ['invoices', 'invoice', 'payments', 'client', 'statement', 'dashboard', 'cash'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
       onPaid?.(p);
       onOpenChange(false);
@@ -120,7 +132,6 @@ export function TakePaymentDialog({
               currency={currency}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              onBlur={() => !Object.keys(alloc).length && amountMinor && autoAllocate(amountMinor)}
             />
           </Field>
           <Field label="Method" htmlFor="pay-method" required>
@@ -136,7 +147,7 @@ export function TakePaymentDialog({
           <div className="rounded-md border">
             <div className="flex items-center justify-between border-b px-3 py-2">
               <p className="text-sm font-medium">Outstanding invoices</p>
-              <Button type="button" size="sm" variant="ghost" disabled={!amountMinor} onClick={() => amountMinor && autoAllocate(amountMinor)}>Allocate oldest first</Button>
+              <Button type="button" size="sm" variant="ghost" disabled={!amountMinor || !manual} onClick={() => setManual(false)}>Allocate oldest first</Button>
             </div>
             {outstanding.isLoading ? (
               <p className="p-3 text-sm text-muted-foreground">Loading…</p>
@@ -147,13 +158,13 @@ export function TakePaymentDialog({
                     <Checkbox
                       aria-label={`Allocate to ${i.invoiceNo}`}
                       checked={i.id in alloc}
-                      onCheckedChange={(c) => setAlloc((s) => { const n = { ...s }; if (c) n[i.id] = fromMinor(Math.min(i.balanceMinor, Math.max(0, remainder)) || i.balanceMinor, currency); else delete n[i.id]; return n; })}
+                      onCheckedChange={(c) => editAlloc((s) => { const n = { ...s }; if (c) n[i.id] = fromMinor(Math.min(i.balanceMinor, Math.max(0, remainder)) || i.balanceMinor, currency); else delete n[i.id]; return n; })}
                     />
                     <div className="text-sm">
                       <p className="font-medium">{i.invoiceNo} <span className="font-normal text-muted-foreground">· {fmtDate(i.issuedAt)}</span></p>
                       <p className="text-xs text-muted-foreground">Balance {fmtMoney(i.balanceMinor, currency)} of {fmtMoney(i.totalMinor, currency)}{i.overdue && ' · overdue'}</p>
                     </div>
-                    <MoneyInput aria-label={`Amount for ${i.invoiceNo}`} currency={currency} value={alloc[i.id] ?? ''} onChange={(e) => setAlloc((s) => ({ ...s, [i.id]: e.target.value }))} />
+                    <MoneyInput aria-label={`Amount for ${i.invoiceNo}`} currency={currency} value={alloc[i.id] ?? ''} onChange={(e) => editAlloc((s) => ({ ...s, [i.id]: e.target.value }))} />
                   </li>
                 ))}
               </ul>
@@ -165,7 +176,11 @@ export function TakePaymentDialog({
         <dl className="grid grid-cols-3 gap-2 rounded-md bg-muted/50 p-3 text-sm">
           <div><dt className="text-xs text-muted-foreground">Received</dt><dd className="font-medium tabular">{fmtMoney(amountMinor ?? 0, currency)}</dd></div>
           <div><dt className="text-xs text-muted-foreground">Allocated</dt><dd className="font-medium tabular">{fmtMoney(allocated, currency)}</dd></div>
-          <div><dt className="text-xs text-muted-foreground">To account credit</dt><dd className={`font-medium tabular ${remainder < 0 ? 'text-destructive' : ''}`}>{fmtMoney(remainder, currency)}</dd></div>
+          {remainder < 0 ? (
+            <div><dt className="text-xs text-muted-foreground">Over-allocated by</dt><dd className="font-medium tabular text-destructive">{fmtMoney(-remainder, currency)}</dd></div>
+          ) : (
+            <div><dt className="text-xs text-muted-foreground">To account credit</dt><dd className="font-medium tabular">{fmtMoney(remainder, currency)}</dd></div>
+          )}
         </dl>
         {problems[0] && amount && <p className="text-xs text-destructive" role="alert">{problems[0]}</p>}
         <DialogFooter>

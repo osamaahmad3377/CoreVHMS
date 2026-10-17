@@ -1,6 +1,6 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
-import { BedDouble, CalendarRange, LogIn, LogOut, Plus, Scissors } from 'lucide-react';
+import { BedDouble, CalendarRange, ChevronLeft, ChevronRight, LogIn, LogOut, Plus, Scissors } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Suspense, useState } from 'react';
@@ -73,23 +73,33 @@ function Today() {
   );
 }
 
+/** The kennel chart shows two weeks; Earlier / Later move by the same span. */
+const CHART_DAYS = 14;
+
 function Chart() {
   const { session } = useSession();
   const tz = session.branch?.timezone ?? 'UTC';
-  const [start, setStart] = useState(todayIn(tz));
-  const days = Array.from({ length: 14 }, (_, i) => shiftDate(start, i));
+  const today = todayIn(tz);
+  const [start, setStart] = useState(today);
+  const days = Array.from({ length: CHART_DAYS }, (_, i) => shiftDate(start, i));
   const q = useQuery({ queryKey: ['boarding-availability', session.branch?.id, start], queryFn: () => api.get<UnitAvailability[]>(`/boarding/availability${qs({ branchId: session.branch?.id, from: start, to: shiftDate(start, 14) })}`) });
   return (
     <Card>
-      <div className="flex items-center gap-2 border-b p-3">
-        <Button size="sm" variant="outline" onClick={() => setStart(shiftDate(start, -7))}>← Week</Button>
+      <div className="flex flex-wrap items-center gap-2 border-b p-3">
+        <Button size="sm" variant="outline" onClick={() => setStart(shiftDate(start, -CHART_DAYS))} aria-label={`Show the previous ${CHART_DAYS} days`}><ChevronLeft /> Earlier</Button>
+        <Button size="sm" variant="outline" disabled={start === today} onClick={() => setStart(today)}>Today</Button>
+        <Button size="sm" variant="outline" onClick={() => setStart(shiftDate(start, CHART_DAYS))} aria-label={`Show the next ${CHART_DAYS} days`}>Later <ChevronRight /></Button>
         <Input type="date" value={start} onChange={(e) => e.target.value && setStart(e.target.value)} className="w-40" aria-label="Start date" />
-        <Button size="sm" variant="outline" onClick={() => setStart(shiftDate(start, 7))}>Week →</Button>
+        <span className="text-xs text-muted-foreground">{CHART_DAYS} days: {dayLabel(start, 'd MMM')} – {dayLabel(days[days.length - 1], 'd MMM')}</span>
+        <span className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-sm bg-success" /> In house</span>
+          <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-sm bg-info" /> Reserved</span>
+        </span>
       </div>
       {q.data?.length ? (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] table-fixed text-xs">
-            <thead><tr><th className="w-32 p-2 text-left">Unit</th>{days.map((d) => <th key={d} className="p-1 text-center font-normal text-muted-foreground">{dayLabel(d, 'EEE d')}</th>)}</tr></thead>
+            <thead><tr><th className="w-32 p-2 text-left">Unit</th>{days.map((d) => <th key={d} className={cn('p-1 text-center font-normal', d === today ? 'font-semibold text-primary' : 'text-muted-foreground')}>{dayLabel(d, 'EEE d')}</th>)}</tr></thead>
             <tbody>
               {q.data.map((u) => (
                 <tr key={u.id} className="border-t">
@@ -99,7 +109,7 @@ function Chart() {
                     const first = s && (s.startDate.slice(0, 10) === d || d === days[0]);
                     return (
                       <td key={d} className="p-0.5">
-                        {s ? <Link href={`/boarding/stays/${s.id}`} title={`${s.patient.name} ${s.stayNo}`} className={cn('block h-7 truncate rounded px-1 leading-7', s.status === 'CHECKED_IN' ? 'bg-success/20 text-success' : 'bg-info/15 text-info')}>{first ? s.patient.name : ''}</Link> : <span className="block h-7 rounded bg-muted/30" />}
+                        {s ? <Link href={`/boarding/stays/${s.id}`} title={`${s.patient.name} ${s.stayNo}`} className={cn('block h-7 truncate rounded px-1 font-medium leading-7 hover:opacity-90', s.status === 'CHECKED_IN' ? 'bg-success text-success-foreground' : 'bg-info text-info-foreground')}>{first ? s.patient.name : ''}</Link> : <span className="block h-7 rounded bg-muted/30" />}
                       </td>
                     );
                   })}

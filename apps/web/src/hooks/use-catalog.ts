@@ -14,3 +14,35 @@ export const useResources = (branchId?: string) =>
 
 export const useTemplates = () =>
   useQuery({ queryKey: ['clinical-templates'], queryFn: () => api.get<ClinicalTemplateRow[]>('/clinical-templates'), staleTime: 120_000 });
+
+export interface StaffOption {
+  membershipId: string;
+  name: string;
+  jobTitle: string | null;
+  isClinician?: boolean;
+}
+
+/**
+ * Every active staff member at a branch (not only vets), for assigning non-clinical work such as a groomer.
+ * Uses the roster (staff.read / appointments.read); users without either fall back to the clinician list.
+ */
+export function useActiveStaff(branchId: string | undefined, canReadRoster: boolean) {
+  const roster = useQuery({
+    queryKey: ['active-staff', branchId],
+    queryFn: () => {
+      const now = new Date();
+      return api.get<StaffOption[]>(`/schedules/roster${qs({ branchId, from: now.toISOString(), to: new Date(now.getTime() + 60_000).toISOString() })}`);
+    },
+    enabled: !!branchId && canReadRoster,
+    staleTime: 120_000,
+  });
+  const clinicians = useQuery({
+    queryKey: ['clinicians', branchId],
+    queryFn: () => api.get<Clinician[]>(`/staff/clinicians${qs({ branchId })}`),
+    enabled: !canReadRoster,
+    staleTime: 120_000,
+  });
+  const q = canReadRoster ? roster : clinicians;
+  const data = q.data ? [...q.data].map((s) => ({ membershipId: s.membershipId, name: s.name, jobTitle: s.jobTitle })).sort((a, b) => a.name.localeCompare(b.name)) : undefined;
+  return { data, isLoading: q.isLoading };
+}

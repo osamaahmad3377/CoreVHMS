@@ -26,12 +26,15 @@ export function TriageDialog({
   patientId,
   appointmentId,
   patientName,
+  defaultComplaint,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   patientId: string;
   appointmentId?: string | null;
   patientName: string;
+  /** Prefills the presenting complaint, e.g. from the booking or walk-in reason. */
+  defaultComplaint?: string | null;
 }) {
   const qc = useQueryClient();
   const [priority, setPriority] = useState<string>('');
@@ -41,11 +44,11 @@ export function TriageDialog({
   useEffect(() => {
     if (open) {
       setPriority('');
-      setComplaint('');
+      setComplaint(defaultComplaint ?? '');
       setV({ temperatureC: '', heartRate: '', respiratoryRate: '', capillaryRefillSec: '', painScore: '', mucousMembranes: '', mentation: '', notes: '' });
       setError(null);
     }
-  }, [open]);
+  }, [open, defaultComplaint]);
   const m = useMutation({
     mutationFn: () => api.post('/triage', { patientId, appointmentId, priority, presentingComplaint: complaint, ...v }),
     onSuccess: () => {

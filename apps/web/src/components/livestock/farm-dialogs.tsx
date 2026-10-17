@@ -13,6 +13,7 @@ import { Checkbox } from '../ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Input, NativeSelect, Textarea } from '../ui/input';
 import { api } from '@/lib/api';
+import { fmtNumber } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { AnimalGroupRow, FarmRow } from '@/lib/types';
 
@@ -238,7 +239,7 @@ export function MovementDialog({ open, onOpenChange, group, patientIds, groups, 
         {error && <FormError message={error} />}
         <div className="grid gap-3">
           <Field label="What happened" htmlFor="mv-type"><NativeSelect id="mv-type" value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })}>{types.map((t) => <option key={t.k} value={t.k}>{t.label}</option>)}</NativeSelect></Field>
-          {!group.tracksIndividuals && <Field label={`How many (of ${group.headCount})`} htmlFor="mv-count" required hint={f.type === 'MOVE' ? undefined : 'Record daily deaths under Production → Mortality.'}><Input id="mv-count" inputMode="numeric" value={f.headCount} onChange={(e) => setF({ ...f, headCount: e.target.value })} /></Field>}
+          {!group.tracksIndividuals && <Field label={`How many (of ${fmtNumber(group.headCount)})`} htmlFor="mv-count" required hint={f.type === 'MOVE' ? undefined : 'Record daily deaths under Production → Mortality.'}><Input id="mv-count" inputMode="numeric" value={f.headCount} onChange={(e) => setF({ ...f, headCount: e.target.value })} /></Field>}
           {f.type === 'MOVE' && (
             <Field label="Move to" htmlFor="mv-to" required>
               <NativeSelect id="mv-to" value={f.toGroupId} onChange={(e) => setF({ ...f, toGroupId: e.target.value })}>

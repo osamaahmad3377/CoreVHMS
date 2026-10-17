@@ -26,6 +26,9 @@ describe('Scheduling', () => {
     const clash = await org.owner.post('/appointments', booking(org, f, karachi(d, '11:10')));
     expect(clash.status).toBe(409);
     expect(clash.body.error.details.code).toBe('CLINICIAN_BUSY');
+    // Same animal → worded as a duplicate booking.
+    expect(clash.body.error.details.samePatient).toBe(true);
+    expect(clash.body.error.message).toBe(`${f.patient.name} is already booked at this time (${a.body.appointmentNo} with Test veterinarian)`);
     expect((await org.owner.post('/appointments', booking(org, f, karachi(d, '11:10'), { allowOverbook: true }))).status).toBe(201);
     // back-to-back is fine (half-open intervals)
     expect((await org.owner.post('/appointments', booking(org, f, karachi(d, '11:20')))).status).toBe(201);
@@ -165,6 +168,44 @@ describe('Scheduling', () => {
     const q = await org.owner.get(`/front-desk/queue?branchId=${org.branchId}`);
     expect(q.body.waiting.map((x: any) => x.id)).toEqual([w2.body.id, w1.body.id]);
     expect(q.body.waiting[0].effectivePriority).toBe('EMERGENT');
+  });
+
+  it('starting a walk-in assigns the starting clinician and seeds the consultation from triage', async () => {
+    const org = await registerOrg();
+    const f = await schedulingFixture(org);
+    // The vet already has a booking now, so taking the walk-in must not trip the no-overlap constraint.
+    const now = new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString();
+    expect((await org.owner.post('/appointments', booking(org, f, now, { allowOutsideHours: true }))).status).toBe(201);
+    const w = await org.owner.post('/front-desk/walk-in', { branchId: org.branchId, clientId: f.client.id, patientId: f.patient.id, appointmentTypeId: f.typeId, reason: 'Vomiting' });
+    expect(w.body.clinician).toBeNull();
+    await org.owner.post('/triage', { patientId: f.patient.id, appointmentId: w.body.id, priority: 'URGENT', presentingComplaint: 'Vomiting since last night', temperatureC: 39.6, heartRate: 140, painScore: 3 });
+    const started = await f.vet.client.post(`/appointments/${w.body.id}/status`, { action: 'start' });
+    expect(started.status).toBe(200);
+    expect(started.body.clinician?.id).toBe(f.vet.membershipId);
+    const enc = await f.vet.client.get(`/encounters/${started.body.encounterId}`);
+    expect(enc.body.clinician?.id).toBe(f.vet.membershipId);
+    expect(enc.body.chiefComplaint).toBe('Vomiting since last night');
+    expect(enc.body.vitals).toHaveLength(1);
+    expect(Number(enc.body.vitals[0].temperatureC)).toBe(39.6);
+    expect(enc.body.vitals[0].heartRate).toBe(140);
+    expect(enc.body.vitals[0].painScore).toBe(3);
+
+    // Without triage the walk-in reason becomes the chief complaint and no vitals are invented.
+    const other = await makePatient(org.owner, f.client.id, { name: 'Third' });
+    const w2 = await org.owner.post('/front-desk/walk-in', { branchId: org.branchId, clientId: f.client.id, patientId: other.id, appointmentTypeId: f.typeId, reason: 'Ear scratching' });
+    const s2 = await f.vet.client.post(`/appointments/${w2.body.id}/status`, { action: 'start' });
+    const enc2 = await f.vet.client.get(`/encounters/${s2.body.encounterId}`);
+    expect(enc2.body.chiefComplaint).toBe('Ear scratching');
+    expect(enc2.body.vitals).toHaveLength(0);
+
+    // An unassigned regular booking overlapping the vet's own booking is flagged as overbooked rather than failing.
+    const open = await org.owner.post('/appointment-types', { name: 'Nurse clinic', durationMinutes: 20, requiresClinician: false });
+    const b = await org.owner.post('/appointments', booking(org, f, now, { appointmentTypeId: open.body.id, clinicianId: null, patientId: other.id }));
+    expect(b.status).toBe(201);
+    const s3 = await f.vet.client.post(`/appointments/${b.body.id}/status`, { action: 'start' });
+    expect(s3.status).toBe(200);
+    expect(s3.body.clinician?.id).toBe(f.vet.membershipId);
+    expect(s3.body.isOverbooked).toBe(true);
   });
 
   it('isolates appointments between organizations', async () => {

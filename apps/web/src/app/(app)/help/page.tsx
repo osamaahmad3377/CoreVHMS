@@ -6,10 +6,32 @@ import { PageHeader } from '@/components/page';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ShortcutList } from '@/components/help/shortcuts';
 import { GLOSSARY, GUIDES, type HelpGuide } from '@/lib/help-content';
+import { hrefPermissions } from '@/lib/navigation';
 import { useSession } from '@/lib/session';
 import { cn } from '@/lib/utils';
 
+/** Lower-case, strip accents and turn hyphens/punctuation into spaces, so "No-show" matches "no show". */
+function normalise(text: string): string {
+  return text
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+/** A word matches if it appears anywhere in the text; a trailing plural "s" is optional ("appointments" finds "appointment"). */
+function hasWord(haystack: string, word: string): boolean {
+  if (haystack.includes(word)) return true;
+  return word.length > 3 && word.endsWith('s') && haystack.includes(word.slice(0, -1));
+}
+
 function Guide({ g, open, onToggle }: { g: HelpGuide; open: boolean; onToggle: () => void }) {
+  const { canAny } = useSession();
+  const links = g.links.filter((l) => {
+    const perms = l.anyOf ?? hrefPermissions(l.href);
+    return !perms.length || canAny(...perms);
+  });
   return (
     <Card id={g.id} className={cn('scroll-mt-20 transition-shadow', open && 'ring-1 ring-primary/40')}>
       <button type="button" onClick={onToggle} aria-expanded={open} className="flex w-full items-start gap-3 p-4 text-left">
@@ -28,13 +50,13 @@ function Guide({ g, open, onToggle }: { g: HelpGuide; open: boolean; onToggle: (
           {g.tips?.map((t, i) => (
             <p key={i} className="flex gap-2 rounded-md bg-info/10 px-3 py-2 text-sm text-info"><Lightbulb className="mt-0.5 h-4 w-4 shrink-0" />{t}</p>
           ))}
-          <div className="flex flex-wrap gap-2">
-            {g.links.map((l) => (
+          {links.length > 0 && <div className="flex flex-wrap gap-2">
+            {links.map((l) => (
               <Link key={l.href} href={l.href} className="inline-flex items-center gap-1 rounded-md border bg-card px-3 py-1.5 text-sm font-medium text-primary hover:bg-muted">
                 Go to {l.label} <ChevronRight className="h-3.5 w-3.5" />
               </Link>
             ))}
-          </div>
+          </div>}
         </CardContent>
       )}
     </Card>
@@ -62,17 +84,24 @@ export default function HelpPage() {
     return () => window.removeEventListener('hashchange', openFromHash);
   }, []);
 
-  const term = q.trim().toLowerCase();
+  const term = normalise(q);
+  const words = useMemo(() => (term ? term.split(' ') : []), [term]);
   const guides = useMemo(
     () =>
       GUIDES.filter((g) => !g.feature || session.features?.[g.feature])
         .filter((g) => scope === 'all' || !g.anyOf.length || canAny(...g.anyOf))
-        .filter(
-        (g) => !term || [g.title, g.summary, g.area, ...g.steps].some((t) => t.toLowerCase().includes(term)),
-      ),
-    [scope, term, canAny, session.features],
+        .filter((g) => {
+          if (!words.length) return true;
+          const text = normalise([g.title, g.summary, g.area, ...g.steps, ...(g.tips ?? []), ...(g.keywords ?? [])].join(' '));
+          return words.every((w) => hasWord(text, w));
+        }),
+    [scope, words, canAny, session.features],
   );
-  const glossary = GLOSSARY.filter((g) => !term || `${g.term} ${g.meaning}`.toLowerCase().includes(term));
+  const glossary = GLOSSARY.filter((g) => {
+    if (!words.length) return true;
+    const text = normalise(`${g.term} ${g.meaning}`);
+    return words.every((w) => hasWord(text, w));
+  });
   const areas = [...new Set(guides.map((g) => g.area))];
 
   return (
@@ -99,7 +128,12 @@ export default function HelpPage() {
               ))}
             </div>
           </div>
-          {!guides.length && <p className="py-8 text-center text-sm text-muted-foreground">No guide matches “{q}”. Try another word, or check the glossary.</p>}
+          {!guides.length && (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              No guide matches “{q}”. Try fewer or different words, or check the glossary.
+              {scope === 'mine' && <> <button type="button" className="font-medium text-primary hover:underline" onClick={() => setScope('all')}>Search all guides</button></>}
+            </p>
+          )}
           {areas.map((area) => (
             <section key={area} className="grid gap-2">
               <h2 className="flex items-center gap-2 text-sm font-semibold text-muted-foreground"><BookOpen className="h-4 w-4" /> {area}</h2>

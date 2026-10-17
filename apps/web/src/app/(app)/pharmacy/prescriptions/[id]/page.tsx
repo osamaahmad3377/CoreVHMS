@@ -4,6 +4,7 @@ import { CheckCircle2, Copy, PackageCheck, Printer, ShieldAlert, ShieldCheck, XC
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
+import type { ClinicHeader } from '@/components/billing/invoice-document';
 import { toast } from 'sonner';
 import { useConfirm } from '@/components/confirm';
 import { DescriptionList, ErrorState, LoadingRows } from '@/components/page';
@@ -29,6 +30,7 @@ function Detail() {
   const confirm = useConfirm();
   const q = useQuery({ queryKey: ['prescription', id], queryFn: () => api.get<Prescription>(`/prescriptions/${id}`) });
   const verify = useQuery({ queryKey: ['rx-verify', id, q.data?.status], queryFn: () => api.get<{ authorized: boolean; valid: boolean | null }>(`/prescriptions/${id}/verify`), enabled: !!q.data && q.data.status !== 'DRAFT' });
+  const org = useQuery({ queryKey: ['organization'], queryFn: () => api.get<ClinicHeader>('/organization'), staleTime: 300_000, enabled: can('dashboard.view') });
   const [dispense, setDispense] = useState(false);
   const act = useMutation({
     mutationFn: ({ path, body }: { path: string; body?: unknown }) => api.post<Prescription>(`/prescriptions/${id}/${path}`, body),
@@ -138,7 +140,16 @@ function Detail() {
                     { label: 'Authorised', value: rx.authorizedAt && `${rx.authorizedByName} · ${fmtDateTime(rx.authorizedAt)}` },
                     { label: 'Created', value: `${rx.createdByName} · ${fmtDateTime(rx.createdAt)}` },
                     { label: 'Valid until', value: rx.validUntil && fmtDate(rx.validUntil) },
-                    { label: 'Consultation', value: rx.encounterId && <Link className="text-primary hover:underline" href={`/consultations/${rx.encounterId}`}>Open</Link> },
+                    {
+                      label: 'Consultation',
+                      value:
+                        rx.encounterId &&
+                        (can('clinical.read') ? (
+                          <Link className="text-primary hover:underline" href={`/consultations/${rx.encounterId}`}>{rx.encounterNo ? `${rx.encounterNo} · ` : ''}View consultation</Link>
+                        ) : (
+                          rx.encounterNo ?? 'Linked consultation'
+                        )),
+                    },
                     { label: 'Notes', value: rx.notes },
                   ]}
                 />
@@ -148,7 +159,7 @@ function Detail() {
         </div>
         <DispenseDialog rx={rx} open={dispense} onOpenChange={setDispense} />
       </div>
-      <PrescriptionLabels rx={rx} clinic={{ name: session.organization?.name ?? '' }} />
+      <PrescriptionLabels rx={rx} clinic={org.data ?? { name: session.organization?.name ?? '' }} />
     </>
   );
 }

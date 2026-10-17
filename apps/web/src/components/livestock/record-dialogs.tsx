@@ -14,7 +14,7 @@ import { Input, NativeSelect, Textarea } from '../ui/input';
 import { BREEDING_LABELS } from './badges';
 import { useClinicians } from '@/hooks/use-catalog';
 import { api } from '@/lib/api';
-import { fmtMoney } from '@/lib/format';
+import { fmtMoney, fmtNumber } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { AnimalGroupRow, GroupAnimal, OutbreakRow, Product, Service } from '@/lib/types';
 
@@ -254,7 +254,7 @@ export function GroupTreatmentDialog({ open, onOpenChange, farmId, groups, field
           <Field label="Group" htmlFor="gt-group">
             <NativeSelect id="gt-group" value={f.groupId} onChange={(e) => { const g = active.find((x) => x.id === e.target.value); setF({ ...f, groupId: e.target.value, headCount: g ? String(g.population) : f.headCount }); }}>
               <option value="">Whole farm / mixed</option>
-              {active.map((g) => <option key={g.id} value={g.id}>{g.name} ({g.population} head)</option>)}
+              {active.map((g) => <option key={g.id} value={g.id}>{g.name} ({fmtNumber(g.population)} head)</option>)}
             </NativeSelect>
           </Field>
           <Field label="Product from stock" htmlFor="gt-product" className="sm:col-span-2" hint={product ? `${product.sellPriceMinor ? `${fmtMoney(product.sellPriceMinor, currency)} per ${product.dispensingUnit}` : 'No sell price set'}` : 'Or type what was given below if supplied by the farmer.'}>

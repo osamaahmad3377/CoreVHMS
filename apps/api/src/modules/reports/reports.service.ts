@@ -1,5 +1,4 @@
 import { PRODUCT_TYPE_LABELS } from '@vcms/shared';
-import { csvRow } from '../../common/util/csv';
 import { Injectable } from '@nestjs/common';
 import { RequestContext } from '../../common/context/request-context';
 import { formatNumber } from '../../common/counter/counter.service';
@@ -65,22 +64,38 @@ export class ReportsService {
   }
 
   /** Net sales by line (service/product/lab), excluding void invoices. */
+  /** Net sales per catalogue item, named from the catalogue (not whichever invoice line came first), with a grand total. */
   async salesByItem(from: Date, to: Date, branchId?: string) {
     const lines = await this.prisma.db.invoiceLine.findMany({
       where: { invoice: { ...this.branch(branchId), issuedAt: { gte: from, lt: to }, status: { notIn: ['DRAFT', 'VOID'] } } },
       select: { kind: true, description: true, serviceId: true, productId: true, labTestId: true, quantity: true, netMinor: true, taxMinor: true, grossMinor: true },
     });
-    const map = new Map<string, { kind: string; item: string; quantity: number; netMinor: number; taxMinor: number; grossMinor: number }>();
+    const ids = (k: 'serviceId' | 'productId' | 'labTestId') => [...new Set(lines.map((l) => l[k]).filter((x): x is string => !!x))];
+    const [services, products, tests] = await Promise.all([
+      this.prisma.db.service.findMany({ where: { id: { in: ids('serviceId') } }, select: { id: true, name: true, code: true } }),
+      this.prisma.db.product.findMany({ where: { id: { in: ids('productId') } }, select: { id: true, name: true, sku: true, type: true } }),
+      this.prisma.db.labTest.findMany({ where: { id: { in: ids('labTestId') } }, select: { id: true, name: true, code: true } }),
+    ]);
+    const names = new Map<string, { item: string; code: string | null; type: string }>([
+      ...services.map((x) => [x.id, { item: x.name, code: x.code, type: 'Service' }] as const),
+      ...products.map((x) => [x.id, { item: x.name, code: x.sku, type: PRODUCT_TYPE_LABELS[x.type] ?? 'Product' }] as const),
+      ...tests.map((x) => [x.id, { item: x.name, code: x.code, type: 'Laboratory test' }] as const),
+    ]);
+    const map = new Map<string, { type: string; item: string; code: string | null; quantity: number; netMinor: number; taxMinor: number; grossMinor: number }>();
     for (const l of lines) {
-      const key = `${l.kind}:${l.serviceId ?? l.productId ?? l.labTestId ?? l.description}`;
-      const r = map.get(key) ?? { kind: l.kind, item: l.description, quantity: 0, netMinor: 0, taxMinor: 0, grossMinor: 0 };
+      const ref = l.serviceId ?? l.productId ?? l.labTestId;
+      const key = ref ?? `custom:${l.description.trim().toLowerCase()}`;
+      const known = ref ? names.get(ref) : undefined;
+      const r = map.get(key) ?? { type: known?.type ?? 'Other item', item: known?.item ?? l.description, code: known?.code ?? null, quantity: 0, netMinor: 0, taxMinor: 0, grossMinor: 0 };
       r.quantity += Number(l.quantity);
       r.netMinor += l.netMinor;
       r.taxMinor += l.taxMinor;
       r.grossMinor += l.grossMinor;
       map.set(key, r);
     }
-    return [...map.values()].sort((a, b) => b.netMinor - a.netMinor);
+    const rows = [...map.values()].sort((a, b) => b.netMinor - a.netMinor);
+    const sum = (k: 'netMinor' | 'taxMinor' | 'grossMinor') => rows.reduce((n, r) => n + r[k], 0);
+    return { rows, totals: { netMinor: sum('netMinor'), taxMinor: sum('taxMinor'), grossMinor: sum('grossMinor') } };
   }
 
   /** Net sales grouped by product type and shop category (e.g. "Food & treats › Dry food"); services and tests as their own groups. */
@@ -219,10 +234,12 @@ export class ReportsService {
     };
   }
 
-  toCsv(rows: Record<string, unknown>[]) {
-    if (!rows.length) return '';
-    const cols = Object.keys(rows[0]);
-    return [cols.join(','), ...rows.map((r) => csvRow(cols.map((c) => r[c])))].join('\n');
+  /** Timezone for dates in exports: the chosen branch, else the user's current branch, else UTC. */
+  async timezone(branchId?: string) {
+    const id = branchId ?? RequestContext.require().branchId;
+    if (!id) return 'UTC';
+    const b = await this.prisma.db.branch.findUnique({ where: { id }, select: { timezone: true } });
+    return b?.timezone ?? 'UTC';
   }
 
   currency() {

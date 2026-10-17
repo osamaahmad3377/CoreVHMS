@@ -8,6 +8,7 @@ import { CounterService, formatNumber } from '../../common/counter/counter.servi
 import { conflict, notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { ScopedTx } from '../../common/prisma/tenant-extension';
+import { branchToday } from '../../common/time/branch-timezone';
 import { normalizeIdentifier, patientNo } from '../patients/patients.service';
 
 export const farmNo = (n: number) => formatNumber('FARM', n, 5);
@@ -145,6 +146,7 @@ export class FarmsService {
     const species = await this.prisma.db.species.findUnique({ where: { id: input.speciesId } });
     if (!species || !species.isActive) throw ruleViolation('INVALID_SPECIES', 'Species not found');
     const ctx = this.ctx();
+    const today = await branchToday(this.prisma);
     try {
       return await this.prisma.db.$transaction(async (tx) => {
         const batch = !input.tracksIndividuals;
@@ -159,7 +161,7 @@ export class FarmsService {
             tracksIndividuals: input.tracksIndividuals,
             headCount: batch ? input.initialCount! : 0,
             initialCount: batch ? input.initialCount! : null,
-            placedOn: input.placedOn ?? (batch ? new Date(new Date().toISOString().slice(0, 10)) : null),
+            placedOn: input.placedOn ?? (batch ? today : null),
             breedText: input.breedText,
             location: input.location,
             notes: input.notes,

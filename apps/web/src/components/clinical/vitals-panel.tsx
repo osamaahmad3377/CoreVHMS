@@ -2,7 +2,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { VITAL_LABELS } from '@vcms/shared';
 import { Activity, ArrowDown, ArrowUp, Plus } from 'lucide-react';
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { toast } from 'sonner';
 import { FormError } from '../forms/form-error';
 import { EmptyState } from '../page';
@@ -25,6 +25,13 @@ const FIELDS = [
   { key: 'systolicBp', label: 'Sys BP', step: '1' },
   { key: 'spo2', label: 'SpO₂ %', step: '1' },
 ] as const;
+
+/** Descriptive mucous-membrane colours, shared by consultation vitals and hospital observations (no reference ranges). */
+export const MUCOUS_MEMBRANES = ['Pink', 'Pale', 'White', 'Cyanotic', 'Injected', 'Icteric', 'Brick red'];
+
+/** Columns of the history table; anything else recorded is listed in a line under the row. */
+const COLUMNS = FIELDS.slice(0, 6);
+const EXTRA = FIELDS.slice(6);
 
 function Value({ v, k }: { v: Vitals; k: string }) {
   const value = (v as any)[k];
@@ -97,7 +104,7 @@ export function VitalsPanel({ encounterId, vitals, editable, onSaved }: { encoun
               </Label>
               <NativeSelect id="v-mm" className="h-8" value={form.mucousMembranes ?? ''} onChange={(e) => setForm((s) => ({ ...s, mucousMembranes: e.target.value }))}>
                 <option value=""></option>
-                {['Pink', 'Pale', 'White', 'Cyanotic', 'Injected', 'Icteric', 'Brick red'].map((x) => <option key={x}>{x}</option>)}
+                {MUCOUS_MEMBRANES.map((x) => <option key={x}>{x}</option>)}
               </NativeSelect>
             </div>
           </div>
@@ -117,7 +124,7 @@ export function VitalsPanel({ encounterId, vitals, editable, onSaved }: { encoun
             <thead className="bg-muted/60 text-muted-foreground">
               <tr>
                 <th className="px-2 py-1.5 text-left font-medium">Time</th>
-                {FIELDS.slice(0, 6).map((f) => (
+                {COLUMNS.map((f) => (
                   <th key={f.key} className="px-2 py-1.5 text-right font-medium">
                     {f.label}
                   </th>
@@ -125,16 +132,38 @@ export function VitalsPanel({ encounterId, vitals, editable, onSaved }: { encoun
               </tr>
             </thead>
             <tbody>
-              {vitals.map((v) => (
-                <tr key={v.id} className="border-t">
-                  <td className="whitespace-nowrap px-2 py-1.5 text-muted-foreground">{fmtDateTime(v.recordedAt).split(', ')[1]}</td>
-                  {FIELDS.slice(0, 6).map((f) => (
-                    <td key={f.key} className="px-2 py-1.5 text-right">
-                      <Value v={v} k={f.key} />
-                    </td>
-                  ))}
-                </tr>
-              ))}
+              {vitals.map((v) => {
+                const extra = EXTRA.filter((f) => v[f.key] !== null && v[f.key] !== undefined);
+                const more = extra.length > 0 || !!v.mucousMembranes || !!v.notes;
+                return (
+                  <Fragment key={v.id}>
+                    <tr className="border-t">
+                      <td className="whitespace-nowrap px-2 py-1.5 text-muted-foreground">{fmtDateTime(v.recordedAt).split(', ')[1]}</td>
+                      {COLUMNS.map((f) => (
+                        <td key={f.key} className="px-2 py-1.5 text-right">
+                          <Value v={v} k={f.key} />
+                        </td>
+                      ))}
+                    </tr>
+                    {more && (
+                      <tr>
+                        <td colSpan={COLUMNS.length + 1} className="px-2 pb-1.5 text-muted-foreground">
+                          <span className="flex flex-wrap gap-x-3 gap-y-0.5">
+                            {extra.map((f) => (
+                              <span key={f.key}>
+                                {f.label}: <Value v={v} k={f.key} />
+                                {f.key === 'systolicBp' && v.diastolicBp !== null && <span className="tabular">/{v.diastolicBp}</span>}
+                              </span>
+                            ))}
+                            {v.mucousMembranes && <span>MM: <span className="text-foreground">{v.mucousMembranes}</span></span>}
+                            {v.notes && <span className="min-w-0 break-words">{v.notes}</span>}
+                          </span>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>

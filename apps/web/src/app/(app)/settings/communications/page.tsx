@@ -107,7 +107,7 @@ export default function CommunicationsSettingsPage() {
           <CardContent className="grid gap-3">
             <div className="flex flex-wrap gap-1" role="tablist">
               {purposes.map((p) => (
-                <button key={p} role="tab" aria-selected={purpose === p} onClick={() => setPurpose(p)} className={cn('rounded-md px-3 py-1.5 text-sm', purpose === p ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>{enumLabel(p)}</button>
+                <button key={p} role="tab" aria-selected={purpose === p} onClick={() => setPurpose(p)} className={cn('rounded-md px-3 py-1.5 text-sm', purpose === p ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>{enumLabel(p, 'message')}</button>
               ))}
             </div>
             <p className="text-xs text-muted-foreground">Available: <code>{PLACEHOLDERS[purpose]}</code></p>

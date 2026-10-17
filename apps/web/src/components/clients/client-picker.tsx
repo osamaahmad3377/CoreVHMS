@@ -25,6 +25,7 @@ export function ClientPicker({
   placeholder = 'Search owner by name, phone or number…',
   id,
   invalid,
+  defaultOpen = false,
 }: {
   value: PickedClient | null;
   onChange: (c: PickedClient | null) => void;
@@ -32,8 +33,10 @@ export function ClientPicker({
   placeholder?: string;
   id?: string;
   invalid?: boolean;
+  /** Open the search straight away (e.g. after the user clicked “Add client”). */
+  defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [term, setTerm] = useState('');
   const q = useDebounce(term.trim(), 250);
   const results = useQuery({

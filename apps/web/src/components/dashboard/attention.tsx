@@ -34,6 +34,9 @@ export function buildAttention(w: any, opts: { money: (minor: number) => string;
   add(w?.livestock?.openOutbreaks, { key: 'outbreaks', severity: 'danger', icon: AlertTriangle, text: `${plural(w?.livestock?.openOutbreaks, 'open disease outbreak')}`, action: 'Outbreaks', href: '/livestock?tab=outbreaks' });
   add(w?.communications?.failedMessages, { key: 'failed-msgs', severity: 'danger', icon: MessageSquare, text: `${plural(w?.communications?.failedMessages, 'message')} could not be sent`, detail: 'Last 7 days', action: 'Message log', href: '/communications?status=FAILED' });
 
+  add(appts?.staleOpen, { key: 'stale-open', severity: 'warning', icon: CalendarClock, text: `${plural(appts?.staleOpen, 'visit')} from an earlier day still open`, detail: 'Checked in or in consultation but never completed', action: 'Resolve', href: `/calendar?date=${appts?.staleDate ?? ''}` });
+  add(appts?.staleUnresolved, { key: 'stale-booked', severity: 'warning', icon: CalendarClock, text: `${plural(appts?.staleUnresolved, 'past appointment')} not marked arrived or no-show`, detail: 'Check them in late, or mark them as no-show', action: 'Resolve', href: `/calendar?date=${appts?.staleDate ?? ''}` });
+  add(appts?.notArrived, { key: 'not-arrived', severity: 'warning', icon: CalendarClock, text: `${plural(appts?.notArrived, 'booked patient')} not arrived yet`, detail: 'More than 15 minutes past their time', action: 'Calendar', href: '/calendar' });
   add(waiting, { key: 'waiting', severity: 'warning', icon: Users, text: `${plural(waiting, 'patient')} waiting to be seen`, action: 'Waiting list', href: '/front-desk' });
   add(w?.clinicalWork?.unsignedNotes?.length, {
     key: 'unsigned', severity: 'warning', icon: FileWarning, text: `${plural(w?.clinicalWork?.unsignedNotes?.length, 'of your notes', 'of your notes')} not signed yet`,
@@ -41,7 +44,7 @@ export function buildAttention(w: any, opts: { money: (minor: number) => string;
     action: 'Sign notes', href: w?.clinicalWork?.unsignedNotes?.length === 1 ? `/consultations/${w.clinicalWork.unsignedNotes[0].encounterId}` : '/consultations?mine=true',
   });
   add(w?.pharmacy?.awaitingAuthorization, { key: 'rx-auth', severity: 'warning', icon: Pill, text: `${plural(w?.pharmacy?.awaitingAuthorization, 'prescription')} waiting for authorisation`, action: 'Review', href: '/pharmacy?status=DRAFT' });
-  add(w?.lab?.awaitingValidation, { key: 'lab-validate', severity: 'warning', icon: FlaskConical, text: `${plural(w?.lab?.awaitingValidation, 'lab result')} waiting for validation`, action: 'Validate', href: '/lab?tab=AWAITING_VALIDATION' });
+  add(opts.can('lab.approve') && w?.lab?.awaitingValidation, { key: 'lab-validate', severity: 'warning', icon: FlaskConical, text: `${plural(w?.lab?.awaitingValidation, 'lab result')} waiting for validation`, action: 'Validate', href: '/lab?tab=AWAITING_VALIDATION' });
   const overdueTasks = (w?.tasks?.dueOrOverdue ?? []).filter((t: { overdue: boolean }) => t.overdue).length;
   add(overdueTasks, { key: 'tasks', severity: 'warning', icon: ListChecks, text: `${plural(overdueTasks, 'follow-up')} overdue`, action: 'See below', href: '#follow-ups' });
   add(w?.finance?.unbilledCount, { key: 'unbilled', severity: 'warning', icon: Receipt, text: `${plural(w?.finance?.unbilledCount, 'charge')} not invoiced yet`, detail: `${opts.money(w?.finance?.unbilledMinor ?? 0)} before tax`, ...(opts.can('billing.write') ? { action: 'Invoice them', href: '/billing/charges' } : { action: 'View', href: '/billing/charges' }) });

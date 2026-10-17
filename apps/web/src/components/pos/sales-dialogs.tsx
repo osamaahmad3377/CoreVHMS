@@ -37,7 +37,7 @@ export function TodaySalesDialog({ open, onOpenChange, clinic, currency, onRepri
           <DialogTitle>Today’s sales</DialogTitle>
           <DialogDescription>{rows.length} counter sale{rows.length === 1 ? '' : 's'} at this branch today · {fmtMoney(total, currency)} excluding voids</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 md:grid-cols-[1fr_300px]">
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_360px]">
           <div className="max-h-[60vh] overflow-y-auto rounded-md border">
             {q.isLoading ? <LoadingRows rows={4} /> : !rows.length ? <EmptyState title="No counter sales yet today" /> : (
               <ul className="divide-y">

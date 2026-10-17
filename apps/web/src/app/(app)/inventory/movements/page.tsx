@@ -19,7 +19,7 @@ function Movements() {
   const locations = useQuery({ queryKey: ['stock-locations'], queryFn: () => api.get<StockLocation[]>('/stock-locations') });
   return (
     <>
-      <PageHeader title="Stock movements" breadcrumbs={[{ label: 'Inventory', href: '/inventory' }, { label: 'Movements' }]} description="Append-only ledger of every receipt, issue, adjustment, transfer and count. Entries are never edited." />
+      <PageHeader title="Stock movements" description="Append-only ledger of every receipt, issue, adjustment, transfer and count. Entries are never edited." />
       <SectionNav links={INVENTORY_LINKS} />
       <Card>
         <div className="flex flex-col gap-2 border-b p-3 sm:flex-row">

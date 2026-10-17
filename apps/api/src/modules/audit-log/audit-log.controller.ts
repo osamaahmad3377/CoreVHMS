@@ -12,6 +12,10 @@ import { paginated } from '../../common/http/pagination';
 import { ApiZodQuery, zp } from '../../common/http/zod';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
+/** List/export filters: the shared schema plus a free-text search over the summary and the actor's name. */
+const auditListQuery = auditQuerySchema.extend({ q: z.string().trim().max(100).optional() });
+type AuditListQuery = z.infer<typeof auditListQuery>;
+
 @ApiTags('audit')
 @Controller('audit-events')
 export class AuditLogController {
@@ -20,7 +24,7 @@ export class AuditLogController {
     private readonly audit: AuditService,
   ) {}
 
-  private where(q: z.infer<typeof auditQuerySchema>): Prisma.AuditEventWhereInput {
+  private where(q: AuditListQuery): Prisma.AuditEventWhereInput {
     // `action` is one prefix or a comma-separated list of prefixes (e.g. every kind of export).
     const prefixes = q.action?.split(',').map((a) => a.trim()).filter(Boolean) ?? [];
     // AuditEvent is not covered by the tenant extension, so scope explicitly.
@@ -30,15 +34,20 @@ export class AuditLogController {
       entityId: q.entityId,
       actorUserId: q.actorId,
       createdAt: q.from || q.to ? { gte: q.from, lte: q.to } : undefined,
-      ...(prefixes.length ? { OR: prefixes.map((p) => ({ action: { startsWith: p } })) } : {}),
+      AND: [
+        ...(prefixes.length ? [{ OR: prefixes.map((p) => ({ action: { startsWith: p } })) }] : []),
+        ...(q.q
+          ? [{ OR: [{ summary: { contains: q.q, mode: 'insensitive' as const } }, { actorName: { contains: q.q, mode: 'insensitive' as const } }, { action: { contains: q.q.toLowerCase().replace(/\s+/g, '_') } }] }]
+          : []),
+      ],
     };
   }
 
   /** CSV download of the filtered log (e.g. to preserve evidence during an incident). The export itself is audited. */
   @Get('export.csv')
   @RequirePermissions('audit.read')
-  @ApiZodQuery(auditQuerySchema)
-  async exportCsv(@Query(zp(auditQuerySchema)) q: z.infer<typeof auditQuerySchema>, @Res() res: Response) {
+  @ApiZodQuery(auditListQuery)
+  async exportCsv(@Query(zp(auditListQuery)) q: AuditListQuery, @Res() res: Response) {
     const rows = await this.prisma.raw.auditEvent.findMany({ where: this.where(q), orderBy: { createdAt: 'asc' }, take: 100_000 });
     const cols = ['createdAt', 'actorName', 'actorUserId', 'action', 'entityType', 'entityId', 'summary', 'changes', 'ip', 'userAgent', 'requestId', 'branchId', 'id'] as const;
     const csv = [cols.join(','), ...rows.map((r) => csvRow(cols.map((c) => r[c])))].join('\r\n');
@@ -51,8 +60,8 @@ export class AuditLogController {
 
   @Get()
   @RequirePermissions('audit.read')
-  @ApiZodQuery(auditQuerySchema)
-  async list(@Query(zp(auditQuerySchema)) q: z.infer<typeof auditQuerySchema>) {
+  @ApiZodQuery(auditListQuery)
+  async list(@Query(zp(auditListQuery)) q: AuditListQuery) {
     const where = this.where(q);
     const [rows, total] = await Promise.all([
       this.prisma.raw.auditEvent.findMany({

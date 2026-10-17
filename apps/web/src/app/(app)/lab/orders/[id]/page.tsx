@@ -6,9 +6,11 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import type { ClinicHeader } from '@/components/billing/invoice-document';
 import { useConfirm } from '@/components/confirm';
 import { Field } from '@/components/forms/field';
 import { FormError } from '@/components/forms/form-error';
+import { Code128 } from '@/components/lab/barcode';
 import { LabStatusBadge } from '@/components/lab/lab-status';
 import { ResultFlag, previewFlag } from '@/components/lab/result-flag';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/page';
@@ -45,6 +47,7 @@ function OrderView() {
   const confirm = useConfirm();
   const key = ['lab-order', id];
   const q = useQuery({ queryKey: key, queryFn: () => api.get<DiagnosticOrder>(`/lab-orders/${id}`) });
+  const org = useQuery({ queryKey: ['organization'], queryFn: () => api.get<ClinicHeader>('/organization'), staleTime: 300_000, enabled: can('dashboard.view') });
   const [entry, setEntry] = useState<Entry>({});
   const [dirty, setDirty] = useState(false);
   const [sampleType, setSampleType] = useState('');
@@ -108,6 +111,17 @@ function OrderView() {
   });
 
   const sampleNeeded = useMemo(() => !!o?.items.some((i) => i.test.sampleType !== 'NONE'), [o]);
+  // One sample per sample type the tests need (e.g. EDTA blood for a CBC, serum for biochemistry), minus those already collected.
+  const pendingSamples = useMemo(() => {
+    if (!o) return [];
+    const usable = o.samples.filter((s) => s.status !== 'REJECTED' && s.status !== 'DISPOSED');
+    const byType = new Map<string, string[]>();
+    for (const it of o.items) {
+      if (it.test.sampleType === 'NONE' || it.status === 'CANCELLED' || usable.some((s) => s.sampleType === it.test.sampleType)) continue;
+      byType.set(it.test.sampleType, [...(byType.get(it.test.sampleType) ?? []), it.test.name]);
+    }
+    return [...byType].map(([type, tests]) => ({ type, tests }));
+  }, [o]);
 
   if (q.isLoading) return <LoadingRows />;
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
@@ -115,6 +129,27 @@ function OrderView() {
   const editable = !['RELEASED', 'CANCELLED'].includes(order.status) && can('lab.result');
   const intervals = order.referenceIntervals ?? {};
   const banner = { ...order.patient, breed: order.patient.breed?.name ?? null, owner: { id: order.client.id, displayName: order.client.displayName, mobilePhone: order.client.mobilePhone } };
+  const released = order.status === 'RELEASED';
+  // Samples have no "analysed" state of their own; once the order is released, their work is done.
+  const sampleStatus = (st: string) => (released && ['COLLECTED', 'RECEIVED', 'IN_ANALYSIS'].includes(st) ? 'Analysed' : enumLabel(st));
+  const hasUsableSample = order.samples.some((s) => s.status !== 'REJECTED' && s.status !== 'DISPOSED');
+  const collectPending = async () => {
+    const r = await confirm({
+      title: pendingSamples.length === 1 ? 'Collect 1 sample?' : `Collect ${pendingSamples.length} samples?`,
+      description: (
+        <ul className="list-disc pl-4">
+          {pendingSamples.map((ps) => <li key={ps.type}><b>{enumLabel(ps.type, 'sample')}</b> — for {ps.tests.join(', ')}</li>)}
+        </ul>
+      ),
+      confirmLabel: pendingSamples.length === 1 ? 'Collect sample' : 'Collect samples',
+    });
+    if (!r.confirmed) return;
+    act.mutate(async () => {
+      for (const ps of pendingSamples) await api.post(`/lab-orders/${id}/samples`, { sampleType: ps.type });
+    });
+  };
+  const clinic = org.data ?? { name: session.organization?.name ?? '' };
+  const clinicAddress = [clinic.addressLine1, clinic.addressLine2, clinic.city, clinic.postcode].filter(Boolean).join(', ');
 
   return (
     <>
@@ -139,8 +174,8 @@ function OrderView() {
             )}
             {order.items.some((i) => i.results.length || i.imagingReport) && <Button size="sm" variant="outline" onClick={() => setPrinting('report')}><Printer /> Print report</Button>}
             {!['RELEASED', 'CANCELLED'].includes(order.status) && (can('lab.order') || can('lab.approve')) && (
-              <Button size="sm" variant="ghost" className="text-destructive" onClick={async () => { const r = await confirm({ title: `Cancel ${order.orderNo}?`, requireReason: true, destructive: true, confirmLabel: 'Cancel order' }); if (r.confirmed) act.mutate(() => api.post(`/lab-orders/${id}/cancel`, { reason: r.reason })); }}>
-                <XCircle /> Cancel
+              <Button size="sm" variant="ghost" className="text-destructive" onClick={async () => { const r = await confirm({ title: `Cancel ${order.orderNo}?`, description: 'Charges for the tests are waived.', requireReason: true, destructive: true, confirmLabel: 'Cancel lab order', cancelLabel: 'Keep order' }); if (r.confirmed) act.mutate(() => api.post(`/lab-orders/${id}/cancel`, { reason: r.reason })); }}>
+                <XCircle /> Cancel lab order
               </Button>
             )}
           </div>
@@ -151,7 +186,11 @@ function OrderView() {
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div className="grid content-start gap-4">
-            {order.items.map((it) => (
+            {order.items.map((it) => {
+              // Results come from a sample: until one is collected, the entry fields stay locked.
+              const awaitingSample = editable && it.test.sampleType !== 'NONE' && !hasUsableSample;
+              const canEnter = editable && !awaitingSample;
+              return (
               <Card key={it.id}>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -159,6 +198,9 @@ function OrderView() {
                   </CardTitle>
                   <Badge variant={it.status === 'RESULTED' ? 'success' : it.status === 'CANCELLED' ? 'outline' : 'secondary'}>{enumLabel(it.status)}</Badge>
                 </CardHeader>
+                {awaitingSample && it.test.category !== 'IMAGING' && (
+                  <p className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2 text-xs text-muted-foreground"><TestTube className="h-3.5 w-3.5" /> Collect the {enumLabel(it.test.sampleType, 'sample').toLowerCase()} sample before entering results.</p>
+                )}
                 {it.test.category === 'IMAGING' ? (
                   <ImagingReportForm orderId={order.id} item={it} editable={editable} onSaved={refresh} />
                 ) : (
@@ -180,13 +222,13 @@ function OrderView() {
                           const r = current(it.results, a.id);
                           const ref = intervals[a.id];
                           const v = entry[k]?.value ?? '';
-                          const flag = editable && a.resultType === 'NUMERIC' && v !== '' && !Number.isNaN(Number(v)) ? previewFlag(Number(v), ref) : r?.flag ?? null;
+                          const flag = canEnter && a.resultType === 'NUMERIC' && v !== '' && !Number.isNaN(Number(v)) ? previewFlag(Number(v), ref) : r?.flag ?? null;
                           const history = it.results.filter((x) => x.analyteId === a.id && x.status === 'SUPERSEDED');
                           return (
                             <tr key={a.id} className={cn('border-t', flag?.startsWith('CRITICAL') && 'bg-destructive/5')}>
                               <td className="px-3 py-2 font-medium">{a.name} <span className="text-2xs text-muted-foreground">{a.code}</span></td>
                               <td className="px-3 py-2">
-                                {editable ? (
+                                {canEnter ? (
                                   a.resultType === 'OPTION' ? (
                                     <NativeSelect aria-label={a.name} className="h-8 w-40 text-xs" value={v} onChange={(e) => { setEntry({ ...entry, [k]: { ...entry[k], value: e.target.value } }); setDirty(true); }}>
                                       <option value=""></option>
@@ -209,7 +251,7 @@ function OrderView() {
                                 {r && r.status === 'FINAL' ? (r.refLow != null || r.refHigh != null ? `${r.refLow ?? '–'} – ${r.refHigh ?? '–'}` : '—') : ref ? `${ref.low ?? '–'} – ${ref.high ?? '–'}` : a.resultType === 'NUMERIC' ? 'Not configured' : ''}
                               </td>
                               <td className="px-3 py-2">
-                                {editable ? <Input aria-label={`${a.name} comment`} className="h-8 text-xs" value={entry[k]?.comment ?? ''} onChange={(e) => { setEntry({ ...entry, [k]: { ...entry[k], comment: e.target.value } }); setDirty(true); }} /> : <span className="text-xs">{r?.comment}</span>}
+                                {canEnter ? <Input aria-label={`${a.name} comment`} className="h-8 text-xs" value={entry[k]?.comment ?? ''} onChange={(e) => { setEntry({ ...entry, [k]: { ...entry[k], comment: e.target.value } }); setDirty(true); }} /> : <span className="text-xs">{r?.comment}</span>}
                               </td>
                               <td className="px-2 py-2 text-right">
                                 {r?.status === 'FINAL' && can('lab.approve') && (
@@ -224,8 +266,9 @@ function OrderView() {
                   </div>
                 )}
               </Card>
-            ))}
-            {editable && order.items.some((i) => i.test.category !== 'IMAGING') && (
+              );
+            })}
+            {editable && hasUsableSample && order.items.some((i) => i.test.category !== 'IMAGING') && (
               <div className="flex items-center justify-end gap-2">
                 <span className="text-xs text-muted-foreground">{dirty ? 'Unsaved changes' : 'Flags shown are a preview; the server records the authoritative flag.'}</span>
                 <Button loading={saveResults.isPending} disabled={!dirty} onClick={() => { setError(null); saveResults.mutate(); }}><Save /> Save results</Button>
@@ -237,13 +280,31 @@ function OrderView() {
             {sampleNeeded && (
               <Card>
                 <CardHeader><CardTitle className="flex items-center gap-2"><TestTube className="h-4 w-4 text-muted-foreground" /> Samples</CardTitle></CardHeader>
-                {editable && (
-                  <div className="flex gap-2 border-b p-3">
-                    <NativeSelect aria-label="Sample type" className="h-8 text-xs" value={sampleType} onChange={(e) => setSampleType(e.target.value)}>
-                      {SAMPLE_TYPES.filter((s) => s !== 'NONE').map((s) => <option key={s} value={s}>{enumLabel(s)}</option>)}
-                    </NativeSelect>
-                    <Button size="sm" onClick={() => act.mutate(() => api.post(`/lab-orders/${id}/samples`, { sampleType }))}><Barcode /> Collect</Button>
+                {editable && pendingSamples.length > 0 && (
+                  <div className="grid gap-2 border-b p-3">
+                    <p className="text-xs text-muted-foreground">To collect: {pendingSamples.map((ps) => `${enumLabel(ps.type, 'sample')} (${ps.tests.join(', ')})`).join(' · ')}</p>
+                    <Button size="sm" className="w-fit" onClick={collectPending}><Barcode /> {pendingSamples.length === 1 ? 'Collect sample' : `Collect ${pendingSamples.length} samples`}</Button>
                   </div>
+                )}
+                {editable && pendingSamples.length === 0 && (
+                  <details className="border-b px-3 py-2 text-xs">
+                    <summary className="cursor-pointer text-muted-foreground">Collect another sample (e.g. a recollection)</summary>
+                    <div className="mt-2 flex gap-2">
+                      <NativeSelect aria-label="Sample type" className="h-8 text-xs" value={sampleType} onChange={(e) => setSampleType(e.target.value)}>
+                        {SAMPLE_TYPES.filter((s) => s !== 'NONE').map((s) => <option key={s} value={s}>{enumLabel(s, 'sample')}</option>)}
+                      </NativeSelect>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          const r = await confirm({ title: `Collect a ${enumLabel(sampleType, 'sample').toLowerCase()} sample?`, description: 'A new sample number and label are created.', confirmLabel: 'Collect sample' });
+                          if (r.confirmed) act.mutate(() => api.post(`/lab-orders/${id}/samples`, { sampleType }));
+                        }}
+                      >
+                        <Barcode /> Collect
+                      </Button>
+                    </div>
+                  </details>
                 )}
                 {order.samples.length ? (
                   <ul className="divide-y">
@@ -251,8 +312,8 @@ function OrderView() {
                       <li key={s.id} className="grid gap-1.5 px-3 py-2">
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-sm font-semibold">{s.barcode}</span>
-                          <span className="text-xs text-muted-foreground">{enumLabel(s.sampleType)}</span>
-                          <Badge variant={s.status === 'REJECTED' ? 'destructive' : 'secondary'} className="ml-auto">{enumLabel(s.status)}</Badge>
+                          <span className="text-xs text-muted-foreground">{enumLabel(s.sampleType, 'sample')}</span>
+                          <Badge variant={s.status === 'REJECTED' ? 'destructive' : released ? 'success' : 'secondary'} className="ml-auto">{sampleStatus(s.status)}</Badge>
                         </div>
                         <ol className="text-2xs text-muted-foreground">
                           {s.events.map((e) => <li key={e.id}>{fmtDateTime(e.at)} · {enumLabel(e.action)} · {e.byName}{e.notes && ` — ${e.notes}`}</li>)}
@@ -277,7 +338,15 @@ function OrderView() {
               <CardHeader><CardTitle>External reports & images</CardTitle></CardHeader>
               <CardContent><AttachmentsPanel entityType="DiagnosticOrder" entityId={order.id} canWrite={can('lab.result')} /></CardContent>
             </Card>
-            {order.releasedAt && <p className="text-xs text-muted-foreground">Released by {order.releasedByName} · {fmtDateTime(order.releasedAt)}</p>}
+            {order.releasedAt && (
+              <Card>
+                <CardHeader><CardTitle className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-success" /> Validated & released</CardTitle></CardHeader>
+                <CardContent className="text-sm">
+                  {order.releasedByName} · {fmtDateTime(order.releasedAt)}
+                  <p className="mt-1 text-xs text-muted-foreground">Results are final. Corrections are recorded as amendments with a reason.</p>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       </div>
@@ -288,9 +357,9 @@ function OrderView() {
         return s ? (
           <div className="hidden print:block">
             <div className="border border-black p-2 font-mono text-[10pt]" style={{ width: '6cm' }}>
-              <p className="text-center text-[16pt] font-bold tracking-widest">*{s.barcode}*</p>
-              <p>{order.patient.name} · {order.patient.patientNo}</p>
-              <p>{enumLabel(s.sampleType)} · {fmtDateTime(s.collectedAt)}</p>
+              <Code128 value={s.barcode} className="mx-auto block h-[1.6cm] w-full" />
+              <p className="font-bold">{order.patient.name} · {order.patient.patientNo}</p>
+              <p>{enumLabel(s.sampleType, 'sample')} · {fmtDateTime(s.collectedAt)}</p>
               <p>{order.orderNo} · {order.items.map((i) => i.test.code).join(' ')}</p>
             </div>
           </div>
@@ -298,11 +367,22 @@ function OrderView() {
       })()}
       {printing === 'report' && (
         <div className="hidden text-[10pt] print:block">
-          <h1 className="text-[14pt] font-bold">{session.organization?.name} — Laboratory report</h1>
+          <header className="mb-2 border-b border-black pb-2">
+            <p className="text-[14pt] font-bold">{clinic.legalName || clinic.name}</p>
+            {(clinicAddress || clinic.phone || clinic.email) && <p>{[clinicAddress, clinic.phone, clinic.email].filter(Boolean).join(' · ')}</p>}
+            <h1 className="mt-1 text-[12pt] font-bold">Laboratory report{released ? '' : ' — PRELIMINARY'}</h1>
+          </header>
           <p>
             {order.orderNo} · Patient: <b>{order.patient.name}</b> ({order.patient.species.name}, {enumLabel(order.patient.sex)}, {fmtAge(order.patient.dateOfBirth, order.patient.dobEstimated)}) · Owner: {order.client.displayName}
           </p>
           <p>Ordered by {order.orderedByName} on {fmtDateTime(order.createdAt)}{order.releasedAt ? ` · Released by ${order.releasedByName} on ${fmtDateTime(order.releasedAt)}` : ' · PRELIMINARY — not yet validated'}</p>
+          {order.samples.length > 0 && (
+            <p>
+              <b>Samples:</b>{' '}
+              {order.samples.map((smp) => `${smp.barcode} ${enumLabel(smp.sampleType, 'sample')}, collected ${fmtDateTime(smp.collectedAt)} by ${smp.collectedByName}${smp.status === 'REJECTED' ? ` (rejected${smp.rejectionReason ? `: ${smp.rejectionReason}` : ''})` : ''}`).join('; ')}
+            </p>
+          )}
+          {order.clinicalNotes && <p><b>Clinical notes:</b> {order.clinicalNotes}</p>}
           {order.items.map((it) => (
             <section key={it.id} className="mt-3">
               <h2 className="font-bold">{it.test.name}</h2>
@@ -329,6 +409,10 @@ function OrderView() {
               )}
             </section>
           ))}
+          <div className="mt-10 grid grid-cols-2 gap-8">
+            <p className="border-t border-black pt-1">{released ? `Validated by ${order.releasedByName}` : 'Validated by'} — signature</p>
+            <p className="border-t border-black pt-1">Date {released ? fmtDateTime(order.releasedAt) : ''}</p>
+          </div>
         </div>
       )}
       {amend && <AmendDialog orderId={order.id} amend={amend} onClose={() => setAmend(null)} onSaved={refresh} />}

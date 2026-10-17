@@ -11,6 +11,18 @@ import { fmtDate, fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { InsuranceClaim, InsurancePolicy, Referral } from '@/lib/types';
 
+/** Empty card body with the next step, so an empty tab never leaves staff guessing. */
+function Empty({ icon: Icon, title, hint, action }: { icon: typeof FileText; title: string; hint: string; action?: React.ReactNode }) {
+  return (
+    <CardContent className="flex flex-col items-center gap-2 py-8 text-center">
+      <Icon className="h-6 w-6 text-muted-foreground" />
+      <p className="text-sm font-medium">{title}</p>
+      <p className="max-w-sm text-xs text-muted-foreground">{hint}</p>
+      {action && <div className="mt-1">{action}</div>}
+    </CardContent>
+  );
+}
+
 /** Policies, claims and referrals for one animal. */
 export function PatientInsurance({ patient, active }: { patient: { id: string; name: string }; active: boolean }) {
   const { can, currency } = useSession();
@@ -25,7 +37,7 @@ export function PatientInsurance({ patient, active }: { patient: { id: string; n
       <Card>
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle>Insurance policies</CardTitle>
-          {canWrite && active && <Button size="sm" variant="outline" onClick={() => { setEditing(null); setDlg('policy'); }}><Plus /> Add policy</Button>}
+          {canWrite && active && !!policies.data?.length && <Button size="sm" variant="outline" onClick={() => { setEditing(null); setDlg('policy'); }}><Plus /> Add policy</Button>}
         </CardHeader>
         {policies.data?.length ? (
           <ul className="divide-y text-sm">
@@ -40,12 +52,19 @@ export function PatientInsurance({ patient, active }: { patient: { id: string; n
               </li>
             ))}
           </ul>
-        ) : <CardContent><p className="text-sm text-muted-foreground">No insurance recorded.</p></CardContent>}
+        ) : policies.isLoading ? null : (
+          <Empty
+            icon={ShieldCheck}
+            title="No insurance recorded"
+            hint={canWrite ? `Add ${patient.name}’s policy to make claims and check cover.` : 'A colleague with insurance access can add the policy.'}
+            action={canWrite && active && <Button size="sm" onClick={() => { setEditing(null); setDlg('policy'); }}><Plus /> Add policy</Button>}
+          />
+        )}
       </Card>
       <Card>
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle>Claims</CardTitle>
-          {canWrite && !!policies.data?.length && <Button size="sm" variant="outline" onClick={() => setDlg('claim')}><FileText /> New claim</Button>}
+          {canWrite && !!policies.data?.length && !!claims.data?.length && <Button size="sm" variant="outline" onClick={() => setDlg('claim')}><FileText /> New claim</Button>}
         </CardHeader>
         {claims.data?.length ? (
           <ul className="divide-y text-sm">
@@ -58,12 +77,19 @@ export function PatientInsurance({ patient, active }: { patient: { id: string; n
               </li>
             ))}
           </ul>
-        ) : <CardContent><p className="text-sm text-muted-foreground">No claims.</p></CardContent>}
+        ) : claims.isLoading || policies.isLoading ? null : (
+          <Empty
+            icon={FileText}
+            title="No claims"
+            hint={!canWrite ? 'Claims appear here once a colleague with insurance access creates them.' : policies.data?.length ? 'Claim issued invoices against the policy.' : 'Add a policy first, then claim issued invoices against it.'}
+            action={canWrite && (policies.data?.length ? <Button size="sm" onClick={() => setDlg('claim')}><FileText /> New claim</Button> : active && <Button size="sm" variant="outline" onClick={() => { setEditing(null); setDlg('policy'); }}><Plus /> Add policy</Button>)}
+          />
+        )}
       </Card>
       <Card className="xl:col-span-2">
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle>Referrals</CardTitle>
-          {canWrite && <Button size="sm" variant="outline" onClick={() => setDlg('referral')}><Send /> New referral</Button>}
+          {canWrite && !!referrals.data?.length && <Button size="sm" variant="outline" onClick={() => setDlg('referral')}><Send /> New referral</Button>}
         </CardHeader>
         {referrals.data?.length ? (
           <ul className="divide-y text-sm">
@@ -76,7 +102,14 @@ export function PatientInsurance({ patient, active }: { patient: { id: string; n
               </li>
             ))}
           </ul>
-        ) : <CardContent><p className="text-sm text-muted-foreground">No referrals.</p></CardContent>}
+        ) : referrals.isLoading ? null : (
+          <Empty
+            icon={Send}
+            title="No referrals"
+            hint={canWrite ? `Refer ${patient.name} to a specialist, or record a referral you received.` : 'Referrals to and from specialists appear here.'}
+            action={canWrite && <Button size="sm" onClick={() => setDlg('referral')}><Send /> New referral</Button>}
+          />
+        )}
       </Card>
       <PolicyDialog open={dlg === 'policy'} onOpenChange={(o) => !o && setDlg(null)} patient={patient} policy={editing} />
       <ClaimDialog open={dlg === 'claim'} onOpenChange={(o) => !o && setDlg(null)} policies={policies.data ?? []} />

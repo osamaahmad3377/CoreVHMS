@@ -144,6 +144,7 @@ export class PosService {
         lines: { orderBy: { sortOrder: 'asc' }, include: { charge: { select: { id: true, sourceType: true, sourceId: true } } } },
         allocations: { include: { payment: { select: { id: true, number: true, method: true, receivedAt: true, receivedByName: true } } }, orderBy: { createdAt: 'asc' } },
         creditNotes: { orderBy: { createdAt: 'asc' } },
+        branch: { select: { id: true, name: true, addressLine1: true, addressLine2: true, city: true, postcode: true, phone: true, email: true } },
       },
       orderBy: { issuedAt: 'desc' },
       take: 50,

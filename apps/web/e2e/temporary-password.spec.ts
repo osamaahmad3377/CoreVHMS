@@ -22,7 +22,9 @@ test.describe('Staff with a temporary password', () => {
     await shown.getByRole('button', { name: 'Done' }).click();
     const row = page.getByRole('row', { name: new RegExp(email) });
     await expect(row.getByText('Temporary password', { exact: true }).first()).toBeVisible(); // status badge
-    await expect(row.getByRole('button', { name: 'Temporary password' })).toBeVisible(); // action to issue a new one
+    await row.getByRole('button', { name: 'Actions for Temp Receptionist' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Temporary password' })).toBeVisible(); // action to issue a new one
+    await page.keyboard.press('Escape');
 
     // The new person signs in with it and is asked for their own password before anything else.
     await page.context().clearCookies();

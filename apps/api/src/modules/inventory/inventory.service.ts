@@ -412,7 +412,36 @@ export class InventoryService {
       }),
       this.prisma.db.stockMovement.count({ where }),
     ]);
-    return paginated(rows.map((m) => ({ ...m, quantity: Number(m.quantity), balanceAfter: Number(m.balanceAfter) })), total, q);
+    const refs = await this.describeReferences(rows);
+    return paginated(rows.map((m) => ({ ...m, quantity: Number(m.quantity), balanceAfter: Number(m.balanceAfter), reference: m.referenceId ? refs.get(m.referenceId) ?? null : null })), total, q);
+  }
+
+  /** "Counter sale INV-000012", "Delivery GRN-000003" … with a link, so a movement can be traced to what caused it. */
+  private async describeReferences(rows: { referenceType: string | null; referenceId: string | null }[]) {
+    const ids = (t: string) => [...new Set(rows.filter((r) => r.referenceType === t && r.referenceId).map((r) => r.referenceId!))];
+    const db = this.prisma.db;
+    const [lines, receipts, counts, returns, dispensed] = await Promise.all([
+      ids('InvoiceLine').length ? db.invoiceLine.findMany({ where: { id: { in: ids('InvoiceLine') } }, select: { id: true, invoice: { select: { id: true, number: true, isPos: true, client: { select: { displayName: true } } } } } }) : [],
+      ids('GoodsReceipt').length ? db.goodsReceipt.findMany({ where: { id: { in: ids('GoodsReceipt') } }, select: { id: true, number: true, purchaseOrderId: true } }) : [],
+      ids('StockCount').length ? db.stockCount.findMany({ where: { id: { in: ids('StockCount') } }, select: { id: true, number: true } }) : [],
+      ids('SupplierReturn').length ? db.supplierReturn.findMany({ where: { id: { in: ids('SupplierReturn') } }, select: { id: true, number: true } }) : [],
+      ids('Dispensation').length ? db.dispensation.findMany({ where: { id: { in: ids('Dispensation') } }, select: { id: true, prescriptionItemId: true } }) : [],
+    ]);
+    const out = new Map<string, { label: string; href: string | null }>();
+    for (const l of lines) {
+      const no = l.invoice.number ? formatNumber('INV', l.invoice.number) : 'draft invoice';
+      out.set(l.id, { label: l.invoice.isPos && !l.invoice.client ? `Counter sale ${no}` : `Sold on ${no}${l.invoice.client ? ` · ${l.invoice.client.displayName}` : ''}`, href: `/billing/invoices/${l.invoice.id}` });
+    }
+    for (const g of receipts) out.set(g.id, { label: `Delivery ${grnNo(g.number)}`, href: g.purchaseOrderId ? `/inventory/purchase-orders/${g.purchaseOrderId}` : null });
+    for (const c of counts) out.set(c.id, { label: `Stock count ${formatNumber('SC', c.number)}`, href: `/inventory/counts/${c.id}` });
+    for (const r of returns) out.set(r.id, { label: `Supplier return ${formatNumber('SRN', r.number)}`, href: '/inventory/returns' });
+    const items = dispensed.length ? await db.prescriptionItem.findMany({ where: { id: { in: dispensed.map((d) => d.prescriptionItemId) } }, select: { id: true, prescription: { select: { id: true, number: true } } } }) : [];
+    const rxOf = new Map(items.map((i) => [i.id, i.prescription]));
+    for (const d of dispensed) {
+      const rx = rxOf.get(d.prescriptionItemId);
+      if (rx) out.set(d.id, { label: `Dispensed on ${formatNumber('RX', rx.number)}`, href: `/pharmacy/prescriptions/${rx.id}` });
+    }
+    return out;
   }
 
   /** Controlled-medicine register: every movement of controlled products with running balance per batch/location. */

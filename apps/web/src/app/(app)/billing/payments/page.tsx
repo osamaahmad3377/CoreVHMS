@@ -78,7 +78,7 @@ function Payments() {
   return (
     <>
       <PageHeader
-        help="payment" title="Payments" breadcrumbs={[{ label: 'Billing', href: '/billing' }, { label: 'Payments' }]} description="Receipts, allocations to invoices and refunds." />
+        help="payment" title="Payments" description="Receipts, allocations to invoices and refunds." />
       <SectionNav links={BILLING_LINKS} />
       <Card>
         <div className="flex border-b p-3">

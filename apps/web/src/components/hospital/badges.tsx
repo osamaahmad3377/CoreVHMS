@@ -21,5 +21,5 @@ export function IsolationBadge() {
 
 const SURGERY: Record<string, BadgeProps['variant']> = { SCHEDULED: 'secondary', PRE_OP: 'info', IN_PROGRESS: 'warning', RECOVERY: 'default', COMPLETED: 'success', CANCELLED: 'secondary' };
 export function SurgeryStatusBadge({ status }: { status: string }) {
-  return <Badge variant={SURGERY[status] ?? 'secondary'}>{enumLabel(status)}</Badge>;
+  return <Badge variant={SURGERY[status] ?? 'secondary'}>{enumLabel(status, 'surgery')}</Badge>;
 }

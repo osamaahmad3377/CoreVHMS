@@ -87,9 +87,27 @@ export const ENUM_LABELS: Record<string, string> = {
   SUSPENDED: 'Suspended',
 };
 
-export function enumLabel(value: string | null | undefined): string {
+/**
+ * Wording that only fits one domain. Several enums share a value (IN_PROGRESS is a surgery, lab order, field visit
+ * and grooming state), so the flat map holds a neutral label and a screen asks for its domain's wording here.
+ */
+export type LabelScope = 'surgery' | 'lab' | 'message' | 'outcome' | 'contactRole' | 'purchaseOrder' | 'wardType' | 'treatment' | 'sample' | 'movement';
+export const SCOPED_ENUM_LABELS: Record<LabelScope, Record<string, string>> = {
+  surgery: { IN_PROGRESS: 'In surgery' },
+  lab: { COLLECTED: 'Sample collected' },
+  message: { GENERAL: 'General message' },
+  outcome: { DECEASED: 'Died' },
+  contactRole: { AUTHORIZED: 'Authorised contact' },
+  purchaseOrder: { SUBMITTED: 'Awaiting approval' },
+  wardType: { KENNEL: 'Kennels' },
+  treatment: { FLUID: 'Fluids' },
+  sample: { FLUID: 'Body fluid' },
+  movement: { BIRTH: 'Born', DEATH: 'Died', SALE: 'Sold' },
+};
+
+export function enumLabel(value: string | null | undefined, scope?: LabelScope): string {
   if (!value) return '';
-  return ENUM_LABELS[value] ?? value.charAt(0) + value.slice(1).toLowerCase().replace(/_/g, ' ');
+  return (scope && SCOPED_ENUM_LABELS[scope][value]) ?? ENUM_LABELS[value] ?? value.charAt(0) + value.slice(1).toLowerCase().replace(/_/g, ' ');
 }
 
 export const APPOINTMENT_CATEGORIES = ['CONSULTATION', 'VACCINATION', 'FOLLOW_UP', 'SURGERY', 'DENTAL', 'DIAGNOSTICS', 'GROOMING', 'EMERGENCY', 'FIELD_VISIT', 'OTHER'] as const;
@@ -327,4 +345,10 @@ Object.assign(ENUM_LABELS, {
   OUTGOING: 'Outgoing', INCOMING: 'Incoming', RECEIVED: 'Received', ACCEPTED: 'Accepted',
   ROUTINE: 'Routine', EMERGENCY: 'Emergency',
   INSURANCE: 'Insurance', REFERRAL: 'Referral letter', NOT_STARTED: 'Not started yet',
+});
+
+// Neutral wording for values that several enums share (see SCOPED_ENUM_LABELS for each domain's own wording).
+Object.assign(ENUM_LABELS, {
+  IN_PROGRESS: 'In progress', COLLECTED: 'Collected', GENERAL: 'General', DECEASED: 'Deceased', AUTHORIZED: 'Authorised',
+  SUBMITTED: 'Submitted', KENNEL: 'Kennel', FLUID: 'Fluids', BIRTH: 'Birth', DEATH: 'Death',
 });

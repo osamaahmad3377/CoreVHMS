@@ -15,6 +15,8 @@ import { api } from '@/lib/api';
 import type { Breed, Species } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
+const plural = (n: number, word: string) => `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`;
+
 export default function SpeciesPage() {
   const qc = useQueryClient();
   const species = useQuery({ queryKey: ['species', 'all'], queryFn: () => api.get<Species[]>('/species?all=true') });
@@ -65,7 +67,7 @@ export default function SpeciesPage() {
                 <button className="min-w-0 flex-1 text-left" onClick={() => setSelected(s.id)}>
                   <p className={cn('text-sm font-medium', !s.isActive && 'text-muted-foreground line-through')}>{s.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {enumLabel(s.category)} · {s._count?.breeds ?? 0} breeds · {s._count?.patients ?? 0} patients
+                    {enumLabel(s.category)} · {plural(s._count?.breeds ?? 0, 'breed')} · {plural(s._count?.patients ?? 0, 'patient')}
                   </p>
                 </button>
                 <Switch checked={s.isActive} aria-label={`${s.name} active`} onCheckedChange={(v) => act.mutate(() => api.patch(`/species/${s.id}`, { isActive: v }))} />

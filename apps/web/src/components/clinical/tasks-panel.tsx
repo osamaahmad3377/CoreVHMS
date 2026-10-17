@@ -12,6 +12,7 @@ import { Input, NativeSelect } from '../ui/input';
 import { api } from '@/lib/api';
 import { fmtDateTime } from '@/lib/format';
 import type { Task } from '@/lib/types';
+import { localToday } from '@/lib/time';
 
 export function TasksPanel({
   encounterId,
@@ -30,7 +31,7 @@ export function TasksPanel({
 }) {
   const [title, setTitle] = useState('');
   const [type, setType] = useState('FOLLOW_UP_CALL');
-  const [due, setDue] = useState(() => new Date(Date.now() + 3 * 86400_000).toISOString().slice(0, 10));
+  const [due, setDue] = useState(() => localToday(3));
   const add = useMutation({
     mutationFn: () => api.post('/tasks', { title, type, dueAt: new Date(`${due}T09:00:00`).toISOString(), patientId, encounterId }),
     onSuccess: () => {

@@ -12,6 +12,7 @@ import { PageHeader } from '@/components/page';
 import { PosCart } from '@/components/pos/cart';
 import { PosCatalog } from '@/components/pos/catalog';
 import { blockReason, cartTotals, toInvoiceLines, type CartLine, type Tender } from '@/components/pos/model';
+import { useConfirm } from '@/components/confirm';
 import { receiptFromInvoice, type ReceiptPayment } from '@/components/receipts/receipt-document';
 import { ReceiptPreview, useReceiptPrinter } from '@/components/receipts/use-receipt';
 import { HeldSalesDialog, TodaySalesDialog, type HeldSale } from '@/components/pos/sales-dialogs';
@@ -22,7 +23,8 @@ import { Button } from '@/components/ui/button';
 import { Kbd } from '@/components/ui/misc';
 import { useDebounce } from '@/hooks/use-debounce';
 import { ApiError, api, qs } from '@/lib/api';
-import { fmtMoney, fmtTime } from '@/lib/format';
+import { fmtDateTime, fmtMoney, fmtTime } from '@/lib/format';
+import { localDate, todayIn } from '@/lib/time';
 import { useSession } from '@/lib/session';
 import type { BillingSettings, CashRegister, Invoice, Payment, PosCatalog as Catalog, PosItem, ProductCategory } from '@/lib/types';
 
@@ -60,8 +62,10 @@ const writeHeld = (key: string, held: HeldSale[]) => {
 function Pos() {
   const qc = useQueryClient();
   const { can, currency, session } = useSession();
+  const tz = session.branch?.timezone ?? 'UTC';
   const searchRef = useRef<HTMLInputElement>(null);
   const receipts = useReceiptPrinter();
+  const confirm = useConfirm();
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
   const [categoryId, setCategoryId] = useState('');
@@ -141,8 +145,11 @@ function Pos() {
     clearSale();
   };
 
-  const recall = (h: HeldSale) => {
-    if (lines.length && !window.confirm('Replace the current basket with the held sale?')) return;
+  const recall = async (h: HeldSale) => {
+    if (lines.length) {
+      const c = await confirm({ title: 'Replace the current basket?', description: 'The items in the basket now will be removed and the held sale loaded instead. Hold the current basket first if you still need it.', confirmLabel: 'Replace basket' });
+      if (!c.confirmed) return;
+    }
     setLines(h.lines);
     setClient(h.client);
     const next = held.filter((x) => x.id !== h.id);
@@ -238,7 +245,17 @@ function Pos() {
       actions={
         <>
           {openRegister ? (
-            <Badge variant="success" className="gap-1 py-1"><Landmark className="h-3 w-3" /> {openRegister.name} open since {fmtTime(openRegister.sessions[0].openedAt)}</Badge>
+            localDate(openRegister.sessions[0].openedAt, tz) === todayIn(tz) ? (
+              <Badge variant="success" className="gap-1 py-1"><Landmark className="h-3 w-3" /> {openRegister.name} open since {fmtTime(openRegister.sessions[0].openedAt)}</Badge>
+            ) : (
+              <span className="inline-flex" title="This register was opened on an earlier day and not closed. Count and close it, then open today’s session.">
+                {can('cash.manage') ? (
+                  <Link href="/billing/cash"><Badge variant="warning" className="gap-1 py-1"><Landmark className="h-3 w-3" /> {openRegister.name} still open from {fmtDateTime(openRegister.sessions[0].openedAt)} — close it</Badge></Link>
+                ) : (
+                  <Badge variant="warning" className="gap-1 py-1"><Landmark className="h-3 w-3" /> {openRegister.name} still open from {fmtDateTime(openRegister.sessions[0].openedAt)} — ask a manager to close it</Badge>
+                )}
+              </span>
+            )
           ) : registers.isSuccess ? (
             <Badge variant={cashBlocked ? 'destructive' : 'secondary'} className="gap-1 py-1"><Landmark className="h-3 w-3" /> No register open{cashBlocked ? ' · cash unavailable' : ''}</Badge>
           ) : null}
@@ -316,7 +333,7 @@ function Pos() {
     <>
       <div className="print:hidden">
         {header}
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 pb-20 lg:grid-cols-[minmax(0,1fr)_360px] lg:pb-0 xl:grid-cols-[minmax(0,1fr)_420px]">
           <PosCatalog
             ref={searchRef}
             search={search}
@@ -334,7 +351,7 @@ function Pos() {
             currency={currency}
             onAdd={add}
           />
-          <div className="lg:sticky lg:top-20 lg:h-[calc(100vh-10.5rem)]">
+          <div id="pos-basket" className="scroll-mt-20 lg:sticky lg:top-20 lg:h-[calc(100vh-10.5rem)]">
             <PosCart
               lines={lines}
               onChange={setLines}
@@ -351,6 +368,16 @@ function Pos() {
             />
           </div>
         </div>
+        {/* Phones and tablets: the basket sits below the shelves, so keep the total and Charge within thumb reach. */}
+        {lines.length > 0 && (
+          <div className="fixed inset-x-0 bottom-0 z-20 flex items-center gap-2 border-t bg-card/95 px-4 py-2.5 shadow-[0_-4px_12px_rgb(0_0_0/0.06)] backdrop-blur lg:hidden">
+            <button type="button" className="min-w-0 flex-1 text-left" onClick={() => document.getElementById('pos-basket')?.scrollIntoView({ behavior: 'smooth' })}>
+              <span className="block text-xs text-muted-foreground">{lines.length} {lines.length === 1 ? 'item' : 'items'} · view basket</span>
+              <span className="block truncate text-base font-semibold tabular">{fmtMoney(totals.totalMinor, currency)}</span>
+            </button>
+            <Button size="lg" disabled={totals.totalMinor <= 0} onClick={() => setTendering(true)}>Charge</Button>
+          </div>
+        )}
         <p className="mt-3 hidden text-xs text-muted-foreground xl:block">
           <Kbd>F2</Kbd> scan / search · <Kbd>Enter</Kbd> add scanned code · <Kbd>F9</Kbd> take payment · <Kbd>Esc</Kbd> clear search
         </p>

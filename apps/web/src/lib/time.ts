@@ -72,3 +72,11 @@ export function monthGrid(date: string) {
   for (let d = start; d <= last || days.length % 7; d = shiftDate(d, 1)) days.push(d);
   return days;
 }
+
+/** Today's calendar date (yyyy-MM-dd) on this device, optionally shifted — never the UTC date, which is a day off near midnight. */
+export function localToday(offsetDays = 0) {
+  return format(addDays(new Date(), offsetDays), 'yyyy-MM-dd');
+}
+
+/** A Date's calendar date on this device (yyyy-MM-dd). */
+export const localISODate = (d: Date) => format(d, 'yyyy-MM-dd');

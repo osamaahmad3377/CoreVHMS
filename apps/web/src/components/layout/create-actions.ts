@@ -14,7 +14,7 @@ export function useCreateActions(): CreateAction[] {
   const { can } = useSession();
   return [
     can('clients.write') && { label: 'New client', keywords: 'owner register add client', href: '/clients/new', icon: UserPlus },
-    can('patients.write') && { label: 'Register patient', keywords: 'animal pet add patient', href: '/patients/new', icon: PawPrint },
+    can('patients.write') && { label: 'Add patient', keywords: 'animal pet add patient', href: '/patients/new', icon: PawPrint },
     can('appointments.write') && { label: 'New appointment', keywords: 'book booking schedule calendar', href: '/calendar', icon: CalendarPlus },
     can('appointments.checkin') && { label: 'Walk-in / emergency', keywords: 'check in arrive triage urgent', href: '/front-desk', icon: ClipboardList },
     can('clinical.write') && { label: 'Consultations', keywords: 'consult notes soap exam', href: '/consultations', icon: Stethoscope },

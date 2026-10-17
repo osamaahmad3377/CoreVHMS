@@ -6,7 +6,8 @@ import { toast } from 'sonner';
 import { FormError } from '../forms/form-error';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
-import { Input } from '../ui/input';
+import { MUCOUS_MEMBRANES } from '../clinical/vitals-panel';
+import { Input, NativeSelect } from '../ui/input';
 import { Table, TBody, TD, TH, THead, TR } from '../ui/table';
 import { api } from '@/lib/api';
 import { fmtDateTime } from '@/lib/format';
@@ -66,7 +67,14 @@ export function Observations({ admissionId, active }: { admissionId: string; act
               {FIELDS.map((f) => (
                 <label key={f.key} className="grid gap-1 text-xs text-muted-foreground">
                   {f.label}{f.unit ? ` (${f.unit})` : ''}
-                  <Input inputMode={f.mode === 'text' ? 'text' : f.mode} value={values[f.key] ?? ''} onChange={(e) => setValues((s) => ({ ...s, [f.key]: e.target.value }))} />
+                  {f.key === 'mucousMembranes' ? (
+                    <NativeSelect value={values[f.key] ?? ''} onChange={(e) => setValues((s) => ({ ...s, [f.key]: e.target.value }))}>
+                      <option value=""></option>
+                      {MUCOUS_MEMBRANES.map((x) => <option key={x}>{x}</option>)}
+                    </NativeSelect>
+                  ) : (
+                    <Input inputMode={f.mode === 'text' ? 'text' : f.mode} value={values[f.key] ?? ''} onChange={(e) => setValues((s) => ({ ...s, [f.key]: e.target.value }))} />
+                  )}
                 </label>
               ))}
             </div>

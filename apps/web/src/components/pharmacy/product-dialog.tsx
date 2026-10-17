@@ -12,7 +12,7 @@ import {
   fromMinor,
   toMinor,
 } from '@vcms/shared';
-import { Bone, Box, Brush, ImagePlus, Package, Pill, Shirt, Sparkles, Syringe, Trash2, Wrench } from 'lucide-react';
+import { ArrowLeft, Bone, Box, Brush, ImagePlus, Package, Pill, Shirt, Sparkles, Syringe, Trash2, Wrench } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Field } from '../forms/field';
@@ -196,7 +196,7 @@ export function ProductDialog({ product, open, onOpenChange, onSaved, defaultTyp
               </fieldset>
             ) : (
               <div className="grid gap-3 sm:grid-cols-3">
-                <Field label="Pack / size" htmlFor="p-pack" hint="As sold, e.g. 3 kg bag, 400 g can, Medium"><Input id="p-pack" value={f.packSize} onChange={set('packSize')} /></Field>
+                <Field label="Pack / size" htmlFor="p-pack"><Input id="p-pack" value={f.packSize} onChange={set('packSize')} placeholder="e.g. 3 kg bag, 400 g can, Medium" /></Field>
                 <Field label="Sold per" htmlFor="p-du">
                   <NativeSelect id="p-du" value={f.dispensingUnit} onChange={set('dispensingUnit')}>
                     {[...new Set([f.dispensingUnit, ...units])].map((u) => <option key={u}>{u}</option>)}
@@ -242,7 +242,7 @@ export function ProductDialog({ product, open, onOpenChange, onSaved, defaultTyp
           </div>
         )}
         <DialogFooter>
-          {step === 'details' && !product && !defaultType && <Button variant="ghost" className="mr-auto" onClick={() => setStep('type')}>Change type</Button>}
+          {step === 'details' && !product && !defaultType && <Button variant="outline" className="mr-auto" onClick={() => setStep('type')}><ArrowLeft /> Change type</Button>}
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           {step === 'details' && (
             <Button disabled={!f.name.trim() || !(Number(f.minDispenseIncrement) > 0)} loading={save.isPending} onClick={() => { setError(null); save.mutate(); }}>Save product</Button>

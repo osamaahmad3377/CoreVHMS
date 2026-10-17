@@ -16,7 +16,7 @@ export function parseMoney(value: string, currency: string): number | null {
 
 /** Amount entry in major units (e.g. "1250.50"); the caller converts with parseMoney. */
 export const MoneyInput = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement> & { currency: string }>(({ currency, className, ...props }, ref) => (
-  <div className="relative">
+  <div className="relative min-w-0">
     <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">{currency}</span>
     <Input ref={ref} inputMode="decimal" placeholder={decimalsFor(currency) ? '0.00' : '0'} className={cn('pl-12 tabular', className)} {...props} />
   </div>

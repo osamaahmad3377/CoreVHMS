@@ -3,12 +3,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CARE_KINDS, enumLabel } from '@vcms/shared';
 import { Ban, CalendarClock, CheckCircle2, ClipboardPlus, Plus, Printer, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirm } from '../confirm';
 import { Field } from '../forms/field';
 import { FormError } from '../forms/form-error';
 import { EmptyState } from '../page';
+import { BatchPicker } from '../pharmacy/batch-picker';
 import { ProductPicker } from '../pharmacy/product-picker';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -18,7 +19,7 @@ import { Input, NativeSelect, Textarea } from '../ui/input';
 import { ApiError, api } from '@/lib/api';
 import { fmtDate } from '@/lib/format';
 import { useSession } from '@/lib/session';
-import type { CareItem, Product } from '@/lib/types';
+import type { Administration, CareItem, Product } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 export function CareStatusBadge({ item }: { item: Pick<CareItem, 'status' | 'overdue'> }) {
@@ -36,7 +37,9 @@ function CompleteDialog({ item, onClose }: { item: CareItem | null; onClose: () 
   const [override, setOverride] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const prescribable = item?.kind === 'VACCINATION' || item?.kind === 'DEWORMING' || item?.kind === 'PARASITE_PREVENTION';
+  const prefilled = useRef<string | null>(null);
   useEffect(() => {
+    prefilled.current = null;
     if (!item) return;
     setMode(prescribable && can('clinical.write') ? 'ADMINISTER' : prescribable ? 'ELSEWHERE' : 'DONE');
     setProduct(null);
@@ -45,6 +48,21 @@ function CompleteDialog({ item, onClose }: { item: CareItem | null; onClose: () 
     setError(null);
   }, [item, prescribable, can]);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
+  // Prefill from the protocol's product, and dose, unit and route from the last time this animal had it.
+  const protocolProductId = item?.protocol?.productId ?? null;
+  const protocolProduct = useQuery({ queryKey: ['product', protocolProductId], queryFn: () => api.get<Product>(`/products/${protocolProductId}`), enabled: !!item && !!protocolProductId && can('clinical.write') });
+  const previous = useQuery({ queryKey: ['administrations', item?.patientId, 'care'], queryFn: () => api.get<Administration[]>(`/patients/${item!.patientId}/administrations`), enabled: !!item && !!protocolProductId && can('clinical.read') });
+  useEffect(() => {
+    if (!item || !protocolProduct.data || prefilled.current === item.id || previous.isLoading) return;
+    prefilled.current = item.id;
+    const p = protocolProduct.data;
+    const last = previous.data?.find((a) => a.product.id === p.id && a.status === 'GIVEN');
+    // The dose is in the product's own unit, so the stock it comes from is deducted and charged.
+    const sameUnit = last && last.doseUnit.toLowerCase() === p.dispensingUnit.toLowerCase();
+    setProduct(p);
+    setF((s) => ({ ...s, doseUnit: s.doseUnit || p.dispensingUnit, dose: s.dose || (sameUnit ? String(last.dose) : ''), route: s.route || last?.route || '' }));
+  }, [item, protocolProduct.data, previous.data, previous.isLoading]);
+  const unitMismatch = !!product && !!f.doseUnit && f.doseUnit.toLowerCase() !== product.dispensingUnit.toLowerCase();
   const m = useMutation({
     mutationFn: () =>
       api.post(`/care-items/${item!.id}/complete`, {
@@ -89,14 +107,20 @@ function CompleteDialog({ item, onClose }: { item: CareItem | null; onClose: () 
         </div>
         {mode === 'ADMINISTER' && (
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Product" htmlFor="cc-prod" required className="sm:col-span-2"><ProductPicker id="cc-prod" value={product} onChange={(p) => { setProduct(p); if (p) setF((s) => ({ ...s, doseUnit: s.doseUnit || p.dispensingUnit })); }} prescribable /></Field>
+            <Field label="Product" htmlFor="cc-prod" required className="sm:col-span-2" hint={protocolProductId && product?.id === protocolProductId ? 'From the protocol' : undefined}><ProductPicker id="cc-prod" value={product} onChange={(p) => { setProduct(p); setF((s) => ({ ...s, batchNumber: '', expiryDate: '', doseUnit: p ? s.doseUnit || p.dispensingUnit : s.doseUnit })); }} prescribable /></Field>
             <Field label="Dose" htmlFor="cc-dose" required><Input id="cc-dose" inputMode="decimal" value={f.dose} onChange={set('dose')} /></Field>
             <div className="grid grid-cols-2 gap-2">
               <Field label="Unit" htmlFor="cc-unit" required><Input id="cc-unit" value={f.doseUnit} onChange={set('doseUnit')} /></Field>
               <Field label="Route" htmlFor="cc-route" required><Input id="cc-route" value={f.route} onChange={set('route')} placeholder="SC, IM, PO…" /></Field>
             </div>
-            <Field label="Batch / lot" htmlFor="cc-batch" hint="Empty = batch that expires first (if stock is tracked)"><Input id="cc-batch" value={f.batchNumber} onChange={set('batchNumber')} /></Field>
-            <Field label="Expiry" htmlFor="cc-exp"><Input id="cc-exp" type="date" value={f.expiryDate} onChange={set('expiryDate')} /></Field>
+            {unitMismatch && (
+              <p className="text-xs text-warning sm:col-span-2">Stock is deducted and charged only when the dose is in the product’s unit ({product!.dispensingUnit}). In {f.doseUnit}, nothing is taken from stock or billed.</p>
+            )}
+            {product && (
+              <div className="sm:col-span-2">
+                <BatchPicker id="cc-batch" productId={product.id} quantity={!unitMismatch && Number(f.dose) > 0 ? Number(f.dose) : undefined} value={{ batchNumber: f.batchNumber, expiryDate: f.expiryDate }} onChange={(v) => setF((s) => ({ ...s, ...v }))} />
+              </div>
+            )}
           </div>
         )}
         {mode === 'ELSEWHERE' && (
@@ -232,7 +256,21 @@ export function CarePlan({ patientId, active }: { patientId: string; active: boo
             ))}
           </ul>
         ) : (
-          <EmptyState title="Nothing due" description={q.data?.availableProtocols.length ? 'Use “Add from protocols” to build this animal’s care plan from your approved protocols.' : 'Approved protocols for this species are already in the plan, or none have been set up yet (Preventive care → Protocols).'} className="py-8" />
+          <EmptyState
+            title="Nothing due"
+            description={
+              q.data?.availableProtocols.length
+                ? writable
+                  ? 'Use “Add from protocols” to build this animal’s care plan from your approved protocols.'
+                  : active
+                    ? 'A vet can add protocols to build this care plan.'
+                    : 'No care plan items were recorded for this animal.'
+                : writable
+                  ? 'Approved protocols for this species are already in the plan, or none have been set up yet (Preventive care → Protocols).'
+                  : 'No preventive care is scheduled for this animal yet.'
+            }
+            className="py-8"
+          />
         )}
       </Card>
       <Card>

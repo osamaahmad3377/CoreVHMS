@@ -53,6 +53,9 @@ has an agreed workaround and fix date.
 | 9 | | Manager | Merge two duplicate clients | One client remains with all animals, visits and invoices | | |
 | 10 | C | Reception | Book an appointment; try to book the same vet at an overlapping time | First booking saved; overlap refused unless overbooking is explicitly allowed | | |
 | 11 | C | Reception | Check the client in on the Front desk; record an emergency walk-in with triage | Both appear in the waiting list; the emergency is shown first | | |
+| 11a | | Vet | Triage a walk-in (complaint, temperature, heart rate), then press Start | The consultation opens with the complaint and triage vitals already filled in, and the vet is shown as the clinician on the front desk and calendar | | |
+| 11b | | Reception | Next morning, open the dashboard | Yesterday's visits that were never closed or marked no-show are listed under “Needs your attention” | | |
+| 11c | | Reception | On a phone (or a narrow browser window), open the dashboard, a client and the shop counter | Nothing scrolls sideways; sign-out is in the account menu; the counter shows a Charge bar at the bottom | | |
 | 12 | | Any | Search (⌘K / Ctrl K) by client name, phone, animal name, microchip and a prescription number (RX-…) | The right record is found | | |
 | 12a | | Reception | In the calendar, drag an appointment to another time and to another vet; open the Month view | Appointment moves; a clash asks “Move anyway?”; month shows the day's appointments | | |
 
@@ -79,6 +82,7 @@ has an agreed workaround and fix date.
 | 23 | | Reception | Try to sell a prescription-only medicine at the POS | Refused | | |
 | 23a | C | Inventory / owner | Add a dog food (Inventory → Products → New product → Food & treats) with brand, pack size, category and price; receive stock; sell it at the POS from Food & treats → its shelf | Tile shows brand and pack size; stock falls after the sale; Reports → Sales by category shows the sale under its shelf | | |
 | 24 | C | Accounts | Open the cash drawer with a float; close it at the end of the day | Expected vs. counted amount and any difference are shown | | |
+| 24a | | Accounts | Download Reports → Sales by item as CSV and open it in Excel | Named columns, amounts in rupees (not paisa), a Total row, dates in local time; the file name shows the chosen period | | |
 | 25 | | Manager | Run the financial summary and aged receivables for today; open Reports → Clinical activity | Totals match the invoices and payments made during testing; clinical counts match the consultations and stays recorded | | |
 
 ### Stock and procurement
@@ -88,6 +92,8 @@ has an agreed workaround and fix date.
 | 26 | C | Inventory | Create a purchase order; a different person approves it; receive it with batch and expiry | Stock increases per batch; expired goods are refused | | |
 | 27 | | Inventory | Count stock and post a difference with a reason | Stock corrected; adjustment visible in the stock history | | |
 | 28 | | Manager | Check low-stock and expiring items on the dashboard | Items below their reorder level / close to expiry are listed | | |
+| 27a | | Inventory | Open Inventory → Stock movements after a counter sale and a delivery | Each line says what caused it (e.g. “Counter sale INV-…”, “Delivery GRN-…”) and links to it | | |
+| 28c | | Inventory | Purchase orders → Reorder suggestions → Draft order for one supplier; print the order | Supplier, quantities and last costs are prefilled; the suggestion disappears once ordered; the printout shows supplier, delivery address and approval line | | |
 | 28a | | Nurse → Inventory | Nurse requests an item (Inventory → Item requests); the inventory officer orders it | One draft purchase order; the request shows “Ordered” with the order number | | |
 | 28b | C | Inventory | Return part of a recalled batch to its supplier (Inventory → Supplier returns) | Stock falls by the returned quantity; supplier balance falls by its cost; return cannot be edited | | |
 

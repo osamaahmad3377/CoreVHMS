@@ -1,8 +1,10 @@
-import { closeApp, futureDate, inDays, karachi, makeClient, makePatient, mail, prisma, registerOrg, schedulingFixture, staff, unique } from './helpers';
+import { closeApp, futureDate, karachi, makeClient, makePatient, mail, prisma, registerOrg, schedulingFixture, staff, unique } from './helpers';
 import { MessagesService } from '../src/modules/comms/messages.service';
 import { getApp } from './helpers';
 
 // All prices are arbitrary test values.
+// Boarding nights and policy periods are branch-local (Karachi) calendar dates, not UTC ones.
+const inDays = (days: number) => futureDate(days);
 async function boardingFixture() {
   const org = await registerOrg();
   const nightly = (await org.owner.post('/services', { code: unique('BRD').slice(0, 20), name: 'Boarding (per night)', category: 'BOARDING', priceMinor: 150000 })).body;

@@ -6,11 +6,11 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Field } from '@/components/forms/field';
 import { FormError } from '@/components/forms/form-error';
-import { EmptyState } from '@/components/page';
+import { EmptyState, LoadingRows } from '@/components/page';
 import { RequirePermission } from '@/components/require';
 import { StatusBadge } from '@/components/status';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input, NativeSelect } from '@/components/ui/input';
@@ -67,30 +67,28 @@ export default function BoardingUnitsPage() {
   const [dlg, setDlg] = useState<{ open: boolean; unit: BoardingUnit | null }>({ open: false, unit: null });
   return (
     <RequirePermission anyOf={['settings.manage']}>
-      <div className="grid gap-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-base font-semibold">Boarding units</h2>
-            <p className="text-sm text-muted-foreground">Kennels, cattery pens and suites for boarders (separate from hospital cages).</p>
+      <Card>
+        <CardHeader className="flex-wrap">
+          <div className="min-w-0">
+            <CardTitle>Boarding units</CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">Kennels, cattery pens and suites for boarders (separate from hospital cages).</p>
           </div>
           <Button size="sm" onClick={() => setDlg({ open: true, unit: null })}><Plus /> New unit</Button>
-        </div>
-        <Card>
-          {q.data?.length ? (
-            <ul className="divide-y">
-              {q.data.map((u) => (
-                <li key={u.id} className="flex items-center gap-3 px-4 py-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium">{u.name} {!u.isActive && <StatusBadge status="ARCHIVED" />}</p>
-                    <p className="text-xs text-muted-foreground">{u.type === 'KENNEL' ? 'Kennel' : enumLabel(u.type)} · {u.nightlyService ? `${fmtMoney(u.nightlyService.priceMinor, currency)} per night` : 'no charge'}{u.notes ? ` · ${u.notes}` : ''}</p>
-                  </div>
-                  <Button size="icon-sm" variant="ghost" aria-label={`Edit ${u.name}`} onClick={() => setDlg({ open: true, unit: u })}><Edit /></Button>
-                </li>
-              ))}
-            </ul>
-          ) : <EmptyState icon={Home} title="No boarding units yet" description="Add kennels or pens to start taking boarding bookings." />}
-        </Card>
-      </div>
+        </CardHeader>
+        {q.data?.length ? (
+          <ul className="divide-y">
+            {q.data.map((u) => (
+              <li key={u.id} className="flex items-center gap-3 px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">{u.name} {!u.isActive && <StatusBadge status="ARCHIVED" />}</p>
+                  <p className="text-xs text-muted-foreground">{u.type === 'KENNEL' ? 'Kennel' : enumLabel(u.type)} · {u.nightlyService ? `${fmtMoney(u.nightlyService.priceMinor, currency)} per night` : 'no charge'}{u.notes ? ` · ${u.notes}` : ''}</p>
+                </div>
+                <Button size="icon-sm" variant="ghost" aria-label={`Edit ${u.name}`} onClick={() => setDlg({ open: true, unit: u })}><Edit /></Button>
+              </li>
+            ))}
+          </ul>
+        ) : q.isLoading ? <LoadingRows /> : <EmptyState icon={Home} title="No boarding units yet" description="Add kennels or pens to start taking boarding bookings." />}
+      </Card>
       <UnitDialog unit={dlg.unit} open={dlg.open} onOpenChange={(open) => setDlg((d) => ({ ...d, open }))} />
     </RequirePermission>
   );
