@@ -25,7 +25,8 @@ if (!patched.__actionDuration) {
   }
 }
 
-export function Providers({ children }: { children: React.ReactNode }) {
+/** `defaultTheme`: the clinic's choice (Branding) until a staff member picks light or dark themselves. */
+export function Providers({ children, defaultTheme = 'light' }: { children: React.ReactNode; defaultTheme?: 'light' | 'dark' | 'system' }) {
   const [client] = useState(
     () =>
       new QueryClient({
@@ -39,7 +40,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       }),
   );
   return (
-    <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
+    <ThemeProvider attribute="class" defaultTheme={defaultTheme} enableSystem disableTransitionOnChange>
       <QueryClientProvider client={client}>
         <TooltipProvider delayDuration={300}>
           {children}

@@ -5,11 +5,13 @@
 source "$(dirname "$0")/backup-common.sh"
 SRC="${1:?usage: CONFIRM=restore restore.sh <backup directory>}"
 API_SERVICE="${API_SERVICE:-${STORAGE_SERVICE:-}}"
+has_storage() { grep -q '"storage.tar.gz"' "$SRC/manifest.json"; }
 if [ "${CONFIRM:-}" != "restore" ]; then
-  echo "This replaces database '$DB_NAME' and all uploaded files with the backup in $SRC."
+  echo "This replaces database '$DB_NAME'$(has_storage && echo ' and all uploaded files') with the backup in $SRC."
   echo "Re-run with CONFIRM=restore to proceed."; exit 2
 fi
 for f in database.dump storage.tar.gz; do
+  [ "$f" = storage.tar.gz ] && ! has_storage && continue
   want="$(grep "\"$f\"" "$SRC/manifest.json" | grep -o '"sha256": "[0-9a-f]*"' | cut -d'"' -f4)"
   [ "$(sha "$SRC/$f")" = "$want" ] || { echo "✗ checksum mismatch for $f — aborting"; exit 1; }
 done
@@ -19,10 +21,13 @@ dc exec -T "$DB_SERVICE" psql -U "$DB_USER" -d postgres -v ON_ERROR_STOP=1 -c "S
 dc exec -T "$DB_SERVICE" dropdb -U "$DB_USER" "$DB_NAME"
 dc exec -T "$DB_SERVICE" createdb -U "$DB_USER" "$DB_NAME"
 dc exec -T "$DB_SERVICE" pg_restore -U "$DB_USER" -d "$DB_NAME" --no-owner --exit-on-error < "$SRC/database.dump"
-echo "→ Restoring uploaded files"
-if [ -n "$STORAGE_SERVICE" ]; then
+if ! has_storage; then
+  echo "→ Database-only backup: uploaded files left as they are"
+elif [ -n "$STORAGE_SERVICE" ]; then
+  echo "→ Restoring uploaded files"
   dc run --rm --no-deps -T --entrypoint sh "$STORAGE_SERVICE" -c "find '$STORAGE_PATH' -mindepth 1 -delete && tar -C '$STORAGE_PATH' -xzf -" < "$SRC/storage.tar.gz"
 else
+  echo "→ Restoring uploaded files"
   mkdir -p "$STORAGE_PATH" && find "$STORAGE_PATH" -mindepth 1 -delete && tar -C "$STORAGE_PATH" -xzf "$SRC/storage.tar.gz"
 fi
 [ -n "$API_SERVICE" ] && { echo "→ Starting $API_SERVICE"; dc start "$API_SERVICE"; }

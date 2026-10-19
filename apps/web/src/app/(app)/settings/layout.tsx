@@ -16,7 +16,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
   const items = visibleSettings(canAny, session.organization?.enabledModules);
   const current = items.find((i) => pathname.startsWith(i.href));
   return (
-    <RequirePermission anyOf={['org.manage', 'branches.manage', 'users.read', 'roles.manage', 'settings.manage']}>
+    <RequirePermission anyOf={['org.manage', 'branches.manage', 'users.read', 'roles.manage', 'settings.manage', 'branding.manage']}>
       <PageHeader help="setup" title="Settings" description="Your clinic details, staff, prices and printing" />
       <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
         {/* Small screens: one compact picker instead of a hidden horizontal scroller of 17 links. */}

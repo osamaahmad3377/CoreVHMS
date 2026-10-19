@@ -2,6 +2,7 @@ import { enumLabel } from '@vcms/shared';
 import { bpToPct } from './money';
 import { fmtDate, fmtMoney } from '@/lib/format';
 import type { Invoice } from '@/lib/types';
+import { LetterFooter, Letterhead } from '../documents/letterhead';
 
 export interface ClinicHeader {
   name: string;
@@ -22,24 +23,20 @@ export function InvoiceDocument({ invoice: i, clinic }: { invoice: Invoice; clin
   const b = i.branch;
   return (
     <article className="mx-auto max-w-3xl bg-white p-8 text-[10.5pt] text-black">
-      <header className="flex justify-between gap-6 border-b border-black pb-4">
-        <div>
-          {/* Same hierarchy as the till receipt: trading name, legal name, then the branch that issued it. */}
-          <p className="text-lg font-bold">{clinic?.name}</p>
-          {clinic?.legalName && clinic.legalName !== clinic.name && <p className="text-[9.5pt]">{clinic.legalName}</p>}
-          {b?.name && <p className="font-semibold">{b.name}</p>}
-          <p>{[b?.addressLine1 ?? clinic?.addressLine1, b ? b.addressLine2 : clinic?.addressLine2, b?.city ?? clinic?.city, b?.postcode ?? clinic?.postcode].filter(Boolean).join(', ')}</p>
-          <p>{[b?.phone ?? clinic?.phone, b?.email ?? clinic?.email].filter(Boolean).join(' · ')}</p>
-          {clinic?.taxNumber && <p>Tax number: {clinic.taxNumber}</p>}
-        </div>
-        <div className="text-right">
-          <p className="text-lg font-bold">{i.status === 'DRAFT' ? 'DRAFT INVOICE' : 'TAX INVOICE'}</p>
-          <p>{i.invoiceNo}</p>
-          <p>Date: {fmtDate(i.issuedAt ?? i.createdAt)}</p>
-          {i.dueAt && <p>Due: {fmtDate(i.dueAt)}</p>}
-          {i.status === 'VOID' && <p className="font-bold">VOID — {i.voidReason}</p>}
-        </div>
-      </header>
+      {/* The clinic's letterhead (Settings → Branding) with the branch that issued the invoice. */}
+      <Letterhead
+        clinic={clinic}
+        branch={b}
+        aside={
+          <>
+            <p className="text-lg font-bold">{i.status === 'DRAFT' ? 'DRAFT INVOICE' : 'TAX INVOICE'}</p>
+            <p>{i.invoiceNo}</p>
+            <p>Date: {fmtDate(i.issuedAt ?? i.createdAt)}</p>
+            {i.dueAt && <p>Due: {fmtDate(i.dueAt)}</p>}
+            {i.status === 'VOID' && <p className="font-bold">VOID — {i.voidReason}</p>}
+          </>
+        }
+      />
       <section className="py-4">
         <p className="text-xs uppercase">Bill to</p>
         {i.client ? (
@@ -89,6 +86,7 @@ export function InvoiceDocument({ invoice: i, clinic }: { invoice: Invoice; clin
         <p className="mt-4 text-xs">Payments: {i.allocations.map((a) => `${a.payment.receiptNo} ${enumLabel(a.payment.method)} ${fmtMoney(a.amountMinor, cur)} (${fmtDate(a.payment.receivedAt)})`).join('; ')}</p>
       )}
       {i.notes && <p className="mt-4 whitespace-pre-wrap">{i.notes}</p>}
+      <LetterFooter />
     </article>
   );
 }

@@ -1,5 +1,5 @@
 import { SetMetadata, createParamDecorator, ExecutionContext } from '@nestjs/common';
-import type { Permission } from '@vcms/shared';
+import type { Permission, PlatformPermission } from '@vcms/shared';
 import { RequestContext, RequestContextStore } from '../context/request-context';
 
 export const IS_PUBLIC = 'vcms:public';
@@ -18,7 +18,7 @@ export const AllowDuringPasswordChange = () => SetMetadata(ALLOW_DURING_PASSWORD
 export const Authenticated = () => SetMetadata(IS_AUTHENTICATED, true);
 
 /** Route requires ALL listed permissions in the active organization. */
-export const RequirePermissions = (...permissions: Permission[]) => SetMetadata(PERMISSIONS, permissions);
+export const RequirePermissions = (...permissions: (Permission | PlatformPermission)[]) => SetMetadata(PERMISSIONS, permissions);
 
 /** Route requires AT LEAST ONE of the listed permissions. */
 export const RequireAnyPermission = (...permissions: Permission[]) => SetMetadata(ANY_PERMISSIONS, permissions);

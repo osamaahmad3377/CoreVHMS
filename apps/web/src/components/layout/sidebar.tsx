@@ -6,17 +6,22 @@ import { useEffect, useState } from 'react';
 import { visibleNav } from '@/lib/navigation';
 import { useSession } from '@/lib/session';
 import { cn } from '@/lib/utils';
+import { logoFor, menuIsDark } from '../branding/brand-theme';
 import { Tip } from '../ui/tooltip';
 
+/** The clinic's logo and brand name (Settings → Branding), or the NextCore mark when none is set. */
 export function Logo({ collapsed }: { collapsed?: boolean }) {
+  const branding = useSession().session.organization?.branding;
+  const logo = logoFor(branding, menuIsDark(branding));
+  const icon = collapsed ? (branding?.iconUrl ?? logo) : (logo ?? branding?.iconUrl);
   return (
-    <Link href="/dashboard" className="flex items-center gap-2 px-1 text-white">
+    <Link href="/dashboard" className="flex min-w-0 items-center gap-2 px-1 text-sidebar-strong" aria-label={`${branding?.brandName ?? 'NextCore'} — home`}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/favicon.svg" alt="" className="h-7 w-7" />
+      <img src={icon ?? '/favicon.svg'} alt="" className={cn('h-8 shrink-0 object-contain', icon && !collapsed ? 'max-w-[56px]' : 'w-8')} />
       {!collapsed && (
-        <span className="leading-tight">
-          <span className="block text-sm font-semibold tracking-tight">NextCore</span>
-          <span className="block text-2xs uppercase tracking-wider text-sidebar-foreground/60">Veterinary</span>
+        <span className="min-w-0 leading-tight">
+          <span className="block truncate text-sm font-semibold tracking-tight">{branding?.brandName ?? 'NextCore'}</span>
+          {!branding && <span className="block text-2xs uppercase tracking-wider text-sidebar-foreground/60">Veterinary</span>}
         </span>
       )}
     </Link>
@@ -69,8 +74,8 @@ export function SidebarNav({ collapsed, onNavigate }: { collapsed?: boolean; onN
                       onClick={onNavigate}
                       aria-current={active ? 'page' : undefined}
                       className={cn(
-                        'flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-sidebar-foreground transition-colors hover:bg-white/5 hover:text-white',
-                        active && 'bg-sidebar-active text-white hover:bg-sidebar-active',
+                        'flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-hover hover:text-sidebar-strong',
+                        active && 'bg-sidebar-active text-white hover:bg-sidebar-active hover:text-white',
                         collapsed && 'justify-center px-0 py-2',
                       )}
                     >
@@ -105,7 +110,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
       </div>
       <button
         onClick={onToggle}
-        className="flex h-10 items-center justify-center gap-2 border-t border-sidebar-border text-xs text-sidebar-foreground/70 hover:text-white"
+        className="flex h-10 items-center justify-center gap-2 border-t border-sidebar-border text-xs text-sidebar-foreground/70 hover:text-sidebar-strong"
         aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
         {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <><PanelLeftClose className="h-4 w-4" /> Collapse</>}

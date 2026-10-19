@@ -1,13 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import type { InviteUserInput, UpdateMembershipInput } from '@vcms/shared';
-import { env } from '../../config/env';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { randomToken, sha256 } from '../../common/crypto/crypto';
 import { generateTemporaryPassword, hashPassword } from '../../common/crypto/password';
 import { conflict, forbidden, notFound, ruleViolation } from '../../common/http/errors';
-import { escapeHtml, layout, MailService } from '../../common/mail/mail.service';
+import { emailBrandOf, emailButton, escapeHtml, layout, MailService } from '../../common/mail/mail.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { appUrl } from '../../common/tenancy/hosts';
 
 const INVITE_DAYS = 7;
 /** An unused temporary password stops working after this many days. */
@@ -133,7 +133,7 @@ export class UsersService {
     const expiresAt = new Date(Date.now() + TEMP_PASSWORD_DAYS * 86400_000);
     const membership = await this.prisma.raw.$transaction(async (tx) => {
       if (await tx.user.findUnique({ where: { email: input.email } })) {
-        throw conflict('This email already has a NextCore account. Send an invitation instead — they will join with their existing password.');
+        throw conflict('This email already has an account. Send an invitation instead — they will join with their existing password.');
       }
       const user = await tx.user.create({
         data: { email: input.email, name: input.name, passwordHash, passwordChangedAt: new Date(), mustChangePassword: true, temporaryPasswordExpiresAt: expiresAt },
@@ -217,16 +217,18 @@ export class UsersService {
   private async sendInvite(email: string, name: string, token: string) {
     const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: RequestContext.orgId() } });
     const inviter = RequestContext.require().userName ?? 'A colleague';
-    const link = `${env().APP_URL}/accept-invite?token=${encodeURIComponent(token)}`;
+    const link = `${appUrl()}/accept-invite?token=${encodeURIComponent(token)}`;
     await this.mail.send({
       to: email,
-      subject: `You're invited to ${org.name} on NextCore VCMS`,
+      brand: emailBrandOf(org),
+      subject: `You're invited to join ${org.name}`,
       text: `Hello ${name},\n\n${inviter} has invited you to join ${org.name}.\nAccept within ${INVITE_DAYS} days: ${link}`,
       html: layout(
         `Join ${escapeHtml(org.name)}`,
-        `<p>Hello ${escapeHtml(name)},</p><p>${escapeHtml(inviter)} has invited you to join <b>${escapeHtml(org.name)}</b> on NextCore VCMS.</p>
-<p><a href="${link}" style="background:#0f766e;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none">Accept invitation</a></p>
+        `<p>Hello ${escapeHtml(name)},</p><p>${escapeHtml(inviter)} has invited you to join <b>${escapeHtml(org.name)}</b>.</p>
+${emailButton(link, 'Accept invitation', emailBrandOf(org))}
 <p style="color:#6b7b80">This invitation expires in ${INVITE_DAYS} days.</p>`,
+        emailBrandOf(org),
       ),
     });
   }

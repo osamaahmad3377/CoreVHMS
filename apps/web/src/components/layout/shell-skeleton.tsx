@@ -1,17 +1,17 @@
 /** Shown while the session loads: the app's outline instead of a blank page, so the app feels instant. */
 export function ShellSkeleton() {
   return (
-    <div className="flex min-h-screen" aria-busy="true" aria-label="Loading NextCore">
+    <div className="flex min-h-screen" aria-busy="true" aria-label="Loading">
       <aside className="hidden h-screen w-[232px] shrink-0 flex-col gap-4 border-r border-sidebar-border bg-sidebar p-3 lg:flex">
         <div className="flex items-center gap-2 px-1 py-1">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/favicon.svg" alt="" className="h-7 w-7" />
-          <span className="text-sm font-semibold text-white">NextCore</span>
+          {/* The clinic's own logo and name appear once the session has loaded (white label). */}
+          <div className="h-7 w-7 rounded-md bg-sidebar-strong/10" />
+          <div className="h-3 w-24 rounded bg-sidebar-strong/10" />
         </div>
         {Array.from({ length: 4 }, (_, g) => (
           <div key={g} className="grid gap-2 pt-2">
-            <div className="h-2 w-16 rounded bg-white/10" />
-            {Array.from({ length: g === 0 ? 2 : 3 }, (_, i) => <div key={i} className="h-7 rounded-md bg-white/[0.06]" />)}
+            <div className="h-2 w-16 rounded bg-sidebar-strong/10" />
+            {Array.from({ length: g === 0 ? 2 : 3 }, (_, i) => <div key={i} className="h-7 rounded-md bg-sidebar-strong/[0.06]" />)}
           </div>
         ))}
       </aside>

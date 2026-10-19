@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
 import { fmtDate } from '@/lib/format';
 import type { ClinicalSummary, Referral } from '@/lib/types';
+import { LetterFooter, Letterhead } from '@/components/documents/letterhead';
 
 interface Letter { referral: Referral; organization: { name: string; legalName: string | null; phone: string | null; email: string | null }; summary: ClinicalSummary }
 
@@ -29,10 +30,12 @@ function LetterView() {
         <Button size="sm" onClick={() => window.print()}><Printer /> Print</Button>
       </div>
       <article className="mx-auto max-w-3xl rounded-lg border bg-background p-10 text-sm leading-relaxed shadow-sm print:border-0 print:p-0 print:shadow-none">
-        <header className="mb-8 flex items-start justify-between border-b pb-4">
-          <div><h1 className="text-lg font-semibold">{practice}</h1><p className="text-muted-foreground">{[org.phone, org.email].filter(Boolean).join(' · ')}</p></div>
-          <div className="text-right"><p className="font-semibold">Referral letter</p><p>{r.referralNo}</p><p className="text-muted-foreground">{fmtDate(r.sentAt ?? r.createdAt)}</p>{r.urgency !== 'ROUTINE' && <p className="font-semibold uppercase text-destructive">{r.urgency.toLowerCase()}</p>}</div>
-        </header>
+        <div className="mb-8">
+          <Letterhead
+            clinic={org}
+            aside={<><p className="font-semibold">Referral letter</p><p>{r.referralNo}</p><p className="text-muted-foreground">{fmtDate(r.sentAt ?? r.createdAt)}</p>{r.urgency !== 'ROUTINE' && <p className="font-semibold uppercase text-destructive">{r.urgency.toLowerCase()}</p>}</>}
+          />
+        </div>
         {r.contact && <p className="mb-6">{r.contact.name}<br />{r.contact.practice}{r.contact.address && <><br />{r.contact.address}</>}</p>}
         <p className="mb-4">Dear {r.contact?.name ?? 'colleague'},</p>
         <p className="mb-4">Thank you for seeing the following patient. {r.reason}.</p>
@@ -51,6 +54,7 @@ function LetterView() {
         <div className="mt-10 w-64 border-b" />
         <p>{r.sentByName ?? r.createdByName}</p>
         <p className="text-muted-foreground">{practice}</p>
+        <LetterFooter />
       </article>
     </>
   );

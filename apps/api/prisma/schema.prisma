@@ -14,6 +14,44 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ───────────────────────────── Platform (multi-clinic hosting) ─────────────────────────────
+// Used only in the platform (control) database when BASE_DOMAIN is set: one row per hosted clinic,
+// each with its own database. The table exists, empty, in every clinic database too.
+
+enum TenantStatus {
+  PROVISIONING
+  ACTIVE
+  SUSPENDED
+  FAILED
+}
+
+model Tenant {
+  id                String       @id @default(uuid()) @db.Uuid
+  /// Subdomain: <slug>.<BASE_DOMAIN>
+  slug              String       @unique
+  name              String
+  databaseName      String       @unique
+  status            TenantStatus @default(PROVISIONING)
+  country           String       @db.Char(2)
+  branchName        String
+  ownerName         String
+  ownerEmail        String
+  /// TEMPORARY_PASSWORD or INVITATION
+  ownerAccess       String
+  /// Hash of the owner's temporary password, kept only until the clinic is set up.
+  ownerPasswordHash String?
+  /// The clinic's organization inside its own database, once set up.
+  organizationId    String?      @db.Uuid
+  lastError         String?
+  provisionedAt     DateTime?    @db.Timestamptz(3)
+  suspendedAt       DateTime?    @db.Timestamptz(3)
+  createdById       String?      @db.Uuid
+  createdAt         DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime     @updatedAt @db.Timestamptz(3)
+
+  @@index([status])
+}
+
 // ───────────────────────────── Tenancy & identity ─────────────────────────────
 
 enum OrganizationStatus {
@@ -21,37 +59,106 @@ enum OrganizationStatus {
   SUSPENDED
 }
 
+enum BrandFont {
+  SYSTEM
+  INTER
+  ROBOTO
+  OPEN_SANS
+  LATO
+  POPPINS
+  NUNITO
+  MERRIWEATHER
+}
+
+enum CornerStyle {
+  SHARP
+  STANDARD
+  ROUNDED
+}
+
+enum ThemeMode {
+  LIGHT
+  DARK
+  SYSTEM
+}
+
+enum LoginLayout {
+  SPLIT
+  CENTERED
+}
+
+enum LoginBackground {
+  MENU_COLOUR
+  GRADIENT
+  IMAGE
+}
+
+enum PrintLogoPosition {
+  LEFT
+  CENTER
+  RIGHT
+}
+
 model Organization {
-  id                 String             @id @default(uuid()) @db.Uuid
-  name               String
-  legalName          String?
-  registrationNumber String?
-  taxNumber          String?
-  country            String             @db.Char(2)
-  currency           String             @db.Char(3)
-  defaultTimezone    String
-  locale             String             @default("en")
-  email              String?
-  phone              String?
-  website            String?
-  addressLine1       String?
-  addressLine2       String?
-  city               String?
-  state              String?
-  postcode           String?
-  logoAttachmentId   String?            @db.Uuid
-  primaryColor       String?
-  dateFormat         String             @default("dd/MM/yyyy")
-  weightUnit         String             @default("kg")
-  temperatureUnit    String             @default("C")
-  disabledModules    String[]           @default([])
+  id                          String             @id @default(uuid()) @db.Uuid
+  name                        String
+  legalName                   String?
+  registrationNumber          String?
+  taxNumber                   String?
+  country                     String             @db.Char(2)
+  currency                    String             @db.Char(3)
+  defaultTimezone             String
+  locale                      String             @default("en")
+  email                       String?
+  phone                       String?
+  website                     String?
+  addressLine1                String?
+  addressLine2                String?
+  city                        String?
+  state                       String?
+  postcode                    String?
+  logoAttachmentId            String?            @db.Uuid
+  primaryColor                String?
+  /// White label (Settings → Branding, owner only): name in the menu, sign-in page and browser tab; null = clinic name.
+  brandName                   String?
+  sidebarColor                String?
+  /// Square icon for the browser tab; falls back to the logo.
+  iconAttachmentId            String?            @db.Uuid
+  loginHeadline               String?
+  loginMessage                String?
+  /// Changes when branding changes, so browsers fetch the new logo and icon.
+  brandingUpdatedAt           DateTime?          @db.Timestamptz(3)
+  // Branding: look and feel
+  brandFont                   BrandFont          @default(SYSTEM)
+  cornerStyle                 CornerStyle        @default(STANDARD)
+  /// Theme staff get until they choose their own (light / dark / follow the device).
+  defaultTheme                ThemeMode          @default(LIGHT)
+  /// Logo version for dark backgrounds (dark menu, dark sign-in panel, dark mode).
+  logoDarkAttachmentId        String?            @db.Uuid
+  // Branding: sign-in page
+  loginLayout                 LoginLayout        @default(SPLIT)
+  loginBackground             LoginBackground    @default(MENU_COLOUR)
+  loginBackgroundAttachmentId String?            @db.Uuid
+  loginFooter                 String?
+  // Branding: printed documents (letterhead)
+  printLogoPosition           PrintLogoPosition  @default(LEFT)
+  printHeaderText             String?
+  printFooterText             String?
+  printUseBrandColour         Boolean            @default(true)
+  // Branding: emails
+  emailSenderName             String?
+  emailSignature              String?
+  dateFormat                  String             @default("dd/MM/yyyy")
+  weightUnit                  String             @default("kg")
+  temperatureUnit             String             @default("C")
+  disabledModules             String[]           @default([])
   /// Setup checklist: steps the owner chose to skip for now, when the checklist was hidden, and when "Services you offer" was first saved.
-  setupSkipped       String[]           @default([])
-  setupHiddenAt      DateTime?          @db.Timestamptz(3)
-  modulesChosenAt    DateTime?          @db.Timestamptz(3)
-  status             OrganizationStatus @default(ACTIVE)
-  createdAt          DateTime           @default(now()) @db.Timestamptz(3)
-  updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
+  setupSkipped                String[]           @default([])
+  setupHiddenAt               DateTime?          @db.Timestamptz(3)
+  modulesChosenAt             DateTime?          @db.Timestamptz(3)
+  status                      OrganizationStatus @default(ACTIVE)
+  createdAt                   DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt                   DateTime           @updatedAt @db.Timestamptz(3)
 
   branches                 Branch[]
   memberships              Membership[]

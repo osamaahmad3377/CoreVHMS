@@ -27,6 +27,7 @@ import { fmtAge, fmtDateTime } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { DiagnosticOrder, LabResult } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { LetterFooter, Letterhead } from '@/components/documents/letterhead';
 
 type Entry = Record<string, { value: string; comment: string }>; // key = itemId:analyteId
 
@@ -160,7 +161,6 @@ function OrderView() {
     );
   };
   const clinic = org.data ?? { name: session.organization?.name ?? '' };
-  const clinicAddress = [clinic.addressLine1, clinic.addressLine2, clinic.city, clinic.postcode].filter(Boolean).join(', ');
 
   return (
     <>
@@ -381,11 +381,7 @@ function OrderView() {
       })()}
       {printing === 'report' && (
         <div className="hidden text-[10pt] print:block">
-          <header className="mb-2 border-b border-black pb-2">
-            <p className="text-[14pt] font-bold">{clinic.legalName || clinic.name}</p>
-            {(clinicAddress || clinic.phone || clinic.email) && <p>{[clinicAddress, clinic.phone, clinic.email].filter(Boolean).join(' · ')}</p>}
-            <h1 className="mt-1 text-[12pt] font-bold">Laboratory report{released ? '' : ' — PRELIMINARY'}</h1>
-          </header>
+          <Letterhead clinic={clinic} title={<h1 className="text-[12pt] font-bold">Laboratory report{released ? '' : ' — PRELIMINARY'}</h1>} />
           <p>
             {order.orderNo} · Patient: <b>{order.patient.name}</b> ({order.patient.species.name}, {enumLabel(order.patient.sex)}, {fmtAge(order.patient.dateOfBirth, order.patient.dobEstimated)}) · Owner: {order.client.displayName}
           </p>
@@ -427,6 +423,7 @@ function OrderView() {
             <p className="border-t border-black pt-1">{released ? `Validated by ${order.releasedByName}` : 'Validated by'} — signature</p>
             <p className="border-t border-black pt-1">Date {released ? fmtDateTime(order.releasedAt) : ''}</p>
           </div>
+          <LetterFooter />
         </div>
       )}
       {amend && <AmendDialog orderId={order.id} amend={amend} onClose={() => setAmend(null)} onSaved={refresh} />}

@@ -27,7 +27,16 @@ Membership *─* Branch    (MembershipBranch)
 User 1─* Session, AuthToken(PASSWORD_RESET | INVITATION), MfaChallenge
 AuditEvent (organizationId nullable for pre-tenant events such as failed logins)
 Counter (organizationId, key) → value
+Tenant (slug unique, databaseName unique, status PROVISIONING|ACTIVE|SUSPENDED|FAILED, owner, organizationId)
 ```
+**Branding** (white label) lives on `Organization`: `brandName`, `logoAttachmentId`, `iconAttachmentId`,
+`primaryColor`, `sidebarColor` (both `#rrggbb`, check constraints), `loginHeadline`, `loginMessage` and
+`brandingUpdatedAt` (cache-busting for image URLs). Logo and icon are attachments of target `Branding`.
+**Multi-clinic hosting** (`BASE_DOMAIN` set): the database in `DATABASE_URL` is the *platform* database —
+`Tenant` rows (one per hosted clinic), super admin `User` rows (`isPlatformAdmin`) and platform audit events.
+Each clinic has its own database `vcms_t_<slug>` with the full schema and normally one `Organization`; the
+`organizationId` scoping above still applies inside it. All databases share one schema and one migration
+history, so `Tenant` exists (empty) in clinic databases too. Without `BASE_DOMAIN`, `Tenant` is unused.
 - `User` is global (one login across organizations); `Membership` carries per-organization status, job title, clinician flag and professional registration number.
 - `Session.tokenHash` = SHA-256 of an opaque random token; the token itself is only in the HttpOnly cookie.
 - MFA secrets are AES-256-GCM encrypted (`mfaSecretEnc`); recovery codes are stored as SHA-256 hashes.

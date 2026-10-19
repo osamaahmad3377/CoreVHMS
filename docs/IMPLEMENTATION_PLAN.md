@@ -333,3 +333,150 @@ Items from the feature matrix that need no external device, data source or provi
     - The hospital test discharges a stay left over from an interrupted run.
     - Pharmacy quantities pluralised ("14 tablets", "… handed over").
 
+
+### 2026-10-19 — Multi-clinic hosting: one database per clinic, subdomains, super admin
+- **Requested by the owner:** host many clinics from one installation. A super admin adds clinics. Each new clinic gets its own database, created automatically, and each clinic uses the software at its own subdomain.
+- **Decisions (owner):**
+  - A separate PostgreSQL database for each clinic, rather than a shared database or a schema per clinic.
+  - Only the super admin adds clinics.
+  - The domain comes from configuration (`BASE_DOMAIN`).
+- **How it works:**
+  - `DATABASE_URL` is the platform database: clinics (`Tenant`), super admins and platform audit events.
+  - Every request's address (`X-Forwarded-Host`, set by the Next.js proxy) is mapped to a clinic. `PrismaService.raw`/`db` then return that clinic's client, from a pool that closes clients idle for 10 minutes. Because of this, no module code changed.
+  - Unknown, paused and unfinished clinics, and the bare domain, get only `/health` and `/tenant`.
+  - Background jobs (reminders, message dispatch, hospital upkeep) run once per clinic database through `TenancyService.forEachDatabase`.
+  - Without `BASE_DOMAIN`, everything works as before.
+- **Adding a clinic:**
+  1. `POST /platform/clinics` records the clinic.
+  2. In the background, it creates `vcms_t_<slug>` and runs `prisma migrate deploy` on it.
+  3. Inside the new database it creates the organization, branch, system roles, owner, species, shop categories, starter price list and cash drawer.
+  - The owner gets either a temporary password, shown once (only its hash is kept, until set-up ends), or an invitation email with a link at the clinic's address.
+  - A failed set-up is recorded and can be retried; every step is safe to repeat.
+  - Other actions: pause, reactivate, and a new owner password. Everything is audited.
+- **Security:**
+  - Platform permission `platform.clinics.manage` is outside the role catalogue and is granted only to `isPlatformAdmin` users at the admin address.
+  - Only platform admins can sign in at the admin address.
+  - The Origin check requires a request to come from the address it is sent to.
+  - Self-registration is refused in multi-clinic mode.
+  - Email links use the clinic's own address.
+- **Web:**
+  - The middleware routes by address: `admin.` → `/platform`, the bare domain → `/find-clinic`, and a clinic address → the app, with `/register` closed.
+  - Super admin Clinics page: list with status, Add clinic dialog (address suggested from the name), owner password dialog, per-clinic actions, auto-refresh while a clinic is setting up.
+  - The sign-in page names the clinic or says "Super admin sign-in".
+  - New "Find your clinic" page.
+- **Operations:**
+  - `node dist/cli/platform.js migrate | create-admin | add-existing | list` (`npm run platform -w @vcms/api -- …` in development). The Docker entrypoint now runs `migrate` for all databases.
+  - New `scripts/backup-all.sh`. `backup.sh` has `INCLUDE_STORAGE=false`, and `verify-backup.sh` and `restore.sh` handle database-only backups.
+  - Compose and web image settings: `BASE_DOMAIN`, `PLATFORM_SUBDOMAIN`, `DB_NAME`.
+  - Guide: DEPLOYMENT.md §8.
+- **Schema:** migration `platform_tenants` (enum `TenantStatus`, table `Tenant`).
+- **Also fixed:** the clinical activity report labelled a diagnosis with whichever spelling the database returned first. It now uses the first-recorded spelling (this caused an intermittent `reports-clinical` failure).
+- **Tests executed:**
+  - API: 189/189 in 34 suites. New `multi-clinic.int-spec.ts` (8 tests, real databases):
+    - addresses and the bare domain;
+    - super admin sign-in rules;
+    - address validation;
+    - creating a clinic with a temporary password;
+    - a second clinic with an invitation;
+    - isolation of records, accounts and cookies;
+    - jobs visiting every clinic;
+    - pause and reactivate;
+    - new owner password;
+    - failed set-up and retry.
+  - API unit: new `hosts.spec.ts` (address mapping, origins, database names).
+  - Shared: 35/35. ESLint and `tsc` clean. The web production build succeeds.
+  - Manual run in multi-clinic mode on separate ports (API, Next.js and the CLI against local PostgreSQL):
+    - The existing demo database was hosted as `demo`.
+    - A super admin added two clinics, each ready in about 4 seconds.
+    - Their owners signed in at their own addresses, and accounts were refused across clinics.
+    - A cross-address POST was refused.
+    - The UI was driven in headless Chromium (find clinic → clinic sign-in → super admin → add clinic → owner first sign-in) with no console errors and no sideways scrolling at 390 px.
+    - `backup-all.sh` backed up all databases, and `verify-backup.sh` passed on a clinic backup and on the platform backup.
+- **Not included:**
+  - Deleting a clinic or renaming its address.
+  - Custom domains.
+  - Per-clinic plans or billing.
+  - Moving uploaded files into per-clinic folders. Files stay in one store, keyed by organization id.
+
+### 2026-10-19 — White-label branding (owner only)
+- **Requested by the owner:** make the app white label: each clinic uploads its logo and sets its colours. Only the clinic owner may do this.
+- **What a clinic can set** (Settings → Branding, with a live light/dark preview):
+  - the name shown in the app (defaults to the clinic name);
+  - the logo;
+  - a separate browser-tab icon (falls back to the logo);
+  - a main colour (buttons, links, highlights) and a menu colour;
+  - a sign-in page headline and message.
+- **Where it shows:**
+  - The menu (logo and name).
+  - The whole colour theme, in light and dark mode.
+  - The clinic's sign-in page: side panel, logo above the form on phones, and "Sign in to …".
+  - The browser-tab title and icon.
+  - Receipts and printouts (logo).
+  - Staff emails: invitation and password reset use the clinic's name, button colour and footer, and "NextCore" no longer appears. The authenticator app lists the clinic's name.
+  - In multi-clinic mode, and in a single installation with one organization, the sign-in page and first paint already carry the branding. The root layout fetches `/tenant` on the server, so there is no flash of the default look.
+- **Readable colours:** `brandThemeVariables` (shared) keeps the chosen colour when it reads well. Otherwise it changes only its lightness: links and controls meet 3:1 against white and against the dark background, and button text meets 4.5:1. Menu text switches between light and dark for the menu colour. New sidebar tokens `--sidebar-strong` and `--sidebar-hover` replace hard-coded white.
+- **Owner only:**
+  - New permission `branding.manage`, held only by the system owner role (data migration for existing clinics).
+  - It is listed in `OWNER_ONLY_PERMISSIONS`: left out of the role editor's catalogue and refused when creating or editing any role.
+  - Logo and icon uploads use the new attachment target `Branding` (write: `branding.manage`).
+  - `POST /organization/logo` now needs `branding.manage`, where it used to need `org.manage`.
+- **API:**
+  - `GET`/`PUT /organization/branding`;
+  - `POST /organization/logo|icon` (set or remove);
+  - `GET /organization/logo|icon`;
+  - public `/tenant` with branding, and public `GET /tenant/logo|icon` (serve only the clinic's own logo or icon, images only);
+  - `organization.branding` in the session.
+  - `primaryColor` moved from the organization form to branding.
+- **Schema:** migration `clinic_branding` (`brandName`, `sidebarColor`, `iconAttachmentId`, `loginHeadline`, `loginMessage`, `brandingUpdatedAt`). Existing colours are lowercased, and both colours get `#rrggbb` check constraints.
+- **Tests executed:**
+  - Shared 40/40. New `branding.test.ts`: validation; contrast for light, dark, white and black colours; menu text; only the owner template has the permission.
+  - API 193/193 in 35 suites. New `branding.int-spec.ts`:
+    - defaults, save and audit, session;
+    - logo and icon upload, fallback, removal, and only this clinic's branding images;
+    - a practice manager is refused everywhere, and the permission cannot be put into a role;
+    - branded invitation and reset emails.
+  - `multi-clinic.int-spec.ts` now also checks that each clinic's public sign-in branding is its own.
+  - ESLint and `tsc` clean. The web production build succeeds.
+  - Browser run (headless Chromium, multi-clinic dev servers), as the demo owner:
+    - set the name, colours, sign-in text, logo and icon;
+    - the dashboard, tab title, icon and sign-in page carried them, server-rendered;
+    - a light menu colour stayed readable;
+    - a practice manager saw no Branding entry and was refused the page;
+    - no console errors in three consecutive runs.
+- **Not included:** custom fonts, a custom domain per clinic, and branding the super admin area (it stays NextCore).
+
+### 2026-10-19 — Advanced white-label branding
+- **Requested by the owner:** "make it more advanced". They chose look and feel, sign-in page design, and printouts and emails. Branding stays owner-only.
+- **Look and feel:**
+  - eight ready-made themes (`BRAND_PRESETS`: colours, font, corners in one click);
+  - a font from seven self-hosted Google fonts plus the device font. `next/font` downloads them at build time and loads them only when used, through `--font-brand`;
+  - corner style (sharp, standard, rounded), through `--radius`;
+  - the clinic's default light/dark/device theme for staff who have not chosen one. Their own choice is remembered and wins;
+  - a logo version for dark backgrounds, used on dark menus, the sign-in panel and in dark mode.
+- **Sign-in page** (`SignInFrame`):
+  - layout: side panel or centred card;
+  - background: menu colour, a blend into the main colour, or an uploaded photo darkened for readable text;
+  - a footer line;
+  - on phones, the logo sits above the form.
+- **Printouts:** a shared `Letterhead` and `LetterFooter` replace the hand-built headers of invoices, purchase orders, vaccination certificates, discharge summaries, lab reports, surgical reports, referral letters and claim forms. They add:
+  - the logo on the left, centre or right;
+  - a line under the clinic name and a footer text;
+  - name and rules in the brand colour, falling back to black for light colours or when turned off.
+- **Emails:** every clinic email carries the clinic's sender name ("Name" <platform address>, so SPF/DKIM are unchanged), Reply-To set to the clinic's email, its signature (text and HTML) and its colour. This covers invitations, password resets, and reminders and client messages through the dispatcher.
+- **Settings → Branding** is reorganised into four tabs (Look & feel, Sign-in page, Printouts, Emails). Each tab has a live preview of the unsaved draft: the app in light/dark, the scaled sign-in page, the top of a printed invoice, and an email. There is a sticky Save / Undo bar.
+- **API and schema:**
+  - migration `branding_advanced`: enums `BrandFont`, `CornerStyle`, `ThemeMode`, `LoginLayout`, `LoginBackground`, `PrintLogoPosition`; image columns `logoDarkAttachmentId` and `loginBackgroundAttachmentId`; text fields with database length checks;
+  - `POST`/`GET /organization/logo-dark|login-background`, and public `GET /tenant/logo-dark|login-background`;
+  - sender names may not contain `<`, `>`, `"`, `@` or line breaks (header safety).
+- **Tests executed:**
+  - Shared 43/43 (font and corner variables, preset readability, sender-name safety).
+  - API 195/195 in 35 suites. New tests: saving every new setting and rejecting invalid ones; dark logo and sign-in photo upload; practice manager refused; a client message dispatched with the clinic's From name, Reply-To and signature.
+  - ESLint and `tsc` clean. The web production build succeeds with the fonts bundled.
+  - Browser run as the demo owner:
+    - applied the Lavender theme, both logos, a centred card on a photo, a centred letterhead with header and footer, and a sender name and signature;
+    - the dashboard used Poppins, rounded corners and the white logo on the dark menu;
+    - the sign-in page (desktop and phone) and a printed real invoice carried the branding;
+    - a real email in Mailpit had the sender name, Reply-To and signature;
+    - a clinic default of dark opened the app dark for a vet who had not chosen a theme;
+    - no console errors.
+- **Note:** building the web image needs internet access once (fonts).

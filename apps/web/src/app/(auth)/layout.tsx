@@ -1,9 +1,14 @@
 import { PawPrint, ShieldCheck, Stethoscope, Tractor } from 'lucide-react';
+import { SignInFrame } from '@/components/branding/sign-in-frame';
+import { hostInfo } from '@/lib/host-server';
 
-export default function AuthLayout({ children }: { children: React.ReactNode }) {
+/** Sign-in pages. On a clinic's own address they carry the clinic's branding and sign-in design (white label). */
+export default async function AuthLayout({ children }: { children: React.ReactNode }) {
+  const branding = (await hostInfo())?.clinic?.branding;
+  if (branding) return <SignInFrame branding={branding}>{children}</SignInFrame>;
   return (
     <div className="grid min-h-screen lg:grid-cols-[1fr_minmax(480px,560px)]">
-      <div className="relative hidden flex-col justify-between overflow-hidden bg-sidebar p-10 text-white lg:flex">
+      <div className="relative hidden flex-col justify-between overflow-hidden bg-sidebar p-10 text-sidebar-strong lg:flex">
         <div className="flex items-center gap-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/favicon.svg" alt="" className="h-9 w-9" />

@@ -6,7 +6,8 @@ import { CSRF_HEADER } from '../../common/auth/session-cookies';
 import { RequestContext } from '../../common/context/request-context';
 import { safeEqual } from '../../common/crypto/crypto';
 import { forbidden } from '../../common/http/errors';
-import { env } from '../../config/env';
+import { isAllowedOrigin } from '../../common/tenancy/hosts';
+import { requestHost } from '../../common/tenancy/tenant-resolver.middleware';
 import { PORTAL_SESSION_COOKIE, PortalAuthService } from './portal-auth.service';
 
 const SAFE = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -25,7 +26,7 @@ export class PortalGuard implements CanActivate {
     const unsafe = !SAFE.has(req.method);
     if (unsafe) {
       const origin = req.header('origin');
-      if (origin && origin !== new URL(env().APP_URL).origin && origin !== `http://localhost:${env().PORT}`) throw forbidden('Cross-origin request rejected');
+      if (origin && !isAllowedOrigin(origin, requestHost(req))) throw forbidden('Cross-origin request rejected');
     }
     const token = req.cookies?.[PORTAL_SESSION_COOKIE] as string | undefined;
     const ctx = token ? await this.auth.resolve(token) : null;

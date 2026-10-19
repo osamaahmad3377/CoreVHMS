@@ -36,6 +36,8 @@ export class TestClient {
   csrf = '';
   branchId?: string;
   session: any;
+  /** Multi-clinic tests: the web address the request is sent to (forwarded as X-Forwarded-Host). */
+  host?: string;
 
   constructor(
     private readonly app: INestApplication,
@@ -58,6 +60,7 @@ export class TestClient {
     const r = (request(this.app.getHttpServer()) as any)[method](`/api/v1${path}`).set('Cookie', this.cookies.join('; '));
     if (this.csrf && method !== 'get') r.set('x-csrf-token', this.csrf);
     if (this.branchId) r.set('x-branch-id', this.branchId);
+    if (this.host) r.set('x-forwarded-host', this.host);
     return r as request.Test;
   }
 

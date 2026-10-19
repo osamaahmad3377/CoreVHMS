@@ -4,6 +4,7 @@ import { ADMISSION_OUTCOMES, enumLabel } from '@vcms/shared';
 import { AlertTriangle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { LetterFooter, Letterhead } from '../documents/letterhead';
 import type { ClinicHeader } from '../billing/invoice-document';
 import { Field } from '../forms/field';
 import { FormError } from '../forms/form-error';
@@ -83,11 +84,7 @@ export function DischargeDialog({ admission, open, onOpenChange }: { admission: 
 export function DischargeSummary({ admission: a, clinic }: { admission: Admission; clinic: ClinicHeader | null }) {
   return (
     <article className="mx-auto max-w-3xl bg-white p-8 text-[11pt] leading-relaxed text-black">
-      <header className="mb-4 border-b border-black pb-3">
-        <p className="text-lg font-bold">{clinic?.legalName || clinic?.name}</p>
-        <p className="text-sm">{[clinic?.addressLine1, clinic?.city, clinic?.phone].filter(Boolean).join(' · ')}</p>
-        <p className="mt-2 text-base font-bold">Hospital discharge summary — {a.admissionNo}</p>
-      </header>
+      <Letterhead clinic={clinic} title={<p className="text-base font-bold">Hospital discharge summary — {a.admissionNo}</p>} />
       <dl className="mb-4 grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
         <div><dt className="inline font-semibold">Patient: </dt><dd className="inline">{a.patient.name} ({a.patient.species.name}{a.patient.breed ? `, ${a.patient.breed.name}` : ''})</dd></div>
         <div><dt className="inline font-semibold">Owner: </dt><dd className="inline">{a.client.displayName}</dd></div>
@@ -108,6 +105,7 @@ export function DischargeSummary({ admission: a, clinic }: { admission: Admissio
       )}
       {a.followUpAt && <p className="font-semibold">Please book a check-up for {fmtDate(a.followUpAt)}.</p>}
       <p className="mt-6 text-sm">If you are worried about {a.patient.name} at any time, contact us{clinic?.phone ? ` on ${clinic.phone}` : ''}.</p>
+      <LetterFooter />
     </article>
   );
 }

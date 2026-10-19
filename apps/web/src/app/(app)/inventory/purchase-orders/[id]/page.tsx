@@ -17,6 +17,7 @@ import { api } from '@/lib/api';
 import { fmtDate, fmtDateTime, fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { PurchaseOrder } from '@/lib/types';
+import { LetterFooter, Letterhead } from '@/components/documents/letterhead';
 
 function OrderView() {
   const { id } = useParams<{ id: string }>();
@@ -128,20 +129,17 @@ function PurchaseOrderDocument({ po, clinic, currency, deliverTo }: { po: Purcha
   const b = po.location?.branch;
   return (
     <article className="hidden bg-white p-8 text-[10.5pt] text-black print:block">
-      <header className="flex justify-between gap-6 border-b border-black pb-4">
-        <div>
-          <p className="text-lg font-bold">{clinic?.legalName || clinic?.name}</p>
-          <p>{[clinic?.addressLine1, clinic?.addressLine2, clinic?.city, clinic?.postcode].filter(Boolean).join(', ')}</p>
-          <p>{[clinic?.phone, clinic?.email].filter(Boolean).join(' · ')}</p>
-          {clinic?.taxNumber && <p>Tax number: {clinic.taxNumber}</p>}
-        </div>
-        <div className="text-right">
-          <p className="text-lg font-bold">{po.status === 'DRAFT' ? 'DRAFT PURCHASE ORDER' : 'PURCHASE ORDER'}</p>
-          <p>{po.poNo}</p>
-          <p>Date: {fmtDate(po.approvedAt ?? po.createdAt)}</p>
-          {po.expectedAt && <p>Delivery by: {fmtDate(po.expectedAt)}</p>}
-        </div>
-      </header>
+      <Letterhead
+        clinic={clinic}
+        aside={
+          <>
+            <p className="text-lg font-bold">{po.status === 'DRAFT' ? 'DRAFT PURCHASE ORDER' : 'PURCHASE ORDER'}</p>
+            <p>{po.poNo}</p>
+            <p>Date: {fmtDate(po.approvedAt ?? po.createdAt)}</p>
+            {po.expectedAt && <p>Delivery by: {fmtDate(po.expectedAt)}</p>}
+          </>
+        }
+      />
       <section className="grid grid-cols-2 gap-6 py-4">
         <div>
           <p className="text-xs uppercase">Supplier</p>
@@ -181,6 +179,7 @@ function PurchaseOrderDocument({ po, clinic, currency, deliverTo }: { po: Purcha
         <div><p>Approved by: {po.approvedByName ?? '________________________'}</p><p className="mt-8 border-t border-black pt-1">Signature</p></div>
       </footer>
       <p className="mt-6 text-xs">Please quote {po.poNo} on your delivery note and invoice.</p>
+      <LetterFooter />
     </article>
   );
 }

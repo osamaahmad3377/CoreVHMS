@@ -4,7 +4,9 @@ import { MessageChannel, OutboundMessage, Prisma } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { notFound, ruleViolation } from '../../common/http/errors';
+import { EmailBrand, emailBrandOf } from '../../common/mail/mail.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { TenancyService } from '../../common/tenancy/tenancy.service';
 import type { ScopedTx } from '../../common/prisma/tenant-extension';
 import { ChannelRegistry } from './channels';
 import { renderTemplate, TemplatesService } from './templates.service';
@@ -43,6 +45,7 @@ export class MessagesService {
     private readonly audit: AuditService,
     private readonly channels: ChannelRegistry,
     private readonly templates: TemplatesService,
+    private readonly tenancy: TenancyService,
   ) {}
 
   /** Stores a message for delivery. Returns the existing message when the dedupe key was already used. */
@@ -155,7 +158,7 @@ export class MessagesService {
     if (process.env.NODE_ENV === 'test' || this.dispatching) return;
     this.dispatching = true;
     try {
-      await this.dispatch();
+      await this.tenancy.forEachDatabase('Message dispatch', () => this.dispatch());
     } catch (e) {
       this.log.error(`Dispatch failed: ${(e as Error).message}`);
     } finally {
@@ -178,6 +181,15 @@ export class MessagesService {
         ORDER BY "nextAttemptAt" LIMIT ${limit} FOR UPDATE SKIP LOCKED
       ) RETURNING *`;
     const sentLastMinute = new Map<string, number>();
+    // Each clinic's emails carry its own sender name, colour, reply-to and signature.
+    const brands = new Map<string, EmailBrand | undefined>();
+    const brandOf = async (orgId: string) => {
+      if (!brands.has(orgId)) {
+        const org = await raw.organization.findUnique({ where: { id: orgId } });
+        brands.set(orgId, org ? emailBrandOf(org) : undefined);
+      }
+      return brands.get(orgId);
+    };
     let sent = 0;
     let failed = 0;
     for (const m of claimed) {
@@ -188,7 +200,7 @@ export class MessagesService {
         await raw.outboundMessage.update({ where: { id: m.id }, data: { status: 'QUEUED', attempts: m.attempts - 1, nextAttemptAt: new Date(Date.now() + 60_000) } });
         continue;
       }
-      const result = await this.channels.get(m.channel).send({ recipient: m.recipient, subject: m.subject, body: m.body });
+      const result = await this.channels.get(m.channel).send({ recipient: m.recipient, subject: m.subject, body: m.body, brand: await brandOf(m.organizationId) });
       if (result.ok) {
         await raw.outboundMessage.update({ where: { id: m.id }, data: { status: 'SENT', sentAt: new Date(), providerMessageId: result.providerMessageId ?? null, lastError: null } });
         sentLastMinute.set(m.organizationId, (sentLastMinute.get(m.organizationId) ?? 0) + 1);

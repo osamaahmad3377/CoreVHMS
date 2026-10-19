@@ -3,9 +3,11 @@
 # and row counts. Old backups beyond RETENTION_DAYS are removed (the newest KEEP_MIN are always kept).
 #   scripts/backup.sh                      # development stack
 #   COMPOSE_FILE=docker-compose.prod.yml DB_SERVICE=db STORAGE_SERVICE=api ENV_FILE=.env.production scripts/backup.sh
+# INCLUDE_STORAGE=false backs up the database only (used by backup-all.sh for each clinic database).
 source "$(dirname "$0")/backup-common.sh"
 RETENTION_DAYS="${RETENTION_DAYS:-30}"
 KEEP_MIN="${KEEP_MIN:-7}"
+INCLUDE_STORAGE="${INCLUDE_STORAGE:-true}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 OUT="$BACKUP_DIR/vcms-$STAMP"
 mkdir -p "$OUT"
@@ -17,10 +19,13 @@ dc exec -T "$DB_SERVICE" pg_dump -U "$DB_USER" -d "$DB_NAME" --format=custom --c
 row_counts > "$OUT/counts-after.tsv"
 psql_db "$DB_NAME" -c "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL ORDER BY migration_name" > "$OUT/migrations.txt"
 
-echo "→ Backing up uploaded files from $STORAGE_PATH"
-if [ -n "$STORAGE_SERVICE" ]; then
+if [ "$INCLUDE_STORAGE" != "true" ]; then
+  echo "→ Uploaded files not included (INCLUDE_STORAGE=false)"
+elif [ -n "$STORAGE_SERVICE" ]; then
+  echo "→ Backing up uploaded files from $STORAGE_PATH"
   dc exec -T "$STORAGE_SERVICE" tar -C "$STORAGE_PATH" -czf - . > "$OUT/storage.tar.gz"
 elif [ -d "$STORAGE_PATH" ]; then
+  echo "→ Backing up uploaded files from $STORAGE_PATH"
   tar -C "$STORAGE_PATH" -czf "$OUT/storage.tar.gz" .
 else
   tar -czf "$OUT/storage.tar.gz" -T /dev/null
@@ -28,7 +33,7 @@ fi
 
 # Sanity checks before declaring success.
 dc exec -T "$DB_SERVICE" pg_restore --list < "$OUT/database.dump" > /dev/null
-tar -tzf "$OUT/storage.tar.gz" > /dev/null
+[ -f "$OUT/storage.tar.gz" ] && tar -tzf "$OUT/storage.tar.gz" > /dev/null
 cat > "$OUT/manifest.json" <<JSON
 {
   "createdAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
@@ -36,8 +41,7 @@ cat > "$OUT/manifest.json" <<JSON
   "tables": $(wc -l < "$OUT/counts-after.tsv" | tr -d ' '),
   "migrations": $(wc -l < "$OUT/migrations.txt" | tr -d ' '),
   "files": {
-    "database.dump": { "bytes": $(wc -c < "$OUT/database.dump" | tr -d ' '), "sha256": "$(sha "$OUT/database.dump")" },
-    "storage.tar.gz": { "bytes": $(wc -c < "$OUT/storage.tar.gz" | tr -d ' '), "sha256": "$(sha "$OUT/storage.tar.gz")" }
+    "database.dump": { "bytes": $(wc -c < "$OUT/database.dump" | tr -d ' '), "sha256": "$(sha "$OUT/database.dump")" }$( [ -f "$OUT/storage.tar.gz" ] && printf ',\n    "storage.tar.gz": { "bytes": %s, "sha256": "%s" }' "$(wc -c < "$OUT/storage.tar.gz" | tr -d ' ')" "$(sha "$OUT/storage.tar.gz")" )
   }
 }
 JSON

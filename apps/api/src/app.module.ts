@@ -9,6 +9,8 @@ import { CounterModule } from './common/counter/counter.module';
 import { MailModule } from './common/mail/mail.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { StorageModule } from './common/storage/storage.module';
+import { TenancyModule } from './common/tenancy/tenancy.module';
+import { PlatformModule } from './modules/platform/platform.module';
 import { AttachmentsModule } from './modules/attachments/attachments.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
@@ -46,6 +48,7 @@ import { env } from './config/env';
     }),
     ScheduleModule.forRoot(),
     PrismaModule,
+    TenancyModule,
     AuditModule,
     CounterModule,
     MailModule,
@@ -77,6 +80,7 @@ import { env } from './config/env';
     // The client portal is kept in the codebase but only loaded when CLIENT_PORTAL_ENABLED=true.
     ...(env().CLIENT_PORTAL_ENABLED ? [PortalModule] : []),
     OnboardingModule,
+    PlatformModule,
   ],
   controllers: [HealthController],
   providers: [

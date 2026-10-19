@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Branding } from '../branding';
 import type { OptionalModule } from '../modules';
 
 export const passwordPolicy = z
@@ -83,6 +84,8 @@ export interface SessionContext {
     logoUrl: string | null;
     /** Optional areas this clinic offers (Settings → Services you offer); the rest are hidden, never deleted. */
     enabledModules: OptionalModule[];
+    /** White label: name, logo, icon and colours (Settings → Branding, owner only). */
+    branding: Branding;
   } | null;
   branch: { id: string; name: string; timezone: string } | null;
   branches: { id: string; name: string; timezone: string }[];
@@ -92,4 +95,6 @@ export interface SessionContext {
   csrfToken: string;
   /** Optional product areas switched on for this installation. */
   features: { clientPortal: boolean };
+  /** Signed in at the super admin address (multi-clinic hosting). */
+  platform: boolean;
 }

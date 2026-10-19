@@ -34,6 +34,11 @@
     --sidebar-foreground: 200 15% 82%;
     --sidebar-border: 200 20% 20%;
     --sidebar-active: 174 60% 32%;
+    /* Brightest text in the side menu and its hover tint; clinics with a light menu colour get dark values (Branding). */
+    --sidebar-strong: 0 0% 100%;
+    --sidebar-hover: 0 0% 100% / 0.05;
+    /* The clinic's font (Branding); the device's interface font by default. */
+    --font-brand: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   }
 
   .dark {
@@ -67,6 +72,8 @@
     --sidebar-foreground: 200 12% 78%;
     --sidebar-border: 200 20% 14%;
     --sidebar-active: 174 55% 30%;
+    --sidebar-strong: 0 0% 100%;
+    --sidebar-hover: 0 0% 100% / 0.05;
   }
 
   * {

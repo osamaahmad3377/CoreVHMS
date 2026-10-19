@@ -56,6 +56,13 @@ export class AttachmentsService {
       exists: async (id) => id === RequestContext.orgId(),
       auditDownloads: false,
     });
+    // White label: the clinic's logo and browser-tab icon. Owner only (Settings → Branding).
+    this.registerTarget('Branding', {
+      read: 'dashboard.view',
+      write: 'branding.manage',
+      exists: async (id) => id === RequestContext.orgId(),
+      auditDownloads: false,
+    });
     // A separate logo for printed receipts (e.g. a black-and-white version for thermal printers).
     this.registerTarget('ReceiptLogo', {
       read: 'dashboard.view',
@@ -162,6 +169,16 @@ export class AttachmentsService {
     if (this.targets.get(a.entityType)?.auditDownloads !== false) {
       this.audit.recordAsync({ action: 'attachment.downloaded', entityType: a.entityType, entityId: a.entityId, summary: a.fileName });
     }
+    return { meta: a, stream: this.storage.get(a.storageKey) };
+  }
+
+  /**
+   * The clinic's logo or icon for its public sign-in page. No permission check: the caller passes only an id
+   * the organization uses as its logo or icon, and only images are served.
+   */
+  async openBrandImage(id: string) {
+    const a = await this.prisma.db.attachment.findUnique({ where: { id } });
+    if (!a || a.deletedAt || !a.mimeType.startsWith('image/')) throw notFound('File');
     return { meta: a, stream: this.storage.get(a.storageKey) };
   }
 

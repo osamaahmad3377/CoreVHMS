@@ -1,9 +1,9 @@
 'use client';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { organizationUpdateSchema } from '@vcms/shared';
-import { Upload } from 'lucide-react';
-import { useRef, useState } from 'react';
+import Link from 'next/link';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { z } from 'zod';
@@ -44,10 +44,8 @@ interface Org {
 
 function OrgForm({ org }: { org: Org }) {
   const qc = useQueryClient();
-  const { refresh } = useSession();
+  const { refresh, can } = useSession();
   const [error, setError] = useState<string | null>(null);
-  const logoRef = useRef<HTMLInputElement>(null);
-  const [logoVersion, setLogoVersion] = useState(0);
   const form = useForm<z.input<typeof organizationUpdateSchema>>({
     resolver: zodResolver(organizationUpdateSchema),
     defaultValues: {
@@ -81,43 +79,18 @@ function OrgForm({ org }: { org: Org }) {
       setError(err instanceof Error ? err.message : 'Save failed');
     }
   });
-  const logo = useMutation({
-    mutationFn: async (file: File) => {
-      const fd = new FormData();
-      fd.append('entityType', 'Organization');
-      fd.append('entityId', org.id);
-      fd.append('category', 'logo');
-      fd.append('file', file);
-      const a = await api.upload<{ id: string }>('/attachments', fd);
-      await api.post('/organization/logo', { attachmentId: a.id });
-    },
-    onSuccess: () => {
-      toast.success('Logo updated');
-      setLogoVersion((v) => v + 1);
-      qc.invalidateQueries({ queryKey: ['receipt-settings'] });
-      qc.invalidateQueries({ queryKey: ['organization'] });
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
 
   return (
     <form onSubmit={save} className="grid gap-6" noValidate>
       {error && <FormError message={error} />}
-      <FormSection title="Branding" description="Shown on invoices, certificates and printed documents.">
-        <div className="flex items-center gap-4">
-          <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-md border bg-muted">
-            {org.logoAttachmentId ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={`/api/v1/organization/logo?v=${logoVersion}`} alt="Logo" className="h-full w-full object-contain" />
-            ) : (
-              <span className="text-xs text-muted-foreground">No logo</span>
-            )}
-          </div>
-          <input ref={logoRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(ev) => { const f = ev.target.files?.[0]; if (f) logo.mutate(f); ev.target.value = ''; }} />
-          <Button type="button" variant="outline" size="sm" onClick={() => logoRef.current?.click()} loading={logo.isPending}>
-            <Upload /> Upload logo
-          </Button>
-        </div>
+      <FormSection title="Clinic" description="Shown on invoices, certificates and printed documents.">
+        <p className="text-sm text-muted-foreground">
+          {can('branding.manage') ? (
+            <>The logo, colours and name shown in the app are in <Link href="/settings/branding" className="font-medium text-primary hover:underline">Branding</Link>.</>
+          ) : (
+            'The logo and colours are set by the clinic owner.'
+          )}
+        </p>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Clinic name" htmlFor="name" error={e.name} required>
             <Input id="name" {...form.register('name')} />

@@ -17,7 +17,7 @@ describe('Receipts & printing settings', () => {
     expect((await org.owner.get('/receipt-settings/logo')).status).toBe(404);
 
     // Branding logo is used by default.
-    const brand = await org.owner.upload('/attachments', { entityType: 'Organization', entityId: org.orgId, category: 'logo' }, { buffer: PNG, name: 'logo.png', type: 'image/png' });
+    const brand = await org.owner.upload('/attachments', { entityType: 'Branding', entityId: org.orgId, category: 'logo' }, { buffer: PNG, name: 'logo.png', type: 'image/png' });
     await org.owner.post('/organization/logo', { attachmentId: brand.body.id });
     const withBrand = (await org.owner.get('/receipt-settings')).body;
     expect(withBrand).toMatchObject({ brandingLogo: true, logoVersion: brand.body.id });

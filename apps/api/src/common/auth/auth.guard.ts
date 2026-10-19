@@ -7,7 +7,8 @@ import { SessionService } from '../../modules/auth/session.service';
 import { CSRF_HEADER, SESSION_COOKIE } from './session-cookies';
 import { ALLOW_DURING_PASSWORD_CHANGE, ANY_PERMISSIONS, IS_PORTAL, IS_PUBLIC, PERMISSIONS, SKIP_CSRF } from './decorators';
 import { safeEqual } from '../crypto/crypto';
-import { env } from '../../config/env';
+import { isAllowedOrigin } from '../tenancy/hosts';
+import { requestHost } from '../tenancy/tenant-resolver.middleware';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -70,7 +71,6 @@ export class AuthGuard implements CanActivate {
   private checkOrigin(req: Request) {
     const origin = req.header('origin');
     if (!origin) return; // non-browser clients; CSRF token still required for cookie sessions
-    const allowed = new Set([new URL(env().APP_URL).origin, `http://localhost:${env().PORT}`]);
-    if (!allowed.has(origin)) throw forbidden('Cross-origin request rejected');
+    if (!isAllowedOrigin(origin, requestHost(req))) throw forbidden('Cross-origin request rejected');
   }
 }

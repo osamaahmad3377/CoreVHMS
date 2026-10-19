@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
+import { markThemeChosen } from '@/lib/theme-choice';
 import { useSession } from '@/lib/session';
 import { useCreateActions } from './create-actions';
 import { useModKey } from '../help/shortcuts';
@@ -129,7 +130,7 @@ export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () 
           variant="ghost"
           size="icon"
           className="hidden sm:inline-flex"
-          onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+          onClick={() => { markThemeChosen(); setTheme(resolvedTheme === 'dark' ? 'light' : 'dark'); }}
           aria-label="Toggle dark mode"
         >
           {resolvedTheme === 'dark' ? <Sun /> : <Moon />}
@@ -162,7 +163,7 @@ export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () 
               </div>
             )}
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="sm:hidden" onSelect={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}>
+            <DropdownMenuItem className="sm:hidden" onSelect={() => { markThemeChosen(); setTheme(resolvedTheme === 'dark' ? 'light' : 'dark'); }}>
               {resolvedTheme === 'dark' ? <Sun /> : <Moon />} {resolvedTheme === 'dark' ? 'Light mode' : 'Dark mode'}
             </DropdownMenuItem>
             <DropdownMenuItem asChild>

@@ -735,7 +735,7 @@ At the end of each milestone, report:
 
 ## 32. Decisions and Current Status
 
-_Last updated: 2026-10-17. The detailed status is kept in `docs/FEATURE_MATRIX.md` and the progress log in `docs/IMPLEMENTATION_PLAN.md`; this section records decisions that change or narrow the brief above._
+_Last updated: 2026-10-19. The detailed status is kept in `docs/FEATURE_MATRIX.md` and the progress log in `docs/IMPLEMENTATION_PLAN.md`; this section records decisions that change or narrow the brief above._
 
 ### Decisions
 - **AI (section 12, Milestone 9):** deferred; not started.
@@ -761,6 +761,19 @@ _Last updated: 2026-10-17. The detailed status is kept in `docs/FEATURE_MATRIX.m
 - **New clinics:** an 11-step "Get your clinic ready" checklist, with Start and Skip for each step. New clinics get a starter price list (Consultation, Follow-up, Vaccination, Deworming at Rs 0, marked "Set your price") with linked appointment types, and a cash drawer per branch.
 - **Purchase-order approval:** a setting. Existing clinics keep the two-person rule; new clinics start with self-approval allowed.
 - **Allergy checks:** matched against the medicine name, ingredients and a clinic-entered drug family (e.g. "Penicillins"). The drug-family data is entered per product; none is hard-coded.
+- **White-label branding (2026-10-19):** each clinic's owner sets these in Settings → Branding:
+  - look and feel: ready-made themes, name, logos (including a dark-background version), browser-tab icon, colours, font, corner style and default light/dark theme;
+  - the sign-in page: layout, background (menu colour, colour blend or photo) and text;
+  - a letterhead on all printed documents;
+  - email sender name and signature.
+  - Only the owner role can do this. The permission cannot be given to any other role.
+  - Branding shows in the app, on the clinic's sign-in page, in the browser tab, on printouts and in staff emails.
+  - Colours are adjusted automatically where needed, so text stays readable.
+- **Multi-clinic hosting (2026-10-19):** switched on by `BASE_DOMAIN`.
+  - Each clinic has its own PostgreSQL database and web address, `<clinic>.<domain>`.
+  - Only the super admin adds clinics, at `admin.<domain>`. The new clinic's database is created, migrated and set up automatically.
+  - Self-registration is off in this mode.
+  - Without `BASE_DOMAIN` the installation keeps working as a single installation.
 
 ### Status
 - **Milestones 1–8:** complete.
@@ -777,6 +790,8 @@ _Last updated: 2026-10-17. The detailed status is kept in `docs/FEATURE_MATRIX.m
   - Receipt printing on 80/58 mm thermal paper with the clinic logo, configured in Settings → Receipts & printing.
   - Shop products: food, grooming, accessories and supplements, with clinic-managed categories, brand, pack size and photos at the shop counter, and a sales-by-category report.
   - QA pass across every role and phone width: broken layouts, midnight date errors, mismatched labels and dead-end links fixed; readable statements, CSV exports, stock history, reorder suggestions, dispensing batch picker, lab barcodes and many smaller polish items.
+  - Multi-clinic hosting with a super admin area, one database per clinic and subdomain addresses (DEPLOYMENT.md §8).
+  - White-label branding per clinic (owner only): logo, icon, colours, name and sign-in page.
   - Ease of use for first-day staff, based on usability walkthroughs as an untrained receptionist, vet, pharmacist, lab tech and owner:
     - Dashboard by role: reception sees Waiting now and Arriving next with Check in; the owner sees Money today.
     - Short menu names, and a grouped Settings home page.

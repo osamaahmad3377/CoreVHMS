@@ -8,13 +8,17 @@ SRC="${1:?usage: verify-backup.sh <backup directory>}"
 CHECK_DB="vcms_restore_check_$$"
 fail() { echo "✗ $*"; dc exec -T "$DB_SERVICE" dropdb -U "$DB_USER" --if-exists "$CHECK_DB" >/dev/null 2>&1 || true; exit 1; }
 
+has_storage() { grep -q '"storage.tar.gz"' "$SRC/manifest.json"; }
 for f in database.dump storage.tar.gz; do
+  [ "$f" = storage.tar.gz ] && ! has_storage && continue  # database-only backup (backup-all.sh, one clinic)
   want="$(grep "\"$f\"" "$SRC/manifest.json" | grep -o '"sha256": "[0-9a-f]*"' | cut -d'"' -f4)"
   [ "$(sha "$SRC/$f")" = "$want" ] || fail "checksum mismatch for $f"
 done
 echo "✓ Checksums match the manifest"
-tar -tzf "$SRC/storage.tar.gz" > /dev/null || fail "file archive is unreadable"
-echo "✓ File archive readable ($(tar -tzf "$SRC/storage.tar.gz" | grep -vc '/$' || true) entries)"
+if has_storage; then
+  tar -tzf "$SRC/storage.tar.gz" > /dev/null || fail "file archive is unreadable"
+  echo "✓ File archive readable ($(tar -tzf "$SRC/storage.tar.gz" | grep -vc '/$' || true) entries)"
+fi
 
 dc exec -T "$DB_SERVICE" createdb -U "$DB_USER" "$CHECK_DB"
 dc exec -T "$DB_SERVICE" pg_restore -U "$DB_USER" -d "$CHECK_DB" --no-owner --exit-on-error < "$SRC/database.dump" || fail "pg_restore failed"

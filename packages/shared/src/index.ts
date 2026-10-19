@@ -20,3 +20,5 @@ export * from './schemas/hospital';
 export * from './schemas/comms';
 export * from './schemas/livestock';
 export * from './schemas/services';
+export * from './schemas/platform';
+export * from './branding';

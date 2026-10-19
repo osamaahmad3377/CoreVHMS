@@ -11,6 +11,7 @@ import { api } from '@/lib/api';
 import { fmtDate, fmtMoney, fmtNumber } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { ClinicalSummary, InsuranceClaim } from '@/lib/types';
+import { LetterFooter, Letterhead } from '@/components/documents/letterhead';
 
 interface ClaimForm {
   claim: InsuranceClaim;
@@ -38,10 +39,9 @@ function Form() {
         <Button size="sm" onClick={() => window.print()}><Printer /> Print</Button>
       </div>
       <article className="mx-auto max-w-3xl rounded-lg border bg-background p-8 text-sm shadow-sm print:border-0 print:p-0 print:shadow-none">
-        <header className="mb-6 flex items-start justify-between border-b pb-4">
-          <div><h1 className="text-lg font-semibold">{practice}</h1><p className="text-muted-foreground">{[org.phone, org.email].filter(Boolean).join(' · ')}</p>{org.taxNumber && <p className="text-muted-foreground">Tax no. {org.taxNumber}</p>}</div>
-          <div className="text-right"><p className="text-base font-semibold">Insurance claim</p><p>{c.claimNo}</p><p className="text-muted-foreground">{fmtDate(c.submittedAt ?? c.createdAt)}</p></div>
-        </header>
+        <div className="mb-6">
+          <Letterhead clinic={org} aside={<><p className="text-base font-semibold">Insurance claim</p><p>{c.claimNo}</p><p className="text-muted-foreground">{fmtDate(c.submittedAt ?? c.createdAt)}</p></>} />
+        </div>
         <section className="mb-5 grid gap-6 sm:grid-cols-2">
           <table><tbody>
             {row('Insurer', c.policy.provider.name)}
@@ -80,6 +80,7 @@ function Form() {
           <div><div className="h-10 border-b" /><p className="mt-1 text-xs text-muted-foreground">Veterinarian’s signature and date — I confirm the treatment above was provided at this clinic.</p></div>
           <div><div className="h-10 border-b" /><p className="mt-1 text-xs text-muted-foreground">Policy holder’s signature and date</p></div>
         </section>
+        <LetterFooter />
       </article>
     </>
   );

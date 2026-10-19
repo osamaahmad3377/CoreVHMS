@@ -2,17 +2,14 @@ import { enumLabel } from '@vcms/shared';
 import type { ClinicHeader } from '../billing/invoice-document';
 import { fmtDate, fmtDateOnly } from '@/lib/format';
 import type { VaccinationCertificate } from '@/lib/types';
+import { LetterFooter, Letterhead } from '../documents/letterhead';
 
 /** Printable vaccination certificate built from recorded administrations (product, batch, date, vet). */
 export function CertificateDocument({ cert, clinic }: { cert: VaccinationCertificate; clinic: ClinicHeader | null }) {
   const p = cert.patient;
   return (
     <article className="mx-auto max-w-3xl bg-white p-8 text-[11pt] text-black">
-      <header className="mb-4 border-b-2 border-black pb-3 text-center">
-        <p className="text-lg font-bold">{clinic?.legalName || clinic?.name}</p>
-        <p className="text-sm">{[clinic?.addressLine1, clinic?.city, clinic?.phone].filter(Boolean).join(' · ')}</p>
-        <p className="mt-2 text-xl font-bold tracking-wide">VACCINATION CERTIFICATE</p>
-      </header>
+      <Letterhead clinic={clinic} title={<p className="text-center text-xl font-bold tracking-wide">VACCINATION CERTIFICATE</p>} />
       <dl className="mb-4 grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
         <div><dt className="inline font-semibold">Animal: </dt><dd className="inline">{p.name} (P-{String(p.number).padStart(6, '0')})</dd></div>
         <div><dt className="inline font-semibold">Species / breed: </dt><dd className="inline">{p.species}{p.breed ? ` · ${p.breed}` : ''}</dd></div>
@@ -45,6 +42,7 @@ export function CertificateDocument({ cert, clinic }: { cert: VaccinationCertifi
         <p className="border-t border-black pt-1">Veterinarian signature</p>
         <p className="border-t border-black pt-1">Clinic stamp · issued {fmtDate(cert.generatedAt)}</p>
       </div>
+      <LetterFooter />
     </article>
   );
 }

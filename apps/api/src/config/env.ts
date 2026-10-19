@@ -43,6 +43,22 @@ const envSchema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
   MAX_UPLOAD_MB: z.coerce.number().int().min(1).max(200).default(20),
+  /**
+   * Multi-clinic hosting. Unset: one installation serves the clinics in DATABASE_URL (single-clinic mode).
+   * Set (e.g. "nextcore.net.au" or "localhost"): each clinic has its own database and is reached at
+   * <slug>.<BASE_DOMAIN>; the super admin works at <PLATFORM_SUBDOMAIN>.<BASE_DOMAIN>, and DATABASE_URL
+   * is the platform database that lists the clinics.
+   */
+  BASE_DOMAIN: z
+    .string()
+    .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/, 'BASE_DOMAIN must be a lowercase host name such as nextcore.net.au')
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
+  PLATFORM_SUBDOMAIN: z.string().regex(/^[a-z][a-z0-9-]{0,30}$/).default('admin'),
+  /** Clinic databases are named <prefix><slug> on the same PostgreSQL server as DATABASE_URL. */
+  TENANT_DB_PREFIX: z.string().regex(/^[a-z][a-z0-9_]{0,20}$/).default('vcms_t_'),
+  /** Connections per clinic database held by each API process. */
+  TENANT_DB_POOL: z.coerce.number().int().min(1).max(50).default(5),
 });
 
 export type Env = z.infer<typeof envSchema>;

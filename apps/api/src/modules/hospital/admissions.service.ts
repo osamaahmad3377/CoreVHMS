@@ -7,6 +7,7 @@ import { RequestContext } from '../../common/context/request-context';
 import { CounterService, formatNumber } from '../../common/counter/counter.service';
 import { conflict, notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { TenancyService } from '../../common/tenancy/tenancy.service';
 import type { ScopedTx } from '../../common/prisma/tenant-extension';
 import { stableUuid } from '../../common/util/stable-uuid';
 import { ChargeCaptureService } from '../billing/charge-capture.service';
@@ -51,6 +52,7 @@ export class AdmissionsService {
     private readonly counters: CounterService,
     private readonly charges: ChargeCaptureService,
     private readonly treatments: TreatmentsService,
+    private readonly tenancy: TenancyService,
   ) {}
 
   // ── Daily charges ──
@@ -365,14 +367,16 @@ export class AdmissionsService {
   @Cron(CronExpression.EVERY_HOUR)
   async hourly() {
     if (process.env.NODE_ENV === 'test') return;
-    const orgs = await this.prisma.raw.admission.groupBy({ by: ['organizationId'], where: { status: 'ADMITTED' } });
-    for (const { organizationId } of orgs) {
-      try {
-        await RequestContext.runAs({ organizationId, userName: 'System' }, () => this.upkeep());
-      } catch (e) {
-        this.log.error(`Hospital upkeep failed for ${organizationId}: ${(e as Error).message}`);
+    await this.tenancy.forEachDatabase('Hospital upkeep', async () => {
+      const orgs = await this.prisma.raw.admission.groupBy({ by: ['organizationId'], where: { status: 'ADMITTED' } });
+      for (const { organizationId } of orgs) {
+        try {
+          await RequestContext.runAs({ organizationId, userName: 'System' }, () => this.upkeep());
+        } catch (e) {
+          this.log.error(`Hospital upkeep failed for ${organizationId}: ${(e as Error).message}`);
+        }
       }
-    }
+    });
   }
 
   /** Upkeep for the current organisation (also exposed for tests). */

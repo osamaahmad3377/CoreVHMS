@@ -19,6 +19,11 @@ export COMPOSE_FILE=docker-compose.prod.yml DB_SERVICE=db STORAGE_SERVICE=api EN
 
 ## 2. Backups
 
+**Multi-clinic hosting** (`BASE_DOMAIN` set): every clinic has its own database, so schedule
+`scripts/backup-all.sh` with `DB_NAME=vcms_platform` instead of `backup.sh`. It backs up the platform database
+with the uploaded files, then each clinic database on its own (`backups/clinics/<database>/…`), and exits
+non-zero if any clinic failed. See DEPLOYMENT.md §8.
+
 ```bash
 scripts/backup.sh                         # writes backups/vcms-<UTC timestamp>/
 scripts/verify-backup.sh backups/vcms-20261015T020000Z

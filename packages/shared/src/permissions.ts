@@ -16,6 +16,7 @@ export const PERMISSION_GROUPS = {
       'audit.read': 'View audit logs',
       'integrations.manage': 'Configure integrations and API keys',
       'privacy.manage': 'Export a client’s personal data and anonymise clients on request',
+      'branding.manage': 'Change the logo, colours and name shown in the app (owner only)',
     },
   },
   dashboard: {
@@ -174,6 +175,21 @@ const PERMISSION_SET = new Set<string>(ALL_PERMISSIONS);
 export function isPermission(value: string): value is Permission {
   return PERMISSION_SET.has(value);
 }
+
+/**
+ * Permissions only the clinic owner role holds: they cannot be put into any other role, so only owners have them.
+ */
+export const OWNER_ONLY_PERMISSIONS: readonly Permission[] = ['branding.manage'];
+
+/**
+ * Super admin permissions (multi-clinic hosting). Never part of a clinic role: the API grants them only to
+ * platform administrators signed in at the super admin address.
+ */
+export const PLATFORM_PERMISSIONS = {
+  'platform.clinics.manage': 'Add clinics, pause and reactivate them',
+} as const;
+export type PlatformPermission = keyof typeof PLATFORM_PERMISSIONS;
+export const ALL_PLATFORM_PERMISSIONS = Object.keys(PLATFORM_PERMISSIONS) as PlatformPermission[];
 
 export function hasPermission(
   granted: readonly string[] | ReadonlySet<string>,

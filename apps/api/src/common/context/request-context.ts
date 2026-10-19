@@ -13,6 +13,17 @@ export interface RequestContextStore {
   permissions: Set<string>;
   /** Set only by trusted background jobs that must operate across tenants. */
   system?: boolean;
+  /** Multi-clinic hosting: the clinic addressed by the request's subdomain; all data access uses its database. */
+  tenant?: TenantRef;
+  /** Multi-clinic hosting: the request came to the super admin address (platform database). */
+  platform?: boolean;
+}
+
+export interface TenantRef {
+  id: string;
+  slug: string;
+  name: string;
+  databaseName: string;
 }
 
 const storage = new AsyncLocalStorage<RequestContextStore>();
@@ -35,8 +46,13 @@ export const RequestContext = {
     if (!org) throw new Error('No organization in request context');
     return org;
   },
-  /** Run a function as a given tenant (seeding, jobs, tests). */
+  /** Run a function as a given organization (seeding, jobs, tests), staying in the current clinic database. */
   runAs<T>(partial: Partial<RequestContextStore> & { organizationId: string }, fn: () => T): T {
-    return storage.run({ requestId: 'system', permissions: new Set(), ...partial }, fn);
+    const current = storage.getStore();
+    return storage.run({ requestId: 'system', permissions: new Set(), tenant: current?.tenant, ...partial }, fn);
+  },
+  /** Run a function against one clinic's database (provisioning, background jobs). */
+  runInTenant<T>(tenant: TenantRef, fn: () => T): T {
+    return storage.run({ requestId: 'system', userName: 'System', permissions: new Set(), tenant }, fn);
   },
 };

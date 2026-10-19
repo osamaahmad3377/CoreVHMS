@@ -4,6 +4,7 @@ import { MessageChannel } from '@prisma/client';
 import { formatInTimeZone } from 'date-fns-tz';
 import { RequestContext } from '../../common/context/request-context';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { TenancyService } from '../../common/tenancy/tenancy.service';
 import { localParts } from '../../common/time/tz';
 import { MessagesService } from './messages.service';
 
@@ -32,6 +33,7 @@ export class RemindersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly messages: MessagesService,
+    private readonly tenancy: TenancyService,
   ) {}
 
   /** Preferred channel when usable, otherwise email, otherwise the preferred channel (logged as not sent). */
@@ -46,14 +48,16 @@ export class RemindersService {
   @Cron(CronExpression.EVERY_HOUR)
   async hourly() {
     if (process.env.NODE_ENV === 'test') return;
-    const orgs = await this.prisma.raw.organization.findMany({ where: { status: 'ACTIVE' }, select: { id: true } });
-    for (const o of orgs) {
-      try {
-        await RequestContext.runAs({ organizationId: o.id, userName: 'System' }, () => this.run());
-      } catch (e) {
-        this.log.error(`Reminders failed for ${o.id}: ${(e as Error).message}`);
+    await this.tenancy.forEachDatabase('Reminders', async () => {
+      const orgs = await this.prisma.raw.organization.findMany({ where: { status: 'ACTIVE' }, select: { id: true } });
+      for (const o of orgs) {
+        try {
+          await RequestContext.runAs({ organizationId: o.id, userName: 'System' }, () => this.run());
+        } catch (e) {
+          this.log.error(`Reminders failed for ${o.id}: ${(e as Error).message}`);
+        }
       }
-    }
+    });
   }
 
   /** Runs all reminder types for the current organisation. */

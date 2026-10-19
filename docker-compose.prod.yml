@@ -11,11 +11,11 @@ services:
     environment:
       POSTGRES_USER: vcms
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}
-      POSTGRES_DB: vcms
+      POSTGRES_DB: ${DB_NAME:-vcms}
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U vcms -d vcms"]
+      test: ["CMD-SHELL", "pg_isready -U vcms -d ${DB_NAME:-vcms}"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -29,7 +29,7 @@ services:
     env_file: ${ENV_FILE:-.env.production}
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://vcms:${POSTGRES_PASSWORD}@db:5432/vcms
+      DATABASE_URL: postgresql://vcms:${POSTGRES_PASSWORD}@db:5432/${DB_NAME:-vcms}
       STORAGE_LOCAL_DIR: /data/storage
       APP_VERSION: ${APP_VERSION:-latest}
     volumes:
@@ -45,6 +45,8 @@ services:
       args:
         API_URL: http://api:4000
         CLIENT_PORTAL_ENABLED: ${CLIENT_PORTAL_ENABLED:-false}
+        BASE_DOMAIN: ${BASE_DOMAIN:-}
+        PLATFORM_SUBDOMAIN: ${PLATFORM_SUBDOMAIN:-admin}
     image: nextcore-vcms-web:${APP_VERSION:-latest}
     restart: unless-stopped
     ports:

@@ -190,7 +190,8 @@ export class ReportsService {
         where: { ...branch, startedAt: range, status: { not: 'CANCELLED' } },
         select: { status: true, clinician: { select: { user: { select: { name: true } } } }, patient: { select: { species: { select: { name: true } } } } },
       }),
-      db.diagnosis.findMany({ where: { createdAt: range, encounter: branch }, select: { term: true, type: true } }),
+      // Oldest first, so a diagnosis is labelled with its first-recorded spelling.
+      db.diagnosis.findMany({ where: { createdAt: range, encounter: branch }, select: { term: true, type: true }, orderBy: { createdAt: 'asc' } }),
       db.admission.count({ where: { ...branch, admittedAt: range, status: { not: 'CANCELLED' } } }),
       db.admission.findMany({ where: { ...branch, dischargedAt: range }, select: { admittedAt: true, dischargedAt: true, outcome: true } }),
       db.surgery.findMany({ where: { ...branch, status: 'COMPLETED', completedAt: range }, select: { procedure: true, complications: true } }),

@@ -6,6 +6,7 @@ import { randomToken, sha256 } from '../../common/crypto/crypto';
 import { hashPassword, verifyPassword } from '../../common/crypto/password';
 import { conflict, notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { appUrl } from '../../common/tenancy/hosts';
 import { env } from '../../config/env';
 import { MessagesService } from '../comms/messages.service';
 
@@ -161,7 +162,7 @@ export class PortalAuthService {
       update: { isActive: true, portalUserId: user.id },
       create: { portalUserId: user.id, organizationId: ctx.organizationId!, clientId, invitedByName: ctx.userName },
     });
-    const link = user.status === 'ACTIVE' ? `${env().APP_URL}/portal/login` : `${env().APP_URL}/portal/accept?token=${await this.issueToken(user.id, 'INVITE')}`;
+    const link = user.status === 'ACTIVE' ? `${appUrl()}/portal/login` : `${appUrl()}/portal/accept?token=${await this.issueToken(user.id, 'INVITE')}`;
     await this.prisma.db.$transaction(async (tx) => {
       await this.messages.enqueueTemplate(tx, 'PORTAL_INVITE', 'EMAIL', { clinicName: org.name, clientName: personName, link }, { clientId, recipient: email, sourceType: 'PortalAccess', sourceId: access.id });
       await this.audit.record({ action: 'portal.invited', entityType: 'Client', entityId: clientId, summary: email }, tx);
@@ -207,7 +208,7 @@ export class PortalAuthService {
     if (!access) return { ok: true };
     const token = await this.issueToken(user.id, 'RESET');
     await RequestContext.runAs({ organizationId: access.organizationId, userName: 'Client portal' }, async () => {
-      await this.messages.enqueueTemplate(this.prisma.db, 'PORTAL_RESET', 'EMAIL', { clientName: user.name, link: `${env().APP_URL}/portal/reset?token=${token}` }, { clientId: access.clientId, recipient: user.email, sourceType: 'PortalUser', sourceId: user.id });
+      await this.messages.enqueueTemplate(this.prisma.db, 'PORTAL_RESET', 'EMAIL', { clientName: user.name, link: `${appUrl()}/portal/reset?token=${token}` }, { clientId: access.clientId, recipient: user.email, sourceType: 'PortalUser', sourceId: user.id });
     });
     return { ok: true };
   }

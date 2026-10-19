@@ -6,6 +6,8 @@ import helmet from 'helmet';
 import { requestContextMiddleware } from './common/context/request-context.middleware';
 import { AllExceptionsFilter } from './common/http/exception.filter';
 import { requestLoggerMiddleware } from './common/logging/request-logger.middleware';
+import { TenancyService } from './common/tenancy/tenancy.service';
+import { tenantResolverMiddleware } from './common/tenancy/tenant-resolver.middleware';
 import { env } from './config/env';
 
 /** Shared HTTP configuration for the server and integration tests. */
@@ -17,6 +19,7 @@ export function configureApp(app: INestApplication) {
   app.use(helmet({ contentSecurityPolicy: env().NODE_ENV === 'production' ? undefined : false }));
   app.use(cookieParser());
   app.use(requestContextMiddleware);
+  app.use(tenantResolverMiddleware(app.get(TenancyService)));
   if (env().LOG_REQUESTS) app.use(requestLoggerMiddleware);
   express.useBodyParser('json', { limit: '2mb' });
   app.setGlobalPrefix('api/v1');

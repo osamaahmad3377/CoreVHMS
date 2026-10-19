@@ -1,6 +1,7 @@
 'use client';
 import { useEffect } from 'react';
 import { FirstPasswordChange } from '@/components/auth/first-password';
+import { BrandTheme } from '@/components/branding/brand-theme';
 import { ConfirmProvider } from '@/components/confirm';
 import { AppShell } from '@/components/layout/app-shell';
 import { ShellSkeleton } from '@/components/layout/shell-skeleton';
@@ -34,6 +35,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
   return (
     <SessionProvider session={session.data}>
+      <BrandTheme branding={session.data.organization.branding} />
       <ConfirmProvider>
         <AppShell>{children}</AppShell>
       </ConfirmProvider>

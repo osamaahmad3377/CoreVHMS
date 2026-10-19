@@ -14,10 +14,6 @@ export const organizationUpdateSchema = z.object({
   city: optText(100),
   state: optText(100),
   postcode: optText(20),
-  primaryColor: z
-    .string()
-    .regex(/^#[0-9a-fA-F]{6}$/)
-    .nullish(),
   dateFormat: z.enum(['dd/MM/yyyy', 'MM/dd/yyyy', 'yyyy-MM-dd']).optional(),
   weightUnit: z.enum(['kg', 'lb']).optional(),
   temperatureUnit: z.enum(['C', 'F']).optional(),

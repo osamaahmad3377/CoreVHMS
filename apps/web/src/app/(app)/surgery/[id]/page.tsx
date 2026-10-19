@@ -34,6 +34,7 @@ import { useSession } from '@/lib/session';
 import { branchTime } from '@/lib/time';
 import type { AnaesthesiaReading, Product, Surgery } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { LetterFooter, Letterhead } from '@/components/documents/letterhead';
 
 const STEPS = ['SCHEDULED', 'PRE_OP', 'IN_PROGRESS', 'RECOVERY', 'COMPLETED'] as const;
 const PHASES = [
@@ -437,10 +438,7 @@ function SurgeryView() {
 
       {s.status === 'COMPLETED' && (
         <article className="hidden bg-white p-8 text-[10.5pt] text-black print:block">
-          <header className="mb-3 border-b border-black pb-2">
-            <p className="text-lg font-bold">{org.data?.legalName || org.data?.name}</p>
-            <p className="font-bold">Surgical report — {s.surgeryNo}</p>
-          </header>
+          <Letterhead clinic={org.data ?? null} title={<p className="font-bold">Surgical report — {s.surgeryNo}</p>} />
           <p><b>Patient:</b> {s.patient.name} ({s.patient.species.name}) · <b>Owner:</b> {s.client.displayName} · <b>Weight:</b> {fmtWeight(s.patient.latestWeightKg)}</p>
           <p><b>Procedure:</b> {s.procedure} · <b>Date:</b> {fmtDateTime(s.startedAt ?? s.scheduledAt)} · <b>ASA:</b> {s.asaGrade}{s.asaEmergency ? 'E' : ''}</p>
           <p><b>Team:</b> {s.team.map((t) => `${t.name} (${enumLabel(t.role)})`).join(', ')}</p>
@@ -450,6 +448,7 @@ function SurgeryView() {
           {s.postOpInstructions && <><h2 className="mt-2 font-bold">Aftercare</h2><p className="whitespace-pre-wrap">{s.postOpInstructions}</p></>}
           {s.followUpAt && <p className="mt-2 font-semibold">Post-operative check: {fmtDate(s.followUpAt)}</p>}
           <p className="mt-4 text-xs">Signed by {s.completedByName} on {fmtDateTime(s.completedAt)}{s.addenda?.length ? ` · ${s.addenda.length} addendum(s) on file` : ''}</p>
+          <LetterFooter />
         </article>
       )}
       <ConsentDialog s={s} open={consenting} onOpenChange={setConsenting} />

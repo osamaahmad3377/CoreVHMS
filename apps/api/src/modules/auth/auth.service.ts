@@ -9,8 +9,9 @@ import { RequestContext } from '../../common/context/request-context';
 import { decryptSecret, encryptSecret, randomToken, sha256 } from '../../common/crypto/crypto';
 import { hashPassword, verifyPassword } from '../../common/crypto/password';
 import { conflict, forbidden, ruleViolation } from '../../common/http/errors';
-import { escapeHtml, layout, MailService } from '../../common/mail/mail.service';
+import { EmailBrand, emailBrandOf, emailButton, escapeHtml, layout, MailService, NEXTCORE_EMAIL } from '../../common/mail/mail.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { appUrl, multiClinic } from '../../common/tenancy/hosts';
 import { OrgBootstrapService } from '../organizations/org-bootstrap.service';
 import { SessionService } from './session.service';
 
@@ -49,7 +50,9 @@ export class AuthService {
       });
     }
     const ok = await verifyPassword(user?.passwordHash, password);
-    if (!user || !ok || user.status !== 'ACTIVE') {
+    // The super admin address accepts platform administrators only.
+    const allowedHere = !RequestContext.get()?.platform || user?.isPlatformAdmin === true;
+    if (!user || !ok || user.status !== 'ACTIVE' || !allowedHere) {
       if (user) {
         const failed = user.failedLoginCount + 1;
         await this.prisma.raw.user.update({
@@ -191,19 +194,29 @@ export class AuthService {
         expiresAt: new Date(Date.now() + RESET_TOKEN_MINUTES * 60_000),
       },
     });
-    const link = `${env().APP_URL}/reset-password?token=${encodeURIComponent(token)}`;
+    const link = `${appUrl()}/reset-password?token=${encodeURIComponent(token)}`;
+    const brand = await this.emailBrandFor(user.id);
     await this.mail.send({
       to: user.email,
-      subject: 'Reset your NextCore VCMS password',
+      brand: brand === NEXTCORE_EMAIL ? undefined : brand,
+      subject: `Reset your ${brand === NEXTCORE_EMAIL ? 'NextCore' : brand.name} password`,
       text: `Hello ${user.name},\n\nUse this link within ${RESET_TOKEN_MINUTES} minutes to reset your password:\n${link}\n\nIf you did not request this, you can ignore this email.`,
       html: layout(
         'Reset your password',
         `<p>Hello ${escapeHtml(user.name)},</p><p>Use the button below within ${RESET_TOKEN_MINUTES} minutes to choose a new password.</p>
-<p><a href="${link}" style="background:#0f766e;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none">Reset password</a></p>
+${emailButton(link, 'Reset password', brand)}
 <p style="color:#6b7b80">If you did not request this, you can ignore this email.</p>`,
+        brand,
       ),
     });
     await this.audit.record({ action: 'auth.password_reset_requested', entityType: 'User', entityId: user.id, organizationId: null, actorUserId: user.id });
+  }
+
+  /** Staff emails carry their clinic's branding; super admins (and accounts with no clinic) get NextCore's. */
+  private async emailBrandFor(userId: string): Promise<EmailBrand> {
+    if (RequestContext.get()?.platform) return NEXTCORE_EMAIL;
+    const m = await this.prisma.raw.membership.findFirst({ where: { userId, status: 'ACTIVE' }, include: { organization: true }, orderBy: { createdAt: 'asc' } });
+    return m ? emailBrandOf(m.organization) : NEXTCORE_EMAIL;
   }
 
   async resetPassword(token: string, password: string) {
@@ -282,7 +295,7 @@ export class AuthService {
   }
 
   async registerOrganization(input: RegisterOrganizationInput): Promise<LoginResult> {
-    if (!env().ALLOW_SIGNUP) throw forbidden('Self-service registration is disabled');
+    if (!env().ALLOW_SIGNUP || multiClinic()) throw forbidden('Self-service registration is disabled');
     const existing = await this.prisma.raw.user.findUnique({ where: { email: input.email } });
     if (existing) throw conflict('An account with this email already exists. Sign in and ask to be invited instead.');
     const passwordHash = await hashPassword(input.password);
@@ -316,7 +329,10 @@ export class AuthService {
     if (user.mfaEnabled) throw ruleViolation('MFA_ALREADY_ENABLED', 'Two-factor authentication is already enabled');
     const secret = authenticator.generateSecret();
     await this.prisma.raw.user.update({ where: { id: userId }, data: { mfaPendingSecret: encryptSecret(secret) } });
-    const otpauthUrl = authenticator.keyuri(user.email, 'NextCore VCMS', secret);
+    // The authenticator app lists the code under the clinic's brand name (NextCore for super admins).
+    const orgId = RequestContext.get()?.organizationId;
+    const org = orgId ? await this.prisma.raw.organization.findUnique({ where: { id: orgId } }) : null;
+    const otpauthUrl = authenticator.keyuri(user.email, org ? (org.brandName ?? org.name) : 'NextCore VCMS', secret);
     return { secret, otpauthUrl, qrDataUrl: await QRCode.toDataURL(otpauthUrl) };
   }
 

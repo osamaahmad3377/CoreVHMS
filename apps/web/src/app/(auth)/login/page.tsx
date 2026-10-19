@@ -13,11 +13,12 @@ import { Field } from '@/components/forms/field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ApiError, api } from '@/lib/api';
+import { useHostInfo } from '@/lib/host';
 
 type LoginResponse = { mfaRequired: boolean; challengeId?: string };
 
-function safeNext(next: string | null) {
-  return next && next.startsWith('/') && !next.startsWith('//') ? next : '/dashboard';
+function safeNext(next: string | null, fallback: string) {
+  return next && next.startsWith('/') && !next.startsWith('//') ? next : fallback;
 }
 
 function LoginForm() {
@@ -28,11 +29,13 @@ function LoginForm() {
   const [challenge, setChallenge] = useState<string | null>(null);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
+  const host = useHostInfo().data;
+  const platform = host?.mode === 'platform';
   const form = useForm<z.infer<typeof loginSchema>>({ resolver: zodResolver(loginSchema), defaultValues: { email: '', password: '' } });
 
   const done = async () => {
     qc.clear();
-    router.replace(safeNext(params.get('next')));
+    router.replace(safeNext(params.get('next'), platform ? '/platform' : '/dashboard'));
   };
 
   const onSubmit = form.handleSubmit(async (values) => {
@@ -86,9 +89,12 @@ function LoginForm() {
   return (
     <form method="post" onSubmit={onSubmit} className="grid gap-4" noValidate>
       <div>
-        <h1 className="text-xl font-semibold">Sign in</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Use your clinic staff account.</p>
+        <h1 className="text-xl font-semibold">{platform ? 'Super admin sign-in' : 'Sign in'}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {platform ? 'For NextCore staff who manage clinics.' : host?.clinic ? `Sign in to ${host.clinic.branding?.brandName ?? host.clinic.name}.` : 'Use your clinic staff account.'}
+        </p>
       </div>
+      {host?.clinic?.status === 'SUSPENDED' && <FormError message="This clinic’s account is paused. Please contact NextCore support." />}
       {error && <FormError message={error} />}
       <Field label="Email" htmlFor="email" error={form.formState.errors.email}>
         <Input id="email" type="email" autoComplete="username" autoFocus {...form.register('email')} />
@@ -104,12 +110,14 @@ function LoginForm() {
       <Button type="submit" loading={form.formState.isSubmitting}>
         Sign in
       </Button>
-      <p className="text-center text-sm text-muted-foreground">
-        New practice?{' '}
-        <Link href="/register" className="font-medium text-primary hover:underline">
-          Create an organization
-        </Link>
-      </p>
+      {host?.mode === 'single' && (
+        <p className="text-center text-sm text-muted-foreground">
+          New practice?{' '}
+          <Link href="/register" className="font-medium text-primary hover:underline">
+            Create an organization
+          </Link>
+        </p>
+      )}
     </form>
   );
 }

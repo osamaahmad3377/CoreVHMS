@@ -47,7 +47,7 @@ function AcceptForm() {
       <div>
         <h1 className="text-xl font-semibold">Join {inv.organizationName}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {inv.requiresPassword ? 'Set up your account to get started.' : 'Confirm with your existing NextCore password to join.'}
+          {inv.requiresPassword ? 'Set up your account to get started.' : 'Confirm with your existing password to join.'}
         </p>
       </div>
       {error && <FormError message={error} />}

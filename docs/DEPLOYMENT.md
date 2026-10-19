@@ -41,6 +41,9 @@ Optional: `ALLOW_SIGNUP` (default `false` in production), `API_DOCS` (Swagger UI
 The API **refuses to start in production** if a secret looks like a placeholder, the database uses the
 development password, or secure cookies are off (override for a local trial only with `ALLOW_INSECURE_COOKIES=true`).
 
+Building the web image needs internet access once: the fonts clinics can choose in Settings → Branding are
+downloaded at build time and then served by the app itself (browsers never contact Google).
+
 Build and start:
 
 ```bash
@@ -125,3 +128,84 @@ Copy `apps/web/.next/static` to `apps/web/.next/standalone/apps/web/.next/static
   Email is the only delivery channel that works out of the box.
 - **High availability.** The compose stack is a single host. For multiple hosts, use a managed PostgreSQL
   service and an object-storage adapter for uploaded files (the storage layer is behind an interface).
+
+## 8. Hosting many clinics (multi-clinic mode)
+
+One installation can host many clinics. Each clinic gets **its own PostgreSQL database** and its own web
+address, `https://<clinic>.<your domain>`. A super admin adds clinics at `https://admin.<your domain>`;
+adding a clinic creates its database, applies every migration and sets up the clinic (main branch, roles,
+owner account, starter price list) automatically, usually within a minute. Without `BASE_DOMAIN` the
+installation works exactly as described above (one database, `ALLOW_SIGNUP` for the first organisation).
+
+| Address | What it is | Database |
+|---|---|---|
+| `admin.<domain>` | Super admin: add, pause and reactivate clinics; new owner password | platform database (`DATABASE_URL`) |
+| `<clinic>.<domain>` | One clinic's whole system | `vcms_t_<clinic>` (hyphens become `_`) |
+| `<domain>`, `www.<domain>` | "Find your clinic" page only | — |
+
+**Settings** (`.env.production`, then rebuild the web image — these are build arguments there):
+
+| Variable | Purpose |
+|---|---|
+| `BASE_DOMAIN` | e.g. `nextcore.net.au`. Switches multi-clinic mode on. |
+| `PLATFORM_SUBDOMAIN` | Super admin address (default `admin`). |
+| `DB_NAME` | Use `vcms_platform` for a new installation: the platform database holds the list of clinics and the super admin accounts, never clinic data. |
+| `APP_URL` | `https://<domain>`. Clinic links in emails keep its scheme and port and use the clinic's subdomain. |
+| `TENANT_DB_PREFIX`, `TENANT_DB_POOL` | Clinic database name prefix (`vcms_t_`) and connections per clinic database per API process (`5`). |
+
+Clinic databases are created on the same PostgreSQL server as `DATABASE_URL`, so that database user needs
+the `CREATEDB` privilege (the compose stack's `vcms` user has it). Plan PostgreSQL's `max_connections` for
+`clinics in use × TENANT_DB_POOL` per API process; idle clinic connections close after 10 minutes.
+
+**DNS and HTTPS.** Point both `<domain>` and `*.<domain>` at the server, and use a wildcard certificate. With
+Caddy and a DNS provider plugin (wildcard certificates need the DNS challenge):
+
+```
+nextcore.net.au, *.nextcore.net.au {
+    tls { dns cloudflare {env.CF_API_TOKEN} }
+    encode gzip
+    reverse_proxy 127.0.0.1:3000
+    request_body {
+        max_size 25MB
+    }
+}
+```
+
+With nginx use `server_name nextcore.net.au .nextcore.net.au;` and keep the original host:
+`proxy_set_header Host $host;`. The web server passes the address the browser used to the API, which picks
+the clinic database from it.
+
+**First super admin.** After the stack is up:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.production exec api \
+  node dist/cli/platform.js create-admin --email you@nextcore.net.au --name "Your Name"
+```
+
+It prints a temporary password once; sign in at `https://admin.<domain>` and choose your own password.
+Then use **Add clinic**. The owner gets either a temporary password (shown once to you) or an invitation
+email, and signs in at the clinic's own address. **New owner password** in a clinic's menu helps when the
+owner is locked out or the invitation did not arrive. **Pause clinic** stops all sign-ins and requests to
+that clinic without deleting anything; **Reactivate** undoes it.
+
+**Moving an existing installation to multi-clinic mode.** Create an empty platform database
+(`createdb -U vcms vcms_platform`), set `DB_NAME=vcms_platform` and `BASE_DOMAIN`, rebuild and start, create
+a super admin, then host the existing database under an address:
+
+```bash
+docker compose … exec api node dist/cli/platform.js add-existing --address mainclinic --database vcms
+```
+
+**Upgrades** update the platform database and every clinic database on API start
+(`node dist/cli/platform.js migrate`, which you can also run by hand). A clinic whose update fails is
+reported and the others continue; the command exits non-zero.
+
+**Backups** must cover every database: use `scripts/backup-all.sh` (same variables as `backup.sh`, with
+`DB_NAME=vcms_platform`). It writes the platform database and uploaded files to `backups/vcms-<time>` and
+each clinic database to `backups/clinics/<database>/vcms-<time>`. Verify or restore one clinic with
+`DB_NAME=<clinic database> scripts/verify-backup.sh …` / `scripts/restore.sh …`; a clinic backup holds its
+database only, so restoring it leaves uploaded files untouched.
+
+**Not included yet:** deleting a clinic and its database (deliberately manual: back it up, `dropdb`, then
+remove its row from `"Tenant"` in the platform database), changing a clinic's address, per-clinic billing
+or usage limits, and custom domains per clinic.

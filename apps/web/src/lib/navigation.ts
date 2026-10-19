@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   LifeBuoy,
   MessageSquare,
+  Palette,
   PawPrint,
   Pill,
   Plug,
@@ -28,9 +29,9 @@ import {
   Syringe,
   ToggleRight,
   Tractor,
+  type LucideIcon,
   UserCog,
   Users,
-  type LucideIcon,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -124,7 +125,8 @@ export const SETTINGS_GROUPS: SettingsGroup[] = ['Your clinic', 'Staff & access'
 
 /** Settings pages, grouped the way an owner thinks about them; `hint` is the one-line description on the Settings home page. */
 export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyOf: Permission[]; group: SettingsGroup; hint: string; module?: OptionalModule }[] = [
-  { label: 'Clinic details', href: '/settings/organization', icon: Building2, anyOf: ['org.manage'], group: 'Your clinic', hint: 'Name, address, phone, tax number and logo' },
+  { label: 'Clinic details', href: '/settings/organization', icon: Building2, anyOf: ['org.manage'], group: 'Your clinic', hint: 'Name, address, phone and tax number' },
+  { label: 'Branding', href: '/settings/branding', icon: Palette, anyOf: ['branding.manage'], group: 'Your clinic', hint: 'Logo, colours and the name staff see (owner only)' },
   { label: 'Services you offer', href: '/settings/modules', icon: ToggleRight, anyOf: ['settings.manage', 'org.manage'], group: 'Your clinic', hint: 'Switch hospital, surgery, lab, farms, boarding or insurance on or off' },
   { label: 'Branches', href: '/settings/branches', icon: Building2, anyOf: ['branches.manage'], group: 'Your clinic', hint: 'Each location, its address and time zone' },
   { label: 'Receipts & printing', href: '/settings/receipts', icon: Printer, anyOf: ['settings.manage'], group: 'Your clinic', hint: 'Receipt size, logo and the text printed on it' },

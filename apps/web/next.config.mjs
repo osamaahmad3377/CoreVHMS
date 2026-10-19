@@ -26,7 +26,14 @@ const nextConfig = {
   output: process.env.NEXT_OUTPUT === 'standalone' ? 'standalone' : undefined,
   outputFileTracingRoot: path.join(path.dirname(fileURLToPath(import.meta.url)), '../../'),
   // The client portal pages are kept but unreachable unless this matches the API's CLIENT_PORTAL_ENABLED.
-  env: { CLIENT_PORTAL_ENABLED: process.env.CLIENT_PORTAL_ENABLED ?? 'false' },
+  env: {
+    CLIENT_PORTAL_ENABLED: process.env.CLIENT_PORTAL_ENABLED ?? 'false',
+    // Multi-clinic hosting: must match the API. Clinics at <slug>.BASE_DOMAIN, super admin at PLATFORM_SUBDOMAIN.BASE_DOMAIN.
+    BASE_DOMAIN: process.env.BASE_DOMAIN ?? '',
+    PLATFORM_SUBDOMAIN: process.env.PLATFORM_SUBDOMAIN || 'admin',
+    // Read on the server only (lib/host-server.ts) to render the clinic's branding; baked in like the rewrites.
+    API_URL,
+  },
   poweredByHeader: false,
   async rewrites() {
     // The browser only talks to this origin; session cookies stay first-party.

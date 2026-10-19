@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import type { Session, User } from '@prisma/client';
-import { enabledModules, type SessionContext } from '@vcms/shared';
+import { ALL_PLATFORM_PERMISSIONS, enabledModules, type SessionContext } from '@vcms/shared';
 import { env } from '../../config/env';
-import { RequestContextStore } from '../../common/context/request-context';
+import { RequestContext, RequestContextStore } from '../../common/context/request-context';
 import { randomToken, sha256 } from '../../common/crypto/crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { brandingOf } from '../organizations/organizations.service';
 
 export interface ResolvedSession {
   session: Session & { user: User };
@@ -70,7 +71,10 @@ export class SessionService {
     let membershipId: string | undefined;
     let branchIds: string[] = [];
 
-    if (session.organizationId) {
+    if (RequestContext.get()?.platform) {
+      // Super admin address: platform permissions only, never clinic data.
+      if (session.user.isPlatformAdmin) permissions = new Set(ALL_PLATFORM_PERMISSIONS);
+    } else if (session.organizationId) {
       const m = await this.prisma.raw.membership.findUnique({
         where: { organizationId_userId: { organizationId: session.organizationId, userId: session.userId } },
         include: {
@@ -137,6 +141,7 @@ export class SessionService {
         currency: org.currency,
         logoUrl: org.logoAttachmentId ? `/api/v1/organization/logo` : null,
         enabledModules: enabledModules(org.disabledModules),
+        branding: brandingOf(org),
       };
       const m = await this.prisma.raw.membership.findUniqueOrThrow({
         where: { id: store.membershipId },
@@ -168,6 +173,7 @@ export class SessionService {
       permissions: [...store.permissions].sort(),
       csrfToken: session.csrfToken,
       features: { clientPortal: env().CLIENT_PORTAL_ENABLED },
+      platform: RequestContext.get()?.platform === true,
     };
   }
 }

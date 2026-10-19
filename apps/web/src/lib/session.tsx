@@ -44,6 +44,11 @@ export function SessionProvider({ session, children }: { session: SessionContext
   );
 }
 
+/** The session where there may be none (pages shared with the client portal); null outside the staff app. */
+export function useOptionalSession(): SessionValue | null {
+  return useContext(Ctx);
+}
+
 export function useSession(): SessionValue {
   const v = useContext(Ctx);
   if (!v) throw new Error('useSession must be used inside SessionProvider');

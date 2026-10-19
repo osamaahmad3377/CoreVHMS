@@ -1,11 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { MessageChannel } from '@prisma/client';
-import { escapeHtml, layout, MailService } from '../../common/mail/mail.service';
+import { EmailBrand, escapeHtml, layout, MailService } from '../../common/mail/mail.service';
 
 export interface ChannelMessage {
   recipient: string;
   subject?: string | null;
   body: string;
+  /** The sending clinic's branding (sender name, colour, reply-to, signature). */
+  brand?: EmailBrand;
 }
 
 export interface ChannelResult {
@@ -28,7 +30,7 @@ class EmailAdapter implements ChannelAdapter {
   readonly provider = 'SMTP';
   constructor(private readonly mail: MailService) {}
   async send(m: ChannelMessage): Promise<ChannelResult> {
-    const ok = await this.mail.send({ to: m.recipient, subject: m.subject ?? '(no subject)', text: m.body, html: layout(escapeHtml(m.subject ?? ''), `<p>${escapeHtml(m.body).replace(/\n/g, '<br>')}</p>`) });
+    const ok = await this.mail.send({ to: m.recipient, brand: m.brand, subject: m.subject ?? '(no subject)', text: m.body, html: layout(escapeHtml(m.subject ?? ''), `<p>${escapeHtml(m.body).replace(/\n/g, '<br>')}</p>`, m.brand) });
     return ok ? { ok } : { ok, error: 'The SMTP server did not accept the message' };
   }
 }

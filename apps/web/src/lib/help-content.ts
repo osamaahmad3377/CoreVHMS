@@ -366,6 +366,28 @@ export const GUIDES: HelpGuide[] = [
     keywords: ['refund', 'pay', 'receipt', 'cash', 'card', 'credit', 'deposit'],
   },
   {
+    id: 'branding',
+    title: 'Put your logo, colours and name on the app',
+    summary: 'Make the app your clinic’s own: logo, colours, font, sign-in page, printed letterhead and emails.',
+    area: 'Management',
+    anyOf: ['branding.manage'],
+    steps: [
+      'Settings → Branding. Only the clinic owner sees this page.',
+      'Look & feel: start from a ready-made theme, or pick the name staff see, your logo (and a white version for dark backgrounds), a browser-tab icon, the main and menu colours, a font, the corner style and whether staff start in light or dark.',
+      'Sign-in page: choose a side panel or a centred card, and a background (menu colour, a colour blend or your own photo). Add a headline, a message such as opening hours, and a footer line.',
+      'Printouts: place the logo left, centre or right on invoices, certificates, lab reports and letters; add a line under the clinic name and a footer (e.g. bank details).',
+      'Emails: set the sender name and a signature. Replies go to the clinic email in Clinic details.',
+      'Each tab has a live preview. Images apply as soon as they upload; click Save for everything else.',
+    ],
+    tips: [
+      'A very light main colour is darkened slightly where text must stay readable; the menu text switches between light and dark by itself.',
+      'Staff who choose light or dark themselves with the moon button keep their choice.',
+      'The logo also prints on receipts and documents. Use Settings → Receipts & printing for a separate black-and-white receipt logo.',
+      'Branding cannot be given to another role. Another owner (someone with the Organization owner role) can also change it.',
+    ],
+    links: [{ label: 'Branding', href: '/settings/branding' }],
+  },
+  {
     id: 'receipt-printing',
     title: 'Set up receipt printing (80 mm thermal printer)',
     summary: 'Choose the paper width, logo, text and copies for printed receipts, and print a test receipt.',
@@ -373,7 +395,7 @@ export const GUIDES: HelpGuide[] = [
     anyOf: ['settings.manage'],
     steps: [
       'Settings → Receipts & printing. Choose 80 mm (most receipt printers) or 58 mm paper.',
-      'Logo: use the branding logo from Settings → Organization, or upload a separate receipt logo (a black-and-white version prints sharpest). Set its size and alignment; keep “Thermal-friendly” on for thermal printers.',
+      'Logo: use the clinic logo from Settings → Branding, or upload a separate receipt logo (a black-and-white version prints sharpest). Set its size and alignment; keep “Thermal-friendly” on for thermal printers.',
       'Add a header line (e.g. opening hours), the thank-you message and any returns policy, and choose which details to show.',
       'Optional: print automatically after each counter sale, and print 2 copies (customer and clinic copy).',
       'Click Print test receipt. In the print window choose the receipt printer, set margins to None and turn off Headers and footers — the browser remembers this. Then click Save.',
@@ -383,7 +405,7 @@ export const GUIDES: HelpGuide[] = [
       'To print without the print window on the counter PC, start Chrome with the --kiosk-printing option.',
       'Invoices also have a Receipt button to print a paid bill on the receipt printer; Print A4 is still there for full invoices.',
     ],
-    links: [{ label: 'Receipts & printing', href: '/settings/receipts' }, { label: 'Organization (branding logo)', href: '/settings/organization' }],
+    links: [{ label: 'Receipts & printing', href: '/settings/receipts' }, { label: 'Branding (clinic logo)', href: '/settings/branding' }],
   },
   {
     id: 'pos',

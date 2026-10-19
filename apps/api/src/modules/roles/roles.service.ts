@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PERMISSION_GROUPS, isPermission, type RoleInput } from '@vcms/shared';
+import { OWNER_ONLY_PERMISSIONS, PERMISSION_GROUPS, isPermission, type RoleInput } from '@vcms/shared';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { forbidden, notFound, ruleViolation } from '../../common/http/errors';
@@ -16,7 +16,10 @@ export class RolesService {
     return Object.entries(PERMISSION_GROUPS).map(([key, g]) => ({
       key,
       label: g.label,
-      permissions: Object.entries(g.permissions).map(([permission, description]) => ({ permission, description })),
+      // Owner-only permissions (branding) cannot be given to other roles, so they are not offered.
+      permissions: Object.entries(g.permissions)
+        .filter(([permission]) => !(OWNER_ONLY_PERMISSIONS as readonly string[]).includes(permission))
+        .map(([permission, description]) => ({ permission, description })),
     }));
   }
 
@@ -39,6 +42,8 @@ export class RolesService {
   private validate(permissions: string[]) {
     const invalid = permissions.filter((p) => !isPermission(p));
     if (invalid.length) throw ruleViolation('INVALID_PERMISSION', `Unknown permissions: ${invalid.join(', ')}`);
+    const ownerOnly = permissions.filter((p) => (OWNER_ONLY_PERMISSIONS as readonly string[]).includes(p));
+    if (ownerOnly.length) throw ruleViolation('OWNER_ONLY_PERMISSION', 'Only the clinic owner can change the branding; it cannot be given to another role');
     const mine = RequestContext.require().permissions;
     const escalation = permissions.filter((p) => !mine.has(p));
     if (escalation.length) throw forbidden('A role cannot grant permissions you do not hold yourself');
