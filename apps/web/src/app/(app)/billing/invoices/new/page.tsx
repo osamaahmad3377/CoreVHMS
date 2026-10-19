@@ -1,5 +1,6 @@
 'use client';
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { CreditCard } from 'lucide-react';
 import type { Paginated } from '@vcms/shared';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useState } from 'react';
@@ -24,7 +25,7 @@ import { calcLine } from '@vcms/shared';
 function Builder() {
   const router = useRouter();
   const search = useSearchParams();
-  const { currency } = useSession();
+  const { currency, can } = useSession();
   const cat = useBillingCatalog();
   const [client, setClient] = useState<PickedClient | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
@@ -52,11 +53,12 @@ function Builder() {
   const manual = draftTotals(lines, currency, cat.pricesIncludeTax);
   const totals = chargeTotals.reduce((t, l) => ({ subtotalMinor: t.subtotalMinor + l.netMinor, taxMinor: t.taxMinor + l.taxMinor, totalMinor: t.totalMinor + l.grossMinor, discountMinor: t.discountMinor }), manual);
 
+  // "pay": finish the invoice and open the payment window straight away (the client is usually at the desk).
   const save = useMutation({
-    mutationFn: (issue: boolean) => api.post<Invoice>('/invoices', { clientId: client?.id, chargeIds: selected, lines: toPayload(lines, currency), notes: notes || null, issue }),
-    onSuccess: (inv) => {
+    mutationFn: ({ issue }: { issue: boolean; pay?: boolean }) => api.post<Invoice>('/invoices', { clientId: client?.id, chargeIds: selected, lines: toPayload(lines, currency), notes: notes || null, issue }),
+    onSuccess: (inv, v) => {
       toast.success(inv.status === 'DRAFT' ? 'Draft invoice saved' : `${inv.invoiceNo} finished`);
-      router.push(`/billing/invoices/${inv.id}`);
+      router.push(`/billing/invoices/${inv.id}${v.pay ? '?pay=1' : ''}`);
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -115,10 +117,17 @@ function Builder() {
           </CardContent>
         </Card>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <p className="mr-auto text-xs text-muted-foreground">“Finish invoice”: after this it can't be changed; corrections are made with a credit note.</p>
+          <p className="mr-auto text-xs text-muted-foreground">A finished invoice can’t be changed; corrections are made with a credit note.</p>
           <Button variant="outline" onClick={() => router.back()}>Cancel</Button>
-          <Button variant="outline" disabled={!client || empty} loading={save.isPending && save.variables === false} onClick={() => { setError(null); save.mutate(false); }}>Save draft</Button>
-          <Button disabled={!client || empty} loading={save.isPending && save.variables === true} onClick={() => { setError(null); save.mutate(true); }}>Finish invoice</Button>
+          <Button variant="outline" disabled={!client || empty} loading={save.isPending && !save.variables?.issue} onClick={() => { setError(null); save.mutate({ issue: false }); }}>Save draft</Button>
+          {can('payments.take') ? (
+            <>
+              <Button variant="outline" disabled={!client || empty} loading={save.isPending && !!save.variables?.issue && !save.variables.pay} onClick={() => { setError(null); save.mutate({ issue: true }); }}>Finish, pay later</Button>
+              <Button disabled={!client || empty} loading={save.isPending && !!save.variables?.pay} onClick={() => { setError(null); save.mutate({ issue: true, pay: true }); }}><CreditCard /> Finish &amp; take payment</Button>
+            </>
+          ) : (
+            <Button disabled={!client || empty} loading={save.isPending && !!save.variables?.issue} onClick={() => { setError(null); save.mutate({ issue: true }); }}>Finish invoice</Button>
+          )}
         </div>
       </div>
     </>

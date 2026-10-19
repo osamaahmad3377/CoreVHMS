@@ -170,6 +170,28 @@ describe('Scheduling', () => {
     expect(q.body.waiting[0].effectivePriority).toBe('EMERGENT');
   });
 
+  it('marks finished visits whose client still has work not yet invoiced, for the front desk Bill button', async () => {
+    const org = await registerOrg();
+    const f = await schedulingFixture(org);
+    const types = (await org.owner.get('/appointment-types')).body as any[];
+    const consult = types.find((t) => t.name === 'Consultation' && t.serviceId);
+    // Starter prices are 0 (not charged) until the clinic sets them.
+    const svc = ((await org.owner.get('/services')).body as any[]).find((x) => x.id === consult.serviceId);
+    expect((await org.owner.patch(`/services/${svc.id}`, { code: svc.code, name: svc.name, category: svc.category, priceMinor: 250000 })).status).toBe(200);
+    const w = await org.owner.post('/front-desk/walk-in', { branchId: org.branchId, clientId: f.client.id, patientId: f.patient.id, appointmentTypeId: consult.id, clinicianId: f.vet.membershipId });
+    const started = await f.vet.client.post(`/appointments/${w.body.id}/status`, { action: 'start' });
+    expect((await f.vet.client.post(`/encounters/${started.body.encounterId}/complete`)).status).toBe(200);
+    const done = (await org.owner.get(`/front-desk/queue?branchId=${org.branchId}`)).body.done.find((x: any) => x.id === w.body.id);
+    expect(done.status).toBe('COMPLETED');
+    expect(done.unbilledCharges).toBe(1);
+
+    const charges = (await org.owner.get(`/charges?clientId=${f.client.id}&status=PENDING`)).body;
+    const inv = await org.owner.post('/invoices', { clientId: f.client.id, chargeIds: (charges.data ?? charges).map((c: any) => c.id), lines: [], issue: true });
+    expect(inv.status).toBe(201);
+    const after = (await org.owner.get(`/front-desk/queue?branchId=${org.branchId}`)).body.done.find((x: any) => x.id === w.body.id);
+    expect(after.unbilledCharges).toBe(0);
+  });
+
   it('starting a walk-in assigns the starting clinician and seeds the consultation from triage', async () => {
     const org = await registerOrg();
     const f = await schedulingFixture(org);

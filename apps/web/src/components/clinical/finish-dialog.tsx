@@ -1,8 +1,8 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Paginated } from '@vcms/shared';
-import { CheckCircle2, Circle, XCircle } from 'lucide-react';
-import { useState } from 'react';
+import { CheckCircle2, Circle, Loader2, XCircle } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { FormError } from '../forms/form-error';
 import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
@@ -25,8 +25,23 @@ export function FinishConsultationDialog({ encounter, open, onOpenChange, onFini
   const { can, session } = useSession();
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+  // Notes typed in the last moments (before autosave) are saved first, so the checklist shows what was written.
+  const [savingNotes, setSavingNotes] = useState(false);
   const patientId = encounter.patient.id;
   const encounterId = encounter.id;
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setSavingNotes(true);
+    void flushNoteDrafts()
+      .then(() => qc.refetchQueries({ queryKey: ['encounter', encounterId] }))
+      .finally(() => {
+        if (!cancelled) setSavingNotes(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, encounterId, qc]);
   // Same query keys as the panels on the page, so the lists are usually already loaded.
   const rx = useQuery({ queryKey: ['prescriptions', { patientId, encounterId }], queryFn: () => api.get<Paginated<Prescription>>(`/prescriptions${qs({ patientId, encounterId, pageSize: 50 })}`), enabled: open && can('prescriptions.read') });
   const lab = useQuery({ queryKey: ['lab-orders', { patientId, encounterId }], queryFn: () => api.get<Paginated<DiagnosticOrder>>(`/lab-orders${qs({ patientId, encounterId, pageSize: 50 })}`), enabled: open && can('lab.read') });
@@ -87,6 +102,9 @@ export function FinishConsultationDialog({ encounter, open, onOpenChange, onFini
           <DialogDescription>Check that nothing is missing for {encounter.patient.name}.</DialogDescription>
         </DialogHeader>
         {error && <FormError message={error} />}
+        {savingNotes ? (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Saving your notes…</p>
+        ) : (
         <ul className="grid gap-1.5 text-sm" aria-label="Checklist">
           {checks.map((c) => (
             <li key={c.text} className="flex items-center gap-2">
@@ -95,20 +113,21 @@ export function FinishConsultationDialog({ encounter, open, onOpenChange, onFini
             </li>
           ))}
         </ul>
+        )}
         {canSignMine && <p className="text-xs text-muted-foreground">“Sign notes & finish” signs and locks your {mine.length === 1 ? 'note' : `${mine.length} notes`}. Changes after that need a correction (amendment).</p>}
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Go back</Button>
           {canSignMine ? (
             <>
-              <Button variant="outline" loading={finish.isPending && finish.variables === false} disabled={finish.isPending} onClick={() => { setError(null); finish.mutate(false); }}>
+              <Button variant="outline" loading={finish.isPending && finish.variables === false} disabled={finish.isPending || savingNotes} onClick={() => { setError(null); finish.mutate(false); }}>
                 Finish, sign later
               </Button>
-              <Button loading={finish.isPending && finish.variables === true} disabled={finish.isPending} onClick={() => { setError(null); finish.mutate(true); }}>
+              <Button loading={finish.isPending && finish.variables === true} disabled={finish.isPending || savingNotes} onClick={() => { setError(null); finish.mutate(true); }}>
                 Sign notes & finish
               </Button>
             </>
           ) : (
-            <Button loading={finish.isPending} onClick={() => { setError(null); finish.mutate(false); }}>
+            <Button loading={finish.isPending} disabled={savingNotes} onClick={() => { setError(null); finish.mutate(false); }}>
               Finish consultation
             </Button>
           )}

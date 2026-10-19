@@ -40,6 +40,23 @@ export interface PlatformClinic {
   createdAt: string;
 }
 
+/** How much a clinic is used (counts only; nothing clinical is read). */
+export interface ClinicUsage {
+  staff: number;
+  activeStaff: number;
+  clients: number;
+  patients: number;
+  appointmentsThisMonth: number;
+  lastSignInAt: string | null;
+}
+
+export interface ClinicOverview {
+  clinic: PlatformClinic;
+  /** Null while the clinic is being set up, or if its database cannot be reached. */
+  usage: ClinicUsage | null;
+  events: { id: string; action: string; summary: string | null; actorName: string | null; createdAt: string }[];
+}
+
 /** Answer to "which part of the system is this address?" (public). */
 export interface HostInfo {
   mode: 'single' | 'platform' | 'clinic' | 'root';

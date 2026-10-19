@@ -196,7 +196,7 @@ export const GUIDES: HelpGuide[] = [
     area: 'Clinical',
     anyOf: ['clinical.write'],
     steps: [
-      'From Front desk or the appointment, click Start consultation.',
+      'Click Start next to the patient under Waiting now on your dashboard (or on the Front desk, or in the appointment).',
       'Fill in the note: S — Subjective (history), O — Objective (examination), A — Assessment, P — Plan. The note saves automatically.',
       'Record vitals, add diagnoses and problems, and create follow-up tasks from the side panels.',
       'Prescribe medicines or order lab tests from the same screen.',
@@ -339,17 +339,17 @@ export const GUIDES: HelpGuide[] = [
   {
     id: 'invoice',
     title: 'Invoice a client',
-    summary: 'Turn unbilled charges into an invoice in a few clicks.',
+    summary: 'Turn work not yet invoiced into an invoice and take payment in a few clicks.',
     area: 'Billing',
     anyOf: ['billing.write'],
     steps: [
-      'Open Billing & payments → Unbilled charges, and click Invoice client next to the client (or open the client → Account tab → New invoice).',
-      'All their unbilled charges are ticked. Untick anything that should not be billed yet and add any extra items.',
-      'Click Issue invoice. The invoice gets its number and can no longer be edited.',
-      'Click Take payment straight away, or later from the invoice.',
+      'When a visit is finished, click Bill on the patient’s card in Front desk → Finished. (Or Billing → Not yet invoiced → Make invoice, or the client → Account tab → New invoice.)',
+      'All the client’s items not yet invoiced are ticked. Untick anything that should not be billed yet and add any extra items.',
+      'Client paying now? Click Finish & take payment — the payment window opens straight away. Otherwise click Finish, pay later.',
+      'A finished invoice gets its number and can no longer be edited.',
     ],
     tips: ['Made a mistake on an issued invoice? Use Credit note (partial) or Void (whole invoice) — invoices are never deleted.'],
-    links: [{ label: 'Unbilled charges', href: '/billing/charges' }, { label: 'Invoices', href: '/billing' }],
+    links: [{ label: 'Front desk', href: '/front-desk' }, { label: 'Not yet invoiced', href: '/billing/charges' }, { label: 'Invoices', href: '/billing' }],
   },
   {
     id: 'payment',

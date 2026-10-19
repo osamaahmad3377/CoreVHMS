@@ -1,38 +1,24 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { COUNTRIES, type CreateClinicInput, type PlatformClinic, createClinicSchema } from '@vcms/shared';
-import { Building2, Check, Copy, ExternalLink, KeyRound, Mail, MoreHorizontal, Pause, Play, Plus, RotateCcw } from 'lucide-react';
+import { AlertTriangle, Building2, CheckCircle2, ExternalLink, KeyRound, Loader2, Mail, PauseCircle, Plus, RotateCcw } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { useConfirm } from '@/components/confirm';
 import { Field } from '@/components/forms/field';
 import { FormError } from '@/components/forms/form-error';
 import { EmptyState, ErrorState, LoadingRows, PageHeader } from '@/components/page';
+import { ClinicActionsMenu, CopyButton, OwnerAccessDialog, STATUS, StatusBadge, shortAddress, useClinicActions, type OwnerAccess } from '@/components/platform/clinic-ui';
 import { SearchInput } from '@/components/search-input';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input, NativeSelect } from '@/components/ui/input';
 import { TBody, TD, TH, THead, TR, Table } from '@/components/ui/table';
 import { ApiError, api } from '@/lib/api';
-import { fmtDate, fmtDateTime } from '@/lib/format';
+import { fmtDate } from '@/lib/format';
 import { useHostInfo } from '@/lib/host';
 import { cn } from '@/lib/utils';
-
-const STATUS: Record<PlatformClinic['status'], { label: string; variant: 'success' | 'info' | 'warning' | 'destructive' }> = {
-  ACTIVE: { label: 'Ready', variant: 'success' },
-  PROVISIONING: { label: 'Setting up…', variant: 'info' },
-  SUSPENDED: { label: 'Paused', variant: 'warning' },
-  FAILED: { label: 'Set-up failed', variant: 'destructive' },
-};
-
-interface OwnerPassword {
-  clinic: PlatformClinic;
-  temporaryPassword: string;
-  expiresAt: string;
-}
 
 /** Suggests a web address from the clinic name: "Happy Paws Vet" → "happy-paws-vet". */
 function suggestAddress(name: string) {
@@ -40,47 +26,9 @@ function suggestAddress(name: string) {
   return s.slice(0, 30).replace(/-+$/, '');
 }
 
-/** Shows the owner's temporary password once, with the clinic address to give them. */
-function OwnerPasswordDialog({ result, onClose }: { result: OwnerPassword | null; onClose: () => void }) {
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(result!.temporaryPassword);
-      setCopied(true);
-    } catch {
-      toast.error('Could not copy — select the password and copy it manually');
-    }
-  };
-  return (
-    <Dialog open={!!result} onOpenChange={(o) => { if (!o) { setCopied(false); onClose(); } }}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><KeyRound className="h-5 w-5 text-primary" /> Owner’s temporary password</DialogTitle>
-          <DialogDescription>Give these details to the clinic owner. The password is shown only now — it cannot be looked up later.</DialogDescription>
-        </DialogHeader>
-        {result && (
-          <div className="grid gap-3">
-            <div className="flex items-center gap-2 rounded-md border bg-muted/40 p-3">
-              <code data-testid="temporary-password" className="flex-1 select-all break-all font-mono text-lg tracking-wide">{result.temporaryPassword}</code>
-              <Button size="sm" variant="outline" onClick={copy}>{copied ? <><Check /> Copied</> : <><Copy /> Copy</>}</Button>
-            </div>
-            <dl className="grid gap-1 text-sm">
-              <div className="flex gap-2"><dt className="w-28 shrink-0 text-muted-foreground">Clinic address</dt><dd className="break-all font-medium">{result.clinic.address}</dd></div>
-              <div className="flex gap-2"><dt className="w-28 shrink-0 text-muted-foreground">Sign in with</dt><dd className="break-all font-medium">{result.clinic.ownerEmail}</dd></div>
-              <div className="flex gap-2"><dt className="w-28 shrink-0 text-muted-foreground">Valid until</dt><dd>{fmtDateTime(result.expiresAt)}</dd></div>
-            </dl>
-            <p className="text-xs text-muted-foreground">At first sign-in the owner must choose their own password. They can then add their staff.</p>
-          </div>
-        )}
-        <DialogFooter><Button onClick={onClose}>Done</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
+const EMPTY: CreateClinicInput = { name: '', slug: '', country: 'PK', branchName: 'Main branch', ownerName: '', ownerEmail: '', ownerAccess: 'TEMPORARY_PASSWORD' };
 
-const EMPTY: CreateClinicInput = { name: '', slug: '', country: 'PK', branchName: '', ownerName: '', ownerEmail: '', ownerAccess: 'TEMPORARY_PASSWORD' };
-
-function AddClinicDialog({ open, onOpenChange, onPassword }: { open: boolean; onOpenChange: (o: boolean) => void; onPassword: (r: OwnerPassword) => void }) {
+function AddClinicDialog({ open, onOpenChange, onOwnerAccess }: { open: boolean; onOpenChange: (o: boolean) => void; onOwnerAccess: (r: OwnerAccess) => void }) {
   const qc = useQueryClient();
   const baseDomain = useHostInfo().data?.baseDomain;
   const [v, setV] = useState<CreateClinicInput>(EMPTY);
@@ -97,12 +45,12 @@ function AddClinicDialog({ open, onOpenChange, onPassword }: { open: boolean; on
   };
 
   const save = useMutation({
-    mutationFn: (input: CreateClinicInput) => api.post<OwnerPassword & { temporaryPassword: string | null }>('/platform/clinics', input),
+    mutationFn: (input: CreateClinicInput) => api.post<OwnerAccess & { temporaryPassword: string | null }>('/platform/clinics', input),
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ['platform-clinics'] });
       onOpenChange(false);
       reset();
-      if (r.temporaryPassword) onPassword(r as OwnerPassword);
+      if (r.temporaryPassword) onOwnerAccess(r as OwnerAccess);
       else toast.success(`Setting up ${r.clinic.name}. The owner gets an email when it is ready.`);
     },
     onError: (e: Error) => {
@@ -128,11 +76,11 @@ function AddClinicDialog({ open, onOpenChange, onPassword }: { open: boolean; on
       <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>Add clinic</DialogTitle>
-          <DialogDescription>The clinic gets its own database and web address. Set-up takes about a minute.</DialogDescription>
+          <DialogDescription>Four things: the clinic’s name, its web address, and who the owner is. It is ready in about a minute.</DialogDescription>
         </DialogHeader>
         <form id="add-clinic" onSubmit={submit} className="grid gap-4" noValidate>
           {error && <FormError message={error} />}
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-[1fr_180px]">
             <Field label="Clinic name" htmlFor="c-name" required error={errors.name}>
               <Input
                 id="c-name"
@@ -150,7 +98,7 @@ function AddClinicDialog({ open, onOpenChange, onPassword }: { open: boolean; on
               </NativeSelect>
             </Field>
           </div>
-          <Field label="Web address" htmlFor="c-slug" required hint="Lowercase letters, numbers and hyphens. Cannot be changed later." error={errors.slug}>
+          <Field label="Web address" htmlFor="c-slug" required hint="Filled in from the name. Lowercase letters, numbers and hyphens; it cannot be changed later." error={errors.slug}>
             <div className="flex items-center gap-2">
               <Input
                 id="c-slug"
@@ -162,9 +110,6 @@ function AddClinicDialog({ open, onOpenChange, onPassword }: { open: boolean; on
               />
               {baseDomain && <span className="shrink-0 text-sm text-muted-foreground">.{baseDomain}</span>}
             </div>
-          </Field>
-          <Field label="Main branch name" htmlFor="c-branch" required hint="e.g. Lahore — Gulberg. More branches can be added later." error={errors.branchName}>
-            <Input id="c-branch" value={v.branchName} onChange={(e) => set('branchName', e.target.value)} />
           </Field>
           <fieldset className="grid gap-3 rounded-md border p-3">
             <legend className="px-1 text-sm font-medium">Clinic owner</legend>
@@ -178,8 +123,8 @@ function AddClinicDialog({ open, onOpenChange, onPassword }: { open: boolean; on
             </div>
             <div role="radiogroup" aria-label="How the owner gets access" className="grid gap-2 sm:grid-cols-2">
               {([
-                ['TEMPORARY_PASSWORD', KeyRound, 'Create temporary password', 'You give it to the owner; they change it at first sign-in.'],
-                ['INVITATION', Mail, 'Send invitation email', 'The owner gets a link to choose their password when the clinic is ready.'],
+                ['TEMPORARY_PASSWORD', KeyRound, 'Give them a password', 'You get a ready-made message to send by WhatsApp or SMS.'],
+                ['INVITATION', Mail, 'Email them a link', 'They choose their own password when the clinic is ready.'],
               ] as const).map(([value, Icon, title, text]) => (
                 <button
                   key={value}
@@ -195,6 +140,9 @@ function AddClinicDialog({ open, onOpenChange, onPassword }: { open: boolean; on
               ))}
             </div>
           </fieldset>
+          <Field label="Main branch name" htmlFor="c-branch" required hint="Change it if the clinic has a branch name, e.g. Lahore — Gulberg. They can add more branches later." error={errors.branchName}>
+            <Input id="c-branch" value={v.branchName} onChange={(e) => set('branchName', e.target.value)} />
+          </Field>
         </form>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
@@ -205,12 +153,15 @@ function AddClinicDialog({ open, onOpenChange, onPassword }: { open: boolean; on
   );
 }
 
+type Filter = 'ALL' | PlatformClinic['status'];
+
 export default function PlatformClinicsPage() {
-  const qc = useQueryClient();
-  const confirm = useConfirm();
+  const router = useRouter();
   const [adding, setAdding] = useState(false);
-  const [password, setPassword] = useState<OwnerPassword | null>(null);
+  const [access, setAccess] = useState<OwnerAccess | null>(null);
   const [q, setQ] = useState('');
+  const [filter, setFilter] = useState<Filter>('ALL');
+  const { run, pending } = useClinicActions(setAccess);
   const clinics = useQuery({
     queryKey: ['platform-clinics'],
     queryFn: () => api.get<PlatformClinic[]>('/platform/clinics'),
@@ -218,116 +169,104 @@ export default function PlatformClinicsPage() {
     refetchInterval: (query) => (query.state.data?.some((c) => c.status === 'PROVISIONING') ? 3000 : false),
   });
 
-  const act = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: 'suspend' | 'reactivate' | 'retry' | 'owner-password' }) => api.post<PlatformClinic | OwnerPassword>(`/platform/clinics/${id}/${action}`),
-    onSuccess: (r, { action }) => {
-      qc.invalidateQueries({ queryKey: ['platform-clinics'] });
-      if (action === 'owner-password') setPassword(r as OwnerPassword);
-      else toast.success({ suspend: 'Clinic paused', reactivate: 'Clinic reactivated', retry: 'Trying the set-up again' }[action]);
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const pause = async (c: PlatformClinic) => {
-    const { confirmed } = await confirm({
-      title: `Pause ${c.name}?`,
-      description: 'Nobody at this clinic can sign in or use the system until you reactivate it. No data is deleted.',
-      confirmLabel: 'Pause clinic',
-      destructive: true,
-    });
-    if (confirmed) act.mutate({ id: c.id, action: 'suspend' });
-  };
-
-  const ownerPassword = async (c: PlatformClinic) => {
-    const { confirmed } = await confirm({
-      title: `New password for ${c.ownerName}?`,
-      description: `${c.ownerEmail} gets a new temporary password. Their current password and any open sign-ins stop working.`,
-      confirmLabel: 'Create password',
-    });
-    if (confirmed) act.mutate({ id: c.id, action: 'owner-password' });
-  };
-
+  const all = useMemo(() => clinics.data ?? [], [clinics.data]);
+  const count = (s: PlatformClinic['status']) => all.filter((c) => c.status === s).length;
   const rows = useMemo(() => {
     const term = q.trim().toLowerCase();
-    return (clinics.data ?? []).filter((c) => !term || [c.name, c.slug, c.ownerName, c.ownerEmail].some((x) => x.toLowerCase().includes(term)));
-  }, [clinics.data, q]);
-  const count = (s: PlatformClinic['status']) => clinics.data?.filter((c) => c.status === s).length ?? 0;
+    return all.filter((c) => (filter === 'ALL' || c.status === filter) && (!term || [c.name, c.slug, c.ownerName, c.ownerEmail].some((x) => x.toLowerCase().includes(term))));
+  }, [all, q, filter]);
+
+  const tiles: { key: Filter; label: string; value: number; icon: React.ReactNode; tone: string }[] = [
+    { key: 'ALL', label: 'All clinics', value: all.length, icon: <Building2 className="h-4 w-4" />, tone: 'text-primary bg-primary/10' },
+    { key: 'ACTIVE', label: 'Ready', value: count('ACTIVE'), icon: <CheckCircle2 className="h-4 w-4" />, tone: 'text-success bg-success/10' },
+    { key: 'SUSPENDED', label: 'Paused', value: count('SUSPENDED'), icon: <PauseCircle className="h-4 w-4" />, tone: 'text-warning bg-warning/15' },
+    { key: 'FAILED', label: 'Set-up failed', value: count('FAILED'), icon: <AlertTriangle className="h-4 w-4" />, tone: 'text-destructive bg-destructive/10' },
+  ];
 
   return (
     <>
-      <PageHeader
-        title="Clinics"
-        description={clinics.data ? `${count('ACTIVE')} ready${count('SUSPENDED') ? `, ${count('SUSPENDED')} paused` : ''}${count('PROVISIONING') ? `, ${count('PROVISIONING')} setting up` : ''}. Each clinic has its own database and web address.` : 'Each clinic has its own database and web address.'}
-        actions={<Button onClick={() => setAdding(true)}><Plus /> Add clinic</Button>}
-      />
+      <PageHeader title="Clinics" description="Each clinic has its own database and web address." actions={<Button onClick={() => setAdding(true)}><Plus /> Add clinic</Button>} />
+      {all.length > 0 && (
+        <div className="mb-4 grid grid-cols-2 gap-2 lg:grid-cols-4" role="group" aria-label="Show clinics">
+          {tiles.map((t) => {
+            const active = filter === t.key;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setFilter(active && t.key !== 'ALL' ? 'ALL' : t.key)}
+                className={cn('flex items-center gap-3 rounded-lg border bg-card p-3 text-left shadow-sm transition-colors hover:border-primary/50', active && 'border-primary ring-1 ring-primary')}
+              >
+                <span className={cn('rounded-md p-2', t.tone)}>{t.icon}</span>
+                <span><span className="block text-xl font-semibold leading-tight">{t.value}</span><span className="text-xs text-muted-foreground">{t.label}</span></span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       <Card>
-        {(clinics.data?.length ?? 0) > 5 && (
-          <div className="border-b p-3"><SearchInput value={q} onChange={setQ} placeholder="Search clinics, addresses or owners" className="max-w-sm" /></div>
+        {all.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 border-b p-3">
+            <SearchInput value={q} onChange={setQ} placeholder="Search by clinic, address or owner" className="max-w-sm flex-1" />
+            {filter !== 'ALL' && <Button variant="ghost" size="sm" onClick={() => setFilter('ALL')}>Show all clinics</Button>}
+          </div>
         )}
         {clinics.isLoading ? (
           <LoadingRows />
         ) : clinics.error ? (
           <ErrorState error={clinics.error} onRetry={() => clinics.refetch()} />
-        ) : !clinics.data?.length ? (
-          <EmptyState icon={Building2} title="No clinics yet" description="Add the first clinic. It gets its own database and web address." action={<Button onClick={() => setAdding(true)}><Plus /> Add clinic</Button>} />
+        ) : !all.length ? (
+          <EmptyState icon={Building2} title="No clinics yet" description="Add the first clinic. It gets its own database and web address, ready in about a minute." action={<Button onClick={() => setAdding(true)}><Plus /> Add clinic</Button>} />
         ) : (
           <Table>
             <THead>
-              <TR><TH>Clinic</TH><TH className="hidden sm:table-cell">Web address</TH><TH>Status</TH><TH className="hidden md:table-cell">Owner</TH><TH className="hidden lg:table-cell">Added</TH><TH className="w-10"><span className="sr-only">Actions</span></TH></TR>
+              <TR><TH>Clinic</TH><TH className="hidden sm:table-cell">Web address</TH><TH>Status</TH><TH className="hidden md:table-cell">Owner</TH><TH className="hidden lg:table-cell">Added</TH><TH className="w-px"><span className="sr-only">Actions</span></TH></TR>
             </THead>
             <TBody>
               {rows.map((c) => (
-                <TR key={c.id}>
+                <TR key={c.id} data-clickable="true" onClick={() => router.push(`/platform/clinics/${c.id}`)}>
                   <TD>
-                    <div className="font-medium">{c.name}</div>
-                    <div className="text-xs text-muted-foreground">{COUNTRIES.find((x) => x.code === c.country)?.name ?? c.country} · {c.databaseName}</div>
-                    <div className="mt-0.5 break-all text-xs text-muted-foreground sm:hidden">{c.address.replace(/^https?:\/\//, '')}</div>
+                    <div className="font-medium text-primary">{c.name}</div>
+                    <div className="text-xs text-muted-foreground">{COUNTRIES.find((x) => x.code === c.country)?.name ?? c.country}</div>
+                    <div className="mt-0.5 break-all text-xs text-muted-foreground sm:hidden">{shortAddress(c.address)}</div>
                   </TD>
                   <TD className="hidden sm:table-cell">
-                    {c.status === 'ACTIVE' ? (
-                      <a href={c.address} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 break-all text-primary hover:underline">{c.address.replace(/^https?:\/\//, '')} <ExternalLink className="h-3 w-3 shrink-0" /></a>
-                    ) : (
-                      <span className="break-all text-muted-foreground">{c.address.replace(/^https?:\/\//, '')}</span>
-                    )}
+                    <div className="flex items-center gap-1">
+                      <span className="break-all">{shortAddress(c.address)}</span>
+                      <CopyButton text={c.address} what="Address" />
+                    </div>
                   </TD>
                   <TD>
-                    <Badge variant={STATUS[c.status].variant}>{STATUS[c.status].label}</Badge>
-                    {c.status === 'FAILED' && c.lastError && <p className="mt-1 max-w-xs truncate text-xs text-destructive" title={c.lastError}>{c.lastError}</p>}
+                    <StatusBadge status={c.status} />
+                    {c.status !== 'ACTIVE' && <p className="mt-1 max-w-[16rem] text-xs text-muted-foreground">{c.status === 'FAILED' && c.lastError ? c.lastError.split('\n')[0].slice(0, 120) : STATUS[c.status].hint}</p>}
                   </TD>
                   <TD className="hidden md:table-cell">
                     <div>{c.ownerName}</div>
                     <div className="text-xs text-muted-foreground">{c.ownerEmail}</div>
                   </TD>
                   <TD className="hidden lg:table-cell">{fmtDate(c.createdAt)}</TD>
-                  <TD>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${c.name}`}><MoreHorizontal /></Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {c.status === 'ACTIVE' && (
-                          <>
-                            <DropdownMenuItem asChild><a href={`${c.address}/login`} target="_blank" rel="noreferrer"><ExternalLink /> Open sign-in page</a></DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => ownerPassword(c)}><KeyRound /> New owner password</DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onSelect={() => pause(c)}><Pause /> Pause clinic</DropdownMenuItem>
-                          </>
-                        )}
-                        {c.status === 'SUSPENDED' && <DropdownMenuItem onSelect={() => act.mutate({ id: c.id, action: 'reactivate' })}><Play /> Reactivate clinic</DropdownMenuItem>}
-                        {c.status === 'FAILED' && <DropdownMenuItem onSelect={() => act.mutate({ id: c.id, action: 'retry' })}><RotateCcw /> Try set-up again</DropdownMenuItem>}
-                        {c.status === 'PROVISIONING' && <DropdownMenuItem disabled>Setting up — please wait</DropdownMenuItem>}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                  <TD onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-1">
+                      {c.status === 'ACTIVE' && (
+                        <Button asChild size="sm" variant="outline" className="hidden sm:inline-flex"><a href={`${c.address}/login`} target="_blank" rel="noreferrer"><ExternalLink /> Open</a></Button>
+                      )}
+                      {c.status === 'FAILED' && (
+                        <Button size="sm" variant="outline" loading={pending?.id === c.id} onClick={() => run(c, 'retry')}><RotateCcw /> Try again</Button>
+                      )}
+                      {c.status === 'PROVISIONING' && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Setting up" />}
+                      <ClinicActionsMenu clinic={c} run={run} />
+                    </div>
                   </TD>
                 </TR>
               ))}
-              {!rows.length && <TR><TD colSpan={6} className="py-8 text-center text-muted-foreground">No clinics match “{q}”.</TD></TR>}
+              {!rows.length && <TR><TD colSpan={6} className="py-8 text-center text-muted-foreground">No clinics match. <button type="button" className="text-primary hover:underline" onClick={() => { setQ(''); setFilter('ALL'); }}>Show all clinics</button></TD></TR>}
             </TBody>
           </Table>
         )}
       </Card>
-      <AddClinicDialog open={adding} onOpenChange={setAdding} onPassword={setPassword} />
-      <OwnerPasswordDialog result={password} onClose={() => setPassword(null)} />
+      <AddClinicDialog open={adding} onOpenChange={setAdding} onOwnerAccess={setAccess} />
+      <OwnerAccessDialog result={access} onClose={() => setAccess(null)} />
     </>
   );
 }

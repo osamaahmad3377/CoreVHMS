@@ -556,13 +556,20 @@ export class AppointmentsService {
           (PRIORITY_RANK[a.effectivePriority ?? 'NON_URGENT'] ?? 5) - (PRIORITY_RANK[b.effectivePriority ?? 'NON_URGENT'] ?? 5) ||
           (a.checkedInAt?.getTime() ?? 0) - (b.checkedInAt?.getTime() ?? 0),
       );
+    // Finished visits whose client still has work not yet invoiced get a "Bill" button at the front desk.
+    const done = shaped.filter((s) => ['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(s.status));
+    const doneClients = [...new Set(done.filter((s) => s.status === 'COMPLETED').map((s) => s.client.id))];
+    const pending = doneClients.length
+      ? await this.prisma.db.charge.groupBy({ by: ['clientId'], where: { clientId: { in: doneClients }, status: 'PENDING' }, _count: { _all: true } })
+      : [];
+    const unbilled = new Map(pending.map((p) => [p.clientId, p._count._all]));
     return {
       date,
       timezone: branch.timezone,
       expected: shaped.filter((s) => s.status === 'BOOKED' || s.status === 'CONFIRMED'),
       waiting,
       inConsultation: shaped.filter((s) => s.status === 'IN_CONSULTATION'),
-      done: shaped.filter((s) => ['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(s.status)),
+      done: done.map((s) => ({ ...s, unbilledCharges: s.status === 'COMPLETED' ? (unbilled.get(s.client.id) ?? 0) : 0 })),
       stats: {
         total: shaped.filter((s) => s.status !== 'CANCELLED').length,
         averageWaitMinutes: waiting.length ? Math.round(waiting.reduce((n, w) => n + (w.waitingMinutes ?? 0), 0) / waiting.length) : 0,

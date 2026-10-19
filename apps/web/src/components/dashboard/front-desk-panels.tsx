@@ -1,7 +1,8 @@
 'use client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { CalendarClock, LogIn, Users } from 'lucide-react';
+import { CalendarClock, LogIn, Play, Users } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { PriorityDot } from '@/components/scheduling/appointment-status';
 import { EmptyState } from '@/components/page';
@@ -39,8 +40,20 @@ export function noMoreBookingsText(appts: { total: number; byStatus: Record<stri
   return `All of today’s ${appts.total} appointment${appts.total === 1 ? ' has' : 's have'} started or finished`;
 }
 
-/** "Waiting now (N)": checked-in patients, longest wait first. */
+/** "Waiting now (N)": checked-in patients, longest wait first. Vets can start the consultation from here. */
 export function WaitingNow({ data }: { data: FrontDeskWidget }) {
+  const { can } = useSession();
+  const router = useRouter();
+  const qc = useQueryClient();
+  const start = useMutation({
+    mutationFn: (id: string) => api.post<{ encounterId: string | null }>(`/appointments/${id}/status`, { action: 'start' }),
+    onSuccess: (a) => {
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['queue'] });
+      if (a.encounterId) router.push(`/consultations/${a.encounterId}`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
   return (
     <Card>
       <CardHeader>
@@ -50,8 +63,8 @@ export function WaitingNow({ data }: { data: FrontDeskWidget }) {
       {data.waiting.length ? (
         <ul className="divide-y">
           {data.waiting.map((a) => (
-            <li key={a.id}>
-              <Link href="/front-desk" className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-4 py-2 hover:bg-muted/50">
+            <li key={a.id} className="flex items-center gap-2 pr-4 hover:bg-muted/50">
+              <Link href="/front-desk" className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-0.5 py-2 pl-4">
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{a.patient?.name ?? a.client?.displayName ?? 'Walk-in'}</span>
                   <span className="block truncate text-xs text-muted-foreground">{a.client?.displayName}{a.clinician ? ` · ${a.clinician}` : ''}</span>
@@ -59,6 +72,11 @@ export function WaitingNow({ data }: { data: FrontDeskWidget }) {
                 <PriorityDot priority={a.priority} />
                 <span className="text-xs text-muted-foreground">Waiting since {fmtRelative(a.checkedInAt ?? a.startsAt)}</span>
               </Link>
+              {can('clinical.write') && a.patient && (
+                <Button size="sm" loading={start.isPending && start.variables === a.id} onClick={() => start.mutate(a.id)} aria-label={`Start consultation for ${a.patient.name}`}>
+                  <Play /> Start
+                </Button>
+              )}
             </li>
           ))}
           {data.waitingCount > data.waiting.length && (

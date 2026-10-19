@@ -5,6 +5,8 @@ test.describe('Everyday flow', () => {
   test('“Still to do” / “Needs your attention” only links to pages the role can open', async ({ page }) => {
     test.setTimeout(300_000);
     for (const email of ['reception@demo.pk', 'vet@demo.pk', 'nurse@demo.pk']) {
+      // Leave the app first: a page left open would redirect itself to sign-in once the cookies are gone.
+      await page.goto('about:blank');
       await page.context().clearCookies();
       await login(page, email);
       const list = page.getByRole('region', { name: /^(Needs your attention|Still to do)$/ });
@@ -54,5 +56,38 @@ test.describe('Everyday flow', () => {
     await next.getByRole('link', { name: /Bill this visit/ }).click();
     await expect(page).toHaveURL(/\/billing\/invoices\/new\?clientId=/);
     await expect(page.getByText(/Akmal|Kamran/).first()).toBeVisible(); // Toto's owner is preselected
+  });
+
+  test('walk-in → vet starts from the dashboard → notes typed just before finishing are kept → front desk bills the visit', async ({ browser }) => {
+    const reception = await (await browser.newContext()).newPage();
+    await login(reception, 'reception@demo.pk');
+    await reception.goto('/front-desk');
+    await reception.getByRole('button', { name: 'Walk-in' }).click();
+    const walkIn = reception.getByRole('dialog');
+    await walkIn.getByRole('combobox').first().click();
+    await reception.getByLabel('Search patients').fill('Rocky');
+    await reception.getByRole('option', { name: /Rocky/ }).first().click();
+    await walkIn.getByLabel('Vet', { exact: true }).selectOption({ label: 'Dr. Ayesha Raza' });
+    await walkIn.getByLabel('Reason', { exact: true }).fill(uniq('E2E itchy skin '));
+    await walkIn.getByRole('button', { name: 'Check in' }).click();
+    await expect(reception.getByText(/Checked in: Rocky/)).toBeVisible();
+
+    const vet = await (await browser.newContext()).newPage();
+    await login(vet, 'vet@demo.pk');
+    await vet.getByRole('button', { name: 'Start consultation for Rocky' }).first().click();
+    await expect(vet).toHaveURL(/\/consultations\/[0-9a-f-]{36}/);
+    // Typed and finished at once, before the 2-second autosave: the checklist still sees the notes.
+    await vet.getByLabel(/Assessment/).fill('Flea allergy dermatitis');
+    await vet.getByRole('button', { name: 'Finish consultation' }).click();
+    const check = vet.getByRole('dialog');
+    await expect(check.getByText('Notes written')).toBeVisible();
+    await check.getByRole('button', { name: 'Sign notes & finish' }).click();
+    await expect(vet.getByRole('region', { name: 'Next steps' })).toBeVisible();
+
+    await reception.reload();
+    const card = reception.getByRole('listitem').filter({ hasText: 'Rocky' }).filter({ has: reception.getByRole('link', { name: 'Bill', exact: true }) }).first();
+    await card.getByRole('link', { name: 'Bill', exact: true }).click();
+    await expect(reception).toHaveURL(/\/billing\/invoices\/new\?clientId=/);
+    await expect(reception.getByRole('button', { name: 'Finish & take payment' })).toBeEnabled();
   });
 });

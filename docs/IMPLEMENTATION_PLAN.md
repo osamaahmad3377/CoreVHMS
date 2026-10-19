@@ -480,3 +480,34 @@ Items from the feature matrix that need no external device, data source or provi
     - a clinic default of dark opened the app dark for a vet who had not chosen a theme;
     - no console errors.
 - **Note:** building the web image needs internet access once (fonts).
+
+### 2026-10-20 — Easier daily flow and super admin dashboard
+- **Requested by the owner:** "make the flow more easy", for daily staff work and the super admin dashboard.
+- **How:** a full visit was walked through in the browser as reception, vet and cashier (walk-in → consultation → bill → payment), noting every extra click. The super admin screens were reworked the same way.
+- **Daily staff work:**
+  - **Start from the dashboard.** "Waiting now" on a vet's dashboard has a Start button that opens the consultation, with no detour through the front desk.
+  - **Finish keeps the last words.** Notes typed in the last two seconds before Finish consultation (before autosave) are saved before the checklist is shown. The checklist used to say "No notes written yet" and hid "Sign notes & finish" although the notes were saved when finishing.
+  - **Bill from the front desk.** A finished visit whose client still has work not yet invoiced shows Bill. It opens a new invoice with those items ticked. The queue API returns `unbilledCharges` per finished visit.
+  - **Finish & take payment.** The new invoice page offers "Finish & take payment", which opens the payment window as soon as the invoice is finished, and "Finish, pay later". Staff without `payments.take` keep "Finish invoice".
+  - The help guides "Invoice a client" (it still used old wording) and "Start a consultation" are updated.
+- **Super admin dashboard:**
+  - Tiles for all, ready, paused and failed clinics that filter the list; search is always shown.
+  - Rows open the clinic. Inline Open and Copy address buttons; Try again on failed set-ups; a status line explaining Setting up, Paused or the failure.
+  - New clinic page `/platform/clinics/:id`:
+    - usage counted in the clinic's own database (staff, clients, patients, appointments this month, last sign-in), via `GET /platform/clinics/:id/overview`;
+    - the platform history in plain words;
+    - sign-in details with copy buttons;
+    - "Owner can't sign in? New password";
+    - status banners with the next action.
+  - Owner sign-in details come as a ready-made message (address, email, temporary password, expiry) with Copy message and Send on WhatsApp.
+  - The Add clinic form is shorter: main branch defaults to "Main branch" and is moved to the end; the access choices are in plain words.
+- **Tests executed:**
+  - API 197/197 in 35 suites. New tests: clinic overview (usage counts, history, refused for clinic staff); finished visits report work not yet invoiced, and the count clears once invoiced.
+  - Shared 43/43. ESLint and `tsc` clean.
+  - Playwright against the multi-clinic dev servers:
+    - new `flow.spec.ts` scenario: walk-in → vet starts from the dashboard → notes typed and finished at once are kept and signed → front desk Bill → Finish & take payment available;
+    - `billing-pos.spec.ts` invoice scenarios updated (Finish & take payment opens the payment window; Finish, pay later);
+    - `scheduling-clinical.spec.ts` and `clients-patients.spec.ts` pass. Two search scenarios needed a re-run: a keyboard shortcut was pressed before the page was ready.
+    - Test fixes: exact button names ("Take payment" also matched the new button); leaving the page before clearing cookies in the dashboard-links scenario (the open page redirected itself to sign-in and raced the test).
+  - The POS dispensary scenario cannot run against a `*.localhost` address: Node cannot resolve it for the test's API helper.
+  - Browser check of the super admin flow: add a clinic → welcome message copied exactly → list while setting up → filter → clinic page on desktop and phone, with no console errors.

@@ -11,12 +11,12 @@ test.describe('Billing, payments and point of sale', () => {
     await first.getByRole('link', { name: 'Make invoice' }).click();
     await expect(page.getByRole('heading', { name: 'New invoice' })).toBeVisible();
     await expect(page.getByLabel(/^Include /).first()).toBeChecked();
-    await page.getByRole('button', { name: 'Finish invoice' }).click();
+    // The client is at the desk: finishing opens the payment window straight away.
+    await page.getByRole('button', { name: 'Finish & take payment' }).click();
     await expect(page.getByText(/INV-\d{6} finished/)).toBeVisible();
-    await expect(page.getByRole('heading', { name: /INV-\d{6}/ })).toContainText('Unpaid');
 
-    await page.getByRole('button', { name: 'Take payment' }).click();
     const dlg = page.getByRole('dialog');
+    await expect(dlg.getByRole('heading', { name: 'Take payment' })).toBeVisible();
     await dlg.getByRole('radio', { name: 'Card' }).click();
     await dlg.getByLabel('Receipt / slip no. (optional)').fill('AUTH-E2E');
     await expect(dlg.getByText('Extra kept as credit')).toBeVisible();
@@ -32,10 +32,11 @@ test.describe('Billing, payments and point of sale', () => {
     await page.goto('/billing/charges');
     const first = page.getByRole('row').filter({ has: page.getByRole('link', { name: 'Make invoice' }) }).first();
     await first.getByRole('link', { name: 'Make invoice' }).click();
-    await page.getByRole('button', { name: 'Finish invoice' }).click();
+    await page.getByRole('button', { name: 'Finish, pay later' }).click();
     await expect(page.getByText(/INV-\d{6} finished/)).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
 
-    await page.getByRole('button', { name: 'Take payment' }).click();
+    await page.getByRole('button', { name: 'Take payment', exact: true }).click();
     const dlg = page.getByRole('dialog');
     await dlg.getByRole('radio', { name: 'Card' }).click();
     await dlg.getByLabel('Amount paid now').fill('100');

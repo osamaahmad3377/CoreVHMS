@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { Tenant } from '@prisma/client';
-import type { CreateClinicInput, PlatformClinic } from '@vcms/shared';
+import type { ClinicOverview, ClinicUsage, CreateClinicInput, PlatformClinic } from '@vcms/shared';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { randomToken, sha256 } from '../../common/crypto/crypto';
@@ -15,6 +15,7 @@ import { OrgBootstrapService } from '../organizations/org-bootstrap.service';
 import { TEMP_PASSWORD_DAYS } from '../users/users.service';
 
 const INVITE_DAYS = 7;
+
 
 export function toClinic(t: Tenant): PlatformClinic {
   return {
@@ -74,6 +75,41 @@ export class PlatformClinicsService {
 
   async get(id: string) {
     return toClinic(await this.find(id));
+  }
+
+  /**
+   * One clinic at a glance for the super admin: details, how much it is used (counted in the clinic's own
+   * database; nothing clinical is read) and the history of what the platform did to it.
+   */
+  async overview(id: string): Promise<ClinicOverview> {
+    const t = await this.find(id);
+    let usage: ClinicUsage | null = null;
+    if (t.status === 'ACTIVE' || t.status === 'SUSPENDED') {
+      try {
+        usage = await RequestContext.runInTenant(tenantRef(t), async () => {
+          const raw = this.prisma.raw;
+          const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+          const [staff, activeStaff, clients, patients, appointmentsThisMonth, lastSignIn] = await Promise.all([
+            raw.membership.count(),
+            raw.membership.count({ where: { status: 'ACTIVE' } }),
+            raw.client.count({ where: { status: { not: 'MERGED' } } }),
+            raw.patient.count({ where: { status: { not: 'MERGED' } } }),
+            raw.appointment.count({ where: { startsAt: { gte: monthStart } } }),
+            raw.user.findFirst({ where: { lastLoginAt: { not: null } }, orderBy: { lastLoginAt: 'desc' }, select: { lastLoginAt: true } }),
+          ]);
+          return { staff, activeStaff, clients, patients, appointmentsThisMonth, lastSignInAt: lastSignIn?.lastLoginAt?.toISOString() ?? null };
+        });
+      } catch (e) {
+        this.log.warn(`Usage for ${t.slug} unavailable: ${(e as Error).message}`);
+      }
+    }
+    const events = await this.prisma.control.auditEvent.findMany({
+      where: { entityType: 'Tenant', entityId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: { id: true, action: true, summary: true, actorName: true, createdAt: true },
+    });
+    return { clinic: toClinic(t), usage, events: events.map((e) => ({ ...e, createdAt: e.createdAt.toISOString() })) };
   }
 
   async create(input: CreateClinicInput) {

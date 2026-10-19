@@ -177,6 +177,15 @@ describe('Multi-clinic hosting', () => {
     expect(seen.sort()).toEqual(['Alpha Paws', 'Bondi Vets']);
   }, SETUP_MS);
 
+  it('shows a clinic at a glance: usage counts from its own database and its history', async () => {
+    const o = (await superAdmin.get(`/platform/clinics/${alpha.id}/overview`)).body;
+    expect(o.clinic).toMatchObject({ slug: 'alpha-paws', status: 'ACTIVE' });
+    expect(o.usage).toMatchObject({ staff: 1, activeStaff: 1, clients: 1, patients: 0, appointmentsThisMonth: 0 });
+    expect(o.usage.lastSignInAt).toEqual(expect.any(String));
+    expect(o.events.map((e: any) => e.action)).toEqual(expect.arrayContaining(['platform.clinic_created', 'platform.clinic_ready']));
+    expect((await alpha.owner.get(`/platform/clinics/${alpha.id}/overview`)).status).toBe(403);
+  });
+
   it('pauses and reactivates a clinic without losing data', async () => {
     expect((await superAdmin.post(`/platform/clinics/${alpha.id}/suspend`)).body.status).toBe('SUSPENDED');
     const blocked = await alpha.owner.get('/clients');

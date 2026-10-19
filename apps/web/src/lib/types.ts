@@ -265,6 +265,8 @@ export interface Appointment {
   clinician: { id: string; name: string } | null;
   resources: { id: string; name: string; type: string }[];
   encounter: { id: string; status: string } | null;
+  /** Front desk, finished visits: the client's charges not yet invoiced. */
+  unbilledCharges?: number;
   triage: { id: string; priority: string; presentingComplaint: string; assessedAt: string; assessedByName: string } | null;
   effectivePriority?: string | null;
   waitingMinutes?: number | null;

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { enumLabel, fromMinor } from '@vcms/shared';
 import { Ban, CreditCard, FileMinus, Printer, ReceiptText, Send, Trash2 } from 'lucide-react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { InvoiceDocument, type ClinicHeader } from '@/components/billing/invoice-document';
@@ -110,6 +110,14 @@ function InvoiceView() {
   const [paying, setPaying] = useState(false);
   const [crediting, setCrediting] = useState(false);
   const q = useQuery({ queryKey: ['invoice', id], queryFn: () => api.get<Invoice>(`/invoices/${id}`) });
+  // Arriving from "Finish & take payment": open the payment window once the invoice has loaded.
+  const searchParams = useSearchParams();
+  const wantsPayment = searchParams.get('pay') === '1';
+  useEffect(() => {
+    if (!wantsPayment || !q.data) return;
+    if ((q.data.status === 'ISSUED' || q.data.status === 'PARTIALLY_PAID') && can('payments.take')) setPaying(true);
+    router.replace(`/billing/invoices/${id}`, { scroll: false });
+  }, [wantsPayment, q.data, can, router, id]);
   const org = useQuery({ queryKey: ['organization'], queryFn: () => api.get<ClinicHeader>('/organization'), staleTime: 300_000 });
   const refresh = () => ['invoice', 'invoices', 'client', 'statement', 'charges', 'dashboard'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
   const act = useMutation({

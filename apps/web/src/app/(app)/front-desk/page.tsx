@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { TRIAGE_PRIORITIES, enumLabel } from '@vcms/shared';
-import { AlertOctagon, CalendarPlus, Clock, DoorOpen, Info, LogIn, Phone, Play, Siren, Stethoscope, UserPlus, Users } from 'lucide-react';
+import { AlertOctagon, CalendarPlus, Clock, DoorOpen, Info, LogIn, Phone, Play, Receipt, Siren, Stethoscope, UserPlus, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
@@ -318,6 +318,13 @@ function FrontDesk() {
                             </Button>
                           )}
                           {c.key === 'done' && <AppointmentStatusBadge status={a.status} />}
+                          {c.key === 'done' && !!a.unbilledCharges && can('billing.write') && (
+                            <Button size="sm" asChild>
+                              <Link href={`/billing/invoices/new?clientId=${a.client.id}`} title={`${a.unbilledCharges} item${a.unbilledCharges === 1 ? '' : 's'} not yet invoiced`}>
+                                <Receipt /> Bill
+                              </Link>
+                            </Button>
+                          )}
                         </QueueCard>
                       ))}
                     </ul>

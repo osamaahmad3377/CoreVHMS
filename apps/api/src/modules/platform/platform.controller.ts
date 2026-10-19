@@ -33,6 +33,12 @@ export class PlatformClinicsController {
     return this.clinics.get(id);
   }
 
+  @Get(':id/overview')
+  @RequirePermissions('platform.clinics.manage')
+  overview(@Param('id', ParseUUIDPipe) id: string) {
+    return this.clinics.overview(id);
+  }
+
   @Post()
   @RequirePermissions('platform.clinics.manage')
   @ApiZodBody(createClinicSchema)
