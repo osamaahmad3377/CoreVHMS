@@ -69,7 +69,7 @@ function LoginForm() {
       <form method="post" onSubmit={verify} className="grid gap-4">
         <div>
           <KeyRound className="mb-3 h-8 w-8 text-primary" />
-          <h1 className="text-xl font-semibold">Two-factor verification</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Two-factor verification</h1>
           <p className="mt-1 text-sm text-muted-foreground">Enter the 6-digit code from your authenticator app, or one of your recovery codes.</p>
         </div>
         {error && <FormError message={error} />}
@@ -89,7 +89,7 @@ function LoginForm() {
   return (
     <form method="post" onSubmit={onSubmit} className="grid gap-4" noValidate>
       <div>
-        <h1 className="text-xl font-semibold">{platform ? 'Super admin sign-in' : 'Sign in'}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{platform ? 'Super admin sign-in' : 'Sign in'}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {platform ? 'For NextCore staff who manage clinics.' : host?.clinic ? `Sign in to ${host.clinic.branding?.brandName ?? host.clinic.name}.` : 'Use your clinic staff account.'}
         </p>

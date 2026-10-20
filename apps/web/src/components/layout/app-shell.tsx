@@ -56,7 +56,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <Dialog.Root open={mobileOpen} onOpenChange={setMobileOpen}>
         <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/50 lg:hidden" />
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/50 backdrop-blur-[2px] lg:hidden" />
           <Dialog.Content className="fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col bg-sidebar shadow-xl lg:hidden">
             <Dialog.Title className="sr-only">Navigation</Dialog.Title>
             <div className="flex h-14 items-center justify-between border-b border-sidebar-border px-3">
@@ -72,9 +72,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </Dialog.Portal>
       </Dialog.Root>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="app-canvas flex min-w-0 flex-1 flex-col">
         <Topbar onMenu={() => setMobileOpen(true)} onSearch={() => setSearchOpen(true)} />
-        <main id="main" className="mx-auto w-full max-w-[1600px] flex-1 px-4 py-5 sm:px-6">
+        <main id="main" className="page-enter mx-auto w-full max-w-[1600px] flex-1 px-4 py-6 sm:px-8 sm:py-8">
           {children}
         </main>
       </div>

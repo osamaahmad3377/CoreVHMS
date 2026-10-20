@@ -10,6 +10,7 @@ import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recha
 import { EmptyState, ErrorState, LoadingRows, PageHeader } from '@/components/page';
 import { AttentionList, buildAttention } from '@/components/dashboard/attention';
 import { ArrivingNext, type FrontDeskWidget, WaitingNow, noMoreBookingsText } from '@/components/dashboard/front-desk-panels';
+import { DashboardHero } from '@/components/dashboard/hero';
 import { QuickActions, dashboardRole } from '@/components/dashboard/quick-actions';
 import { SetupChecklist, ShowSetupAgainLink } from '@/components/dashboard/setup-checklist';
 import { Stat } from '@/components/stat';
@@ -121,9 +122,11 @@ export default function DashboardPage() {
 
   return (
     <>
-      <PageHeader
-        title={`Good ${greeting()}, ${session.user.name.split(' ')[0] === 'Dr.' ? session.user.name.split(' ').slice(0, 2).join(' ') : session.user.name.split(' ')[0]}`}
-        description={`${today} · ${session.organization?.name}${session.branch ? ` · ${session.branch.name}` : ''}`}
+      <DashboardHero
+        greeting={`Good ${greeting()}, ${session.user.name.split(' ')[0] === 'Dr.' ? session.user.name.split(' ').slice(0, 2).join(' ') : session.user.name.split(' ')[0]}`}
+        date={today}
+        subtitle={`${session.organization?.name}${session.branch ? ` · ${session.branch.name}` : ''}`}
+        stats={glance.slice(0, 3).map((g) => ({ label: g.label, value: g.value, href: g.href, alert: g.tone === 'warning' }))}
       />
 
       {q.isLoading ? (
@@ -131,7 +134,7 @@ export default function DashboardPage() {
       ) : q.error ? (
         <ErrorState error={q.error} onRetry={() => q.refetch()} />
       ) : (
-        <div className="grid gap-5">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5">
           <QuickActions />
           <SetupChecklist />
 
@@ -154,12 +157,12 @@ export default function DashboardPage() {
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
             <AttentionList items={attention} title={frontline ? 'Still to do' : 'Needs your attention'} />
             {glance.length > 0 && (
-              <section aria-label="Today at a glance" className="grid content-start gap-2 rounded-lg border bg-card p-3 shadow-sm">
-                <h2 className="px-1 text-sm font-semibold">Today at a glance</h2>
+              <section aria-label="Today at a glance" className="grid content-start gap-3 rounded-xl border border-border/70 bg-card p-4 shadow-card">
+                <h2 className="px-1 text-sm font-semibold tracking-tight">Today at a glance</h2>
                 <ul className="grid grid-cols-2 gap-2">
                   {glance.map((g) => (
                     <li key={g.label}>
-                      <Link href={g.href} className="flex h-full items-center gap-2.5 rounded-md border bg-background px-2.5 py-2 transition-colors hover:border-primary/50 hover:bg-primary/5">
+                      <Link href={g.href} className="flex h-full items-center gap-3 rounded-lg border border-border/60 bg-background/60 px-3 py-2.5 transition-all duration-150 hover:-translate-y-px hover:border-primary/40 hover:bg-primary/5 hover:shadow-card">
                         <g.icon className={cn('h-4 w-4 shrink-0', g.tone === 'warning' ? 'text-warning' : 'text-muted-foreground')} />
                         <span className="min-w-0">
                           <span className="block text-lg font-semibold leading-tight tabular">{g.value}</span>

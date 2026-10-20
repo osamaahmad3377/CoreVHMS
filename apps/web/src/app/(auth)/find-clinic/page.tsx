@@ -34,7 +34,7 @@ export default function FindClinicPage() {
     <form method="post" onSubmit={submit} className="grid gap-4" noValidate>
       <div>
         <Building2 className="mb-3 h-8 w-8 text-primary" />
-        <h1 className="text-xl font-semibold">Find your clinic</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Find your clinic</h1>
         <p className="mt-1 text-sm text-muted-foreground">Each clinic has its own web address. Enter yours to go to its sign-in page.</p>
       </div>
       {error && <FormError message={error} />}

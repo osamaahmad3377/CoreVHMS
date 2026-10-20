@@ -16,7 +16,7 @@ export const BRAND_FONTS = ['SYSTEM', 'INTER', 'ROBOTO', 'OPEN_SANS', 'LATO', 'P
 export type BrandFont = (typeof BRAND_FONTS)[number];
 /** Font names as shown to the owner; SYSTEM is the device's own interface font. */
 export const BRAND_FONT_LABELS: Record<BrandFont, string> = {
-  SYSTEM: 'Device default',
+  SYSTEM: 'Inter (standard)',
   INTER: 'Inter',
   ROBOTO: 'Roboto',
   OPEN_SANS: 'Open Sans',
@@ -32,7 +32,7 @@ export type LoginBackground = 'MENU_COLOUR' | 'GRADIENT' | 'IMAGE';
 export type PrintLogoPosition = 'LEFT' | 'CENTER' | 'RIGHT';
 
 /** Corner roundness of buttons, fields and cards (the theme's --radius). */
-export const CORNER_RADIUS: Record<CornerStyle, string> = { SHARP: '0.2rem', STANDARD: '0.5rem', ROUNDED: '0.875rem' };
+export const CORNER_RADIUS: Record<CornerStyle, string> = { SHARP: '0.25rem', STANDARD: '0.75rem', ROUNDED: '1.25rem' };
 
 export const brandingUpdateSchema = z.object({
   /** Name shown in the menu, on the sign-in page and in the browser tab; empty = the clinic name. */
@@ -95,13 +95,13 @@ export interface Branding {
  * The owner can change any of them afterwards.
  */
 export const BRAND_PRESETS: { key: string; name: string; primaryColor: string; sidebarColor: string; brandFont: BrandFont; cornerStyle: CornerStyle }[] = [
-  { key: 'classic', name: 'Classic teal', primaryColor: '#0f766e', sidebarColor: '#191f24', brandFont: 'SYSTEM', cornerStyle: 'STANDARD' },
-  { key: 'ocean', name: 'Ocean', primaryColor: '#2563eb', sidebarColor: '#0f172a', brandFont: 'INTER', cornerStyle: 'STANDARD' },
+  { key: 'classic', name: 'Classic teal', primaryColor: '#0f7b6c', sidebarColor: '#131c26', brandFont: 'SYSTEM', cornerStyle: 'STANDARD' },
+  { key: 'ocean', name: 'Ocean', primaryColor: '#2563eb', sidebarColor: '#0f172a', brandFont: 'SYSTEM', cornerStyle: 'STANDARD' },
   { key: 'lavender', name: 'Lavender', primaryColor: '#7c3aed', sidebarColor: '#1e1b4b', brandFont: 'POPPINS', cornerStyle: 'ROUNDED' },
   { key: 'meadow', name: 'Meadow', primaryColor: '#16a34a', sidebarColor: '#14532d', brandFont: 'NUNITO', cornerStyle: 'ROUNDED' },
   { key: 'sunset', name: 'Sunset', primaryColor: '#ea580c', sidebarColor: '#431407', brandFont: 'LATO', cornerStyle: 'STANDARD' },
   { key: 'rose', name: 'Rose', primaryColor: '#db2777', sidebarColor: '#4c0519', brandFont: 'POPPINS', cornerStyle: 'ROUNDED' },
-  { key: 'clean', name: 'Clean white', primaryColor: '#0891b2', sidebarColor: '#f8fafc', brandFont: 'INTER', cornerStyle: 'STANDARD' },
+  { key: 'clean', name: 'Clean white', primaryColor: '#0891b2', sidebarColor: '#f8fafc', brandFont: 'SYSTEM', cornerStyle: 'STANDARD' },
   { key: 'heritage', name: 'Heritage', primaryColor: '#334155', sidebarColor: '#1c1917', brandFont: 'MERRIWEATHER', cornerStyle: 'SHARP' },
 ];
 

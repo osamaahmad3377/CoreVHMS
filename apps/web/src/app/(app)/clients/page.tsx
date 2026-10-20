@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { NativeSelect } from '@/components/ui/input';
+import { Avatar } from '@/components/ui/misc';
 import { useUrlState } from '@/hooks/use-url-state';
 import { api, qs } from '@/lib/api';
 import { useSession } from '@/lib/session';
@@ -45,13 +46,16 @@ function ClientsList() {
       header: 'Client',
       sortKey: 'displayName',
       cell: (c) => (
-        <div className="min-w-0">
-          <Link href={`/clients/${c.id}`} className="font-medium hover:underline">
-            {c.displayName}
-          </Link>
-          <div className="text-xs text-muted-foreground">
-            {c.clientNo}
-            {c.type !== 'INDIVIDUAL' && <> · {enumLabel(c.type)}</>}
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar name={c.displayName} className="h-9 w-9" />
+          <div className="min-w-0">
+            <Link href={`/clients/${c.id}`} className="font-medium hover:text-primary hover:underline">
+              {c.displayName}
+            </Link>
+            <div className="text-xs text-muted-foreground">
+              {c.clientNo}
+              {c.type !== 'INDIVIDUAL' && <> · {enumLabel(c.type)}</>}
+            </div>
           </div>
         </div>
       ),

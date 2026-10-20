@@ -47,7 +47,7 @@ export function QuickActions() {
   const keys = [...new Set([...BY_ROLE[role], ...BY_ROLE.other])].filter(allowed).slice(0, 6);
   if (!keys.length) return null;
   return (
-    <nav aria-label="Quick actions" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+    <nav aria-label="Quick actions" className="grid min-w-0 grid-cols-[repeat(2,minmax(0,1fr))] gap-2 sm:grid-cols-3 lg:grid-cols-6">
       {keys.map((k) => {
         const a = ACTIONS[k];
         return (

@@ -4,20 +4,20 @@
 
 @layer base {
   :root {
-    --background: 200 20% 98%;
-    --foreground: 200 30% 11%;
+    --background: 214 30% 97%;
+    --foreground: 215 32% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 200 30% 11%;
+    --card-foreground: 215 32% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 200 30% 11%;
-    --primary: 174 78% 26%;
+    --popover-foreground: 215 32% 11%;
+    --primary: 172 78% 27%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 200 18% 94%;
-    --secondary-foreground: 200 30% 15%;
-    --muted: 200 18% 95%;
-    --muted-foreground: 200 10% 40%;
-    --accent: 174 40% 93%;
-    --accent-foreground: 174 80% 18%;
+    --secondary: 214 24% 94%;
+    --secondary-foreground: 215 30% 16%;
+    --muted: 214 24% 95%;
+    --muted-foreground: 215 12% 40%;
+    --accent: 172 42% 94%;
+    --accent-foreground: 172 80% 17%;
     --destructive: 0 72% 46%;
     --destructive-foreground: 0 0% 100%;
     --warning: 35 92% 42%;
@@ -26,54 +26,57 @@
     --success-foreground: 0 0% 100%;
     --info: 211 80% 44%;
     --info-foreground: 0 0% 100%;
-    --border: 200 16% 87%;
-    --input: 200 16% 82%;
-    --ring: 174 78% 30%;
-    --radius: 0.5rem;
-    --sidebar: 200 28% 12%;
-    --sidebar-foreground: 200 15% 82%;
-    --sidebar-border: 200 20% 20%;
-    --sidebar-active: 174 60% 32%;
+    --border: 214 20% 89%;
+    --input: 214 18% 82%;
+    --ring: 172 78% 30%;
+    --radius: 0.75rem;
+    /* Shadow colour: a cool dark tone, so shadows feel soft rather than grey. */
+    --shadow: 215 45% 14%;
+    --sidebar: 210 34% 11%;
+    --sidebar-foreground: 210 16% 80%;
+    --sidebar-border: 210 24% 19%;
+    --sidebar-active: 172 60% 32%;
     /* Brightest text in the side menu and its hover tint; clinics with a light menu colour get dark values (Branding). */
     --sidebar-strong: 0 0% 100%;
-    --sidebar-hover: 0 0% 100% / 0.05;
-    /* The clinic's font (Branding); the device's interface font by default. */
-    --font-brand: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --sidebar-hover: 0 0% 100% / 0.06;
+    /* The clinic's font (Branding); Inter unless the clinic chose another. */
+    --font-brand: var(--font-inter), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   }
 
   .dark {
     color-scheme: dark;
-    --background: 200 28% 7%;
-    --foreground: 200 15% 92%;
-    --card: 200 26% 10%;
-    --card-foreground: 200 15% 92%;
-    --popover: 200 26% 10%;
-    --popover-foreground: 200 15% 92%;
-    --primary: 174 62% 42%;
-    --primary-foreground: 200 30% 6%;
-    --secondary: 200 20% 15%;
-    --secondary-foreground: 200 15% 90%;
-    --muted: 200 20% 14%;
-    --muted-foreground: 200 10% 62%;
-    --accent: 174 40% 16%;
-    --accent-foreground: 174 50% 80%;
-    --destructive: 0 70% 55%;
+    --background: 222 32% 6.5%;
+    --foreground: 214 18% 93%;
+    --card: 222 28% 9.5%;
+    --card-foreground: 214 18% 93%;
+    --popover: 222 28% 10.5%;
+    --popover-foreground: 214 18% 93%;
+    --primary: 172 62% 42%;
+    --primary-foreground: 222 32% 6%;
+    --secondary: 222 20% 15%;
+    --secondary-foreground: 214 18% 90%;
+    --muted: 222 20% 13%;
+    --muted-foreground: 214 10% 63%;
+    --accent: 172 40% 16%;
+    --accent-foreground: 172 50% 80%;
+    --destructive: 0 70% 56%;
     --destructive-foreground: 0 0% 100%;
     --warning: 38 92% 52%;
-    --warning-foreground: 200 30% 6%;
-    --success: 152 55% 45%;
-    --success-foreground: 200 30% 6%;
-    --info: 211 80% 60%;
-    --info-foreground: 200 30% 6%;
-    --border: 200 18% 20%;
-    --input: 200 18% 24%;
-    --ring: 174 62% 42%;
-    --sidebar: 200 30% 5%;
-    --sidebar-foreground: 200 12% 78%;
-    --sidebar-border: 200 20% 14%;
-    --sidebar-active: 174 55% 30%;
+    --warning-foreground: 222 32% 6%;
+    --success: 152 55% 46%;
+    --success-foreground: 222 32% 6%;
+    --info: 211 80% 62%;
+    --info-foreground: 222 32% 6%;
+    --border: 222 18% 18%;
+    --input: 222 18% 23%;
+    --ring: 172 62% 42%;
+    --shadow: 0 0% 0%;
+    --sidebar: 222 34% 5%;
+    --sidebar-foreground: 214 12% 76%;
+    --sidebar-border: 222 22% 13%;
+    --sidebar-active: 172 55% 30%;
     --sidebar-strong: 0 0% 100%;
-    --sidebar-hover: 0 0% 100% / 0.05;
+    --sidebar-hover: 0 0% 100% / 0.06;
   }
 
   * {
@@ -84,7 +87,14 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    font-feature-settings: 'cv11', 'ss01', 'tnum';
+    font-feature-settings: 'cv11', 'ss01', 'cv05';
+    letter-spacing: -0.003em;
+  }
+  h1, h2, h3 {
+    letter-spacing: -0.02em;
+  }
+  ::selection {
+    background: hsl(var(--primary) / 0.22);
   }
   :focus-visible {
     @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
@@ -95,6 +105,50 @@
   .tabular {
     font-variant-numeric: tabular-nums;
   }
+  /* A soft glow of the clinic's own colour at the top of the page, so every screen has depth. */
+  .app-canvas {
+    background-image:
+      radial-gradient(900px 320px at 20% -120px, hsl(var(--primary) / 0.09), transparent 70%),
+      radial-gradient(700px 280px at 95% -140px, hsl(var(--info) / 0.06), transparent 70%);
+    background-repeat: no-repeat;
+  }
+  .dark .app-canvas {
+    background-image:
+      radial-gradient(900px 320px at 20% -120px, hsl(var(--primary) / 0.16), transparent 70%),
+      radial-gradient(700px 280px at 95% -140px, hsl(var(--info) / 0.08), transparent 70%);
+  }
+  .glass {
+    background-color: hsl(var(--card) / 0.78);
+    -webkit-backdrop-filter: saturate(1.6) blur(14px);
+    backdrop-filter: saturate(1.6) blur(14px);
+  }
+  .text-gradient {
+    background-image: linear-gradient(120deg, hsl(var(--primary)), hsl(var(--info)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .shimmer {
+    background-image: linear-gradient(100deg, transparent 20%, hsl(var(--foreground) / 0.06) 50%, transparent 80%);
+    background-size: 200% 100%;
+    animation: shimmer 1.6s linear infinite;
+  }
+  .page-enter {
+    animation: fade-up 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-enter, .shimmer { animation: none; }
+  * { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
 }
 
 @media print {
@@ -103,5 +157,8 @@
   }
   body {
     background: white;
+  }
+  .app-canvas {
+    background-image: none !important;
   }
 }

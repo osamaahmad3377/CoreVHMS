@@ -25,7 +25,13 @@ const config: Config = {
         card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
         sidebar: { DEFAULT: 'hsl(var(--sidebar))', foreground: 'hsl(var(--sidebar-foreground))', border: 'hsl(var(--sidebar-border))', active: 'hsl(var(--sidebar-active))', strong: 'hsl(var(--sidebar-strong))', hover: 'hsl(var(--sidebar-hover))' },
       },
-      borderRadius: { lg: 'var(--radius)', md: 'calc(var(--radius) - 2px)', sm: 'calc(var(--radius) - 4px)' },
+      borderRadius: { xl: 'calc(var(--radius) + 4px)', lg: 'var(--radius)', md: 'calc(var(--radius) - 2px)', sm: 'calc(var(--radius) - 4px)' },
+      boxShadow: {
+        card: '0 1px 2px hsl(var(--shadow) / 0.04), 0 2px 6px -1px hsl(var(--shadow) / 0.05)',
+        'card-hover': '0 2px 4px hsl(var(--shadow) / 0.05), 0 10px 24px -6px hsl(var(--shadow) / 0.14)',
+        pop: '0 4px 8px hsl(var(--shadow) / 0.06), 0 18px 40px -10px hsl(var(--shadow) / 0.28)',
+        glow: '0 0 0 1px hsl(var(--primary) / 0.25), 0 6px 20px -4px hsl(var(--primary) / 0.45)',
+      },
       fontFamily: {
         sans: ['var(--font-brand)'],
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],

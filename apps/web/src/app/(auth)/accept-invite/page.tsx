@@ -45,7 +45,7 @@ function AcceptForm() {
   return (
     <form method="post" onSubmit={submit} className="grid gap-4">
       <div>
-        <h1 className="text-xl font-semibold">Join {inv.organizationName}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Join {inv.organizationName}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {inv.requiresPassword ? 'Set up your account to get started.' : 'Confirm with your existing password to join.'}
         </p>

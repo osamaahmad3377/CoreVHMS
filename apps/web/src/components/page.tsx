@@ -24,7 +24,7 @@ export function PageHeader({
   className?: string;
 }) {
   return (
-    <div className={cn('mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between', className)}>
+    <div className={cn('mb-7 flex flex-col gap-3 md:flex-row md:items-end md:justify-between', className)}>
       <div className="min-w-0">
         {breadcrumbs && (
           <nav aria-label="Breadcrumb" className="mb-1 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
@@ -42,8 +42,8 @@ export function PageHeader({
             ))}
           </nav>
         )}
-        <h1 className="truncate text-xl font-semibold tracking-tight">{title}</h1>
-        {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+        <h1 className="truncate text-2xl font-semibold leading-tight tracking-tight sm:text-[1.75rem]">{title}</h1>
+        {description && <p className="mt-1.5 text-sm text-muted-foreground">{description}</p>}
       </div>
       {(actions || help) && (
         <div className="flex flex-wrap items-center gap-2">
@@ -70,10 +70,10 @@ export function EmptyState({
 }) {
   return (
     <div className={cn('flex flex-col items-center justify-center gap-2 px-6 py-12 text-center', className)}>
-      <div className="mb-1 rounded-full bg-muted p-3">
-        <Icon className="h-5 w-5 text-muted-foreground" />
+      <div className="mb-2 rounded-2xl bg-gradient-to-br from-primary/15 to-info/10 p-4 ring-1 ring-inset ring-primary/15">
+        <Icon className="h-6 w-6 text-primary" />
       </div>
-      <p className="text-sm font-medium">{title}</p>
+      <p className="text-base font-semibold tracking-tight">{title}</p>
       {description && <p className="max-w-sm text-sm text-muted-foreground">{description}</p>}
       {action && <div className="mt-2">{action}</div>}
     </div>

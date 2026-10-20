@@ -39,7 +39,7 @@ export default function RegisterPage() {
   return (
     <form method="post" onSubmit={onSubmit} className="grid gap-4" noValidate>
       <div>
-        <h1 className="text-xl font-semibold">Create your clinic</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Create your clinic</h1>
         <p className="mt-1 text-sm text-muted-foreground">You will be the clinic owner. You can add your staff next.</p>
       </div>
       {error && <FormError message={error} />}

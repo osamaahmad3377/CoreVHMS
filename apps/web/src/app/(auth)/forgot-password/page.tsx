@@ -32,7 +32,7 @@ export default function ForgotPasswordPage() {
     return (
       <div className="grid gap-3">
         <MailCheck className="h-8 w-8 text-primary" />
-        <h1 className="text-xl font-semibold">Check your email</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Check your email</h1>
         <p className="text-sm text-muted-foreground">If an account exists for {email}, we sent a link to reset the password. The link expires in 60 minutes.</p>
         <Link href="/login" className="text-sm text-primary hover:underline">Back to sign in</Link>
       </div>
@@ -41,7 +41,7 @@ export default function ForgotPasswordPage() {
   return (
     <form method="post" onSubmit={submit} className="grid gap-4">
       <div>
-        <h1 className="text-xl font-semibold">Reset your password</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Reset your password</h1>
         <p className="mt-1 text-sm text-muted-foreground">We will email you a single-use reset link.</p>
       </div>
       {error && <FormError message={error} />}

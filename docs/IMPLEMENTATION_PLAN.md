@@ -549,3 +549,9 @@ Items from the feature matrix that need no external device, data source or provi
     - plan edits reaching clinics at once, and a new clinic starting on a plan.
   - Browser run as super admin and as the owner of the demo clinic: choose Starter with a staff limit of 12, the owner's menu loses Lab, Hospital and Reports, Your plan and the staff page show the limits, no console errors.
 - **Not included:** taking payment from clinics or invoicing them; usage-based or per-patient charging; trial periods and expiry dates (a clinic can be paused).
+
+### 2026-10-20 — Premium UI refresh
+- Design tokens in `globals.css` / `tailwind.config.ts`: softer layered shadows (`card`, `card-hover`, `pop`, `glow`), larger radii, `app-canvas` background glow, page-enter animation.
+- Restyled shared components (card, button, input, badge, table, dialog), sidebar (glowing active item), top bar, page headers, stat tiles; avatars in patient/client lists.
+- Dashboard gets a gradient hero banner with the day's key numbers; sign-in pages (default and clinic-branded) get a gradient glow panel, paw watermark and a card-style form.
+- White-label safe: everything uses the clinic's CSS variables (colours, font, corner size). Checked light, dark and phone width; fixed a phone overflow in the dashboard quick links.

@@ -1,7 +1,9 @@
 import { isDarkColour, type Branding } from '@vcms/shared';
+import { PawPrint } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const DEFAULT_MENU = '#191f24';
+const DEFAULT_MENU = '#131c26';
+const GLOW = 'radial-gradient(760px 460px at 92% -8%, hsl(var(--primary) / 0.55), transparent 62%), radial-gradient(640px 420px at -8% 112%, hsl(var(--info) / 0.32), transparent 62%)';
 
 /** A logo for light surfaces that switches to the dark-background version in dark mode (when there is one). */
 export function ThemedLogo({ branding, className }: { branding: Branding; className?: string }) {
@@ -27,7 +29,12 @@ function backdrop(b: Branding): { className: string; style?: React.CSSProperties
   if (b.loginBackground === 'GRADIENT') {
     return { className: 'text-white', style: { backgroundImage: 'linear-gradient(135deg, hsl(var(--sidebar)) 0%, hsl(var(--primary)) 100%)' }, dark: true, overlay: 'bg-black/15' };
   }
-  return { className: 'bg-sidebar text-sidebar-strong', dark: isDarkColour(b.sidebarColor ?? DEFAULT_MENU) };
+  // The menu colour with a glow of the clinic's main colour, so the panel has depth instead of a flat fill.
+  return {
+    className: 'bg-sidebar text-sidebar-strong',
+    style: { backgroundImage: GLOW },
+    dark: isDarkColour(b.sidebarColor ?? DEFAULT_MENU),
+  };
 }
 
 /**
@@ -50,7 +57,7 @@ export function SignInFrame({ branding: b, children, className }: { branding: Br
     return (
       <div className={cn('relative flex min-h-screen flex-col items-center justify-center gap-6 p-4 sm:p-8', bg.className, className)} style={bg.style}>
         {bg.overlay && <div className={cn('pointer-events-none absolute inset-0', bg.overlay)} />}
-        <div className="relative w-full max-w-md rounded-lg bg-card p-6 text-card-foreground shadow-2xl sm:p-8">
+        <div className="page-enter relative w-full max-w-md rounded-2xl border border-white/10 bg-card p-7 text-card-foreground shadow-pop sm:p-9">
           <div className="mb-6 flex items-center gap-3">
             <ThemedLogo branding={b} className="h-12 max-w-[180px] object-contain" />
             {!b.logoUrl && !b.logoDarkUrl && <span className="text-lg font-semibold tracking-tight">{b.brandName}</span>}
@@ -76,10 +83,11 @@ export function SignInFrame({ branding: b, children, className }: { branding: Br
         </div>
         <div className="relative max-w-lg">{welcome}</div>
         <p className={cn('relative text-xs', bg.dark ? 'text-white/60' : 'text-sidebar-foreground/60')}>{footer}</p>
+        <PawPrint aria-hidden className="pointer-events-none absolute -bottom-16 -right-12 h-80 w-80 -rotate-12 opacity-[0.05]" />
         {!bg.overlay && <div className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-primary/20 blur-3xl" />}
       </div>
-      <div className="flex items-center justify-center bg-background p-6 sm:p-10">
-        <div className="w-full max-w-sm">
+      <div className="app-canvas flex items-center justify-center bg-background p-6 sm:p-10">
+        <div className="page-enter w-full max-w-md rounded-2xl border border-border/60 bg-card/85 p-8 shadow-card backdrop-blur sm:p-10">
           {/* Small screens have no side panel: the clinic's logo sits above the form. */}
           <div className="mb-6 lg:hidden">
             <ThemedLogo branding={b} className="h-12 max-w-[200px] object-contain" />

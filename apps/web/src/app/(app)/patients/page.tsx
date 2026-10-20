@@ -14,6 +14,7 @@ import { AlertChip, StatusBadge } from '@/components/status';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { NativeSelect } from '@/components/ui/input';
+import { Avatar } from '@/components/ui/misc';
 import { useUrlState } from '@/hooks/use-url-state';
 import { api, qs } from '@/lib/api';
 import { fmtAge, fmtWeight } from '@/lib/format';
@@ -45,11 +46,14 @@ function PatientsList() {
       header: 'Patient',
       sortKey: 'name',
       cell: (p) => (
-        <div>
-          <Link href={`/patients/${p.id}`} className="font-medium hover:underline">
-            {p.name}
-          </Link>
-          <div className="text-xs text-muted-foreground">{p.patientNo}</div>
+        <div className="flex items-center gap-3">
+          <Avatar name={p.name} className="h-9 w-9" />
+          <div className="min-w-0">
+            <Link href={`/patients/${p.id}`} className="font-medium hover:text-primary hover:underline">
+              {p.name}
+            </Link>
+            <div className="text-xs text-muted-foreground">{p.patientNo}</div>
+          </div>
         </div>
       ),
     },

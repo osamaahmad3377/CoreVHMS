@@ -46,7 +46,7 @@ export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () 
   const mod = useModKey();
 
   return (
-    <header className="no-print sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-card/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-card/80 sm:px-4">
+    <header className="no-print glass sticky top-0 z-30 flex h-16 items-center gap-2 border-b border-border/60 px-3 sm:px-6">
       <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenu} aria-label="Open navigation">
         <Menu />
       </Button>
@@ -55,7 +55,7 @@ export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () 
         onClick={onSearch}
         aria-label={`Search everything (${mod} K)`}
         title={`Search by name, patient or phone (${mod} K)`}
-        className="flex h-9 min-w-0 shrink items-center gap-2 rounded-md border bg-muted/50 px-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted sm:w-full sm:max-w-md sm:px-3"
+        className="flex h-10 min-w-0 shrink items-center gap-2 rounded-xl border border-border/70 bg-muted/50 px-3 text-sm text-muted-foreground shadow-[inset_0_1px_2px_hsl(var(--shadow)/0.04)] transition-all hover:border-ring/40 hover:bg-card hover:shadow-card sm:w-full sm:max-w-md sm:px-3.5"
       >
         <Search className="h-4 w-4 shrink-0" />
         <span className="hidden flex-1 truncate text-left sm:block">Search by name, patient or phone (e.g. 0300 77…)</span>

@@ -31,10 +31,10 @@ import { useSession } from '@/lib/session';
 import { cn } from '@/lib/utils';
 
 /** The app's own colours, used when the clinic has not chosen any. */
-const DEFAULT_PRIMARY = '#0f766e';
-const DEFAULT_SIDEBAR = '#191f24';
-const PRIMARY_SWATCHES = ['#0f766e', '#2563eb', '#7c3aed', '#db2777', '#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#0891b2', '#334155'];
-const SIDEBAR_SWATCHES = ['#191f24', '#0f172a', '#1e1b4b', '#14532d', '#422006', '#4c0519', '#f8fafc', '#ffffff'];
+const DEFAULT_PRIMARY = '#0f7b6c';
+const DEFAULT_SIDEBAR = '#131c26';
+const PRIMARY_SWATCHES = ['#0f7b6c', '#2563eb', '#7c3aed', '#db2777', '#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#0891b2', '#334155'];
+const SIDEBAR_SWATCHES = ['#131c26', '#0f172a', '#1e1b4b', '#14532d', '#422006', '#4c0519', '#f8fafc', '#ffffff'];
 
 /** Everything on this page that is saved with the Save button (images save as soon as they upload). */
 const draftOf = (b: Branding, orgName: string) => ({
@@ -437,7 +437,7 @@ function BrandingForm({ branding, orgId, orgName, clinic }: { branding: Branding
                   <Field label="Font" htmlFor="b-font">
                     <div className="flex flex-wrap items-center gap-3">
                       <NativeSelect id="b-font" className="w-56" value={draft.brandFont} onChange={(e) => set('brandFont', e.target.value as BrandFont)}>
-                        {BRAND_FONTS.map((f) => <option key={f} value={f}>{BRAND_FONT_LABELS[f]}</option>)}
+                        {BRAND_FONTS.filter((f) => f !== 'INTER').map((f) => <option key={f} value={f}>{BRAND_FONT_LABELS[f]}</option>)}
                       </NativeSelect>
                       <span className="text-sm text-muted-foreground" style={{ fontFamily: fontStack(draft.brandFont) }}>Bella · Vaccination due 3 November</span>
                     </div>
@@ -448,7 +448,7 @@ function BrandingForm({ branding, orgId, orgName, clinic }: { branding: Branding
                     onChange={(v) => set('cornerStyle', v)}
                     options={[
                       { value: 'SHARP', title: 'Sharp', text: 'Square, formal', icon: <span className="mt-0.5 h-4 w-6 shrink-0 rounded-[2px] bg-primary" /> },
-                      { value: 'STANDARD', title: 'Standard', text: 'Slightly rounded', icon: <span className="mt-0.5 h-4 w-6 shrink-0 rounded-[6px] bg-primary" /> },
+                      { value: 'STANDARD', title: 'Standard', text: 'Softly rounded', icon: <span className="mt-0.5 h-4 w-6 shrink-0 rounded-[7px] bg-primary" /> },
                       { value: 'ROUNDED', title: 'Rounded', text: 'Soft, friendly', icon: <span className="mt-0.5 h-4 w-6 shrink-0 rounded-[12px] bg-primary" /> },
                     ]}
                   />

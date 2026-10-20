@@ -37,7 +37,7 @@ function ResetForm() {
   if (done) {
     return (
       <div className="grid gap-3">
-        <h1 className="text-xl font-semibold">Password updated</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Password updated</h1>
         <p className="text-sm text-muted-foreground">All existing sessions were signed out. Sign in with your new password.</p>
         <Button asChild><Link href="/login">Sign in</Link></Button>
       </div>
@@ -45,7 +45,7 @@ function ResetForm() {
   }
   return (
     <form method="post" onSubmit={submit} className="grid gap-4">
-      <h1 className="text-xl font-semibold">Choose a new password</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">Choose a new password</h1>
       {!token && <FormError message="This reset link is incomplete. Request a new one." />}
       {error && <FormError message={error} />}
       <Field label="New password" htmlFor="pw" hint="At least 10 characters with upper-case, lower-case and a number.">
