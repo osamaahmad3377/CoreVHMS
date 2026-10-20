@@ -40,6 +40,7 @@ import {
   WeightDialog,
 } from '@/components/patients/patient-dialogs';
 import { PatientForm } from '@/components/patients/patient-form';
+import { PatientNextStep } from '@/components/patients/patient-next-step';
 import { SavedNextSteps } from '@/components/patients/saved-next-steps';
 import { PatientPicker, type PickedPatient } from '@/components/patients/patient-picker';
 import { AdministrationsPanel, LabOrdersPanel, PrescriptionsPanel, WithdrawalBanner } from '@/components/clinical/orders-panels';
@@ -138,7 +139,7 @@ function PatientRecord() {
         <span>{p.patientNo}</span>
       </nav>
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start">
-        <PatientBanner patient={banner} className="flex-1" />
+        <PatientBanner patient={banner} className="flex-1" hideRecordLink />
         <div className="flex flex-wrap gap-2">
           {active && can('appointments.write') && (
             <Button size="sm" onClick={() => setDlg('book')}>
@@ -290,6 +291,7 @@ function PatientRecord() {
           )}
         </SavedNextSteps>
       )}
+      {!justSaved && <PatientNextStep patient={p} onBook={() => setDlg('book')} />}
       <WithdrawalBanner patientId={p.id} />
       {p.status === 'MERGED' && p.mergedInto && (
         <div className="mb-4 rounded-md border border-info/30 bg-info/10 px-4 py-3 text-sm">

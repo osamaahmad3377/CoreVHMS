@@ -1,14 +1,16 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
 import { Command } from 'cmdk';
-import { BedDouble, ClipboardList, CornerDownLeft, FlaskConical, Home, Loader2, PawPrint, Pill, Receipt, Scissors, Search, Send, ShieldCheck, Siren, Tractor, User } from 'lucide-react';
+import { ArrowRight, BedDouble, ClipboardList, CornerDownLeft, FlaskConical, Home, Loader2, PawPrint, Pill, Receipt, Scissors, Search, Send, ShieldCheck, Siren, Tractor, User } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useDebounce } from '@/hooks/use-debounce';
+import { useSuggestions } from '@/hooks/use-suggestions';
+import { TASKS } from '@/lib/tasks';
 import { api, qs } from '@/lib/api';
 import { visibleNav } from '@/lib/navigation';
 import { fmtMoney } from '@/lib/format';
-import { useSession } from '@/lib/session';
+import { useModuleOn, useSession } from '@/lib/session';
 import { useCreateActions } from './create-actions';
 import { Dialog, DialogContent, DialogTitle } from '../ui/dialog';
 import { Badge } from '../ui/badge';
@@ -62,6 +64,12 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   // Typing, or the request is still in flight: say so rather than showing an empty list.
   const searching = term.trim().length >= 2 && (term.trim() !== q || search.isFetching);
   const matchedPages = needle.length >= 2 ? pages.filter((p) => p.label.toLowerCase().includes(needle)).slice(0, 5) : [];
+  const moduleOn = useModuleOn();
+  const { items: suggested } = useSuggestions();
+  const words = needle.split(/\s+/).filter(Boolean);
+  const tasks = TASKS.filter((t) => (!t.anyOf.length || canAny(...t.anyOf)) && moduleOn(t.module))
+    .filter((t) => !words.length || words.every((w) => `${t.label} ${t.keywords}`.toLowerCase().includes(w)))
+    .slice(0, words.length ? 8 : 7);
   const actions = useCreateActions().filter((a) => !needle || `${a.label} ${a.keywords}`.toLowerCase().includes(needle));
 
   return (
@@ -75,7 +83,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
               value={term}
               onValueChange={setTerm}
               autoFocus
-              placeholder="Search by name, patient or phone (e.g. 0300 77…)"
+              placeholder="Search a name or phone — or type what you want to do"
               className="h-12 min-w-0 flex-1 border-0 bg-transparent text-sm shadow-none outline-none ring-0 placeholder:text-muted-foreground focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
             />
             {searching && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />}
@@ -89,7 +97,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
             {q.length >= 2 && !searching && search.isError && (
               <div className="px-3 py-8 text-center text-sm text-destructive" role="alert">Search is unavailable right now — try again in a moment.</div>
             )}
-            {q.length >= 2 && !searching && !search.isError && results.length === 0 && matchedPages.length === 0 && (
+            {q.length >= 2 && !searching && !search.isError && results.length === 0 && matchedPages.length === 0 && tasks.length === 0 && (
               <Command.Empty className="px-3 py-8 text-center text-sm text-muted-foreground">No matches for “{q}”.</Command.Empty>
             )}
             {Object.entries(grouped).map(([type, hits]) => {
@@ -116,6 +124,27 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
                 </Command.Group>
               );
             })}
+            {needle.length < 2 && suggested.length > 0 && (
+              <Command.Group heading="Suggested for you now" className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1 [&_[cmdk-group-heading]]:text-2xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:text-muted-foreground">
+                {suggested.slice(0, 4).map((s) => (
+                  <Command.Item key={s.key} value={`suggest-${s.key}`} onSelect={() => go(s.href)} className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm aria-selected:bg-muted">
+                    <s.icon className="h-4 w-4 shrink-0 text-primary" />
+                    <span className="min-w-0 flex-1 truncate font-medium">{s.text}</span>
+                    <span className="flex shrink-0 items-center gap-1 text-xs text-primary">{s.action} <ArrowRight className="h-3 w-3" /></span>
+                  </Command.Item>
+                ))}
+              </Command.Group>
+            )}
+            {tasks.length > 0 && (
+              <Command.Group heading="I want to…" className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1 [&_[cmdk-group-heading]]:text-2xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:text-muted-foreground">
+                {tasks.map((t) => (
+                  <Command.Item key={t.label} value={`task-${t.label}`} onSelect={() => go(t.href)} className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm aria-selected:bg-muted">
+                    <t.icon className="h-4 w-4 shrink-0 text-primary" />
+                    {t.label}
+                  </Command.Item>
+                ))}
+              </Command.Group>
+            )}
             {actions.length > 0 && (
               <Command.Group heading="Actions" className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1 [&_[cmdk-group-heading]]:text-2xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:text-muted-foreground">
                 {actions.map((a) => (

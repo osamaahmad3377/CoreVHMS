@@ -11,6 +11,7 @@ import { useSession } from '@/lib/session';
 import { useCreateActions } from './create-actions';
 import { useModKey } from '../help/shortcuts';
 import { Button } from '../ui/button';
+import { SuggestionsMenu } from './suggestions-menu';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,11 +55,11 @@ export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () 
       <button
         onClick={onSearch}
         aria-label={`Search everything (${mod} K)`}
-        title={`Search by name, patient or phone (${mod} K)`}
+        title={`Search a name, or type what you want to do (${mod} K)`}
         className="flex h-10 min-w-0 shrink items-center gap-2 rounded-xl border border-border/70 bg-muted/50 px-3 text-sm text-muted-foreground shadow-[inset_0_1px_2px_hsl(var(--shadow)/0.04)] transition-all hover:border-ring/40 hover:bg-card hover:shadow-card sm:w-full sm:max-w-md sm:px-3.5"
       >
         <Search className="h-4 w-4 shrink-0" />
-        <span className="hidden flex-1 truncate text-left sm:block">Search by name, patient or phone (e.g. 0300 77…)</span>
+        <span className="hidden flex-1 truncate text-left sm:block">Search a name or phone — or type what you want to do</span>
         <span className="hidden items-center gap-0.5 sm:flex">
           <Kbd>{mod}</Kbd>
           <Kbd>K</Kbd>
@@ -66,6 +67,7 @@ export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () 
       </button>
 
       <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
+        <SuggestionsMenu onOpenFinder={onSearch} />
         <Button variant="ghost" size="icon" asChild title="Help centre — guides for every task">
           <Link href="/help" aria-label="Help centre"><CircleHelp /></Link>
         </Button>

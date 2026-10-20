@@ -28,7 +28,7 @@ export interface BannerPatient {
 }
 
 /** Persistent patient identity strip with active medical alerts — shown at the top of every clinical screen. */
-export function PatientBanner({ patient, className, compact }: { patient: BannerPatient; className?: string; compact?: boolean }) {
+export function PatientBanner({ patient, className, compact, hideRecordLink }: { patient: BannerPatient; className?: string; compact?: boolean; /** The page already has its own Complete record button. */ hideRecordLink?: boolean }) {
   const breed = typeof patient.breed === 'string' ? patient.breed : (patient.breed?.name ?? patient.breedText);
   const alerts = patient.alerts.filter((a) => a.isActive !== false);
   const critical = alerts.some((a) => a.severity === 'CRITICAL');
@@ -81,7 +81,7 @@ export function PatientBanner({ patient, className, compact }: { patient: Banner
       <div className="flex flex-wrap items-center gap-1 sm:ml-auto sm:justify-end" aria-label="Medical alerts">
         {alerts.length ? alerts.map((a) => <AlertChip key={a.id} alert={a} />) : <span className="text-xs text-muted-foreground">No active alerts</span>}
       </div>
-      {can('patients.read') && (
+      {can('patients.read') && !hideRecordLink && (
         <a
           href={`/patients/${patient.id}/record`}
           target="_blank"
