@@ -58,6 +58,7 @@ function Workspace() {
   const [followUp, setFollowUp] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyVisit, setHistoryVisit] = useState<string | null>(null);
   const [step, setStep] = useState<string | null>(null);
   const canSeeHistory = useCanSeeHistory();
   const [rxOpen, setRxOpen] = useState(false);
@@ -120,7 +121,7 @@ function Workspace() {
   };
 
   const actions = [
-    canSeeHistory && { label: 'History', icon: History, onClick: () => setHistoryOpen(true) },
+    canSeeHistory && { label: 'History', icon: History, onClick: () => { setHistoryVisit(null); setHistoryOpen(true); } },
     writable && { label: 'Vitals', icon: Activity, onClick: () => (workspace ? goStep('arrival', () => vitalsRef.current?.openForm()) : vitalsRef.current?.openForm()) },
     writable && { label: 'Diagnosis', icon: ClipboardList, onClick: () => (workspace ? goStep('diagnosis', () => document.getElementById('diagnosis-term')?.focus()) : scrollTo('diagnoses-card', 'diagnosis-term')) },
     active && can('prescriptions.write') && { label: 'Prescribe', icon: Pill, onClick: () => (workspace ? goStep('treatment', () => setRxOpen(true)) : setRxOpen(true)) },
@@ -247,7 +248,7 @@ function Workspace() {
         <span>{enc.encounterNo}</span>
       </nav>
       <PatientBanner patient={enc.patient} className="mb-3" />
-      <LastVisitStrip patientId={enc.patient.id} currentId={enc.id} onOpenHistory={() => setHistoryOpen(true)} />
+      <LastVisitStrip patientId={enc.patient.id} currentId={enc.id} onOpenHistory={(visitId) => { setHistoryVisit(visitId ?? null); setHistoryOpen(true); }} />
       <WithdrawalBanner patientId={enc.patient.id} />
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <h1 className="text-lg font-semibold">
@@ -413,7 +414,7 @@ function Workspace() {
         </div>
       </div>
       )}
-      <PatientHistoryDialog patientId={enc.patient.id} patientName={enc.patient.name} currentId={enc.id} open={historyOpen} onOpenChange={setHistoryOpen} />
+      <PatientHistoryDialog patientId={enc.patient.id} patientName={enc.patient.name} currentId={enc.id} open={historyOpen} onOpenChange={setHistoryOpen} initialVisitId={historyVisit} />
       <FinishConsultationDialog
         encounter={enc}
         open={finishing}

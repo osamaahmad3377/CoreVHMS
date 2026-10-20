@@ -602,3 +602,6 @@ Items from the feature matrix that need no external device, data source or provi
 
 ### 2026-10-21 — Lab and X-ray orders open over the consultation
 - A test in a consultation's "Tests (lab & X-ray)" list now opens in a window over the consultation (results, imaging report, samples, validation for those allowed) instead of leaving for the Laboratory page; closing it returns to the same step. The lab order page and the window share one component (`components/lab/order-detail.tsx`, `LabOrderDetail`, `embedded` hides the breadcrumb and patient banner, and offers "Open to print" in a new tab).
+
+### 2026-10-21 — Past consultations in full, from inside a consultation
+- The History window's "Previous visits" now opens an earlier consultation in full and read-only in the same window (no leaving the current visit): vital signs, signed notes with the integrity check, diagnoses, prescriptions, medicines given, tests (each opens in its own window) and charges. "All earlier visits" returns to the list; "Open on its own page" opens it in a new tab. The "Last seen …" strip has "Open that visit" (straight to the latest earlier consultation) and "All history".

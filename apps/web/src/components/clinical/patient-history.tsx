@@ -1,13 +1,20 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
 import { enumLabel, type Paginated } from '@vcms/shared';
-import { ChevronRight, History } from 'lucide-react';
+import { ArrowLeft, ChevronRight, ExternalLink, History } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import { PatientAppointments } from '../patients/patient-clinical-tabs';
+import { ConsultationCharges } from './charges-card';
+import { DiagnosesPanel } from './diagnoses-panel';
+import { NoteView } from './note-view';
+import { AdministrationsPanel, LabOrdersPanel, PrescriptionsPanel } from './orders-panels';
+import { VitalsPanel } from './vitals-panel';
+import { Card, CardContent } from '../ui/card';
 import { TimelineTab } from '../patients/patient-timeline';
 import { ErrorState, LoadingRows } from '../page';
 import { Badge } from '../ui/badge';
+import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { api, qs } from '@/lib/api';
@@ -35,83 +42,86 @@ function usePreviousVisits(patientId: string, currentId: string, enabled: boolea
   });
 }
 
-/** What happened at one earlier visit, read-only: vitals, signed notes, diagnoses and open follow-ups. */
-function VisitSummary({ id }: { id: string }) {
+/**
+ * An earlier consultation, complete and read-only: vitals, the signed notes (with their integrity check),
+ * diagnoses, medicines, tests (each opens in a window) and charges. Nothing here can be changed.
+ */
+function PastConsultation({ id, onBack }: { id: string; onBack: () => void }) {
   const q = useQuery({ queryKey: ['encounter', id], queryFn: () => api.get<Encounter>(`/encounters/${id}`) });
-  if (q.isLoading) return <LoadingRows rows={3} />;
+  const { can } = useSession();
+  if (q.isLoading) return <LoadingRows rows={5} />;
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
   const e = q.data!;
   const notes = e.notes.filter((n) => n.status === 'SIGNED');
-  const v = e.vitals[0];
-  const vitals = v
-    ? [
-        v.temperatureC != null && `Temp ${v.temperatureC} °C`,
-        v.heartRate != null && `Heart rate ${v.heartRate}`,
-        v.respiratoryRate != null && `Breathing ${v.respiratoryRate}`,
-        v.weightKg != null && `Weight ${fmtWeight(v.weightKg)}`,
-      ].filter(Boolean)
-    : [];
+  const none = () => undefined;
   return (
-    <div className="grid gap-3 rounded-md border bg-muted/30 p-3 text-sm">
-      {vitals.length > 0 && <p className="text-xs text-muted-foreground">{vitals.join(' · ')}</p>}
-      {e.diagnoses.length > 0 && (
-        <p>
-          <span className="font-medium">Diagnosis: </span>
-          {e.diagnoses.map((d) => d.term).join(', ')}
-        </p>
-      )}
+    <div className="grid gap-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={onBack}>
+          <ArrowLeft /> All earlier visits
+        </Button>
+        <Button variant="ghost" size="sm" className="ml-auto" asChild title="Opens this consultation on its own page, in a new tab">
+          <a href={`/consultations/${e.id}`} target="_blank" rel="noopener noreferrer">
+            <ExternalLink /> Open on its own page
+          </a>
+        </Button>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="text-base font-semibold">
+          {e.encounterNo} · {fmtDateTime(e.startedAt)}
+        </h3>
+        <Badge variant={e.status === 'OPEN' ? 'warning' : 'success'}>{e.status === 'OPEN' ? 'In progress' : 'Finished'}</Badge>
+        <span className="text-xs text-muted-foreground">
+          {enumLabel(e.type)}
+          {e.chiefComplaint ? ` — ${e.chiefComplaint}` : ''} · {e.clinician?.name ?? 'No vet recorded'}
+        </span>
+      </div>
+      <VitalsPanel encounterId={e.id} vitals={e.vitals} editable={false} onSaved={none} />
       {notes.length ? (
         notes.map((n) => (
-          <dl key={n.id} className="grid gap-2">
-            {SECTIONS.filter((s) => n[s.key]).map((s) => (
-              <div key={s.key}>
-                <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{s.label}</dt>
-                <dd className="whitespace-pre-wrap">{n[s.key]}</dd>
-              </div>
-            ))}
-            <p className="text-xs text-muted-foreground">Signed by {n.signedByName} · {fmtDateTime(n.signedAt)}</p>
-          </dl>
+          <Card key={n.id}>
+            <CardContent className="pt-4">
+              <NoteView note={n} />
+            </CardContent>
+          </Card>
         ))
       ) : (
-        <p className="text-muted-foreground">No signed note for this visit.</p>
+        <p className="rounded-lg border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">No signed note for this visit.</p>
       )}
-      <Link href={`/consultations/${e.id}`} className="w-fit text-xs text-primary underline">Open the full consultation</Link>
+      <DiagnosesPanel encounterId={e.id} diagnoses={e.diagnoses} editable={false} onSaved={none} />
+      <PrescriptionsPanel patient={e.patient} encounterId={e.id} editable={false} />
+      <AdministrationsPanel patient={e.patient} encounterId={e.id} editable={false} />
+      <LabOrdersPanel patient={e.patient} encounterId={e.id} editable={false} />
+      {can('billing.read') && <ConsultationCharges encounterId={e.id} hasPrescriptions />}
     </div>
   );
 }
 
-function PreviousVisits({ patientId, currentId }: { patientId: string; currentId: string }) {
+function PreviousVisits({ patientId, currentId, initialVisitId }: { patientId: string; currentId: string; initialVisitId?: string | null }) {
   const q = usePreviousVisits(patientId, currentId, true);
-  const [open, setOpen] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(initialVisitId ?? null);
+  if (selected) return <PastConsultation id={selected} onBack={() => setSelected(null)} />;
   if (q.isLoading) return <LoadingRows rows={4} />;
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
   if (!q.data?.length) return <p className="py-6 text-center text-sm text-muted-foreground">No earlier consultations for this patient.</p>;
   return (
     <ul className="grid gap-2">
-      {q.data.map((e) => {
-        const expanded = open === e.id;
-        return (
-          <li key={e.id} className="rounded-lg border bg-card">
-            <button type="button" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : e.id)} className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/50">
-              <ChevronRight className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-90' : ''}`} />
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium">
-                  {fmtDateTime(e.startedAt)} · {enumLabel(e.type)}
-                </span>
-                <span className="block truncate text-xs text-muted-foreground">
-                  {[e.chiefComplaint, e.diagnoses.map((d) => d.term).join(', '), e.clinician?.name].filter(Boolean).join(' — ') || '—'}
-                </span>
+      {q.data.map((e) => (
+        <li key={e.id} className="rounded-lg border bg-card">
+          <button type="button" onClick={() => setSelected(e.id)} className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none" title="Open this consultation in full">
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium">
+                {fmtDateTime(e.startedAt)} · {enumLabel(e.type)}
               </span>
-              <Badge variant={e.status === 'OPEN' ? 'warning' : 'success'}>{e.status === 'OPEN' ? 'In progress' : 'Finished'}</Badge>
-            </button>
-            {expanded && (
-              <div className="px-3 pb-3">
-                <VisitSummary id={e.id} />
-              </div>
-            )}
-          </li>
-        );
-      })}
+              <span className="block truncate text-xs text-muted-foreground">
+                {[e.chiefComplaint, e.diagnoses.map((d) => d.term).join(', '), e.clinician?.name].filter(Boolean).join(' — ') || '—'}
+              </span>
+            </span>
+            <Badge variant={e.status === 'OPEN' ? 'warning' : 'success'}>{e.status === 'OPEN' ? 'In progress' : 'Finished'}</Badge>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+          </button>
+        </li>
+      ))}
     </ul>
   );
 }
@@ -127,7 +137,7 @@ export function useCanSeeHistory() {
  * visit: earlier consultations with their notes, past and upcoming appointments, and the full timeline
  * (vaccines, medicines, tests, hospital stays, billing and more). Each tab shows only what the user may see.
  */
-export function PatientHistoryDialog({ patientId, patientName, currentId, open, onOpenChange }: { patientId: string; patientName: string; currentId: string; open: boolean; onOpenChange: (o: boolean) => void }) {
+export function PatientHistoryDialog({ patientId, patientName, currentId, open, onOpenChange, initialVisitId }: { patientId: string; patientName: string; currentId: string; open: boolean; onOpenChange: (o: boolean) => void; /** Start on this earlier consultation instead of the list. */ initialVisitId?: string | null }) {
   const { can } = useSession();
   const visits = can('clinical.read');
   const appts = can('appointments.read');
@@ -140,7 +150,7 @@ export function PatientHistoryDialog({ patientId, patientName, currentId, open, 
         <DialogContent size="xl" className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{patientName}’s history</DialogTitle>
-            <DialogDescription>Earlier visits, appointments and everything recorded for this patient. Nothing here changes the current consultation.</DialogDescription>
+            <DialogDescription>Earlier consultations in full, appointments and everything recorded for this patient. Nothing here changes the current consultation.</DialogDescription>
           </DialogHeader>
           <Tabs defaultValue={first}>
             <TabsList>
@@ -150,7 +160,7 @@ export function PatientHistoryDialog({ patientId, patientName, currentId, open, 
             </TabsList>
             {visits && (
               <TabsContent value="visits">
-                <PreviousVisits patientId={patientId} currentId={currentId} />
+                <PreviousVisits patientId={patientId} currentId={currentId} initialVisitId={initialVisitId} />
               </TabsContent>
             )}
             {appts && (
@@ -171,7 +181,7 @@ export function PatientHistoryDialog({ patientId, patientName, currentId, open, 
 }
 
 /** One line under the patient banner: when this patient was last seen and for what, with a link to the full history. */
-export function LastVisitStrip({ patientId, currentId, onOpenHistory }: { patientId: string; currentId: string; onOpenHistory: () => void }) {
+export function LastVisitStrip({ patientId, currentId, onOpenHistory }: { patientId: string; currentId: string; onOpenHistory: (visitId?: string) => void }) {
   const { can } = useSession();
   const q = usePreviousVisits(patientId, currentId, can('clinical.read'));
   if (!can('clinical.read') || q.isLoading || q.error) return null;
@@ -192,9 +202,14 @@ export function LastVisitStrip({ patientId, currentId, onOpenHistory }: { patien
         <span className="flex-1 text-muted-foreground">First visit — no earlier consultations.</span>
       )}
       {last && (
-        <button type="button" onClick={onOpenHistory} className="text-primary underline">
-          View history
-        </button>
+        <span className="flex items-center gap-3">
+          <button type="button" onClick={() => onOpenHistory(last.id)} className="font-medium text-primary underline">
+            Open that visit
+          </button>
+          <button type="button" onClick={() => onOpenHistory()} className="text-primary underline">
+            All history
+          </button>
+        </span>
       )}
     </div>
   );
