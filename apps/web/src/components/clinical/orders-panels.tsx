@@ -5,6 +5,7 @@ import { enumLabel } from '@vcms/shared';
 import { AlertOctagon, FlaskConical, Pill, Plus, Syringe, Tractor } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
+import { LabOrderDetail } from '../lab/order-detail';
 import { LabOrderDialog } from '../lab/order-dialog';
 import { LabStatusBadge } from '../lab/lab-status';
 import { AdministerDialog } from '../pharmacy/administer-dialog';
@@ -12,6 +13,7 @@ import { PrescriptionDialog } from '../pharmacy/prescription-dialog';
 import { RxStatusBadge } from '../pharmacy/rx-status';
 import { Button } from '../ui/button';
 import { Card, CardHeader, CardTitle } from '../ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog';
 import { api, qs } from '@/lib/api';
 import { fmtDateTime } from '@/lib/format';
 import { frequencyLabel, qtyUnit, routeLabel } from '@/lib/labels';
@@ -99,6 +101,8 @@ export function LabOrdersPanel(props: Ctx) {
   const { patient, encounterId, editable } = props;
   const { can } = useSession();
   const [open, setOpen] = useDialog(props);
+  // A test opens in a window over this screen, so the vet never leaves the consultation to read a result.
+  const [viewId, setViewId] = useState<string | null>(null);
   const q = useQuery({ queryKey: ['lab-orders', { patientId: patient.id, encounterId }], queryFn: () => api.get<Paginated<DiagnosticOrder>>(`/lab-orders${qs({ patientId: patient.id, encounterId: encounterId ?? undefined, pageSize: 50 })}`), enabled: can('lab.read') });
   if (!can('lab.read')) return null;
   return (
@@ -111,18 +115,25 @@ export function LabOrdersPanel(props: Ctx) {
         <ul className="divide-y">
           {q.data.data.map((o) => (
             <li key={o.id}>
-              <Link href={`/lab/orders/${o.id}`} className="flex items-center gap-2 px-3 py-2 hover:bg-muted/50">
+              <button type="button" onClick={() => setViewId(o.id)} className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none" title="View the results without leaving this screen">
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1 truncate text-sm">{o.hasCritical && <AlertOctagon className="h-3.5 w-3.5 shrink-0 text-destructive" />}{o.items.map((i) => i.test.name).join(', ')}</span>
                   <span className="block text-2xs text-muted-foreground">{o.orderNo} · {fmtDateTime(o.createdAt)}{o.priority !== 'ROUTINE' && ` · ${enumLabel(o.priority)}`}</span>
                 </span>
                 <LabStatusBadge status={o.status} />
-              </Link>
+              </button>
             </li>
           ))}
         </ul>
       ) : <SlimEmpty>No tests ordered yet.</SlimEmpty>}
       <LabOrderDialog open={open} onOpenChange={setOpen} patient={patient} encounterId={encounterId} />
+      <Dialog open={!!viewId} onOpenChange={(o) => !o && setViewId(null)}>
+        <DialogContent size="xl" className="max-h-[90vh] overflow-y-auto">
+          <DialogTitle className="sr-only">Lab or X-ray order</DialogTitle>
+          <DialogDescription className="sr-only">Tests, results and reports for this order, shown over the consultation.</DialogDescription>
+          {viewId && <LabOrderDetail id={viewId} embedded />}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
