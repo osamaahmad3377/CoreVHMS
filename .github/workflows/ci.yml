@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 20
+  DATABASE_URL: postgresql://vcms:vcms_dev_password@localhost:5432/vcms
+
+jobs:
+  verify:
+    name: Lint, typecheck, unit & integration tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: vcms
+          POSTGRES_PASSWORD: vcms_dev_password
+          POSTGRES_DB: vcms
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U vcms -d vcms" --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Create test database
+        run: PGPASSWORD=vcms_dev_password psql -h localhost -U vcms -d vcms -c "CREATE DATABASE vcms_test OWNER vcms"
+      - name: API environment file
+        run: |
+          cp apps/api/.env.example apps/api/.env
+          sed -i "s#^DATABASE_URL=.*#DATABASE_URL=${DATABASE_URL}#" apps/api/.env
+          sed -i "s#^SESSION_SECRET=.*#SESSION_SECRET=$(openssl rand -hex 32)#" apps/api/.env
+          sed -i "s#^ENCRYPTION_KEY=.*#ENCRYPTION_KEY=$(openssl rand -hex 32)#" apps/api/.env
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build:shared
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Migrations apply cleanly
+        run: npx prisma migrate deploy
+        working-directory: apps/api
+      - name: Shared unit tests
+        run: npm test -w @vcms/shared
+      - name: API unit and integration tests
+        run: npm test -w @vcms/api
+      - name: Web production build
+        run: npm run build -w @vcms/web
+      - name: Dependency audit (production, high and above)
+        run: npm audit --omit=dev --audit-level=high
+
+  e2e:
+    name: End-to-end (Playwright)
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Start PostgreSQL and Mailpit
+        run: docker compose up -d --wait postgres mailpit
+      - name: API environment file
+        run: |
+          cp apps/api/.env.example apps/api/.env
+          sed -i "s#^DATABASE_URL=.*#DATABASE_URL=postgresql://vcms:vcms_dev_password@localhost:5433/vcms#" apps/api/.env
+          sed -i "s#^SESSION_SECRET=.*#SESSION_SECRET=$(openssl rand -hex 32)#" apps/api/.env
+          sed -i "s#^ENCRYPTION_KEY=.*#ENCRYPTION_KEY=$(openssl rand -hex 32)#" apps/api/.env
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build:shared
+      - name: Migrate and seed demo data
+        working-directory: apps/api
+        run: npx prisma migrate deploy && npm run db:seed
+      - name: Build and start API and web
+        run: |
+          npm run build -w @vcms/api
+          npm run build -w @vcms/web
+          (cd apps/api && set -a && . ./.env && set +a && node dist/main.js > ../../api.log 2>&1 &)
+          (cd apps/web && npx next start -p 3000 > ../../web.log 2>&1 &)
+          npx wait-on -t 120000 http://localhost:4000/api/v1/health/ready http://localhost:3000/login
+      - run: npx playwright install --with-deps chromium
+      - name: Playwright
+        run: npm run test:e2e -w @vcms/web
+      - name: Upload logs and traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          path: |
+            api.log
+            web.log
+            apps/web/test-results
+
+  docker:
+    name: Docker images, backup and restore test
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+      # Builds the production API and web images, starts them as a disposable stack, then proves that
+      # backup → verify → (corrupted backup rejected) → restore brings back the database and uploaded files.
+      - name: Build images and test backup/restore
+        run: APP_VERSION=ci BUILD=1 scripts/test-backup-restore.sh
