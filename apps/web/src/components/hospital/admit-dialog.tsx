@@ -17,7 +17,7 @@ import { useSession } from '@/lib/session';
 import type { Admission, WardRow } from '@/lib/types';
 
 /** Admit a patient to hospital: choose ward and an empty cage, reason, condition and resuscitation status. */
-export function AdmitDialog({ open, onOpenChange, patient, encounterId, cageId }: { open: boolean; onOpenChange: (o: boolean) => void; patient?: PickedPatient | null; encounterId?: string | null; cageId?: string | null }) {
+export function AdmitDialog({ open, onOpenChange, patient, encounterId, cageId, onAdmitted }: { open: boolean; onOpenChange: (o: boolean) => void; patient?: PickedPatient | null; encounterId?: string | null; cageId?: string | null; /** Called instead of opening the stay's page, so a consultation stays on screen. */ onAdmitted?: (a: Admission) => void }) {
   const router = useRouter();
   const { session } = useSession();
   const [p, setP] = useState<PickedPatient | null>(null);
@@ -47,7 +47,8 @@ export function AdmitDialog({ open, onOpenChange, patient, encounterId, cageId }
     onSuccess: (a) => {
       toast.success(`${a.patient.name} admitted (${a.admissionNo})`);
       onOpenChange(false);
-      router.push(`/hospital/admissions/${a.id}`);
+      if (onAdmitted) onAdmitted(a);
+      else router.push(`/hospital/admissions/${a.id}`);
     },
     onError: (e: Error) => setError(e.message),
   });

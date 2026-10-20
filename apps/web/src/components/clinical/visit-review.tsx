@@ -3,6 +3,7 @@ import { AlertCircle, CheckCircle2, ChevronRight, Flag } from 'lucide-react';
 import { Button } from '../ui/button';
 import { ConsultationCharges } from './charges-card';
 import type { StepContext } from './note-editor';
+import type { OutcomeState } from './visit-outcome';
 import type { Encounter } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -10,13 +11,20 @@ import { cn } from '@/lib/utils';
  * The last step of a consultation: what has been done, what is still open, the charges that will be billed,
  * and the Finish button. Missing items are suggestions, not blocks: not every visit needs a prescription.
  */
-export function VisitReview({ encounter: e, hasPrescriptions, ctx, onFinish }: { encounter: Encounter; hasPrescriptions: boolean; ctx: StepContext; onFinish: () => void }) {
+export function VisitReview({ encounter: e, hasPrescriptions, outcome, ctx, onFinish }: { encounter: Encounter; hasPrescriptions: boolean; outcome: OutcomeState; ctx: StepContext; onFinish: () => void }) {
   const items: { step: string; label: string; ok: boolean; okText: string; todoText: string }[] = [
     { step: 'arrival', label: 'Vital signs', ok: e.vitals.length > 0, okText: `${e.vitals.length} reading${e.vitals.length === 1 ? '' : 's'} recorded`, todoText: 'None recorded yet' },
     { step: 'history', label: 'History', ok: !!(ctx.content.history?.trim() || ctx.content.subjective?.trim()), okText: 'Written', todoText: 'Not written yet' },
     { step: 'exam', label: 'Examination', ok: !!ctx.content.objective?.trim() || ctx.done.exam, okText: 'Written', todoText: 'Not written yet' },
     { step: 'diagnosis', label: 'Diagnosis', ok: e.diagnoses.length > 0, okText: e.diagnoses.map((d) => d.term).join(', '), todoText: 'No diagnosis recorded' },
     { step: 'treatment', label: 'Treatment and plan', ok: !!ctx.content.plan?.trim() || hasPrescriptions, okText: hasPrescriptions ? 'Plan written, medicines prescribed' : 'Plan written', todoText: 'No plan written yet' },
+    {
+      step: 'outcome',
+      label: 'Where next',
+      ok: true,
+      okText: [outcome.admitted && 'Admitted to hospital', outcome.surgeries > 0 && 'Surgery scheduled', outcome.referred > 0 && 'Referred to a specialist'].filter(Boolean).join(' · ') || 'Going home',
+      todoText: '',
+    },
     { step: 'advice', label: 'Advice and follow-up', ok: !!ctx.content.followUpInstructions?.trim() || e.tasks.length > 0, okText: 'Advice or follow-up added', todoText: 'No advice or follow-up added' },
   ];
   const open = items.filter((i) => !i.ok);

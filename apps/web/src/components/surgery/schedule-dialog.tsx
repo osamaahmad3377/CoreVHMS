@@ -21,7 +21,7 @@ import type { Service, Surgery } from '@/lib/types';
 const PROCEDURE_FEE_CATEGORIES = ['SURGERY', 'PROCEDURE', 'DENTAL'];
 
 /** Schedules a surgery: books the surgeon and theatre in the calendar (with double-booking protection). */
-export function ScheduleSurgeryDialog({ open, onOpenChange, patient, admissionId }: { open: boolean; onOpenChange: (o: boolean) => void; patient?: PickedPatient | null; admissionId?: string | null }) {
+export function ScheduleSurgeryDialog({ open, onOpenChange, patient, admissionId, onScheduled }: { open: boolean; onOpenChange: (o: boolean) => void; patient?: PickedPatient | null; admissionId?: string | null; /** Called instead of opening the surgery's page, so a consultation stays on screen. */ onScheduled?: (s: Surgery) => void }) {
   const router = useRouter();
   const { session, currency } = useSession();
   const tz = session.branch?.timezone ?? 'UTC';
@@ -65,7 +65,7 @@ export function ScheduleSurgeryDialog({ open, onOpenChange, patient, admissionId
         estimateMinor: parseMoney(f.estimate, currency),
         allowOutsideHours: f.allowOutsideHours,
       }),
-    onSuccess: (s) => { toast.success(`${s.surgeryNo} scheduled`); onOpenChange(false); router.push(`/surgery/${s.id}`); },
+    onSuccess: (s) => { toast.success(`${s.surgeryNo} scheduled`); onOpenChange(false); if (onScheduled) onScheduled(s); else router.push(`/surgery/${s.id}`); },
     onError: (e: Error) => setError(e.message),
   });
   return (

@@ -1,7 +1,7 @@
 'use client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { enumLabel, type Paginated } from '@vcms/shared';
-import { Activity, AlertTriangle, ArrowRight, CalendarPlus, CheckCircle2, ChevronDown, ClipboardList, FilePlus, FlaskConical, History, Paperclip, Pill, Printer, Receipt, Stethoscope, Syringe, Upload, XCircle } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowRight, BedDouble, CalendarPlus, CheckCircle2, ChevronDown, ClipboardList, FilePlus, FlaskConical, History, Paperclip, Pill, Printer, Receipt, Scissors, Stethoscope, Syringe, Upload, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
@@ -12,6 +12,7 @@ import { ConsultationCharges } from '@/components/clinical/charges-card';
 import { DiagnosesPanel } from '@/components/clinical/diagnoses-panel';
 import { FinishConsultationDialog } from '@/components/clinical/finish-dialog';
 import { NoteEditor, type WorkflowStep } from '@/components/clinical/note-editor';
+import { VisitOutcome, type OutcomeState } from '@/components/clinical/visit-outcome';
 import { VisitReview } from '@/components/clinical/visit-review';
 import { NoteView } from '@/components/clinical/note-view';
 import { AdministrationsPanel, LabOrdersPanel, PrescriptionsPanel, WithdrawalBanner } from '@/components/clinical/orders-panels';
@@ -31,7 +32,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useAppointmentTypes } from '@/hooks/use-catalog';
 import { api, qs } from '@/lib/api';
 import { fmtDateTime } from '@/lib/format';
-import { useSession } from '@/lib/session';
+import { useModuleOn, useSession } from '@/lib/session';
 import { branchTime, localDate, shiftDate, todayIn } from '@/lib/time';
 import type { ClinicHeader } from '@/components/billing/invoice-document';
 import type { Appointment, ClinicalNote, Encounter, Prescription } from '@/lib/types';
@@ -60,6 +61,11 @@ function Workspace() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyVisit, setHistoryVisit] = useState<string | null>(null);
   const [step, setStep] = useState<string | null>(null);
+  const [admitOpen, setAdmitOpen] = useState(false);
+  const [surgeryOpen, setSurgeryOpen] = useState(false);
+  const [referOpen, setReferOpen] = useState(false);
+  const [outcome, setOutcome] = useState<OutcomeState>({ admitted: false, surgeries: 0, referred: 0 });
+  const moduleOn = useModuleOn();
   const canSeeHistory = useCanSeeHistory();
   const [rxOpen, setRxOpen] = useState(false);
   const [giveOpen, setGiveOpen] = useState(false);
@@ -127,6 +133,8 @@ function Workspace() {
     active && can('prescriptions.write') && { label: 'Prescribe', icon: Pill, onClick: () => (workspace ? goStep('treatment', () => setRxOpen(true)) : setRxOpen(true)) },
     active && canAny('clinical.write', 'hospital.write', 'pharmacy.dispense') && { label: 'Give medicine now', icon: Syringe, onClick: () => (workspace ? goStep('treatment', () => setGiveOpen(true)) : setGiveOpen(true)) },
     active && can('lab.read') && can('lab.order') && { label: 'Order test', icon: FlaskConical, onClick: () => (workspace ? goStep('diagnosis', () => setLabOpen(true)) : setLabOpen(true)) },
+    workspace && moduleOn('hospital') && can('hospital.write') && { label: 'Admit', icon: BedDouble, onClick: () => goStep('outcome', () => setAdmitOpen(true)) },
+    workspace && moduleOn('surgery') && can('surgery.write') && { label: 'Surgery', icon: Scissors, onClick: () => goStep('outcome', () => setSurgeryOpen(true)) },
     active && can('appointments.write') && { label: 'Follow-up', icon: CalendarPlus, onClick: () => setFollowUp(true) },
     writable && { label: 'Upload', icon: Upload, onClick: () => (workspace ? goStep('advice', () => scrollTo('attachments-card')) : scrollTo('attachments-card')) },
   ].filter(Boolean) as { label: string; icon: React.ComponentType<{ className?: string }>; onClick: () => void }[];
@@ -207,6 +215,26 @@ function Workspace() {
       done: hasPrescriptions,
     },
     {
+      id: 'outcome',
+      title: 'Next steps',
+      hint: 'Admit, operate, refer, book a recheck — or send home',
+      extra: (
+        <VisitOutcome
+          encounter={enc}
+          admitOpen={admitOpen}
+          onAdmitOpen={setAdmitOpen}
+          surgeryOpen={surgeryOpen}
+          onSurgeryOpen={setSurgeryOpen}
+          referOpen={referOpen}
+          onReferOpen={setReferOpen}
+          onBookFollowUp={can('appointments.write') ? () => setFollowUp(true) : undefined}
+          onState={setOutcome}
+        />
+      ),
+      badge: outcome.admitted ? 'Admitted' : outcome.surgeries ? 'Surgery booked' : outcome.referred ? 'Referred' : null,
+      done: outcome.admitted || outcome.surgeries > 0 || outcome.referred > 0,
+    },
+    {
       id: 'advice',
       title: 'Advice & follow-up',
       hint: 'What to tell the client, and the next visit',
@@ -233,7 +261,7 @@ function Workspace() {
       id: 'review',
       title: 'Review & finish',
       hint: 'Check everything, then finish the visit',
-      extra: (ctx) => <VisitReview encounter={enc} hasPrescriptions={hasPrescriptions} ctx={ctx} onFinish={() => setFinishing(true)} />,
+      extra: (ctx) => <VisitReview encounter={enc} hasPrescriptions={hasPrescriptions} outcome={outcome} ctx={ctx} onFinish={() => setFinishing(true)} />,
     },
   ];
 

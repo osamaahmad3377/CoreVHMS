@@ -292,7 +292,7 @@ export function ContactDialog({ open, onOpenChange, contact }: { open: boolean; 
   );
 }
 
-export function ReferralDialog({ open, onOpenChange, patient }: { open: boolean; onOpenChange: (o: boolean) => void; patient?: { id: string; name: string } | null }) {
+export function ReferralDialog({ open, onOpenChange, patient, onSaved }: { open: boolean; onOpenChange: (o: boolean) => void; patient?: { id: string; name: string } | null; /** Called instead of opening the referral's page, so a consultation stays on screen. */ onSaved?: (r: Referral) => void }) {
   const router = useRouter();
   const { can } = useSession();
   const contacts = useQuery({ queryKey: ['referral-contacts'], queryFn: () => api.get<ReferralContact[]>('/referral-contacts'), enabled: open });
@@ -305,7 +305,7 @@ export function ReferralDialog({ open, onOpenChange, patient }: { open: boolean;
   useEffect(() => { if (summary.data && !f.clinicalSummary) setF((x) => ({ ...x, clinicalSummary: summary.data!.text })); }, [summary.data]); // eslint-disable-line react-hooks/exhaustive-deps
   const m = useMutation({
     mutationFn: () => api.post<Referral>('/referrals', { ...f, patientId: target?.id, contactId: f.contactId || null, externalVet: f.externalVet || null, clinicalSummary: f.clinicalSummary || null, questions: f.questions || null }),
-    onSuccess: (r) => { toast.success(`Referral ${r.referralNo} saved`); onOpenChange(false); router.push(`/insurance/referrals/${r.id}`); },
+    onSuccess: (r) => { toast.success(`Referral ${r.referralNo} saved`); onOpenChange(false); if (onSaved) onSaved(r); else router.push(`/insurance/referrals/${r.id}`); },
     onError: (e: Error) => setError(e.message),
   });
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
