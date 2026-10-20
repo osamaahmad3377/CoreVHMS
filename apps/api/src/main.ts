@@ -5,7 +5,7 @@ import { AppModule } from './app.module';
 import { configureApp } from './app.setup';
 import { env } from './config/env';
 import { JsonLogger } from './common/logging/json-logger';
-
+// test changes
 async function bootstrap() {
   const config = env(); // fail fast on invalid configuration
   const app = await NestFactory.create(AppModule, { bodyParser: false, logger: config.LOG_FORMAT === 'json' ? new JsonLogger() : undefined });
