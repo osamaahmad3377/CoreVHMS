@@ -1775,3 +1775,13 @@ export interface ReceiptContext {
   brandingLogo: boolean;
   logoVersion: string | null;
 }
+
+export interface NotePhraseRow {
+  id: string;
+  field: string;
+  groupName: string | null;
+  label: string;
+  text: string | null;
+  sortOrder: number;
+  isActive: boolean;
+}

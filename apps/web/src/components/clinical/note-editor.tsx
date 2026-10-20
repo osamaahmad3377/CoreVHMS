@@ -1,7 +1,8 @@
 'use client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { EXAM_SYSTEMS } from '@vcms/shared';
-import { Activity, CheckCircle2, FileSignature, Loader2, Save, Trash2 } from 'lucide-react';
+import { EXAM_SYSTEMS, NOTE_PHRASE_FIELDS, type NotePhraseField } from '@vcms/shared';
+import { Activity, CheckCircle2, FileSignature, Loader2, MousePointerClick, Save, Settings2, Trash2 } from 'lucide-react';
+import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirm } from '../confirm';
@@ -10,7 +11,8 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Input, NativeSelect, Textarea } from '../ui/input';
 import { Label } from '../ui/label';
-import { useTemplates } from '@/hooks/use-catalog';
+import { QuickPicks } from './quick-picks';
+import { useNotePhrases, useTemplates } from '@/hooks/use-catalog';
 import { api } from '@/lib/api';
 import { fmtDateTime } from '@/lib/format';
 import { useSession } from '@/lib/session';
@@ -112,6 +114,25 @@ export function NoteEditor({
   const qc = useQueryClient();
   const confirm = useConfirm();
   const templates = useTemplates();
+  const phrases = useNotePhrases();
+  // Tap-to-add buttons can be switched off by people who prefer typing; remembered on this computer.
+  const [picksOn, setPicksOn] = useState(true);
+  useEffect(() => {
+    try {
+      setPicksOn(localStorage.getItem('vcms.quickpicks') !== 'off');
+    } catch {
+      /* storage unavailable: keep them on */
+    }
+  }, []);
+  const togglePicks = () =>
+    setPicksOn((on) => {
+      try {
+        localStorage.setItem('vcms.quickpicks', on ? 'off' : 'on');
+      } catch {
+        /* ignore */
+      }
+      return !on;
+    });
   const [content, setContent] = useState<Content>(() => fromNote(note, amending ? null : chiefComplaint));
   // An existing draft without a presenting complaint gets the check-in reason; save it like any other change.
   const prefilled = !amending && !!note && note.status === 'DRAFT' && !note.amendsId && !note.presentingComplaint && !!chiefComplaint;
@@ -249,6 +270,9 @@ export function NoteEditor({
           </Button>
         )}
       </div>
+      {picksOn && (NOTE_PHRASE_FIELDS as readonly string[]).includes(f.key) && (
+        <QuickPicks field={f.key as NotePhraseField} value={String(content[f.key] ?? '')} onChange={(v) => set(f.key, v)} phrases={phrases.data ?? []} />
+      )}
       <Textarea id={`n-${f.key}`} rows={f.rows} placeholder={f.hint} value={String(content[f.key] ?? '')} onChange={(e) => set(f.key, e.target.value)} />
     </div>
   );
@@ -282,6 +306,15 @@ export function NoteEditor({
               </option>
             ))}
           </NativeSelect>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+        <MousePointerClick className="h-4 w-4 text-primary" />
+        <span className="font-medium">Quick picks:</span>
+        <span className="text-muted-foreground">{picksOn ? 'tap a button to add it to the note; tap again to take it out. You can still type anything.' : 'switched off — you are typing everything.'}</span>
+        <button type="button" onClick={togglePicks} className="font-medium text-primary hover:underline">{picksOn ? 'Hide buttons' : 'Show buttons'}</button>
+        {can('settings.manage') && (
+          <Link href="/settings/note-phrases" className="ml-auto flex items-center gap-1 font-medium text-primary hover:underline"><Settings2 className="h-3.5 w-3.5" /> Edit the buttons</Link>
         )}
       </div>
       {error && <FormError message={error} />}

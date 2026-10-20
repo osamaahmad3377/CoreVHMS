@@ -1,7 +1,7 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
 import { api, qs } from '@/lib/api';
-import type { AppointmentType, ClinicalTemplateRow, Clinician, Resource } from '@/lib/types';
+import type { AppointmentType, ClinicalTemplateRow, Clinician, NotePhraseRow, Resource } from '@/lib/types';
 
 export const useAppointmentTypes = (all = false) =>
   useQuery({ queryKey: ['appointment-types', all], queryFn: () => api.get<AppointmentType[]>(`/appointment-types${all ? '?all=true' : ''}`), staleTime: 120_000 });
@@ -11,6 +11,10 @@ export const useClinicians = (branchId?: string) =>
 
 export const useResources = (branchId?: string) =>
   useQuery({ queryKey: ['resources', branchId], queryFn: () => api.get<Resource[]>(`/resources${qs({ branchId })}`), staleTime: 120_000 });
+
+/** The one-tap phrases under the consultation note fields (the clinic's own list). */
+export const useNotePhrases = (enabled = true) =>
+  useQuery({ queryKey: ['note-phrases'], queryFn: () => api.get<NotePhraseRow[]>('/note-phrases'), staleTime: 120_000, enabled });
 
 export const useTemplates = () =>
   useQuery({ queryKey: ['clinical-templates'], queryFn: () => api.get<ClinicalTemplateRow[]>('/clinical-templates'), staleTime: 120_000 });

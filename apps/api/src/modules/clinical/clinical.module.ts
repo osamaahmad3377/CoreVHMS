@@ -6,12 +6,14 @@ import { ClinicalController } from './clinical.controller';
 import { ClinicalIntegrations } from './clinical-integrations';
 import { ClinicalRecordsService } from './clinical-records.service';
 import { EncountersService } from './encounters.service';
+import { NotePhrasesController } from './note-phrases.controller';
+import { NotePhrasesService } from './note-phrases.service';
 import { NotesService } from './notes.service';
 
 @Module({
   imports: [PatientsModule, ClientsModule],
-  controllers: [ClinicalController],
-  providers: [EncountersService, NotesService, ClinicalRecordsService, ClinicalIntegrations, ClinicalAttachments],
+  controllers: [ClinicalController, NotePhrasesController],
+  providers: [EncountersService, NotesService, NotePhrasesService, ClinicalRecordsService, ClinicalIntegrations, ClinicalAttachments],
   exports: [EncountersService, NotesService, ClinicalRecordsService],
 })
 export class ClinicalModule {}

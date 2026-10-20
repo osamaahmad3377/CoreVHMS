@@ -200,6 +200,8 @@ model Organization {
   /// The clinic prints on paper that already has its letterhead: leave the top blank instead of printing one.
   printPreprinted             Boolean            @default(false)
   printTopSpaceMm             Int                @default(40)
+  /// The starter quick note phrases were added once; deleting them all does not bring them back.
+  notePhrasesSeeded           Boolean            @default(false)
   // Branding: emails
   emailSenderName             String?
   emailSignature              String?
@@ -245,6 +247,7 @@ model Organization {
   diagnoses                Diagnosis[]
   problems                 ProblemListItem[]
   clinicalTemplates        ClinicalTemplate[]
+  notePhrases              NotePhrase[]
   tasks                    Task[]
   products                 Product[]
   productWithdrawals       ProductWithdrawal[]
@@ -1571,6 +1574,27 @@ model ClinicalTemplate {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   @@unique([organizationId, name])
+}
+
+/// One-tap phrases under the consultation note fields, edited per clinic (Settings → Quick note phrases).
+model NotePhrase {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  /// Which note field it belongs to: presentingComplaint, history, subjective, objective, assessment, plan or followUpInstructions.
+  field          String
+  /// Phrases sharing a group are choices of one question (picking one replaces the others).
+  groupName      String?
+  label          String
+  /// What is added to the note; the label when null.
+  text           String?
+  sortOrder      Int      @default(0)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, field, sortOrder])
 }
 
 enum TaskType {
