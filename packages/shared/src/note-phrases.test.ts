@@ -1,4 +1,4 @@
-import { DEFAULT_NOTE_PHRASES, NOTE_PHRASE_FIELDS, addPhrase, hasPhrase, notePhraseSchema, phraseText, removePhrase, togglePhrase } from './note-phrases';
+import { DEFAULT_NOTE_PHRASES, NOTE_PHRASE_FIELDS, addPhrase, fillNormalAnswers, hasPhrase, notePhraseSchema, phraseText, removePhrase, togglePhrase } from './note-phrases';
 
 describe('note phrase text', () => {
   it('uses the label when no text is set', () => {
@@ -36,6 +36,35 @@ describe('note phrase text', () => {
     expect(note).toBe('Quiet since morning.');
     // Ungrouped buttons combine.
     expect(togglePhrase('Vomiting', { label: 'Diarrhoea' }, [])).toBe('Vomiting, Diarrhoea');
+  });
+});
+
+describe('normal answers', () => {
+  const exam = [
+    { label: 'Pink', text: 'Gums pink.', groupName: 'Gums', isDefault: true }, { label: 'Pale', text: 'Gums pale.', groupName: 'Gums' },
+    { label: 'Normal', text: 'Heart sounds normal.', groupName: 'Heart', isDefault: true }, { label: 'Murmur', text: 'Heart murmur heard.', groupName: 'Heart' },
+    { label: 'No previous illness', text: 'No previous illness.', isDefault: true }, { label: 'Wound', text: 'Wound present.' },
+  ];
+
+  it('fills only the questions that have no answer yet, and never changes an answer already given', () => {
+    expect(fillNormalAnswers('', exam)).toBe('Gums pink. Heart sounds normal. No previous illness.');
+    expect(fillNormalAnswers('Gums pale.', exam)).toBe('Gums pale. Heart sounds normal. No previous illness.');
+    expect(fillNormalAnswers('Heart murmur heard. Wound present.', exam)).toBe('Heart murmur heard. Wound present. Gums pink. No previous illness.');
+  });
+
+  it('does nothing twice', () => {
+    const once = fillNormalAnswers('', exam);
+    expect(fillNormalAnswers(once, exam)).toBe(once);
+  });
+
+  it('marks a normal answer for the starter questions', () => {
+    const normals = NOTE_PHRASE_FIELDS.flatMap((f) => DEFAULT_NOTE_PHRASES[f].filter((p) => p.normal));
+    expect(normals).toHaveLength(12);
+    // at most one normal answer per question
+    for (const f of NOTE_PHRASE_FIELDS) {
+      const groups = DEFAULT_NOTE_PHRASES[f].filter((p) => p.normal).map((p) => p.group);
+      expect(new Set(groups).size).toBe(groups.length);
+    }
   });
 });
 

@@ -1589,6 +1589,8 @@ model NotePhrase {
   text           String?
   sortOrder      Int      @default(0)
   isActive       Boolean  @default(true)
+  /// The normal answer of its question, added by "Fill in the normal answers".
+  isDefault      Boolean  @default(false)
   createdAt      DateTime @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime @updatedAt @db.Timestamptz(3)
 

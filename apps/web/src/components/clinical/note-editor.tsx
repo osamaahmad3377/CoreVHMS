@@ -11,6 +11,7 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Input, NativeSelect, Textarea } from '../ui/input';
 import { Label } from '../ui/label';
+import { NoteSection } from './note-section';
 import { QuickPicks } from './quick-picks';
 import { useNotePhrases, useTemplates } from '@/hooks/use-catalog';
 import { api } from '@/lib/api';
@@ -63,6 +64,15 @@ const FIELDS: { key: keyof Content; letter?: string; label: string; hint: string
   { key: 'assessment', letter: 'A', label: 'Assessment — likely problem', hint: 'What you think is wrong, and other possible causes', rows: 3 },
   { key: 'plan', letter: 'P', label: 'Plan — tests, treatment, advice', hint: 'Tests to do, medicines and treatment, what you told the owner', rows: 3 },
   { key: 'followUpInstructions', label: 'Instructions for the owner', hint: 'Plain words for home care, e.g. “Give the tablets with food. Come back if he stops eating.”', rows: 2 },
+];
+
+/** The note is written in five steps; each step covers one or two of the note's fields. */
+const SECTIONS: { id: string; title: string; hint: string; fields: (keyof Content)[] }[] = [
+  { id: 'complaint', title: 'Why they came', hint: 'The reason for today’s visit', fields: ['presentingComplaint'] },
+  { id: 'history', title: 'History', hint: 'Past history, and what the client tells you', fields: ['history', 'subjective'] },
+  { id: 'exam', title: 'Examination', hint: 'What you found when you examined the patient', fields: ['objective'] },
+  { id: 'assessment', title: 'Assessment', hint: 'What you think is wrong', fields: ['assessment'] },
+  { id: 'plan', title: 'Plan and advice', hint: 'What happens next, and what to tell the client', fields: ['plan', 'followUpInstructions'] },
 ];
 
 /** "Temp 39.8 °C, Weight 18 kg, Heart rate 120/min, …" from a vitals row. */
@@ -124,6 +134,9 @@ export function NoteEditor({
       /* storage unavailable: keep them on */
     }
   }, []);
+  const [openId, setOpenId] = useState('complaint');
+  const [showAll, setShowAll] = useState(false);
+  const started = useRef(false);
   const togglePicks = () =>
     setPicksOn((on) => {
       try {
@@ -280,54 +293,37 @@ export function NoteEditor({
   const findings = content.examFindings;
   const setFinding = (i: number, patch: Partial<ExamFinding>) => set('examFindings', findings.map((f, j) => (j === i ? { ...f, ...patch } : f)));
 
-  return (
-    <div className="grid gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={status === 'REVIEWED' ? 'info' : 'warning'}>{amending ? 'Correction draft' : status === 'REVIEWED' ? `Approved${note?.reviewedByName ? ` by ${note.reviewedByName}` : ''} — not signed` : 'Draft — not signed'}</Badge>
-        <span className="flex items-center gap-1 text-xs text-muted-foreground" aria-live="polite">
-          {saving.current ? (
-            <>
-              <Loader2 className="h-3 w-3 animate-spin" /> Saving…
-            </>
-          ) : dirty ? (
-            'Unsaved changes'
-          ) : savedAt ? (
-            `Saved ${fmtDateTime(savedAt)}`
-          ) : (
-            'Not saved yet'
-          )}
-        </span>
-        {!amending && (
-          <NativeSelect aria-label="Apply template" className="ml-auto h-8 w-56 text-xs" value="" onChange={(e) => e.target.value && applyTemplate(e.target.value)}>
-            <option value="">Apply a template…</option>
-            {templates.data?.filter((t) => !t.speciesCategory || !speciesCategory || t.speciesCategory === speciesCategory).map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </NativeSelect>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
-        <MousePointerClick className="h-4 w-4 text-primary" />
-        <span className="font-medium">Quick picks:</span>
-        <span className="text-muted-foreground">{picksOn ? 'tap a button to add it to the note; tap again to take it out. You can still type anything.' : 'switched off — you are typing everything.'}</span>
-        <button type="button" onClick={togglePicks} className="font-medium text-primary hover:underline">{picksOn ? 'Hide buttons' : 'Show buttons'}</button>
-        {can('settings.manage') && (
-          <Link href="/settings/note-phrases" className="ml-auto flex items-center gap-1 font-medium text-primary hover:underline"><Settings2 className="h-3.5 w-3.5" /> Edit the buttons</Link>
-        )}
-      </div>
-      {error && <FormError message={error} />}
-      {amending && (
-        <div className="grid gap-1.5 rounded-md border border-warning/40 bg-warning/10 p-3">
-          <Label htmlFor="amend-reason">Reason for amendment *</Label>
-          <Input id="amend-reason" value={reason} onChange={(e) => { setReason(e.target.value); setDirty(true); }} placeholder="e.g. Laboratory result received; correction of recorded weight" />
-          <p className="text-xs text-muted-foreground">The signed original stays in the record unchanged. This amendment replaces it as the current version once signed.</p>
-        </div>
-      )}
-      {FIELDS.slice(0, 4).map(renderField)}
+  const filledOf = (sec: (typeof SECTIONS)[number]) => sec.fields.some((k) => String(content[k] ?? '').trim()) || (sec.id === 'exam' && content.examFindings.some((f) => f.status !== 'NOT_EXAMINED'));
+  const summaryOf = (sec: (typeof SECTIONS)[number]) => {
+    const t = sec.fields.map((k) => String(content[k] ?? '').trim()).find(Boolean);
+    return t ? (t.length > 90 ? `${t.slice(0, 90)}…` : t) : null;
+  };
+  const doneCount = SECTIONS.filter(filledOf).length;
+  const toggleShowAll = () =>
+    setShowAll((v) => {
+      try {
+        localStorage.setItem('vcms.note.showall', v ? '0' : '1');
+      } catch {
+        /* ignore */
+      }
+      return !v;
+    });
+  // On opening: start at the first step not written yet; people who prefer to see everything keep that choice.
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    try {
+      if (localStorage.getItem('vcms.note.showall') === '1') setShowAll(true);
+    } catch {
+      /* ignore */
+    }
+    const first = SECTIONS.find((sec) => !filledOf(sec));
+    setOpenId(first?.id ?? '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-      <fieldset className="rounded-md border p-3">
+  const examBlock = (
+      <fieldset className="rounded-lg border p-3">
         <legend className="px-1 text-sm font-medium">Physical examination</legend>
         {findings.length === 0 ? (
           <div className="flex flex-wrap items-center gap-2">
@@ -371,10 +367,84 @@ export function NoteEditor({
           </div>
         )}
       </fieldset>
+  );
 
-      {FIELDS.slice(4).map(renderField)}
+  return (
+    <div className="grid gap-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant={status === 'REVIEWED' ? 'info' : 'warning'}>{amending ? 'Correction draft' : status === 'REVIEWED' ? `Approved${note?.reviewedByName ? ` by ${note.reviewedByName}` : ''} — not signed` : 'Draft — not signed'}</Badge>
+        <span className="flex items-center gap-1 text-xs text-muted-foreground" aria-live="polite">
+          {saving.current ? (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin" /> Saving…
+            </>
+          ) : dirty ? (
+            'Unsaved changes'
+          ) : savedAt ? (
+            `Saved ${fmtDateTime(savedAt)}`
+          ) : (
+            'Not saved yet'
+          )}
+        </span>
+        {!amending && (
+          <NativeSelect aria-label="Apply template" className="ml-auto h-8 w-56 text-xs" value="" onChange={(e) => e.target.value && applyTemplate(e.target.value)}>
+            <option value="">Apply a template…</option>
+            {templates.data?.filter((t) => !t.speciesCategory || !speciesCategory || t.speciesCategory === speciesCategory).map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </NativeSelect>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1.5 font-medium text-foreground"><MousePointerClick className="h-3.5 w-3.5 text-primary" /> Quick picks {picksOn ? 'on' : 'off'}</span>
+        {picksOn && <span className="hidden sm:inline">Tap a button to add it; tap again to remove it.</span>}
+        <button type="button" onClick={togglePicks} className="font-medium text-primary hover:underline">{picksOn ? 'Hide buttons' : 'Show buttons'}</button>
+        {can('settings.manage') && (
+          <Link href="/settings/note-phrases" className="ml-auto flex items-center gap-1 font-medium text-primary hover:underline"><Settings2 className="h-3.5 w-3.5" /> Edit the buttons</Link>
+        )}
+      </div>
+      {error && <FormError message={error} />}
+      {amending && (
+        <div className="grid gap-1.5 rounded-md border border-warning/40 bg-warning/10 p-3">
+          <Label htmlFor="amend-reason">Reason for amendment *</Label>
+          <Input id="amend-reason" value={reason} onChange={(e) => { setReason(e.target.value); setDirty(true); }} placeholder="e.g. Laboratory result received; correction of recorded weight" />
+          <p className="text-xs text-muted-foreground">The signed original stays in the record unchanged. This amendment replaces it as the current version once signed.</p>
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="min-w-[10rem] flex-1">
+          <div className="mb-1 flex items-center justify-between text-xs">
+            <span className="font-medium">{doneCount} of {SECTIONS.length} steps written</span>
+            <button type="button" onClick={toggleShowAll} className="font-medium text-primary hover:underline">{showAll ? 'Show one step at a time' : 'Show all steps'}</button>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuemin={0} aria-valuemax={SECTIONS.length} aria-valuenow={doneCount} aria-label="Note progress">
+            <div className="h-full rounded-full bg-success transition-all duration-300" style={{ width: `${(doneCount / SECTIONS.length) * 100}%` }} />
+          </div>
+        </div>
+      </div>
+      <div className="grid gap-2.5">
+        {SECTIONS.map((sec, n) => (
+          <NoteSection
+            key={sec.id}
+            index={n + 1}
+            title={sec.title}
+            hint={sec.hint}
+            summary={summaryOf(sec)}
+            filled={filledOf(sec)}
+            open={showAll || openId === sec.id}
+            onToggle={() => setOpenId(openId === sec.id && !showAll ? '' : sec.id)}
+            onNext={n < SECTIONS.length - 1 ? () => setOpenId(SECTIONS[n + 1].id) : undefined}
+            nextLabel={SECTIONS[n + 1]?.title}
+          >
+            {sec.fields.map((k) => renderField(FIELDS.find((f) => f.key === k)!))}
+            {sec.id === 'exam' && examBlock}
+          </NoteSection>
+        ))}
+      </div>
 
-      <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-3">
+      <div className="sticky bottom-0 z-10 -mb-2 flex flex-wrap items-center justify-end gap-2 border-t bg-card/95 pb-3 pt-3 backdrop-blur">
         {noteId && !amending && (
           <Button
             variant="ghost"

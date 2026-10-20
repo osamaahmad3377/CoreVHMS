@@ -77,6 +77,7 @@ test.describe('Everyday flow', () => {
     await vet.getByRole('button', { name: 'Start consultation for Rocky' }).first().click();
     await expect(vet).toHaveURL(/\/consultations\/[0-9a-f-]{36}/);
     // Typed and finished at once, before the 2-second autosave: the checklist still sees the notes.
+    await vet.getByRole('button', { name: 'Show all steps' }).click();
     await vet.getByLabel(/Assessment/).fill('Flea allergy dermatitis');
     await vet.getByRole('button', { name: 'Finish consultation' }).click();
     const check = vet.getByRole('dialog');

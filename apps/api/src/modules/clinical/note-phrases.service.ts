@@ -20,7 +20,7 @@ export class NotePhrasesService {
   private starterRows(organizationId: string, skip?: Set<string>) {
     return NOTE_PHRASE_FIELDS.flatMap((field) =>
       DEFAULT_NOTE_PHRASES[field]
-        .map((p, i) => ({ organizationId, field, groupName: p.group ?? null, label: p.label, text: p.text ?? null, sortOrder: (i + 1) * 10 }))
+        .map((p, i) => ({ organizationId, field, groupName: p.group ?? null, label: p.label, text: p.text ?? null, sortOrder: (i + 1) * 10, isDefault: p.normal === true }))
         .filter((r) => !skip?.has(`${r.field}|${r.groupName ?? ''}|${r.label}`)),
     );
   }
@@ -51,7 +51,7 @@ export class NotePhrasesService {
       if (clash) throw ruleViolation('DUPLICATE_PHRASE', 'That button already exists for this field');
       const last = await tx.notePhrase.findFirst({ where: { field: input.field }, orderBy: { sortOrder: 'desc' }, select: { sortOrder: true } });
       const row = await tx.notePhrase.create({
-        data: { organizationId: RequestContext.orgId(), field: input.field, groupName: input.groupName, label: input.label, text: input.text, sortOrder: input.sortOrder ?? (last?.sortOrder ?? 0) + 10, isActive: input.isActive ?? true },
+        data: { organizationId: RequestContext.orgId(), field: input.field, groupName: input.groupName, label: input.label, text: input.text, sortOrder: input.sortOrder ?? (last?.sortOrder ?? 0) + 10, isActive: input.isActive ?? true, isDefault: input.isDefault ?? false },
       });
       await this.audit.record({ action: 'note_phrase.created', entityType: 'NotePhrase', entityId: row.id, summary: `${row.field}: ${row.label}` }, tx);
       return row;
@@ -78,6 +78,7 @@ export class NotePhrasesService {
           ...(input.text !== undefined && { text: input.text }),
           ...(input.sortOrder !== undefined && { sortOrder: input.sortOrder }),
           ...(input.isActive !== undefined && { isActive: input.isActive }),
+          ...(input.isDefault !== undefined && { isDefault: input.isDefault }),
         },
       });
       await this.audit.record({ action: 'note_phrase.updated', entityType: 'NotePhrase', entityId: id, summary: `${row.field}: ${row.label}` }, tx);

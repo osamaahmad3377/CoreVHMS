@@ -13,6 +13,8 @@ describe('Quick note phrases', () => {
     expect(first.body).toHaveLength(starterTotal);
     // Starter phrases carry no doses, and grouped ones are choices of one question.
     expect(first.body.some((p: { field: string; groupName: string | null }) => p.field === 'subjective' && p.groupName === 'Eating')).toBe(true);
+    // The usual (normal) answers of the starter questions are marked, one per question.
+    expect(first.body.filter((p: { isDefault: boolean }) => p.isDefault)).toHaveLength(12);
     // Reading again must not add them twice.
     expect((await org.owner.get('/note-phrases')).body).toHaveLength(starterTotal);
 
@@ -21,6 +23,7 @@ describe('Quick note phrases', () => {
     expect(added.body).toMatchObject({ field: 'objective', label: 'Maggot wound', text: 'Wound with maggots.', isActive: true });
     expect((await org.owner.post('/note-phrases', { field: 'objective', label: 'Maggot wound' })).status).toBe(422);
 
+    expect((await org.owner.patch(`/note-phrases/${added.body.id}`, { isDefault: true })).body.isDefault).toBe(true);
     const switchedOff = await org.owner.patch(`/note-phrases/${added.body.id}`, { isActive: false });
     expect(switchedOff.status).toBe(200);
     expect((await org.owner.get('/note-phrases')).body.find((p: { id: string }) => p.id === added.body.id)).toBeUndefined();

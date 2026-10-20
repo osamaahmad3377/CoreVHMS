@@ -37,7 +37,7 @@ function Page() {
     onError: (e: Error) => setError(e.message),
   });
   const patch = useMutation({
-    mutationFn: ({ id, ...body }: { id: string } & Partial<{ label: string; text: string | null; groupName: string | null; isActive: boolean }>) => api.patch(`/note-phrases/${id}`, body),
+    mutationFn: ({ id, ...body }: { id: string } & Partial<{ label: string; text: string | null; groupName: string | null; isActive: boolean; isDefault: boolean }>) => api.patch(`/note-phrases/${id}`, body),
     onSuccess: refresh,
     onError: (e: Error) => toast.error(e.message),
   });
@@ -129,15 +129,16 @@ function Page() {
                 <p className="px-4 pb-4 text-sm text-muted-foreground">No buttons for this field. Add one above.</p>
               ) : (
                 <ul className="divide-y">
-                  <li className="hidden gap-2 px-4 py-1.5 text-xs font-medium text-muted-foreground sm:grid sm:grid-cols-[auto_1fr_1fr_9rem_auto]" aria-hidden>
+                  <li className="hidden gap-2 px-4 py-1.5 text-xs font-medium text-muted-foreground sm:grid sm:grid-cols-[auto_1fr_1fr_9rem_4rem_auto]" aria-hidden>
                     <span className="w-4">Show</span>
                     <span>Button says</span>
                     <span>Adds this to the note</span>
                     <span>Question</span>
+                    <span title="The usual answer of its question, added by “Fill in the normal answers”">Normal</span>
                     <span className="w-8" />
                   </li>
                   {mine.map((r) => (
-                    <li key={r.id} className={cn('grid items-center gap-2 px-4 py-2 sm:grid-cols-[auto_1fr_1fr_9rem_auto]', !r.isActive && 'opacity-55')}>
+                    <li key={r.id} className={cn('grid items-center gap-2 px-4 py-2 sm:grid-cols-[auto_1fr_1fr_9rem_4rem_auto]', !r.isActive && 'opacity-55')}>
                       <label className="flex items-center gap-2 text-xs text-muted-foreground" title="Show this button in notes">
                         <Checkbox checked={r.isActive} onCheckedChange={(v) => patch.mutate({ id: r.id, isActive: v === true })} aria-label={`Show “${r.label}”`} />
                         <span className="sm:hidden">Show</span>
@@ -145,6 +146,10 @@ function Page() {
                       <Input aria-label="Button text" defaultValue={r.label} maxLength={60} className="h-8" onBlur={(e) => e.target.value.trim() && e.target.value !== r.label && patch.mutate({ id: r.id, label: e.target.value })} />
                       <Input aria-label="Text added to the note" defaultValue={r.text ?? ''} placeholder={phraseText(r)} maxLength={300} className="h-8" onBlur={(e) => e.target.value !== (r.text ?? '') && patch.mutate({ id: r.id, text: e.target.value || null })} />
                       <Input aria-label="Question" defaultValue={r.groupName ?? ''} placeholder="No question" maxLength={40} className="h-8" onBlur={(e) => e.target.value !== (r.groupName ?? '') && patch.mutate({ id: r.id, groupName: e.target.value || null })} />
+                      <label className="flex items-center gap-2 text-xs text-muted-foreground" title="The usual (normal) answer of its question">
+                        <Checkbox checked={r.isDefault} disabled={!r.groupName && false} onCheckedChange={(v) => patch.mutate({ id: r.id, isDefault: v === true })} aria-label={`“${r.label}” is the normal answer`} />
+                        <span className="sm:hidden">Normal answer</span>
+                      </label>
                       <Button variant="ghost" size="icon-sm" aria-label={`Remove “${r.label}”`} onClick={() => remove.mutate(r.id)}>
                         <Trash2 className="text-destructive" />
                       </Button>

@@ -27,6 +27,8 @@ export const notePhraseSchema = z.object({
   text: z.string().trim().max(300).nullish().transform((v) => v || null),
   sortOrder: z.number().int().min(0).max(100000).optional(),
   isActive: z.boolean().optional(),
+  /** The usual (normal) answer of its question, added by the "Fill in the normal answers" button. */
+  isDefault: z.boolean().optional(),
 });
 export type NotePhraseInput = z.infer<typeof notePhraseSchema>;
 export const notePhraseUpdateSchema = notePhraseSchema.partial();
@@ -35,6 +37,8 @@ interface Seed {
   group?: string;
   label: string;
   text?: string;
+  /** The normal answer of its group. */
+  normal?: true;
 }
 
 /**
@@ -54,22 +58,22 @@ export const DEFAULT_NOTE_PHRASES: Record<NotePhraseField, Seed[]> = {
   subjective: [
     { group: 'Since when', label: 'Since today', text: 'Since today.' }, { group: 'Since when', label: '2 days', text: 'For 2 days.' }, { group: 'Since when', label: '3 days', text: 'For 3 days.' },
     { group: 'Since when', label: 'A week', text: 'For about a week.' }, { group: 'Since when', label: '2 weeks', text: 'For about 2 weeks.' }, { group: 'Since when', label: 'A month or more', text: 'For a month or more.' },
-    { group: 'Eating', label: 'Eating normally', text: 'Eating normally.' }, { group: 'Eating', label: 'Eating less', text: 'Eating less than usual.' }, { group: 'Eating', label: 'Not eating', text: 'Not eating.' },
-    { group: 'Drinking', label: 'Drinking normally', text: 'Drinking normally.' }, { group: 'Drinking', label: 'Drinking more', text: 'Drinking more than usual.' }, { group: 'Drinking', label: 'Not drinking', text: 'Not drinking.' },
-    { group: 'Energy', label: 'Normal', text: 'Energy normal.' }, { group: 'Energy', label: 'Quiet', text: 'Quieter than usual.' }, { group: 'Energy', label: 'Very weak', text: 'Very weak.' },
-    { group: 'Vomiting', label: 'None', text: 'No vomiting.' }, { group: 'Vomiting', label: 'Once', text: 'Vomited once.' }, { group: 'Vomiting', label: 'Repeatedly', text: 'Vomiting repeatedly.' },
-    { group: 'Stools', label: 'Normal', text: 'Stools normal.' }, { group: 'Stools', label: 'Loose', text: 'Loose stools.' }, { group: 'Stools', label: 'Watery', text: 'Watery stools.' }, { group: 'Stools', label: 'Blood in stool', text: 'Blood in the stool.' },
-    { group: 'Urine', label: 'Normal', text: 'Passing urine normally.' }, { group: 'Urine', label: 'Straining', text: 'Straining to pass urine.' }, { group: 'Urine', label: 'More often', text: 'Passing urine more often.' }, { group: 'Urine', label: 'Blood in urine', text: 'Blood in the urine.' },
+    { group: 'Eating', label: 'Eating normally', text: 'Eating normally.', normal: true }, { group: 'Eating', label: 'Eating less', text: 'Eating less than usual.' }, { group: 'Eating', label: 'Not eating', text: 'Not eating.' },
+    { group: 'Drinking', label: 'Drinking normally', text: 'Drinking normally.', normal: true }, { group: 'Drinking', label: 'Drinking more', text: 'Drinking more than usual.' }, { group: 'Drinking', label: 'Not drinking', text: 'Not drinking.' },
+    { group: 'Energy', label: 'Normal', text: 'Energy normal.', normal: true }, { group: 'Energy', label: 'Quiet', text: 'Quieter than usual.' }, { group: 'Energy', label: 'Very weak', text: 'Very weak.' },
+    { group: 'Vomiting', label: 'None', text: 'No vomiting.', normal: true }, { group: 'Vomiting', label: 'Once', text: 'Vomited once.' }, { group: 'Vomiting', label: 'Repeatedly', text: 'Vomiting repeatedly.' },
+    { group: 'Stools', label: 'Normal', text: 'Stools normal.', normal: true }, { group: 'Stools', label: 'Loose', text: 'Loose stools.' }, { group: 'Stools', label: 'Watery', text: 'Watery stools.' }, { group: 'Stools', label: 'Blood in stool', text: 'Blood in the stool.' },
+    { group: 'Urine', label: 'Normal', text: 'Passing urine normally.', normal: true }, { group: 'Urine', label: 'Straining', text: 'Straining to pass urine.' }, { group: 'Urine', label: 'More often', text: 'Passing urine more often.' }, { group: 'Urine', label: 'Blood in urine', text: 'Blood in the urine.' },
     { label: 'Eats home food', text: 'Eats home-cooked food.' }, { label: 'Scavenges / ate rubbish', text: 'May have eaten rubbish.' }, { label: 'Lives outdoors', text: 'Lives outdoors.' },
     { label: 'Other pets at home', text: 'Other pets at home.' }, { label: 'Other pets also sick', text: 'Other pets at home are also unwell.' }, { label: 'Itching', text: 'Itching a lot.' }, { label: 'Coughing', text: 'Coughing.' }, { label: 'Limping', text: 'Limping.' },
   ],
   objective: [
-    { group: 'Behaviour', label: 'Bright and alert', text: 'Bright and alert.' }, { group: 'Behaviour', label: 'Dull', text: 'Dull and depressed.' }, { group: 'Behaviour', label: 'Collapsed', text: 'Collapsed / unresponsive.' },
-    { group: 'Hydration', label: 'Well hydrated', text: 'Well hydrated.' }, { group: 'Hydration', label: 'Mild dehydration', text: 'Mild dehydration.' }, { group: 'Hydration', label: 'Moderate dehydration', text: 'Moderate dehydration.' }, { group: 'Hydration', label: 'Severe dehydration', text: 'Severe dehydration.' },
-    { group: 'Gums', label: 'Pink', text: 'Gums pink.' }, { group: 'Gums', label: 'Pale', text: 'Gums pale.' }, { group: 'Gums', label: 'Yellow', text: 'Gums yellow.' }, { group: 'Gums', label: 'Red', text: 'Gums red.' },
-    { group: 'Heart', label: 'Normal', text: 'Heart sounds normal.' }, { group: 'Heart', label: 'Murmur', text: 'Heart murmur heard.' },
-    { group: 'Lungs', label: 'Normal', text: 'Lung sounds normal.' }, { group: 'Lungs', label: 'Wheeze / crackles', text: 'Abnormal lung sounds.' },
-    { group: 'Abdomen', label: 'Soft', text: 'Abdomen soft, not painful.' }, { group: 'Abdomen', label: 'Painful', text: 'Abdomen painful.' }, { group: 'Abdomen', label: 'Bloated', text: 'Abdomen bloated.' },
+    { group: 'Behaviour', label: 'Bright and alert', text: 'Bright and alert.', normal: true }, { group: 'Behaviour', label: 'Dull', text: 'Dull and depressed.' }, { group: 'Behaviour', label: 'Collapsed', text: 'Collapsed / unresponsive.' },
+    { group: 'Hydration', label: 'Well hydrated', text: 'Well hydrated.', normal: true }, { group: 'Hydration', label: 'Mild dehydration', text: 'Mild dehydration.' }, { group: 'Hydration', label: 'Moderate dehydration', text: 'Moderate dehydration.' }, { group: 'Hydration', label: 'Severe dehydration', text: 'Severe dehydration.' },
+    { group: 'Gums', label: 'Pink', text: 'Gums pink.', normal: true }, { group: 'Gums', label: 'Pale', text: 'Gums pale.' }, { group: 'Gums', label: 'Yellow', text: 'Gums yellow.' }, { group: 'Gums', label: 'Red', text: 'Gums red.' },
+    { group: 'Heart', label: 'Normal', text: 'Heart sounds normal.', normal: true }, { group: 'Heart', label: 'Murmur', text: 'Heart murmur heard.' },
+    { group: 'Lungs', label: 'Normal', text: 'Lung sounds normal.', normal: true }, { group: 'Lungs', label: 'Wheeze / crackles', text: 'Abnormal lung sounds.' },
+    { group: 'Abdomen', label: 'Soft', text: 'Abdomen soft, not painful.', normal: true }, { group: 'Abdomen', label: 'Painful', text: 'Abdomen painful.' }, { group: 'Abdomen', label: 'Bloated', text: 'Abdomen bloated.' },
     { label: 'Swollen lymph nodes', text: 'Lymph nodes enlarged.' }, { label: 'Skin redness', text: 'Skin red and irritated.' }, { label: 'Hair loss', text: 'Patchy hair loss.' }, { label: 'Fleas / ticks', text: 'Fleas / ticks seen.' },
     { label: 'Ear discharge', text: 'Discharge in the ear.' }, { label: 'Eye discharge', text: 'Discharge from the eye.' }, { label: 'Dental tartar', text: 'Dental tartar present.' }, { label: 'Wound', text: 'Wound present.' }, { label: 'Lump', text: 'Lump found.' }, { label: 'Lame on exam', text: 'Lameness seen on examination.' },
   ],
@@ -124,4 +128,30 @@ export function togglePhrase(current: string, phrase: { label: string; text?: st
   let next = current;
   if (phrase.groupName) for (const s of siblings) if (phraseText(s) !== text) next = removePhrase(next, phraseText(s));
   return addPhrase(next, text);
+}
+
+interface PickPhrase {
+  label: string;
+  text?: string | null;
+  groupName?: string | null;
+  isDefault?: boolean;
+}
+
+/**
+ * "Fill in the normal answers": for every question that has no answer yet in the note, adds its normal answer
+ * (and any normal answer that is not a question and is missing). Answers already given are never changed.
+ */
+export function fillNormalAnswers(current: string, phrases: PickPhrase[]): string {
+  let next = current;
+  for (const p of phrases) {
+    if (!p.isDefault) continue;
+    const text = phraseText(p);
+    if (hasPhrase(next, text)) continue;
+    if (p.groupName) {
+      const answered = phrases.some((o) => o.groupName === p.groupName && hasPhrase(next, phraseText(o)));
+      if (answered) continue;
+    }
+    next = addPhrase(next, text);
+  }
+  return next;
 }

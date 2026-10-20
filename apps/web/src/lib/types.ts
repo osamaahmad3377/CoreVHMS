@@ -1784,4 +1784,5 @@ export interface NotePhraseRow {
   text: string | null;
   sortOrder: number;
   isActive: boolean;
+  isDefault: boolean;
 }

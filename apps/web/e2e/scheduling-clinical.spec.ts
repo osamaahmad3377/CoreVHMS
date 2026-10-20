@@ -36,6 +36,8 @@ test.describe('Clinical day: book → check in → consult → sign', () => {
     await appt.getByRole('button', { name: 'Start consultation' }).click();
     await expect(page).toHaveURL(/\/consultations\//);
 
+    // The note is written in steps; show them all so every field can be filled in one go.
+    await page.getByRole('button', { name: 'Show all steps' }).click();
     await expect(page.locator('#n-presentingComplaint')).toHaveValue('E2E: ear scratching'); // from the booking reason
     await expect(page.getByLabel('History — what the owner tells you')).toBeVisible();
     await page.locator('#n-subjective').fill('Scratching left ear for 5 days.');
@@ -50,6 +52,8 @@ test.describe('Clinical day: book → check in → consult → sign', () => {
     // amend
     await page.getByRole('button', { name: 'Amend' }).click();
     await page.locator('#amend-reason').fill('Owner reported head tilt after signing');
+    const showAll = page.getByRole('button', { name: 'Show all steps' });
+    if (await showAll.isVisible()) await showAll.click();
     await page.locator('#n-assessment').fill('Otitis externa (left); rule out otitis media.');
     await page.getByRole('button', { name: 'Sign & lock note' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Sign note' }).click();
