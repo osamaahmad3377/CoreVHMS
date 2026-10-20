@@ -511,3 +511,13 @@ Items from the feature matrix that need no external device, data source or provi
     - Test fixes: exact button names ("Take payment" also matched the new button); leaving the page before clearing cookies in the dashboard-links scenario (the open page redirected itself to sign-in and raced the test).
   - The POS dispensary scenario cannot run against a `*.localhost` address: Node cannot resolve it for the test's API helper.
   - Browser check of the super admin flow: add a clinic → welcome message copied exactly → list while setting up → filter → clinic page on desktop and phone, with no console errors.
+
+### 2026-10-20 — Easier daily flow, round 2: pharmacy and vaccination reminders
+- **How:** the pharmacy, lab, vaccination-reminder and shop-counter flows were walked in the browser as the pharmacist, lab user and receptionist. The lab worklist and shop counter already had one clear next action and were left alone.
+- **Pharmacy worklist:** each row has an action: **Hand over** (opens the dispense window straight away, with the allergy check and batch choice) on prescriptions ready to dispense, and **Authorise** (with the usual confirmation) on drafts for staff allowed to authorise. Before, every step began with opening the prescription.
+- **Vaccines & reminders:** the due list has **Book** beside Remind. It opens the calendar's booking window with the patient, the reason and, for vaccinations, the Vaccination appointment type already filled in (`/calendar?book=1&patient=…&reason=…&type=VACCINATION`). Booking dialog default `typeCategory` is applied once per opening, so it never overwrites what staff type.
+- The help guides "Dispense a prescription" and "Vaccinations and parasite control" describe the new buttons.
+- **Tests executed:**
+  - New Playwright scenarios in `flow.spec.ts`: Hand over opens the dispense window without leaving the list; Book opens with patient, reason and Vaccination type set.
+  - `preventive.spec.ts` and `calendar-views.spec.ts` pass; `pharmacy-lab.spec.ts` 4 of 5. The failing scenario signs in as `lab@demo.pk`, whose demo password was changed by an earlier run (demo-data drift; re-seeding restores it).
+  - Typecheck and ESLint clean. No API changes, so the API suites were not re-run.

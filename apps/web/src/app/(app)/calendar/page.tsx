@@ -83,12 +83,16 @@ function CalendarView() {
     }
   }, [requestId, requestPatientId, requestPatient.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // "Book appointment" from the New menu or search opens the booking window straight away: /calendar?book=1
+  // With &patient=…&reason=… (from the due-vaccinations list) the patient and reason are already filled in.
   const bookNow = url.get('book') === '1';
+  const bookPatientId = bookNow && !requestId ? url.get('patient') : '';
+  const bookPatient = useQuery({ queryKey: ['patient', bookPatientId], queryFn: () => api.get<PatientRow>(`/patients/${bookPatientId}`), enabled: !!bookPatientId });
   useEffect(() => {
     if (!bookNow) return;
-    if (can('appointments.write')) setBooking({ open: true, defaults: { date } });
-    url.set({ book: null });
-  }, [bookNow]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (bookPatientId && bookPatient.isLoading) return; // wait for the patient
+    if (can('appointments.write')) setBooking({ open: true, defaults: { date, patient: (bookPatient.data as never) ?? null, reason: url.get('reason') || undefined, typeCategory: url.get('type') || undefined } });
+    url.set({ book: null, patient: null, reason: null, type: null });
+  }, [bookNow, bookPatientId, bookPatient.isLoading]); // eslint-disable-line react-hooks/exhaustive-deps
   const markRequestBooked = async (appointmentId: string) => {
     if (!requestId) return;
     try {

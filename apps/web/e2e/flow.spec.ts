@@ -90,4 +90,27 @@ test.describe('Everyday flow', () => {
     await expect(reception).toHaveURL(/\/billing\/invoices\/new\?clientId=/);
     await expect(reception.getByRole('button', { name: 'Finish & take payment' })).toBeEnabled();
   });
+
+  test('pharmacy: Hand over opens the dispense window straight from the list', async ({ page }) => {
+    await login(page, 'pharmacy@demo.pk');
+    await page.goto('/pharmacy');
+    const handOver = page.getByRole('button', { name: /^Hand over RX-/ }).first();
+    await expect(handOver).toBeVisible();
+    await handOver.click();
+    await expect(page.getByRole('dialog').getByRole('heading', { name: /^Dispense RX-/ })).toBeVisible();
+    await expect(page).toHaveURL(/\/pharmacy$/); // no detour through the prescription page
+  });
+
+  test('vaccines & reminders: Book opens the booking with the patient and reason filled in', async ({ page }) => {
+    await login(page, 'reception@demo.pk');
+    await page.goto('/preventive');
+    const row = page.getByRole('row').filter({ hasText: /vaccination/i }).filter({ has: page.getByRole('link', { name: 'Book', exact: true }) }).first();
+    await expect(row).toBeVisible();
+    await row.getByRole('link', { name: 'Book', exact: true }).click();
+    const dlg = page.getByRole('dialog', { name: /Book appointment/ });
+    await expect(dlg).toBeVisible();
+    await expect(dlg.getByRole('combobox').first()).not.toContainText('Search by name');
+    await expect(dlg.getByLabel('Reason for visit')).not.toHaveValue('');
+    await expect(dlg.getByLabel(/Appointment type/)).toContainText('Vaccination');
+  });
 });

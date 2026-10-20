@@ -1,11 +1,14 @@
 'use client';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Paginated } from '@vcms/shared';
-import { BookOpen, Pill } from 'lucide-react';
+import { BookOpen, CheckCircle2, PackageCheck, Pill } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Suspense } from 'react';
+import { Suspense, useState } from 'react';
+import { toast } from 'sonner';
+import { useConfirm } from '@/components/confirm';
 import { DataTable } from '@/components/data-table';
+import { DispenseDialog } from '@/components/pharmacy/dispense-dialog';
 import { EmptyState, PageHeader } from '@/components/page';
 import { RequirePermission } from '@/components/require';
 import { SearchInput } from '@/components/search-input';
@@ -32,6 +35,19 @@ const TABS = [
 function Worklist() {
   const router = useRouter();
   const { can } = useSession();
+  const qc = useQueryClient();
+  const confirm = useConfirm();
+  const [handingOver, setHandingOver] = useState<Prescription | null>(null);
+  // Authorise straight from the list, with the same confirmation as on the prescription page.
+  const authorise = useMutation({
+    mutationFn: (id: string) => api.post<Prescription>(`/prescriptions/${id}/authorize`),
+    onSuccess: (rx) => {
+      toast.success(`${rx.prescriptionNo} authorised`);
+      qc.invalidateQueries({ queryKey: ['prescriptions'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
   const url = useUrlState();
   const params = { status: url.get('status', 'AUTHORIZED,PARTIALLY_DISPENSED'), q: url.get('q'), page: Number(url.get('page', '1')), pageSize: 25 };
   const query = useQuery({ queryKey: ['prescriptions', params], queryFn: () => api.get<Paginated<Prescription>>(`/prescriptions${qs(params)}`), refetchInterval: 30_000, placeholderData: (p) => p });
@@ -84,9 +100,34 @@ function Worklist() {
             { key: 'by', header: 'Prescriber', cell: (r) => <span className="text-sm">{r.prescriber?.name ?? r.createdByName}</span> },
             { key: 'when', header: 'Created', cell: (r) => <span className="whitespace-nowrap text-xs">{fmtDateTime(r.createdAt)}</span> },
             { key: 'st', header: 'Status', cell: (r) => <RxStatusBadge status={r.status} /> },
+            {
+              key: 'act',
+              header: '',
+              cell: (r) => (
+                <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+                  {['AUTHORIZED', 'PARTIALLY_DISPENSED'].includes(r.status) && can('pharmacy.dispense') && (
+                    <Button size="sm" onClick={() => setHandingOver(r)} aria-label={`Hand over ${r.prescriptionNo}`}><PackageCheck /> Hand over</Button>
+                  )}
+                  {r.status === 'DRAFT' && can('prescriptions.authorize') && (
+                    <Button
+                      size="sm"
+                      loading={authorise.isPending && authorise.variables === r.id}
+                      aria-label={`Authorise ${r.prescriptionNo}`}
+                      onClick={async () => {
+                        const c = await confirm({ title: `Authorise ${r.prescriptionNo}?`, description: 'Authorised prescriptions cannot be edited. Corrections require cancelling and re-prescribing.', confirmLabel: 'Authorise' });
+                        if (c.confirmed) authorise.mutate(r.id);
+                      }}
+                    >
+                      <CheckCircle2 /> Authorise
+                    </Button>
+                  )}
+                </div>
+              ),
+            },
           ]}
         />
       </Card>
+      {handingOver && <DispenseDialog rx={handingOver} open onOpenChange={(o) => { if (!o) setHandingOver(null); }} />}
     </>
   );
 }

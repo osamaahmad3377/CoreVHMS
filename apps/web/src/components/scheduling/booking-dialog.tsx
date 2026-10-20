@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CalendarPlus } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { apptSummary } from './appointment-text';
 import { PatientPicker, type PickedPatient } from '../patients/patient-picker';
@@ -87,6 +87,8 @@ export interface BookingDefaults {
   followUpOfId?: string;
   reason?: string;
   appointmentTypeId?: string;
+  /** Pick the first appointment type of this category (e.g. VACCINATION) when no type id is given. */
+  typeCategory?: string;
 }
 
 type Override = { allowOverbook?: boolean; allowOutsideHours?: boolean };
@@ -146,6 +148,19 @@ export function BookingDialog({
     setRepeat(false);
     setError(null);
   }, [open, defaults, tz]);
+
+  // A suggested type category (e.g. VACCINATION from the due list) is applied once per opening, when the types are loaded.
+  const categoryApplied = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      categoryApplied.current = false;
+      return;
+    }
+    if (categoryApplied.current || !defaults?.typeCategory || defaults.appointmentTypeId || !types.data) return;
+    categoryApplied.current = true;
+    const match = types.data.find((t) => t.category === defaults.typeCategory);
+    if (match) setTypeId(match.id);
+  }, [open, defaults, types.data]);
 
   useEffect(() => {
     if (!typeId && types.data?.length) setTypeId(types.data[0].id);

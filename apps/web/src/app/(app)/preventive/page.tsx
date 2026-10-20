@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CARE_KINDS, enumLabel, type Paginated } from '@vcms/shared';
-import { BellRing, CheckCircle2, Edit, Plus, ShieldCheck, Users } from 'lucide-react';
+import { BellRing, CalendarPlus, CheckCircle2, Edit, Plus, ShieldCheck, Users } from 'lucide-react';
 import Link from 'next/link';
 import { Suspense, useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -157,7 +157,21 @@ function Worklist() {
           { key: 'owner', header: 'Owner', cell: (i) => (i.owner ? <span className="text-sm"><Link className="hover:underline" href={`/clients/${i.owner.id}`}>{i.owner.displayName}</Link><span className="block text-xs text-muted-foreground">{i.owner.mobilePhone ?? i.owner.email ?? 'no contact'}{!i.owner.remindersConsent && ' · opted out'}</span></span> : '—') },
           { key: 'rem', header: 'Reminded', cell: (i) => <span className="text-xs text-muted-foreground">{i.overdueRemindedAt ? `Overdue notice ${fmtDate(i.overdueRemindedAt)}` : i.remindedAt ? fmtDate(i.remindedAt) : '—'}</span> },
           { key: 'st', header: 'Status', cell: (i) => <CareStatusBadge item={i} /> },
-          { key: 'act', header: '', cell: (i) => can('communications.send') && i.owner?.remindersConsent && <Button size="sm" variant="ghost" loading={remind.isPending && remind.variables === i.id} onClick={() => remind.mutate(i.id)}><BellRing /> Remind</Button> },
+          {
+            key: 'act',
+            header: '',
+            cell: (i) => (
+              <div className="flex justify-end gap-1">
+                {can('communications.send') && i.owner?.remindersConsent && <Button size="sm" variant="ghost" loading={remind.isPending && remind.variables === i.id} onClick={() => remind.mutate(i.id)}><BellRing /> Remind</Button>}
+                {/* The client said yes: book it with the patient and the reason already filled in. */}
+                {can('appointments.write') && (
+                  <Button size="sm" variant="outline" asChild>
+                    <Link href={`/calendar?book=1&patient=${i.patientId}&reason=${encodeURIComponent(i.title)}${i.kind === 'VACCINATION' ? '&type=VACCINATION' : ''}`}><CalendarPlus /> Book</Link>
+                  </Button>
+                )}
+              </div>
+            ),
+          },
         ]}
       />
     </Card>
