@@ -63,6 +63,9 @@ jobs:
     name: End-to-end (Playwright)
     runs-on: ubuntu-latest
     needs: verify
+    env:
+      # FIX: the docker compose database listens on 5433, not 5432 (the file-level value above is for `verify`).
+      DATABASE_URL: postgresql://vcms:vcms_dev_password@localhost:5433/vcms
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
