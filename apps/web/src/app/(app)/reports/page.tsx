@@ -1,10 +1,10 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
 import { enumLabel, fromMinor, toMinor, type Permission } from '@vcms/shared';
-import { Download } from 'lucide-react';
+import { Banknote, Download, Receipt, TrendingUp, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { BarChartCard } from '@/components/charts';
 import { EmptyState, ErrorState, LoadingRows, PageHeader } from '@/components/page';
 import { RequirePermission } from '@/components/require';
 import { Stat } from '@/components/stat';
@@ -47,24 +47,22 @@ function SummaryView({ d, currency }: { d: Summary; currency: string }) {
   return (
     <div className="grid gap-4">
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <Stat label="Sales (without tax)" value={m(d.netRevenueMinor)} hint={`${d.invoiceCount} invoices · billed ${m(d.grossBilledMinor)} incl. tax`} />
-        <Stat label="Profit after stock costs" value={m(d.grossProfitMinor)} hint={`Stock used or sold ${m(d.costOfGoodsMinor)}`} tone={d.grossProfitMinor < 0 ? 'danger' : 'success'} />
-        <Stat label="Profit after all expenses" value={m(d.operatingProfitMinor)} hint={`Expenses ${m(d.expensesMinor)} excl. tax`} tone={d.operatingProfitMinor < 0 ? 'danger' : 'default'} />
-        <Stat label="Cash received (net of refunds)" value={m(d.cashReceivedMinor)} hint={`Refunds ${m(d.refundsMinor)} · outstanding now ${m(d.outstandingMinor)}`} />
+        <Stat icon={Receipt} label="Sales (without tax)" value={m(d.netRevenueMinor)} hint={`${d.invoiceCount} invoices · billed ${m(d.grossBilledMinor)} incl. tax`} />
+        <Stat icon={TrendingUp} label="Profit after stock costs" value={m(d.grossProfitMinor)} hint={`Stock used or sold ${m(d.costOfGoodsMinor)}`} tone={d.grossProfitMinor < 0 ? 'danger' : 'success'} />
+        <Stat icon={Wallet} label="Profit after all expenses" value={m(d.operatingProfitMinor)} hint={`Expenses ${m(d.expensesMinor)} excl. tax`} tone={d.operatingProfitMinor < 0 ? 'danger' : 'default'} />
+        <Stat icon={Banknote} label="Cash received (net of refunds)" value={m(d.cashReceivedMinor)} hint={`Refunds ${m(d.refundsMinor)} · outstanding now ${m(d.outstandingMinor)}`} />
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader><CardTitle>Payments by method</CardTitle></CardHeader>
           <CardContent className="h-56">
             {d.paymentsByMethod.length ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={d.paymentsByMethod.map((p) => ({ name: enumLabel(p.method), value: Number(fromMinor(p.amountMinor, currency)) }))} margin={{ left: -10 }}>
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={compact} width={48} />
-                  <Tooltip formatter={(v: number) => m(toMinor(v, currency))} contentStyle={{ fontSize: 12, borderRadius: 6 }} />
-                  <Bar dataKey="value" name="Received" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} maxBarSize={44} />
-                </BarChart>
-              </ResponsiveContainer>
+              <BarChartCard
+                data={d.paymentsByMethod.map((p) => ({ name: enumLabel(p.method), value: Number(fromMinor(p.amountMinor, currency)) }))}
+                name="Received"
+                format={(v) => m(toMinor(v, currency))}
+                axisFormat={compact}
+              />
             ) : <EmptyState title="No payments in this period" />}
           </CardContent>
         </Card>
@@ -128,14 +126,7 @@ function ClinicalView({ d }: { d: Clinical }) {
           <CardHeader><CardTitle>Consultations by species</CardTitle></CardHeader>
           <CardContent className="h-56">
             {d.consultations.bySpecies.length ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={d.consultations.bySpecies.map((r) => ({ name: r.species, value: r.count }))} margin={{ left: -20 }}>
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ fontSize: 12, borderRadius: 6 }} />
-                  <Bar dataKey="value" name="Consultations" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} maxBarSize={44} />
-                </BarChart>
-              </ResponsiveContainer>
+              <BarChartCard data={d.consultations.bySpecies.map((r) => ({ name: r.species, value: r.count }))} name="Consultations" integers left={-20} />
             ) : <EmptyState title="No consultations in this period" />}
           </CardContent>
         </Card>

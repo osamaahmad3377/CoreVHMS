@@ -44,7 +44,7 @@ export function Providers({ children, defaultTheme = 'light' }: { children: Reac
       <QueryClientProvider client={client}>
         <TooltipProvider delayDuration={300}>
           {children}
-          <Toaster richColors closeButton position="bottom-right" duration={TOAST_MS} className="print:hidden" />
+          <Toaster richColors closeButton position="bottom-right" duration={TOAST_MS} className="print:hidden" toastOptions={{ classNames: { toast: '!rounded-xl !shadow-pop !border-border/60 !font-sans', title: '!font-medium' } }} />
         </TooltipProvider>
       </QueryClientProvider>
     </ThemeProvider>

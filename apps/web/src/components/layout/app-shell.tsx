@@ -1,10 +1,11 @@
 'use client';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { ShortcutsDialog } from '../help/shortcuts';
 import { WelcomeTour } from '../help/welcome-tour';
 import { CommandPalette } from './command-palette';
+import { RouteProgress } from './route-progress';
 import { Logo, Sidebar, SidebarNav } from './sidebar';
 import { Topbar } from './topbar';
 
@@ -82,6 +83,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
       <ShortcutsDialog />
       <WelcomeTour />
+      <Suspense fallback={null}>
+        <RouteProgress />
+      </Suspense>
     </div>
   );
 }

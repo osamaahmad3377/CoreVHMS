@@ -6,7 +6,7 @@ import { PriorityDot } from '@/components/scheduling/appointment-status';
 import { branchTime, localDate } from '@/lib/time';
 import Link from 'next/link';
 import { useState } from 'react';
-import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { BarChartCard } from '@/components/charts';
 import { EmptyState, ErrorState, LoadingRows, PageHeader } from '@/components/page';
 import { AttentionList, buildAttention } from '@/components/dashboard/attention';
 import { ArrivingNext, type FrontDeskWidget, WaitingNow, noMoreBookingsText } from '@/components/dashboard/front-desk-panels';
@@ -367,14 +367,7 @@ export default function DashboardPage() {
                       <CardHeader><CardTitle>Active patients by species</CardTitle></CardHeader>
                       <CardContent className="h-[240px]">
                         {w.registrations.species.length ? (
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={w.registrations.species.slice(0, 10)} margin={{ left: -20 }}>
-                              <XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} tickLine={false} axisLine={false} />
-                              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                              <Tooltip cursor={{ fill: 'hsl(var(--muted))' }} contentStyle={{ fontSize: 12, borderRadius: 6 }} />
-                              <Bar dataKey="count" name="Patients" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} maxBarSize={44} />
-                            </BarChart>
-                          </ResponsiveContainer>
+                          <BarChartCard data={w.registrations.species.slice(0, 10)} yKey="count" name="Patients" integers left={-20} tickInterval={0} />
                         ) : (
                           <EmptyState title="No patients yet" description="Register a patient to see the species mix." />
                         )}

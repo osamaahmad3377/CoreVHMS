@@ -571,3 +571,7 @@ Items from the feature matrix that need no external device, data source or provi
 - **Help on the screen:** `Field` takes a `help` prop that shows a small "?" with a plain explanation (tap, click or keyboard). Added to the confusing fields in the product form, hospital admit, medicine given, lab and surgery urgency, prescriptions repeats, insurance excess and co-pay, tax rate, batch numbers and "how given" routes.
 - **Welcome tour:** a 6-step tour on each person's first sign-in on a computer (skip any time, never shown to automated browsers); "Take the welcome tour" in the Help centre reopens it.
 - The guided setup checklist for new clinics already existed (11 self-ticking steps) and was left as is.
+
+### 2026-10-20 — Visual polish round 2
+- Shared `BarChartCard` (`components/charts.tsx`): gradient bars in the clinic colour, rounded tops, dashed grid lines, card-style tooltip; used by the reports and the dashboard.
+- Icons on the Reports summary tiles; a slim route-progress bar at the top while a page loads (`RouteProgress`); rounded, shadowed toast messages.
