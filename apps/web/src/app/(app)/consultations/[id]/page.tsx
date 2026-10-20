@@ -1,12 +1,13 @@
 'use client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { enumLabel, type Paginated } from '@vcms/shared';
-import { Activity, AlertTriangle, ArrowRight, CalendarPlus, CheckCircle2, ChevronDown, ClipboardList, FilePlus, FlaskConical, Paperclip, Pill, Printer, Receipt, Stethoscope, Syringe, Upload, XCircle } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowRight, CalendarPlus, CheckCircle2, ChevronDown, ClipboardList, FilePlus, FlaskConical, History, Paperclip, Pill, Printer, Receipt, Stethoscope, Syringe, Upload, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { ConsultationRecord } from '@/components/clinical/consultation-record';
+import { LastVisitStrip, PatientHistoryDialog, useCanSeeHistory } from '@/components/clinical/patient-history';
 import { ConsultationCharges } from '@/components/clinical/charges-card';
 import { DiagnosesPanel } from '@/components/clinical/diagnoses-panel';
 import { FinishConsultationDialog } from '@/components/clinical/finish-dialog';
@@ -55,6 +56,8 @@ function Workspace() {
   const [newNote, setNewNote] = useState(false);
   const [followUp, setFollowUp] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const canSeeHistory = useCanSeeHistory();
   const [rxOpen, setRxOpen] = useState(false);
   const [giveOpen, setGiveOpen] = useState(false);
   const [labOpen, setLabOpen] = useState(false);
@@ -105,6 +108,7 @@ function Workspace() {
   const active = enc.status !== 'CANCELLED';
 
   const actions = [
+    canSeeHistory && { label: 'History', icon: History, onClick: () => setHistoryOpen(true) },
     writable && { label: 'Vitals', icon: Activity, onClick: () => vitalsRef.current?.openForm() },
     writable && { label: 'Diagnosis', icon: ClipboardList, onClick: () => scrollTo('diagnoses-card', 'diagnosis-term') },
     active && can('prescriptions.write') && { label: 'Prescribe', icon: Pill, onClick: () => setRxOpen(true) },
@@ -125,6 +129,7 @@ function Workspace() {
         <span>{enc.encounterNo}</span>
       </nav>
       <PatientBanner patient={enc.patient} className="mb-3" />
+      <LastVisitStrip patientId={enc.patient.id} currentId={enc.id} onOpenHistory={() => setHistoryOpen(true)} />
       <WithdrawalBanner patientId={enc.patient.id} />
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <h1 className="text-lg font-semibold">
@@ -291,6 +296,7 @@ function Workspace() {
           </Card>
         </div>
       </div>
+      <PatientHistoryDialog patientId={enc.patient.id} patientName={enc.patient.name} currentId={enc.id} open={historyOpen} onOpenChange={setHistoryOpen} />
       <FinishConsultationDialog
         encounter={enc}
         open={finishing}

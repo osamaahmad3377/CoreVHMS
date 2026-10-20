@@ -562,3 +562,6 @@ Items from the feature matrix that need no external device, data source or provi
 ### 2026-10-20 — Letterhead designer (Settings → Branding → Printouts)
 - The owner designs the letterhead used on every printout: one-click designs (Classic, Centred, Minimal, Plain text), logo position and size, clinic-name size, rule style (band / thin / double / none), which of address, phone/email and tax number to show, footer alignment, and a "pre-printed paper" mode that leaves a blank space of a chosen height (mm) at the top. Live preview beside the form.
 - New Organization columns (migration `letterhead_designer`), included in the session branding and the owner-only branding update; `Letterhead` / `LetterFooter` render them for every document. Test coverage added to `branding.int-spec.ts`.
+
+### 2026-10-20 — Patient history inside a consultation
+- The consultation screen shows a "Last seen …" line under the patient banner and a **History** button. It opens a dialog with the patient's earlier visits (expand one to read its signed note, diagnosis and vitals), their appointments (past and upcoming) and the full timeline (vaccines, medicines, tests, hospital stays, billing and more). Each tab appears only if the user has the matching permission; nothing in it changes the current consultation. The timeline component is now shared with the patient record.
