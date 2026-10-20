@@ -42,7 +42,7 @@ function AddItemDialog({ open, onOpenChange, visit, onDone }: { open: boolean; o
   useEffect(() => { if (open) { setError(null); setServiceId(''); setProduct(null); setQuantity('1'); setPatientId(''); } }, [open]);
   const m = useMutation({
     mutationFn: () => api.post(`/field-visits/${visit.id}/items`, { serviceId: mode === 'service' ? serviceId : null, productId: mode === 'product' ? product?.id : null, quantity, patientId: patientId || null }),
-    onSuccess: () => { toast.success('Added and billed to the farm owner'); onOpenChange(false); onDone(); },
+    onSuccess: () => { toast.success('Added and billed to the client'); onOpenChange(false); onDone(); },
     onError: (e: Error) => setError(e.message),
   });
   const svc = services.data?.find((s) => s.id === serviceId);

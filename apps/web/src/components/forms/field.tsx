@@ -1,7 +1,9 @@
 'use client';
 import * as React from 'react';
 import type { FieldError, FieldErrors } from 'react-hook-form';
+import { CircleHelp } from 'lucide-react';
 import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 
 interface FieldProps {
@@ -9,26 +11,45 @@ interface FieldProps {
   htmlFor?: string;
   error?: FieldError | { message?: string } | string;
   hint?: React.ReactNode;
+  /** A short plain-language explanation, shown when the person taps the small "?" next to the label. */
+  help?: React.ReactNode;
   required?: boolean;
   className?: string;
   children: React.ReactNode;
 }
 
 /** Label + control + error/hint with correct aria wiring. */
-export function Field({ label, htmlFor, error, hint, required, className, children }: FieldProps) {
+/** A small "?" that opens a short explanation. Works with a tap, a click or the keyboard. */
+export function HelpTip({ children, label = 'What is this?' }: { children: React.ReactNode; label?: string }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button type="button" aria-label={label} className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <CircleHelp className="h-3.5 w-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="text-sm font-normal leading-snug">{children}</PopoverContent>
+    </Popover>
+  );
+}
+
+export function Field({ label, htmlFor, error, hint, help, required, className, children }: FieldProps) {
   const message = typeof error === 'string' ? error : error?.message;
   const id = htmlFor;
   return (
     <div className={cn('grid content-start gap-1.5', className)}>
-      <Label htmlFor={id} className={cn(message && 'text-destructive')}>
-        {label}
-        {required && (
-          <span className="text-destructive" aria-hidden>
-            {' '}
-            *
-          </span>
-        )}
-      </Label>
+      <div className="flex min-h-5 items-center gap-1">
+        <Label htmlFor={id} className={cn(message && 'text-destructive')}>
+          {label}
+          {required && (
+            <span className="text-destructive" aria-hidden>
+              {' '}
+              *
+            </span>
+          )}
+        </Label>
+        {help && <HelpTip>{help}</HelpTip>}
+      </div>
       {React.isValidElement(children) && id
         ? React.cloneElement(children as React.ReactElement<any>, {
             'aria-invalid': message ? true : undefined,

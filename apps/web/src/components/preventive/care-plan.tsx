@@ -111,7 +111,7 @@ function CompleteDialog({ item, onClose }: { item: CareItem | null; onClose: () 
             <Field label="Dose" htmlFor="cc-dose" required><Input id="cc-dose" inputMode="decimal" value={f.dose} onChange={set('dose')} /></Field>
             <div className="grid grid-cols-2 gap-2">
               <Field label="Unit" htmlFor="cc-unit" required><Input id="cc-unit" value={f.doseUnit} onChange={set('doseUnit')} /></Field>
-              <Field label="Route" htmlFor="cc-route" required><Input id="cc-route" value={f.route} onChange={set('route')} placeholder="SC, IM, PO…" /></Field>
+              <Field label="How given" htmlFor="cc-route" required help="SC = under the skin, IM = into a muscle, PO = by mouth, IN = into the nose."><Input id="cc-route" value={f.route} onChange={set('route')} placeholder="SC, IM, PO…" /></Field>
             </div>
             {unitMismatch && (
               <p className="text-xs text-warning sm:col-span-2">Stock is deducted and charged only when the dose is in the product’s unit ({product!.dispensingUnit}). In {f.doseUnit}, nothing is taken from stock or billed.</p>

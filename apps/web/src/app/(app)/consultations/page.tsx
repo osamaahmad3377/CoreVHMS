@@ -52,7 +52,7 @@ function ConsultationsList() {
       />
       <Card>
         <div className="flex flex-col gap-2 border-b p-3 sm:flex-row sm:items-center">
-          <SearchInput value={params.q} onChange={(q) => url.set({ q, page: 1 })} placeholder="Patient, owner or complaint" />
+          <SearchInput value={params.q} onChange={(q) => url.set({ q, page: 1 })} placeholder="Patient, client or complaint" />
           <NativeSelect aria-label="Status" className="sm:w-40" value={params.status} onChange={(e) => url.set({ status: e.target.value, page: 1 })}>
             <option value="OPEN">Open</option>
             <option value="COMPLETED">Completed</option>

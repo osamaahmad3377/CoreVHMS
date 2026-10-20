@@ -111,7 +111,7 @@ export function GroomingCheckInDialog({ open, onOpenChange, appointment }: { ope
         {error && <FormError message={error} />}
         <div className="grid gap-3">
           <Field label="Animal" htmlFor="gr-patient" required>{appointment ? <p className="text-sm font-medium">{appointment.patient?.name ?? 'No animal on the appointment'}</p> : <PatientPicker id="gr-patient" value={p} onChange={setP} />}</Field>
-          <Field label="Owner’s instructions" htmlFor="gr-ins"><Textarea id="gr-ins" value={instructions} maxLength={1000} onChange={(e) => setInstructions(e.target.value)} placeholder="e.g. Short summer cut, keep ears long" /></Field>
+          <Field label="Client’s instructions" htmlFor="gr-ins"><Textarea id="gr-ins" value={instructions} maxLength={1000} onChange={(e) => setInstructions(e.target.value)} placeholder="e.g. Short summer cut, keep ears long" /></Field>
           <div className="grid gap-1.5">
             <p className="text-sm font-medium">Services</p>
             {grooming.length ? grooming.map((s) => (

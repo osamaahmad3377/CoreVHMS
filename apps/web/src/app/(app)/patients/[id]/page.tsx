@@ -193,7 +193,7 @@ function PatientRecord() {
           {editable && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="sm" variant="outline" aria-label="More actions" title="More actions: photo, identifier, ownership, archive">
+                <Button size="sm" variant="outline" aria-label="More actions" title="More actions: photo, microchip or tag, change client, archive">
                   <MoreHorizontal /> More
                 </Button>
               </DropdownMenuTrigger>
@@ -546,7 +546,7 @@ function PatientRecord() {
                   </div>
                 </li>
               ))}
-              {!p.owner && <EmptyState title="No current owner" className="py-6" />}
+              {!p.owner && <EmptyState title="No client linked" className="py-6" />}
             </ul>
           </Card>
           <Card>

@@ -139,7 +139,7 @@ function ClinicalView({ d }: { d: Clinical }) {
             ) : <EmptyState title="No consultations in this period" />}
           </CardContent>
         </Card>
-        <CountTable title="Consultations by clinician" label="Clinician" rows={d.consultations.byClinician.map((r) => ({ label: r.clinician, count: r.count }))} />
+        <CountTable title="Consultations by vet" label="Vet" rows={d.consultations.byClinician.map((r) => ({ label: r.clinician, count: r.count }))} />
         <CountTable title="Most frequent diagnoses" label="Diagnosis" extra="Confirmed" rows={d.diagnoses.map((r) => ({ label: r.diagnosis, count: r.count, extra: String(r.confirmed) }))} />
         <CountTable title="Surgery by procedure" label="Procedure" rows={d.surgery.byProcedure.map((r) => ({ label: r.procedure, count: r.count }))} />
         <CountTable title="Hospital outcomes (discharged in period)" label="Outcome" rows={d.hospital.outcomes.map((r) => ({ label: enumLabel(r.outcome), count: r.count }))} />

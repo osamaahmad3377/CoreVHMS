@@ -91,7 +91,7 @@ export function ErrorState({ error, onRetry, className }: { error: unknown; onRe
       </div>
       <p className="text-sm font-medium">{forbidden ? 'Access denied' : notFound ? 'Not found' : 'Something went wrong'}</p>
       <p className="max-w-md text-sm text-muted-foreground">
-        {forbidden ? 'Your role does not include permission to view this.' : e?.message ?? 'An unexpected error occurred.'}
+        {forbidden ? 'Your role does not include permission to view this.' : e?.message ?? 'Something went wrong. Please try again.'}
       </p>
       {e instanceof ApiError && e.requestId && <p className="font-mono text-2xs text-muted-foreground">Reference: {e.requestId}</p>}
       {onRetry && !forbidden && !notFound && (

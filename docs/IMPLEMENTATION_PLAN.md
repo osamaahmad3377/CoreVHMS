@@ -565,3 +565,9 @@ Items from the feature matrix that need no external device, data source or provi
 
 ### 2026-10-20 — Patient history inside a consultation
 - The consultation screen shows a "Last seen …" line under the patient banner and a **History** button. It opens a dialog with the patient's earlier visits (expand one to read its signed note, diagnosis and vitals), their appointments (past and upcoming) and the full timeline (vaccines, medicines, tests, hospital stays, billing and more). Each tab appears only if the user has the matching permission; nothing in it changes the current consultation. The timeline component is now shared with the patient record.
+
+### 2026-10-20 — Easier for non-technical users
+- **Plain words:** remaining "owner / clinician / dispensing unit / identifier / SOAP / PKR" wording in visible text moved to the agreed vocabulary (client, vet, "given out per", microchip or tag, Rs). Technical server messages ("The request contains invalid data", "An unexpected error occurred", "Record not found"…) are rewritten into short what-to-do sentences in `lib/api.ts` (`plainMessage`); messages written for people pass through unchanged.
+- **Help on the screen:** `Field` takes a `help` prop that shows a small "?" with a plain explanation (tap, click or keyboard). Added to the confusing fields in the product form, hospital admit, medicine given, lab and surgery urgency, prescriptions repeats, insurance excess and co-pay, tax rate, batch numbers and "how given" routes.
+- **Welcome tour:** a 6-step tour on each person's first sign-in on a computer (skip any time, never shown to automated browsers); "Take the welcome tour" in the Help centre reopens it.
+- The guided setup checklist for new clinics already existed (11 self-ticking steps) and was left as is.

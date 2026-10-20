@@ -21,7 +21,7 @@ function NewPatient() {
       <PageHeader
         title="Add patient"
         breadcrumbs={[{ label: 'Patients', href: '/patients' }, { label: 'New' }]}
-        description={initialOwner ? `Owner (client): ${initialOwner.displayName}` : undefined}
+        description={initialOwner ? `Client: ${initialOwner.displayName}` : undefined}
       />
       <Card className="max-w-5xl">
         <CardContent className="pb-0 pt-5">

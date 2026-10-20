@@ -146,7 +146,7 @@ function OrderDialog({ admissionId, open, onOpenChange }: { admissionId: string;
               <Field label="Dose per administration" htmlFor="or-dose" required><Input id="or-dose" inputMode="decimal" value={f.dose} onChange={set('dose')} /></Field>
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Unit" htmlFor="or-unit" required><Input id="or-unit" value={f.doseUnit} onChange={set('doseUnit')} /></Field>
-                <Field label="Route" htmlFor="or-route" required><Input id="or-route" value={f.route} onChange={set('route')} placeholder="PO, IV, SC…" /></Field>
+                <Field label="How given" htmlFor="or-route" required help="PO = by mouth, IV = into a vein, IM = into a muscle, SC = under the skin."><Input id="or-route" value={f.route} onChange={set('route')} placeholder="PO, IV, SC…" /></Field>
               </div>
             </>
           )}

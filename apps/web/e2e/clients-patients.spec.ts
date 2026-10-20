@@ -19,7 +19,7 @@ test.describe('Front desk: clients and patients', () => {
     await expect(page.getByRole('heading', { name: new RegExp(surname) })).toBeVisible();
 
     await page.getByRole('link', { name: 'Add patient' }).first().click();
-    await expect(page.getByText(`Owner (client): Erum ${surname}`)).toBeVisible();
+    await expect(page.getByText(`Client: Erum ${surname}`)).toBeVisible();
     await page.locator('#name').fill(petName);
     await page.locator('#speciesId').selectOption({ label: 'Cat' });
     await page.getByLabel('Breed', { exact: true }).selectOption({ label: 'Persian' });

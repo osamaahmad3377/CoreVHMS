@@ -36,7 +36,7 @@ function Formulary() {
       <PageHeader
         title="Formulary"
         breadcrumbs={[{ label: 'Pharmacy', href: '/pharmacy' }, { label: 'Formulary' }]}
-        description={<>Medicines, vaccines and consumables. Strength and dispensing units drive the dose calculator. Food, grooming items and accessories are managed under <Link className="underline" href="/inventory/catalog">Inventory → Products</Link>.</>}
+        description={<>Medicines, vaccines and consumables. The strength of each medicine and what it is given out per (tablet, mL…) are used to work out doses. Food, grooming items and accessories are managed under <Link className="underline" href="/inventory/catalog">Inventory → Products</Link>.</>}
         actions={(can('formulary.manage') || can('inventory.write')) && <Button size="sm" onClick={() => setCreate(true)}><Plus /> New product</Button>}
       />
       {can('formulary.manage') && <div className="mb-3"><PrescribingPromptSetting /></div>}
@@ -59,7 +59,7 @@ function Formulary() {
           onRowClick={(p) => router.push(`/pharmacy/formulary/${p.id}`)}
           page={params.page}
           onPage={(page) => url.set({ page })}
-          empty={<EmptyState icon={Package} title="No products" description="Add medicines with their strength and dispensing unit to enable prescribing." />}
+          empty={<EmptyState icon={Package} title="No products" description="Add medicines with their strength and what they are given out per (tablet, mL…) so vets can prescribe them." />}
           columns={[
             { key: 'name', header: 'Product', cell: (p) => <div><Link href={`/pharmacy/formulary/${p.id}`} className="flex items-center gap-1 font-medium hover:underline">{p.name}{p.isControlled && <Lock className="h-3 w-3 text-warning" aria-label="Controlled" />}</Link><p className="text-xs text-muted-foreground">{[p.genericName, p.drugClass].filter(Boolean).join(' · ')}</p></div> },
             { key: 'type', header: 'Type', cell: (p) => <span className="text-sm">{PRODUCT_TYPE_LABELS[p.type as keyof typeof PRODUCT_TYPE_LABELS] ?? enumLabel(p.type)}{p.form && ` · ${enumLabel(p.form)}`}</span> },

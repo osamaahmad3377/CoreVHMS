@@ -190,7 +190,7 @@ export function IdentifierDialog({ patientId, open, onOpenChange, onSaved }: Bas
   const submit = run(
     (v) => api.post(`/patients/${patientId}/identifiers`, v),
     () => {
-      toast.success('Identifier added');
+      toast.success('Microchip / tag added');
       onSaved();
       onOpenChange(false);
     },

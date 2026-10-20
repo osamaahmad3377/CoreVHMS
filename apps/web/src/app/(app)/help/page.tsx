@@ -1,10 +1,12 @@
 'use client';
-import { BookOpen, ChevronRight, Keyboard, Lightbulb, Search } from 'lucide-react';
+import { BookOpen, ChevronRight, Compass, Keyboard, Lightbulb, Search } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '@/components/page';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ShortcutList } from '@/components/help/shortcuts';
+import { TOUR_EVENT } from '@/components/help/welcome-tour';
+import { Button } from '@/components/ui/button';
 import { GLOSSARY, GUIDES, SYNONYMS, type HelpGuide } from '@/lib/help-content';
 import { hrefPermissions } from '@/lib/navigation';
 import { useSession } from '@/lib/session';
@@ -126,7 +128,15 @@ export default function HelpPage() {
 
   return (
     <>
-      <PageHeader title="Help centre" description="Step-by-step guides for everyday tasks, a glossary of terms and keyboard shortcuts." />
+      <PageHeader
+        title="Help centre"
+        description="Step-by-step guides for everyday tasks, a glossary of terms and keyboard shortcuts."
+        actions={
+          <Button variant="outline" onClick={() => window.dispatchEvent(new Event(TOUR_EVENT))}>
+            <Compass /> Take the welcome tour
+          </Button>
+        }
+      />
       <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
         <div className="grid content-start gap-4">
           <div className="flex flex-col gap-2 sm:flex-row">

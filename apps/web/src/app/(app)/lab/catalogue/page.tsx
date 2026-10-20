@@ -86,7 +86,7 @@ function TestEditor({ test, onSaved }: { test: (LabTest & { analytes: LabAnalyte
             <Field label="Sample" htmlFor="lt-s"><NativeSelect id="lt-s" value={f.sampleType} onChange={set('sampleType')}>{SAMPLE_TYPES.map((s) => <option key={s} value={s}>{enumLabel(s, 'sample')}</option>)}</NativeSelect></Field>
           )}
           <Field label="Performed" htmlFor="lt-pb"><NativeSelect id="lt-pb" value={f.performedBy} onChange={set('performedBy')}><option value="IN_HOUSE">In-house</option><option value="EXTERNAL">External lab</option></NativeSelect></Field>
-          <Field label={`Price (${currency})`} htmlFor="lt-pr"><Input id="lt-pr" inputMode="decimal" value={f.price} onChange={set('price')} /></Field>
+          <Field label={`Price (${currency === 'PKR' ? 'Rs' : currency})`} htmlFor="lt-pr"><Input id="lt-pr" inputMode="decimal" value={f.price} onChange={set('price')} /></Field>
           <Field label="Turnaround (h)" htmlFor="lt-ta"><Input id="lt-ta" type="number" value={f.turnaroundHours} onChange={set('turnaroundHours')} /></Field>
         </div>
         {f.performedBy === 'EXTERNAL' && <Field label="External laboratory" htmlFor="lt-ext" required><Input id="lt-ext" value={f.externalLabName} onChange={set('externalLabName')} /></Field>}

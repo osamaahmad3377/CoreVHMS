@@ -66,7 +66,7 @@ export function DischargeDialog({ admission, open, onOpenChange }: { admission: 
           <Field label="Discharge summary" htmlFor="dc-sum" required hint="Diagnosis, treatment given and response."><Textarea id="dc-sum" rows={5} value={f.dischargeSummary} maxLength={5000} onChange={(e) => setF({ ...f, dischargeSummary: e.target.value })} /></Field>
           {!died && (
             <>
-              <Field label="Home-care instructions for the owner" htmlFor="dc-home" hint="Medication, feeding, activity, wound care and warning signs."><Textarea id="dc-home" rows={5} value={f.homeCareInstructions} maxLength={5000} onChange={(e) => setF({ ...f, homeCareInstructions: e.target.value })} /></Field>
+              <Field label="Home-care instructions for the client" htmlFor="dc-home" hint="Medication, feeding, activity, wound care and warning signs."><Textarea id="dc-home" rows={5} value={f.homeCareInstructions} maxLength={5000} onChange={(e) => setF({ ...f, homeCareInstructions: e.target.value })} /></Field>
               <Field label="Follow-up check" htmlFor="dc-fu" hint="Creates a recheck task for the responsible vet."><Input id="dc-fu" type="date" value={f.followUpAt} onChange={(e) => setF({ ...f, followUpAt: e.target.value })} /></Field>
             </>
           )}

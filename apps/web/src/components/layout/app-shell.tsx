@@ -3,6 +3,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { ShortcutsDialog } from '../help/shortcuts';
+import { WelcomeTour } from '../help/welcome-tour';
 import { CommandPalette } from './command-palette';
 import { Logo, Sidebar, SidebarNav } from './sidebar';
 import { Topbar } from './topbar';
@@ -80,6 +81,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
       <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
       <ShortcutsDialog />
+      <WelcomeTour />
     </div>
   );
 }

@@ -91,7 +91,7 @@ export default function TemplatesPage() {
             </CardContent>
           </Card>
         ) : (
-          <EmptyState icon={FileText} title="Select or create a template" description="Templates pre-fill SOAP sections and the examination checklist. They never contain doses — clinicians write treatment plans." />
+          <EmptyState icon={FileText} title="Select or create a template" description="Templates pre-fill the note sections and the examination checklist. They never contain doses — clinicians write treatment plans." />
         )}
       </div>
     </RequirePermission>

@@ -82,7 +82,7 @@ export function AdmitDialog({ open, onOpenChange, patient, encounterId, cageId }
           <Field label="Condition" htmlFor="adm-cond">
             <NativeSelect id="adm-cond" value={f.condition} onChange={(e) => setF({ ...f, condition: e.target.value })}>{PATIENT_CONDITIONS.map((c) => <option key={c} value={c}>{enumLabel(c)}</option>)}</NativeSelect>
           </Field>
-          <Field label="Resuscitation" htmlFor="adm-cpr" hint="Agree this with the owner and record it.">
+          <Field label="If the heart stops (resuscitation)" htmlFor="adm-cpr" hint="Agree this with the client and record it." help="Whether staff should try to restart the heart and breathing if they stop (CPR). Talk to the client, agree the choice, and record it here so everyone on every shift knows.">
             <NativeSelect id="adm-cpr" value={f.cprStatus} onChange={(e) => setF({ ...f, cprStatus: e.target.value })}>{CPR_STATUSES.map((c) => <option key={c} value={c}>{enumLabel(c)}</option>)}</NativeSelect>
           </Field>
           <Field label="Responsible vet" htmlFor="adm-vet">

@@ -54,7 +54,7 @@ export function TasksPanel({
       </CardHeader>
       {editable && (
         <form className="grid gap-2 border-b p-3" onSubmit={(e) => { e.preventDefault(); if (title.trim()) add.mutate(); }}>
-          <Input placeholder="e.g. Call owner with lab results" value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Task" className="h-8" />
+          <Input placeholder="e.g. Call client with lab results" value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Task" className="h-8" />
           <div className="flex gap-2">
             <NativeSelect aria-label="Task type" className="h-8 text-xs" value={type} onChange={(e) => setType(e.target.value)}>
               {TASK_TYPES.map((t) => <option key={t} value={t}>{enumLabel(t)}</option>)}

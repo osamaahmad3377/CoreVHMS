@@ -44,7 +44,7 @@ function TaxDialog({ rate, open, onOpenChange }: { rate: TaxRate | null; open: b
         </DialogHeader>
         {error && <FormError message={error} />}
         <Field label="Name" htmlFor="tx-name" required hint="e.g. GST, Sales tax (Punjab), Exempt"><Input id="tx-name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} /></Field>
-        <Field label="Rate (%)" htmlFor="tx-rate" required><Input id="tx-rate" inputMode="decimal" value={pct} onChange={(e) => setPct(e.target.value)} /></Field>
+        <Field label="Rate (%)" htmlFor="tx-rate" required help="The tax percentage added to the price, for example 17 for 17%. Ask your accountant if you are not sure."><Input id="tx-rate" inputMode="decimal" value={pct} onChange={(e) => setPct(e.target.value)} /></Field>
         <label className="flex items-center gap-2 text-sm"><Checkbox checked={isDefault} onCheckedChange={(v) => setDefault(!!v)} /> Default rate for items without a specific rate</label>
         <label className="flex items-center gap-2 text-sm"><Checkbox checked={isActive} onCheckedChange={(v) => setActive(!!v)} /> Active</label>
         <DialogFooter>

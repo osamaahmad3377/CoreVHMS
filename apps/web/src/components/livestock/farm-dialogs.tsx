@@ -58,7 +58,7 @@ export function FarmDialog({ open, onOpenChange, farm, owner }: { open: boolean;
         </DialogHeader>
         {error && <FormError message={error} />}
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Owner (client)" htmlFor="farm-owner" required className="sm:col-span-2" hint={!farm ? 'Register the farmer as a client first if they are new.' : undefined}>
+          <Field label="Client (the farm owner)" htmlFor="farm-owner" required className="sm:col-span-2" hint={!farm ? 'Register the farmer as a client first if they are new.' : undefined}>
             {farm ? <p className="text-sm font-medium">{farm.client.displayName}</p> : <ClientPicker id="farm-owner" value={client} onChange={setClient} />}
           </Field>
           <Field label="Farm name" htmlFor="farm-name" required><Input id="farm-name" value={f.name} maxLength={160} onChange={set('name')} placeholder="e.g. Green Valley Dairy" /></Field>

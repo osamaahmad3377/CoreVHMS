@@ -146,7 +146,7 @@ function PatientsList() {
             <EmptyState
               icon={PawPrint}
               title={params.q ? `No patients match “${params.q}”` : 'No patients'}
-              description="Search by animal name, owner surname, microchip, ear tag or patient number."
+              description="Search by animal name, client surname, microchip, ear tag or patient number."
             />
           }
         />

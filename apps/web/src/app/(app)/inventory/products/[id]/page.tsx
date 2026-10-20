@@ -132,7 +132,7 @@ function OpeningStock({ product }: { product: ProductStock['product'] }) {
         </div>
         {strict && (
           <div className="grid gap-3 sm:grid-cols-3">
-            <Field label="Batch number" htmlFor="os-batch" required><Input id="os-batch" value={batch} maxLength={60} onChange={(e) => setBatch(e.target.value)} /></Field>
+            <Field label="Batch number" htmlFor="os-batch" required help="The batch or lot number printed on the pack from your supplier. Needed so you can trace the medicine if there is a recall."><Input id="os-batch" value={batch} maxLength={60} onChange={(e) => setBatch(e.target.value)} /></Field>
             <Field label="Expiry date" htmlFor="os-exp" required><Input id="os-exp" type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} /></Field>
           </div>
         )}

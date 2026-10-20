@@ -202,7 +202,7 @@ function LineEditor({ line, patientId, weightKg, alerts, onChange, onRemove, onE
           )}
           <div className="grid gap-2 sm:grid-cols-[1fr_110px_90px]">
             <Field
-              label="Label text for the owner"
+              label="Instructions printed on the label for the client"
               htmlFor={`ins-${line.key}`}
               hint={
                 <>
@@ -220,7 +220,7 @@ function LineEditor({ line, patientId, weightKg, alerts, onChange, onRemove, onE
             <Field label={`Quantity (${line.product.dispensingUnit})`} htmlFor={`qty-${line.key}`}>
               <Input id={`qty-${line.key}`} inputMode="decimal" placeholder={e ? String(e.quantity) : ''} value={line.quantity} onChange={(ev) => set({ quantity: ev.target.value })} />
             </Field>
-            <Field label="Repeats" htmlFor={`rep-${line.key}`}>
+            <Field label="Repeats" htmlFor={`rep-${line.key}`} help="How many extra times the client can collect this medicine without a new visit. 0 means a single supply.">
               <Input id={`rep-${line.key}`} type="number" min={0} max={12} value={line.repeats} onChange={(ev) => set({ repeats: ev.target.value })} />
             </Field>
           </div>

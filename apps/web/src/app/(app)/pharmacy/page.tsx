@@ -56,7 +56,7 @@ function Worklist() {
       <PageHeader
         help="dispense"
         title="Pharmacy"
-        description="Authorise, dispense and track prescriptions"
+        description="Approve, hand out and track prescriptions"
         actions={
           (can('formulary.manage') || can('inventory.read')) && (
             <Button size="sm" variant="outline" asChild>
@@ -74,7 +74,7 @@ function Worklist() {
               </button>
             ))}
           </div>
-          <SearchInput className="lg:ml-auto" value={params.q} onChange={(q) => url.set({ q, page: 1 })} placeholder="Patient, owner or medicine" />
+          <SearchInput className="lg:ml-auto" value={params.q} onChange={(q) => url.set({ q, page: 1 })} placeholder="Patient, client or medicine" />
         </div>
         <DataTable
           query={query}

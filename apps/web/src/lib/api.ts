@@ -60,9 +60,30 @@ async function request<T>(method: Method, path: string, body?: unknown, init?: R
       const next = encodeURIComponent(window.location.pathname + window.location.search);
       window.location.href = `/login?next=${next}`;
     }
-    throw new ApiError(res.status, err?.code ?? 'ERROR', err?.message ?? `Request failed (${res.status})`, err?.details, err?.requestId);
+    throw new ApiError(res.status, err?.code ?? 'ERROR', plainMessage(res.status, err?.code, err?.message), err?.details, err?.requestId);
   }
   return data as T;
+}
+
+/**
+ * Turns the server's technical wording into short sentences a non-technical person can act on.
+ * Specific messages written for people (e.g. "Temperature must be between 25 and 46 °C") pass through unchanged.
+ */
+export function plainMessage(status: number, code: string | undefined, message: string | undefined): string {
+  const m = message ?? '';
+  const tryAgain = 'Please try again. If it keeps happening, tell your clinic manager and give them the reference below.';
+  if (code === 'VALIDATION_ERROR' || m === 'The request contains invalid data') return 'Some details are missing or need fixing. Check the fields marked in red.';
+  if (code === 'INTERNAL_ERROR' || m === 'An unexpected error occurred') return `Something went wrong on our side. ${tryAgain}`;
+  if (status === 429 || code === 'RATE_LIMITED') return 'Too many tries in a short time. Wait a minute, then try again.';
+  if (status === 413 || code === 'PAYLOAD_TOO_LARGE') return 'That file is too big. Try a smaller one.';
+  if (code === 'REFERENCE_CONFLICT') return 'This cannot be removed or changed because other records still use it.';
+  if (m === 'Record not found') return 'We could not find that. It may have been removed. Go back and refresh the page.';
+  const dup = /^A record with the same (.+) already exists$/.exec(m);
+  if (dup) return `Something with the same ${dup[1].replace(/[_,]/g, ' ').trim()} already exists. Use a different one, or open the existing one.`;
+  if (status === 403 && (m === 'Access denied' || m === 'Forbidden' || m === 'Forbidden resource' || !m)) return 'Your role does not allow this. Ask your clinic owner or manager if you need it.';
+  if (status === 401 && !m) return 'Please sign in again.';
+  if (status >= 500 && (!m || /^Request failed|^Bad Gateway|^Service Unavailable|^Gateway Timeout/i.test(m))) return 'The system is busy or restarting. Wait a moment, then try again.';
+  return m || `Something went wrong (${status}). ${tryAgain}`;
 }
 
 function safeJson(text: string) {

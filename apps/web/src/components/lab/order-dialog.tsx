@@ -75,7 +75,7 @@ export function LabOrderDialog({ open, onOpenChange, patient, encounterId, onCre
             ))}
           </div>
           <div className="grid gap-3 sm:grid-cols-[160px_1fr]">
-            <Field label="Priority" htmlFor="lo-p">
+            <Field label="How urgent" htmlFor="lo-p" help="Routine tests are done in normal order. Choose a higher level only when the result is needed quickly to decide treatment.">
               <NativeSelect id="lo-p" value={priority} onChange={(e) => setPriority(e.target.value)}>{ORDER_PRIORITIES.map((p) => <option key={p} value={p}>{enumLabel(p)}</option>)}</NativeSelect>
             </Field>
             <Field label="Clinical notes for the laboratory" htmlFor="lo-n"><Textarea id="lo-n" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>

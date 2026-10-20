@@ -75,11 +75,11 @@ export function AdministerDialog({ open, onOpenChange, patientId, encounterId }:
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Field label="Dose" htmlFor="ad-d" required><Input id="ad-d" inputMode="decimal" value={f.dose} onChange={set('dose')} /></Field>
             <Field label="Unit" htmlFor="ad-u"><Input id="ad-u" value={f.doseUnit} onChange={set('doseUnit')} /></Field>
-            <Field label="Route" htmlFor="ad-r">
+            <Field label="How given" htmlFor="ad-r" help="The way the medicine goes in: by mouth, injection under the skin, into a muscle or a vein, drops, and so on.">
               <NativeSelect id="ad-r" value={f.route} onChange={set('route')}>{ROUTES.map((r) => <option key={r} value={r}>{routeLabel(r)}</option>)}</NativeSelect>
             </Field>
             <Field label="Site" htmlFor="ad-s"><Input id="ad-s" placeholder="e.g. L flank" value={f.site} onChange={set('site')} /></Field>
-            <Field label="Batch / lot" htmlFor="ad-b"><Input id="ad-b" value={f.batchNumber} onChange={set('batchNumber')} /></Field>
+            <Field label="Batch / lot" htmlFor="ad-b" help="The batch number printed on the pack. It lets you trace the medicine if there is ever a recall."><Input id="ad-b" value={f.batchNumber} onChange={set('batchNumber')} /></Field>
             <Field label="Expiry" htmlFor="ad-e"><Input id="ad-e" type="date" value={f.expiryDate} onChange={set('expiryDate')} /></Field>
           </div>
           <label className="flex items-center gap-2 text-sm"><Checkbox checked={notGiven} onCheckedChange={(v) => setNotGiven(v === true)} /> Dose was NOT given</label>

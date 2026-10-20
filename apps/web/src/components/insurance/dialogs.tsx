@@ -108,9 +108,9 @@ export function PolicyDialog({ open, onOpenChange, patient, policy }: { open: bo
           {policy && <Field label="Status" htmlFor="pol-status"><NativeSelect id="pol-status" value={f.status} onChange={set('status')}><option value="ACTIVE">Active</option><option value="EXPIRED">Expired</option><option value="CANCELLED">Cancelled</option></NativeSelect></Field>}
           <Field label="Start" htmlFor="pol-start" required><Input id="pol-start" type="date" disabled={!!policy} value={f.startDate} onChange={set('startDate')} /></Field>
           <Field label="End" htmlFor="pol-end"><Input id="pol-end" type="date" value={f.endDate} onChange={set('endDate')} /></Field>
-          <Field label="Excess" htmlFor="pol-excess"><Input id="pol-excess" inputMode="decimal" value={f.excess} onChange={set('excess')} /></Field>
+          <Field label="Excess" htmlFor="pol-excess" help="The amount the client pays first on each claim before the insurer pays anything."><Input id="pol-excess" inputMode="decimal" value={f.excess} onChange={set('excess')} /></Field>
           <Field label="Cover limit" htmlFor="pol-limit"><Input id="pol-limit" inputMode="decimal" value={f.coverLimit} onChange={set('coverLimit')} /></Field>
-          <Field label="Co-pay %" htmlFor="pol-copay"><Input id="pol-copay" inputMode="numeric" value={f.coPayPercent} onChange={set('coPayPercent')} /></Field>
+          <Field label="Co-pay %" htmlFor="pol-copay" help="The share of each claim the client pays themselves. With 20%, the insurer pays 80% and the client pays 20%."><Input id="pol-copay" inputMode="numeric" value={f.coPayPercent} onChange={set('coPayPercent')} /></Field>
           <Field label="Exclusions" htmlFor="pol-excl" className="sm:col-span-2"><Textarea id="pol-excl" value={f.exclusions} maxLength={2000} onChange={set('exclusions')} placeholder="e.g. Pre-existing skin condition" /></Field>
         </div>
         <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button loading={m.isPending} disabled={!policy && (!target || !f.providerId || !f.policyNumber.trim() || !f.startDate)} onClick={() => { setError(null); m.mutate(); }}>Save</Button></DialogFooter>

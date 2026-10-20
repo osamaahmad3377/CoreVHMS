@@ -199,17 +199,17 @@ export function ProductDialog({ product, open, onOpenChange, onSaved, defaultTyp
                   </NativeSelect>
                 </Field>
               )}
-              <Field label="SKU" htmlFor="p-sku"><Input id="p-sku" value={f.sku} onChange={set('sku')} /></Field>
+              <Field label="SKU" htmlFor="p-sku" help="Your own stock code for this item. Optional — leave it blank if you do not use codes."><Input id="p-sku" value={f.sku} onChange={set('sku')} /></Field>
               <Field label="Barcode" htmlFor="p-bc"><Input id="p-bc" value={f.barcode} onChange={set('barcode')} placeholder="Scan or type" /></Field>
             </div>
 
             {clinical ? (
               <fieldset className="grid gap-3 rounded-md border p-3 sm:grid-cols-4">
-                <legend className="px-1 text-sm font-medium">Strength & dispensing (used by the dose calculator)</legend>
-                <Field label="Strength" htmlFor="p-sv" hint="per ONE dispensing unit"><Input id="p-sv" inputMode="decimal" value={f.strengthValue} onChange={set('strengthValue')} /></Field>
+                <legend className="px-1 text-sm font-medium">Strength & what it is given out per (used to work out doses)</legend>
+                <Field label="Strength" htmlFor="p-sv" hint="in ONE tablet, mL or pack" help="How much medicine is in a single tablet, capsule or mL. For a 250 mg tablet, type 250 and choose mg. The system uses this to work out each patient’s dose from their weight."><Input id="p-sv" inputMode="decimal" value={f.strengthValue} onChange={set('strengthValue')} /></Field>
                 <Field label="Strength unit" htmlFor="p-su"><NativeSelect id="p-su" value={f.strengthUnit} onChange={set('strengthUnit')}>{['mg', 'mcg', 'g', 'IU', 'mL'].map((u) => <option key={u}>{u}</option>)}</NativeSelect></Field>
-                <Field label="Dispensing unit" htmlFor="p-du"><NativeSelect id="p-du" value={f.dispensingUnit} onChange={set('dispensingUnit')}>{units.map((u) => <option key={u}>{u}</option>)}</NativeSelect></Field>
-                <Field label="Smallest amount" htmlFor="p-inc" hint="e.g. 0.25 tablet, 0.1 mL"><Input id="p-inc" inputMode="decimal" value={f.minDispenseIncrement} onChange={set('minDispenseIncrement')} /></Field>
+                <Field label="Given out per" htmlFor="p-du" help="The unit you hand over and count in stock, for example tablet, mL or bottle. Stock levels and prices are all counted in this unit."><NativeSelect id="p-du" value={f.dispensingUnit} onChange={set('dispensingUnit')}>{units.map((u) => <option key={u}>{u}</option>)}</NativeSelect></Field>
+                <Field label="Smallest amount" htmlFor="p-inc" hint="e.g. 0.25 tablet, 0.1 mL" help="The smallest piece you can give out. Doses are rounded to this, so a quarter tablet is 0.25."><Input id="p-inc" inputMode="decimal" value={f.minDispenseIncrement} onChange={set('minDispenseIncrement')} /></Field>
               </fieldset>
             ) : (
               <div className="grid gap-3 sm:grid-cols-3">
@@ -225,21 +225,21 @@ export function ProductDialog({ product, open, onOpenChange, onSaved, defaultTyp
 
             <div className="grid gap-3 sm:grid-cols-3">
               {(clinical || f.type === 'SUPPLEMENT') && (
-                <Field label={clinical ? 'Active ingredients' : 'Main ingredients'} htmlFor="p-ai" hint={clinical ? 'Comma-separated; used for allergy checks' : 'Comma-separated'}>
+                <Field label={clinical ? 'Active ingredients' : 'Main ingredients'} htmlFor="p-ai" hint={clinical ? 'Separate with commas; used for allergy checks' : 'Separate with commas'} help={clinical ? 'The active medicine inside this product, e.g. amoxicillin. If a patient is allergic to an ingredient, the system warns you.' : undefined}>
                   <Input id="p-ai" value={f.activeIngredients} onChange={set('activeIngredients')} />
                 </Field>
               )}
               {clinical && (
-                <Field label="Drug class / family" htmlFor="p-dc" hint="e.g. Penicillins, Cephalosporins, NSAIDs — used for allergy checks">
+                <Field label="Medicine family" htmlFor="p-dc" hint="e.g. Penicillins, Cephalosporins, NSAIDs" help="Medicines in the same family often cause the same allergic reaction. If a patient is allergic to one, the system warns you before you prescribe another from this family.">
                   <Input id="p-dc" value={f.drugClass} onChange={set('drugClass')} />
                 </Field>
               )}
               {clinical && <Field label="Manufacturer" htmlFor="p-m"><Input id="p-m" value={f.manufacturer} onChange={set('manufacturer')} /></Field>}
-              <Field label={`Price per ${f.dispensingUnit} (${currency})`} htmlFor="p-pr" hint={shop && !f.price ? 'Needed to sell it at the shop counter' : undefined}>
+              <Field label={`Price per ${f.dispensingUnit} (${currency === 'PKR' ? 'Rs' : currency})`} htmlFor="p-pr" hint={shop && !f.price ? 'Needed to sell it at the shop counter' : undefined}>
                 <Input id="p-pr" inputMode="decimal" value={f.price} onChange={set('price')} />
               </Field>
               {askReorder && (
-                <Field label={`Order more when below (${f.dispensingUnit})`} htmlFor="p-reorder" hint="Leave blank if you don't want a low-stock warning" error={reorderValid ? undefined : 'Enter a number'}>
+                <Field label={`Order more when below (${f.dispensingUnit})`} htmlFor="p-reorder" hint="Leave blank if you don't want a low-stock warning" help="When stock falls below this number, the item shows on the low-stock list so you can order more in time." error={reorderValid ? undefined : 'Enter a number'}>
                   <Input id="p-reorder" inputMode="decimal" value={reorderLevel} onChange={(e) => setReorderLevel(e.target.value)} />
                 </Field>
               )}

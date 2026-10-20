@@ -174,7 +174,7 @@ export function PatientForm({
       )}
 
       {!editing && (
-        <FormSection title="Client" description="The owner (client) who is responsible for the patient and pays. Co-owners can be added afterwards.">
+        <FormSection title="Client" description="The client who looks after the patient and pays the bill. A second client can be added afterwards.">
           <Field label="Client" htmlFor="owner" error={e.ownerId} required>
             <ClientPicker id="owner" value={owner} onChange={(c) => { setOwner(c); if (c) form.clearErrors('ownerId'); }} invalid={!!e.ownerId} />
           </Field>
@@ -289,7 +289,7 @@ export function PatientForm({
       </FormSection>
 
       {!editing && (
-        <FormSection title="Identification" description="Microchip, ear tag, RFID or tattoo. Each identifier can belong to only one patient.">
+        <FormSection title="Identification" description="Microchip, ear tag, RFID or tattoo number. Each number can belong to only one patient.">
           {ids.fields.map((f, i) => (
             <div key={f.id} className="grid grid-cols-[150px_1fr_auto] items-start gap-2">
               <NativeSelect aria-label="Identifier type" {...register(`identifiers.${i}.type` as const)}>

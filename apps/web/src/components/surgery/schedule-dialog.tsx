@@ -94,13 +94,13 @@ export function ScheduleSurgeryDialog({ open, onOpenChange, patient, admissionId
           <Field label="Appointment type" htmlFor="sx-type" required>
             <NativeSelect id="sx-type" value={f.appointmentTypeId} onChange={set('appointmentTypeId')}>{surgeryTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</NativeSelect>
           </Field>
-          <Field label="Priority" htmlFor="sx-prio">
+          <Field label="How urgent" htmlFor="sx-prio" help="Emergency means the patient needs surgery now. Urgent means today or very soon. Elective means a planned operation that can wait for a convenient date.">
             <NativeSelect id="sx-prio" value={f.priority} onChange={set('priority')}>{SURGERY_PRIORITIES.map((s) => <option key={s} value={s}>{enumLabel(s)}</option>)}</NativeSelect>
           </Field>
           <Field label="Procedure fee (service)" htmlFor="sx-svc" hint="Charged when the surgery is completed.">
             <NativeSelect id="sx-svc" value={f.serviceId} onChange={set('serviceId')}><option value="">No fee</option>{procedureFees.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</NativeSelect>
           </Field>
-          <Field label="Estimate given to owner" htmlFor="sx-est"><MoneyInput id="sx-est" currency={currency} value={f.estimate} onChange={set('estimate')} /></Field>
+          <Field label="Estimate given to the client" htmlFor="sx-est"><MoneyInput id="sx-est" currency={currency} value={f.estimate} onChange={set('estimate')} /></Field>
           <label className="flex items-center gap-2 text-sm sm:col-span-2"><Checkbox checked={f.allowOutsideHours} onCheckedChange={(v) => setF((s) => ({ ...s, allowOutsideHours: !!v }))} /> Allow outside the surgeon’s rostered hours (emergencies)</label>
         </div>
         <DialogFooter>
