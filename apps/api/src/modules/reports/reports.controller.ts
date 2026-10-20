@@ -1,7 +1,7 @@
 import { Controller, Get, Param, Query, Res } from '@nestjs/common';
 import { formatInTimeZone } from 'date-fns-tz';
 import { ApiTags } from '@nestjs/swagger';
-import { enumLabel, reportQuery } from '@vcms/shared';
+import { decimalsFor, enumLabel, reportQuery } from '@vcms/shared';
 import type { Response } from 'express';
 import { z } from 'zod';
 import { AuditService } from '../../common/audit/audit.service';
@@ -38,7 +38,7 @@ export class ReportsController {
       return;
     }
     const [{ currency }, tz] = await Promise.all([this.reports.currency(), this.reports.timezone(q.branchId)]);
-    const digits = new Intl.NumberFormat('en', { style: 'currency', currency }).resolvedOptions().maximumFractionDigits ?? 2;
+    const digits = decimalsFor(currency);
     const day = (d: Date) => formatInTimeZone(d, tz, 'yyyy-MM-dd');
     const cell = (c: Col, v: unknown): unknown => {
       if (v === null || v === undefined || v === '') return '';
