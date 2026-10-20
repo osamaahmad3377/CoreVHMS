@@ -93,12 +93,13 @@ describe('Clinic branding (owner only)', () => {
       brandFont: 'POPPINS', cornerStyle: 'ROUNDED', defaultTheme: 'SYSTEM',
       loginLayout: 'CENTERED', loginBackground: 'GRADIENT', loginFooter: '12 Mall Road, Lahore · meadowvets.pk',
       printLogoPosition: 'CENTER', printHeaderText: 'Companion & farm animals', printFooterText: 'Bank: HBL 1234', printUseBrandColour: false,
+      printRule: 'DOUBLE', printLogoSize: 'LARGE', printShowTaxNumber: false, printPreprinted: true, printTopSpaceMm: 55, printFooterAlign: 'RIGHT',
       emailSenderName: 'Meadow Vets Lahore', emailSignature: 'The Meadow team\n042 111 222',
     });
     expect(saved.status).toBe(200);
-    expect(saved.body).toMatchObject({ brandFont: 'POPPINS', cornerStyle: 'ROUNDED', defaultTheme: 'SYSTEM', loginLayout: 'CENTERED', loginBackground: 'GRADIENT', printLogoPosition: 'CENTER', printUseBrandColour: false, emailSenderName: 'Meadow Vets Lahore' });
+    expect(saved.body).toMatchObject({ brandFont: 'POPPINS', cornerStyle: 'ROUNDED', defaultTheme: 'SYSTEM', loginLayout: 'CENTERED', loginBackground: 'GRADIENT', printLogoPosition: 'CENTER', printUseBrandColour: false, printRule: 'DOUBLE', printLogoSize: 'LARGE', printShowTaxNumber: false, printPreprinted: true, printTopSpaceMm: 55, printFooterAlign: 'RIGHT', emailSenderName: 'Meadow Vets Lahore' });
     expect((await org.owner.get('/auth/session')).body.organization.branding).toMatchObject({ brandFont: 'POPPINS', loginFooter: '12 Mall Road, Lahore · meadowvets.pk' });
-    for (const bad of [{ brandFont: 'COMIC_SANS' }, { emailSenderName: 'x <evil@example.com>' }, { printFooterText: 'x'.repeat(301) }]) {
+    for (const bad of [{ brandFont: 'COMIC_SANS' }, { emailSenderName: 'x <evil@example.com>' }, { printFooterText: 'x'.repeat(301) }, { printTopSpaceMm: 500 }, { printRule: 'WAVY' }]) {
       expect((await org.owner.call('put', '/organization/branding', bad)).status).toBe(400);
     }
 

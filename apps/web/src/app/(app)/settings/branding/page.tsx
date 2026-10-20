@@ -4,6 +4,7 @@ import {
   BRAND_FONTS,
   BRAND_FONT_LABELS,
   BRAND_PRESETS,
+  LETTERHEAD_PRESETS,
   brandThemeVariables,
   brandingUpdateSchema,
   contrastRatio,
@@ -53,6 +54,15 @@ const draftOf = (b: Branding, orgName: string) => ({
   printHeaderText: b.printHeaderText ?? '',
   printFooterText: b.printFooterText ?? '',
   printUseBrandColour: b.printUseBrandColour,
+  printLogoSize: b.printLogoSize,
+  printNameSize: b.printNameSize,
+  printRule: b.printRule,
+  printShowAddress: b.printShowAddress,
+  printShowContact: b.printShowContact,
+  printShowTaxNumber: b.printShowTaxNumber,
+  printFooterAlign: b.printFooterAlign,
+  printPreprinted: b.printPreprinted,
+  printTopSpaceMm: b.printTopSpaceMm,
   emailSenderName: b.emailSenderName ?? '',
   emailSignature: b.emailSignature ?? '',
 });
@@ -534,29 +544,94 @@ function BrandingForm({ branding, orgId, orgName, clinic }: { branding: Branding
             <div className="grid min-w-0 gap-6">
               <Section title="Letterhead" description="The top of every printed invoice, certificate, lab report, discharge summary, surgical report, purchase order, referral letter and claim form.">
                 <div className="grid gap-4">
-                  <Choice
-                    label="Logo position"
-                    value={draft.printLogoPosition}
-                    onChange={(v) => set('printLogoPosition', v)}
-                    options={[
-                      { value: 'LEFT', title: 'Logo on the left' },
-                      { value: 'CENTER', title: 'Logo in the centre' },
-                      { value: 'RIGHT', title: 'Logo on the right' },
-                    ]}
-                  />
-                  <Field label="Line under the clinic name" htmlFor="b-print-header" hint="e.g. “Companion & farm animal hospital · Open 24 hours”." error={errors.printHeaderText}>
-                    <Input id="b-print-header" value={draft.printHeaderText} maxLength={200} onChange={(e) => set('printHeaderText', e.target.value)} />
-                  </Field>
                   <label className="flex items-start gap-2 text-sm">
-                    <Checkbox checked={draft.printUseBrandColour} onCheckedChange={(v) => set('printUseBrandColour', v === true)} className="mt-0.5" />
-                    <span>Print the clinic name and lines in the main colour<span className="block text-xs text-muted-foreground">Turn off for black-only printing. Very light colours always print black.</span></span>
+                    <Checkbox checked={draft.printPreprinted} onCheckedChange={(v) => set('printPreprinted', v === true)} className="mt-0.5" />
+                    <span>I print on paper that already has our letterhead<span className="block text-xs text-muted-foreground">Nothing is printed at the top; the space is left blank so the pre-printed paper shows through.</span></span>
                   </label>
+                  {draft.printPreprinted ? (
+                    <Field label="Blank space at the top (mm)" htmlFor="b-print-space" hint="Measure the pre-printed header on your paper. 40 mm is typical." error={errors.printTopSpaceMm}>
+                      <Input id="b-print-space" type="number" min={0} max={120} value={draft.printTopSpaceMm} onChange={(e) => set('printTopSpaceMm', Math.max(0, Math.min(120, Math.round(Number(e.target.value) || 0))))} className="w-32" />
+                    </Field>
+                  ) : (
+                    <>
+                      <div>
+                        <p className="mb-2 text-sm font-medium">Start from a design</p>
+                        <div className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-2">
+                          {LETTERHEAD_PRESETS.map((p) => {
+                            const active = (Object.keys(p.values) as (keyof typeof p.values)[]).every((k) => draft[k] === p.values[k]);
+                            return (
+                              <button key={p.key} type="button" onClick={() => setDraft((d) => ({ ...d, ...p.values }))} aria-pressed={active} className={cn('rounded-md border p-3 text-left text-sm transition-colors', active ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:bg-muted')}>
+                                <span className="block font-medium">{p.name}</span>
+                                <span className="block text-xs text-muted-foreground">{p.description}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="mb-2 text-sm font-medium">Logo position</p>
+                        <Choice
+                          label="Logo position"
+                          value={draft.printLogoPosition}
+                          onChange={(v) => set('printLogoPosition', v)}
+                          options={[
+                            { value: 'LEFT', title: 'On the left' },
+                            { value: 'CENTER', title: 'In the centre' },
+                            { value: 'RIGHT', title: 'On the right' },
+                          ]}
+                        />
+                      </div>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <p className="mb-2 text-sm font-medium">Logo size</p>
+                          <Choice label="Logo size" value={draft.printLogoSize} onChange={(v) => set('printLogoSize', v)} options={[{ value: 'SMALL', title: 'Small' }, { value: 'MEDIUM', title: 'Medium' }, { value: 'LARGE', title: 'Large' }]} />
+                        </div>
+                        <div>
+                          <p className="mb-2 text-sm font-medium">Clinic name size</p>
+                          <Choice label="Clinic name size" value={draft.printNameSize} onChange={(v) => set('printNameSize', v)} options={[{ value: 'SMALL', title: 'Small' }, { value: 'MEDIUM', title: 'Medium' }, { value: 'LARGE', title: 'Large' }]} />
+                        </div>
+                      </div>
+                      <div>
+                        <p className="mb-2 text-sm font-medium">Lines</p>
+                        <Choice
+                          label="Lines"
+                          value={draft.printRule}
+                          onChange={(v) => set('printRule', v)}
+                          options={[
+                            { value: 'BAND', title: 'Coloured band', text: 'Thick bar on top and a line below' },
+                            { value: 'LINE', title: 'Thin line', text: 'One line below the header' },
+                            { value: 'DOUBLE', title: 'Double line', text: 'A formal double rule below' },
+                            { value: 'NONE', title: 'No lines' },
+                          ]}
+                        />
+                      </div>
+                      <Field label="Line under the clinic name" htmlFor="b-print-header" hint="e.g. “Companion & farm animal hospital · Open 24 hours”." error={errors.printHeaderText}>
+                        <Input id="b-print-header" value={draft.printHeaderText} maxLength={200} onChange={(e) => set('printHeaderText', e.target.value)} />
+                      </Field>
+                      <fieldset className="grid gap-2">
+                        <legend className="mb-1 text-sm font-medium">Show on the letterhead</legend>
+                        {([['printShowAddress', 'Address'], ['printShowContact', 'Phone and email'], ['printShowTaxNumber', 'Tax number']] as const).map(([k, label]) => (
+                          <label key={k} className="flex items-center gap-2 text-sm">
+                            <Checkbox checked={draft[k]} onCheckedChange={(v) => set(k, v === true)} /> {label}
+                          </label>
+                        ))}
+                      </fieldset>
+                      <label className="flex items-start gap-2 text-sm">
+                        <Checkbox checked={draft.printUseBrandColour} onCheckedChange={(v) => set('printUseBrandColour', v === true)} className="mt-0.5" />
+                        <span>Print the clinic name and lines in the main colour<span className="block text-xs text-muted-foreground">Turn off for black-only printing. Very light colours always print black.</span></span>
+                      </label>
+                    </>
+                  )}
                 </div>
               </Section>
               <Section title="Footer" description="Printed at the end of each document.">
                 <Field label="Footer text" htmlFor="b-print-footer" hint="e.g. bank details for payment, registration number, or a thank-you." error={errors.printFooterText}>
                   <Textarea id="b-print-footer" rows={3} value={draft.printFooterText} maxLength={300} onChange={(e) => set('printFooterText', e.target.value)} />
                 </Field>
+                <div>
+                  <p className="mb-2 text-sm font-medium">Footer alignment</p>
+                  <Choice label="Footer alignment" value={draft.printFooterAlign} onChange={(v) => set('printFooterAlign', v)} options={[{ value: 'LEFT', title: 'Left' }, { value: 'CENTER', title: 'Centre' }, { value: 'RIGHT', title: 'Right' }]} />
+                </div>
               </Section>
               <p className="text-xs text-muted-foreground">
                 Address, phone and tax number come from <Link href="/settings/organization" className="text-primary hover:underline">Clinic details</Link> and the branch. Receipts have their own settings in <Link href="/settings/receipts" className="text-primary hover:underline">Receipts &amp; printing</Link>.

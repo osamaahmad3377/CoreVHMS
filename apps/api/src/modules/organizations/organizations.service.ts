@@ -34,6 +34,15 @@ export function brandingOf(org: Organization, base = '/api/v1/organization'): Br
     printHeaderText: org.printHeaderText,
     printFooterText: org.printFooterText,
     printUseBrandColour: org.printUseBrandColour,
+    printLogoSize: org.printLogoSize,
+    printNameSize: org.printNameSize,
+    printRule: org.printRule,
+    printShowAddress: org.printShowAddress,
+    printShowContact: org.printShowContact,
+    printShowTaxNumber: org.printShowTaxNumber,
+    printFooterAlign: org.printFooterAlign,
+    printPreprinted: org.printPreprinted,
+    printTopSpaceMm: org.printTopSpaceMm,
     emailSenderName: org.emailSenderName,
     emailSignature: org.emailSignature,
   };
@@ -42,7 +51,8 @@ export function brandingOf(org: Organization, base = '/api/v1/organization'): Br
 const BRANDING_FIELDS = [
   'brandName', 'primaryColor', 'sidebarColor', 'loginHeadline', 'loginMessage', 'brandFont', 'cornerStyle', 'defaultTheme',
   'loginLayout', 'loginBackground', 'loginFooter', 'printLogoPosition', 'printHeaderText', 'printFooterText',
-  'printUseBrandColour', 'emailSenderName', 'emailSignature',
+  'printUseBrandColour', 'printLogoSize', 'printNameSize', 'printRule', 'printShowAddress', 'printShowContact', 'printShowTaxNumber',
+  'printFooterAlign', 'printPreprinted', 'printTopSpaceMm', 'emailSenderName', 'emailSignature',
 ] as const;
 
 /** Branding images and the organization field that holds each. */

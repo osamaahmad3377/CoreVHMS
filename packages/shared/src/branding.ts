@@ -30,6 +30,8 @@ export type ThemeMode = 'LIGHT' | 'DARK' | 'SYSTEM';
 export type LoginLayout = 'SPLIT' | 'CENTERED';
 export type LoginBackground = 'MENU_COLOUR' | 'GRADIENT' | 'IMAGE';
 export type PrintLogoPosition = 'LEFT' | 'CENTER' | 'RIGHT';
+export type PrintSize = 'SMALL' | 'MEDIUM' | 'LARGE';
+export type PrintRule = 'BAND' | 'LINE' | 'DOUBLE' | 'NONE';
 
 /** Corner roundness of buttons, fields and cards (the theme's --radius). */
 export const CORNER_RADIUS: Record<CornerStyle, string> = { SHARP: '0.25rem', STANDARD: '0.75rem', ROUNDED: '1.25rem' };
@@ -57,6 +59,15 @@ export const brandingUpdateSchema = z.object({
   printHeaderText: optText(200),
   printFooterText: optText(300),
   printUseBrandColour: z.boolean().optional(),
+  printLogoSize: z.enum(['SMALL', 'MEDIUM', 'LARGE']).optional(),
+  printNameSize: z.enum(['SMALL', 'MEDIUM', 'LARGE']).optional(),
+  printRule: z.enum(['BAND', 'LINE', 'DOUBLE', 'NONE']).optional(),
+  printShowAddress: z.boolean().optional(),
+  printShowContact: z.boolean().optional(),
+  printShowTaxNumber: z.boolean().optional(),
+  printFooterAlign: z.enum(['LEFT', 'CENTER', 'RIGHT']).optional(),
+  printPreprinted: z.boolean().optional(),
+  printTopSpaceMm: z.number().int().min(0).max(120).optional(),
   // Emails
   emailSenderName: optText(60).refine((v) => !v || !/[<>"\r\n@]/.test(v), 'Use letters, numbers and spaces only'),
   emailSignature: optText(500),
@@ -86,9 +97,30 @@ export interface Branding {
   printHeaderText: string | null;
   printFooterText: string | null;
   printUseBrandColour: boolean;
+  printLogoSize: PrintSize;
+  printNameSize: PrintSize;
+  printRule: PrintRule;
+  printShowAddress: boolean;
+  printShowContact: boolean;
+  printShowTaxNumber: boolean;
+  printFooterAlign: PrintLogoPosition;
+  printPreprinted: boolean;
+  printTopSpaceMm: number;
   emailSenderName: string | null;
   emailSignature: string | null;
 }
+
+/** Letterhead sizes: logo height (mm) and clinic-name size (pt). */
+export const PRINT_LOGO_MM: Record<PrintSize, number> = { SMALL: 12, MEDIUM: 18, LARGE: 28 };
+export const PRINT_NAME_PT: Record<PrintSize, number> = { SMALL: 14, MEDIUM: 18, LARGE: 24 };
+
+/** One-click letterhead designs on the Branding page; the owner can change any setting afterwards. */
+export const LETTERHEAD_PRESETS: { key: string; name: string; description: string; values: Pick<BrandingUpdateInput, 'printLogoPosition' | 'printLogoSize' | 'printNameSize' | 'printRule' | 'printFooterAlign'> }[] = [
+  { key: 'classic', name: 'Classic', description: 'Logo on the left, coloured band on top', values: { printLogoPosition: 'LEFT', printLogoSize: 'MEDIUM', printNameSize: 'MEDIUM', printRule: 'BAND', printFooterAlign: 'CENTER' } },
+  { key: 'centred', name: 'Centred', description: 'Logo and name in the middle, thin line', values: { printLogoPosition: 'CENTER', printLogoSize: 'LARGE', printNameSize: 'LARGE', printRule: 'DOUBLE', printFooterAlign: 'CENTER' } },
+  { key: 'minimal', name: 'Minimal', description: 'Small logo on the right, one thin line', values: { printLogoPosition: 'RIGHT', printLogoSize: 'SMALL', printNameSize: 'SMALL', printRule: 'LINE', printFooterAlign: 'LEFT' } },
+  { key: 'plain', name: 'Plain text', description: 'No rule lines at all', values: { printLogoPosition: 'LEFT', printLogoSize: 'MEDIUM', printNameSize: 'MEDIUM', printRule: 'NONE', printFooterAlign: 'LEFT' } },
+];
 
 /**
  * One-click starting points for the Branding page: colours, font and corners that go well together.

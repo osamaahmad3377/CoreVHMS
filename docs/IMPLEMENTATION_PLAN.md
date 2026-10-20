@@ -555,3 +555,10 @@ Items from the feature matrix that need no external device, data source or provi
 - Restyled shared components (card, button, input, badge, table, dialog), sidebar (glowing active item), top bar, page headers, stat tiles; avatars in patient/client lists.
 - Dashboard gets a gradient hero banner with the day's key numbers; sign-in pages (default and clinic-branded) get a gradient glow panel, paw watermark and a card-style form.
 - White-label safe: everything uses the clinic's CSS variables (colours, font, corner size). Checked light, dark and phone width; fixed a phone overflow in the dashboard quick links.
+
+### 2026-10-20 — Print a finished consultation
+- "Print consultation" button on a finished consultation prints a full record on the clinic letterhead: patient and owner, reason for visit, vitals, signed clinical note and exam findings, diagnoses, medicines given and prescribed, tests ordered, charges and open follow-ups. Charges, medicines and tests only print for users with permission to see them; unsigned drafts are never printed.
+
+### 2026-10-20 — Letterhead designer (Settings → Branding → Printouts)
+- The owner designs the letterhead used on every printout: one-click designs (Classic, Centred, Minimal, Plain text), logo position and size, clinic-name size, rule style (band / thin / double / none), which of address, phone/email and tax number to show, footer alignment, and a "pre-printed paper" mode that leaves a blank space of a chosen height (mm) at the top. Live preview beside the form.
+- New Organization columns (migration `letterhead_designer`), included in the session branding and the owner-only branding update; `Letterhead` / `LetterFooter` render them for every document. Test coverage added to `branding.int-spec.ts`.

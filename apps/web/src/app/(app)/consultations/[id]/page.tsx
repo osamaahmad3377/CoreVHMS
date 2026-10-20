@@ -1,11 +1,12 @@
 'use client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { enumLabel, type Paginated } from '@vcms/shared';
-import { Activity, AlertTriangle, ArrowRight, CalendarPlus, CheckCircle2, ChevronDown, ClipboardList, FilePlus, FlaskConical, Paperclip, Pill, Receipt, Stethoscope, Syringe, Upload, XCircle } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowRight, CalendarPlus, CheckCircle2, ChevronDown, ClipboardList, FilePlus, FlaskConical, Paperclip, Pill, Printer, Receipt, Stethoscope, Syringe, Upload, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { ConsultationRecord } from '@/components/clinical/consultation-record';
 import { ConsultationCharges } from '@/components/clinical/charges-card';
 import { DiagnosesPanel } from '@/components/clinical/diagnoses-panel';
 import { FinishConsultationDialog } from '@/components/clinical/finish-dialog';
@@ -30,6 +31,7 @@ import { api, qs } from '@/lib/api';
 import { fmtDateTime } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import { branchTime, localDate, shiftDate, todayIn } from '@/lib/time';
+import type { ClinicHeader } from '@/components/billing/invoice-document';
 import type { Appointment, ClinicalNote, Encounter, Prescription } from '@/lib/types';
 
 /** "Sat 24 Oct, 10:30" in the branch's time zone. */
@@ -58,6 +60,7 @@ function Workspace() {
   const [labOpen, setLabOpen] = useState(false);
   const [booked, setBooked] = useState<Appointment | null>(null);
   const vitalsRef = useRef<VitalsPanelHandle>(null);
+  const org = useQuery({ queryKey: ['organization'], queryFn: () => api.get<ClinicHeader>('/organization'), staleTime: 300_000 });
   const types = useAppointmentTypes();
   const refresh = () => qc.invalidateQueries({ queryKey: key });
   const e = q.data;
@@ -113,6 +116,7 @@ function Workspace() {
 
   return (
     <>
+      <div className="no-print">
       <nav aria-label="Breadcrumb" className="mb-2 flex items-center gap-1 text-xs text-muted-foreground">
         <Link href="/consultations" className="hover:text-foreground hover:underline">
           Consultations
@@ -133,6 +137,11 @@ function Workspace() {
           {enc.appointment && ` · ${enc.appointment.appointmentType.name} appointment`}
         </span>
         <div className="ml-auto flex gap-2">
+          {enc.status === 'COMPLETED' && (
+            <Button size="sm" variant="outline" onClick={() => window.print()}>
+              <Printer /> Print consultation
+            </Button>
+          )}
           {enc.status === 'OPEN' && can('clinical.write') && (
             <>
               <DropdownMenu>
@@ -322,6 +331,12 @@ function Workspace() {
           },
         }}
       />
+      </div>
+      {enc.status === 'COMPLETED' && (
+        <div className="hidden print:block">
+          <ConsultationRecord encounter={enc} clinic={org.data ?? null} />
+        </div>
+      )}
     </>
   );
 }

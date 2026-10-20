@@ -131,6 +131,19 @@ enum PrintLogoPosition {
   RIGHT
 }
 
+enum PrintSize {
+  SMALL
+  MEDIUM
+  LARGE
+}
+
+enum PrintRule {
+  BAND
+  LINE
+  DOUBLE
+  NONE
+}
+
 model Organization {
   id                          String             @id @default(uuid()) @db.Uuid
   name                        String
@@ -177,6 +190,16 @@ model Organization {
   printHeaderText             String?
   printFooterText             String?
   printUseBrandColour         Boolean            @default(true)
+  printLogoSize               PrintSize          @default(MEDIUM)
+  printNameSize               PrintSize          @default(MEDIUM)
+  printRule                   PrintRule          @default(BAND)
+  printShowAddress            Boolean            @default(true)
+  printShowContact            Boolean            @default(true)
+  printShowTaxNumber          Boolean            @default(true)
+  printFooterAlign            PrintLogoPosition  @default(CENTER)
+  /// The clinic prints on paper that already has its letterhead: leave the top blank instead of printing one.
+  printPreprinted             Boolean            @default(false)
+  printTopSpaceMm             Int                @default(40)
   // Branding: emails
   emailSenderName             String?
   emailSignature              String?
