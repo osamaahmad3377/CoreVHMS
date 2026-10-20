@@ -11,6 +11,7 @@ import {
   FlaskConical,
   HeartPulse,
   LayoutDashboard,
+  LayoutList,
   LifeBuoy,
   MessageSquare,
   Palette,
@@ -124,9 +125,10 @@ export type SettingsGroup = 'Your clinic' | 'Staff & access' | 'Prices & billing
 export const SETTINGS_GROUPS: SettingsGroup[] = ['Your clinic', 'Staff & access', 'Prices & billing', 'Rooms & spaces', 'Clinical setup'];
 
 /** Settings pages, grouped the way an owner thinks about them; `hint` is the one-line description on the Settings home page. */
-export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyOf: Permission[]; group: SettingsGroup; hint: string; module?: OptionalModule }[] = [
+export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyOf: Permission[]; group: SettingsGroup; hint: string; module?: OptionalModule; /** Only where the installation has plans (multi-clinic hosting). */ plansOnly?: boolean }[] = [
   { label: 'Clinic details', href: '/settings/organization', icon: Building2, anyOf: ['org.manage'], group: 'Your clinic', hint: 'Name, address, phone and tax number' },
   { label: 'Branding', href: '/settings/branding', icon: Palette, anyOf: ['branding.manage'], group: 'Your clinic', hint: 'Logo, colours and the name staff see (owner only)' },
+  { label: 'Your plan', href: '/settings/plan', icon: LayoutList, anyOf: ['org.manage'], group: 'Your clinic', hint: 'What your plan includes, and how many staff and branches you use', plansOnly: true },
   { label: 'Services you offer', href: '/settings/modules', icon: ToggleRight, anyOf: ['settings.manage', 'org.manage'], group: 'Your clinic', hint: 'Switch hospital, surgery, lab, farms, boarding or insurance on or off' },
   { label: 'Branches', href: '/settings/branches', icon: Building2, anyOf: ['branches.manage'], group: 'Your clinic', hint: 'Each location, its address and time zone' },
   { label: 'Receipts & printing', href: '/settings/receipts', icon: Printer, anyOf: ['settings.manage'], group: 'Your clinic', hint: 'Receipt size, logo and the text printed on it' },
@@ -152,8 +154,8 @@ export function visibleNav(canAny: (...p: Permission[]) => boolean, modules?: re
 }
 
 /** Settings pages the user may open, without those of switched-off modules. */
-export function visibleSettings(canAny: (...p: Permission[]) => boolean, modules?: readonly OptionalModule[]) {
-  return SETTINGS_NAV.filter((i) => moduleOn(i.module, modules) && canAny(...i.anyOf));
+export function visibleSettings(canAny: (...p: Permission[]) => boolean, modules?: readonly OptionalModule[], hasPlans = false) {
+  return SETTINGS_NAV.filter((i) => (!i.plansOnly || hasPlans) && moduleOn(i.module, modules) && canAny(...i.anyOf));
 }
 
 export function moduleOn(module: OptionalModule | undefined, enabled?: readonly OptionalModule[]) {

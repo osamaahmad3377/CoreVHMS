@@ -196,6 +196,21 @@ a super admin, then host the existing database under an address:
 docker compose … exec api node dist/cli/platform.js add-existing --address mainclinic --database vcms
 ```
 
+**Plans.** The super admin chooses, per clinic, what it may use. Open **Plans** to define them (three starter
+plans are created the first time: Starter, Clinic, Hospital) and a clinic's own page to choose its plan.
+
+- A plan sets: how many staff accounts and branches (or no limit), which of **Lab & X-ray, Hospital, Surgery,
+  Livestock, Boarding, Insurance, Reports and Branding** are included, a monthly price (for your reference;
+  billing is outside the app), and whether it can be chosen for new clinics. Everyday work (clients, patients,
+  appointments, consultations, billing, pharmacy, stock, shop counter, vaccinations) is in every plan.
+- A clinic can also get **exceptions**: its own staff or branch limit, features added or taken away.
+- Changes apply within seconds, without the clinic signing in again. Editing a plan changes every clinic on it.
+- Staff accounts counted: active and invited people; branches counted: active ones. Paused ones do not count.
+- Nobody is ever removed or locked out by a lower limit: a clinic above it keeps what it has but cannot add more.
+- Clinics added before plans existed, and clinics set to "No plan", have no limits.
+- The owner sees the plan, usage and what is locked under **Settings → Your plan**.
+- Plans live in the platform database. Without `BASE_DOMAIN` there are no plans and nothing is limited.
+
 **Upgrades** update the platform database and every clinic database on API start
 (`node dist/cli/platform.js migrate`, which you can also run by hand). A clinic whose update fails is
 reported and the others continue; the command exits non-zero.

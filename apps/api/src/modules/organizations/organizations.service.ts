@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import type { Organization } from '@prisma/client';
-import type { BranchInput, Branding, BrandingUpdateInput, OrganizationUpdateInput } from '@vcms/shared';
+import { FULL_ACCESS, type BranchInput, type Branding, type BrandingUpdateInput, type ClinicPlanView, type OrganizationUpdateInput } from '@vcms/shared';
 import { AuditService, diff } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { assertWithinLimit, currentEntitlements } from '../../common/tenancy/entitlements';
 
 /**
  * A clinic's branding as the web app uses it. `base` is where the images are served: the signed-in
@@ -77,6 +78,15 @@ export class OrganizationsService {
     });
   }
 
+  /** The clinic's plan and how much of it is used (Settings → Your plan). */
+  async plan(): Promise<ClinicPlanView> {
+    const [staff, branches] = await Promise.all([
+      this.prisma.raw.membership.count({ where: { status: { in: ['ACTIVE', 'INVITED'] } } }),
+      this.prisma.raw.branch.count({ where: { isActive: true } }),
+    ]);
+    return { entitlements: currentEntitlements() ?? FULL_ACCESS, usage: { staff, branches } };
+  }
+
   async branding() {
     return brandingOf(await this.current());
   }
@@ -128,6 +138,7 @@ export class OrganizationsService {
 
   async createBranch(input: BranchInput) {
     return this.prisma.db.$transaction(async (tx) => {
+      assertWithinLimit('branches', await tx.branch.count({ where: { isActive: true } }));
       const branch = await tx.branch.create({ data: { ...input, organizationId: RequestContext.orgId() } });
       // Owners automatically get access to new branches.
       const owners = await tx.membership.findMany({ where: { roles: { some: { role: { key: 'owner' } } } }, select: { id: true } });
@@ -143,6 +154,8 @@ export class OrganizationsService {
     return this.prisma.db.$transaction(async (tx) => {
       const before = await tx.branch.findUnique({ where: { id } });
       if (!before) throw notFound('Branch');
+      // Reopening a paused branch adds to the branch count.
+      if (input.isActive === true && !before.isActive) assertWithinLimit('branches', await tx.branch.count({ where: { isActive: true } }));
       if (input.isActive === false && before.isActive) {
         const active = await tx.branch.count({ where: { isActive: true } });
         if (active <= 1) throw ruleViolation('LAST_BRANCH', 'An organization needs at least one active branch');

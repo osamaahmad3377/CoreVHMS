@@ -72,7 +72,7 @@ describe('Multi-clinic hosting', () => {
     await prisma().user.create({ data: { email: 'someone@nextcore.test', name: 'Not Admin', passwordHash: await hashPassword(PASSWORD) } });
     expect((await client('admin').login('someone@nextcore.test')).status).toBe(401);
     expect(superAdmin.session.platform).toBe(true);
-    expect(superAdmin.session.permissions).toEqual(['platform.clinics.manage']);
+    expect(superAdmin.session.permissions.sort()).toEqual(['platform.clinics.manage', 'platform.plans.manage']);
     expect((await superAdmin.get('/clients')).status).toBe(403);
   });
 
@@ -184,6 +184,151 @@ describe('Multi-clinic hosting', () => {
     expect(o.usage.lastSignInAt).toEqual(expect.any(String));
     expect(o.events.map((e: any) => e.action)).toEqual(expect.arrayContaining(['platform.clinic_created', 'platform.clinic_ready']));
     expect((await alpha.owner.get(`/platform/clinics/${alpha.id}/overview`)).status).toBe(403);
+  });
+
+  describe('plans and limits', () => {
+    const setPlan = (id: string, body: Record<string, unknown>) => superAdmin.call('put', `/platform/clinics/${id}/plan`, body);
+    const planByName = async (name: string) => ((await superAdmin.get('/platform/plans')).body as any[]).find((p) => p.name === name);
+    const invite = async (owner: TestClient) => {
+      const roles = (await owner.get('/roles')).body as any[];
+      const role = roles.find((r) => r.key === 'receptionist');
+      const n = unique('staff');
+      return owner.post('/staff/invite', { email: `${n}@limits.test`, name: 'Limit Test', roleIds: [role.id], branchIds: [owner.session.branch.id], isClinician: false });
+    };
+    let starter: any;
+    let lc: { id: string; owner: TestClient };
+
+    // Its own clinic, so these tests do not depend on what happened to the others.
+    beforeAll(async () => {
+      const body = { name: 'Limits Vets', slug: 'limits-vets', country: 'PK', branchName: 'Main branch', ownerName: 'Lena Limits', ownerEmail: 'lena@limits-vets.test', ownerAccess: 'TEMPORARY_PASSWORD' };
+      const res = await superAdmin.post('/platform/clinics', body);
+      expect((await settled(res.body.clinic.id)).status).toBe('ACTIVE');
+      const owner = client('limits-vets');
+      expect((await owner.login('lena@limits-vets.test', res.body.temporaryPassword)).status).toBe(200);
+      expect((await owner.post('/auth/change-password', { currentPassword: res.body.temporaryPassword, newPassword: PASSWORD })).status).toBe(204);
+      expect((await owner.login('lena@limits-vets.test')).status).toBe(200);
+      lc = { id: res.body.clinic.id, owner };
+    }, SETUP_MS);
+
+    it('starts with the starter plans, and plan management belongs to the super admin only', async () => {
+      const plans = (await superAdmin.get('/platform/plans')).body as any[];
+      expect(plans.map((p) => p.name)).toEqual(['Starter', 'Clinic', 'Hospital']);
+      expect(plans[0]).toMatchObject({ maxStaff: 3, maxBranches: 1, features: [], isActive: true });
+      starter = plans[0];
+      expect((await lc.owner.get('/platform/plans')).status).toBe(403);
+      expect((await lc.owner.call('put', `/platform/clinics/${lc.id}/plan`, { planId: starter.id })).status).toBe(403);
+      // A clinic without a plan has no limits.
+      expect((await lc.owner.get('/auth/session')).body.entitlements).toMatchObject({ planName: null, maxStaff: null, maxBranches: null });
+      expect((await lc.owner.get('/auth/session')).body.permissions).toContain('lab.read');
+    });
+
+    it('closes the areas a plan does not include, for everyone in the clinic', async () => {
+      const r = await setPlan(lc.id, { planId: starter.id });
+      expect(r.status).toBe(200);
+      expect(r.body).toMatchObject({ planName: 'Starter', entitlements: { maxStaff: 3, maxBranches: 1, features: [] } });
+      const session = (await lc.owner.get('/auth/session')).body;
+      expect(session.entitlements).toMatchObject({ planName: 'Starter', maxStaff: 3, features: [] });
+      expect(session.permissions).not.toContain('lab.read');
+      expect(session.permissions).not.toContain('branding.manage');
+      expect(session.organization.enabledModules).not.toContain('lab');
+      const lab = await lc.owner.get('/lab-orders');
+      expect(lab.status).toBe(403);
+      expect(lab.body.error.code).toBe('PLAN_FEATURE');
+      expect(lab.body.error.message).toContain('Starter plan');
+      expect((await lc.owner.call('put', '/organization/branding', { primaryColor: '#dc2626' })).body.error.code).toBe('PLAN_FEATURE');
+      expect((await lc.owner.get('/reports/clinical')).body.error.code).toBe('PLAN_FEATURE');
+      // Everything else keeps working.
+      expect((await lc.owner.get('/clients')).status).toBe(200);
+      expect((await lc.owner.get('/setup/modules')).body.locked).toEqual(expect.arrayContaining(['lab', 'hospital', 'surgery']));
+    });
+
+    it('stops adding staff and branches beyond the plan, but never removes anyone', async () => {
+      expect((await invite(lc.owner)).status).toBe(201); // owner + 1
+      expect((await invite(lc.owner)).status).toBe(201); // owner + 2 = 3 of 3
+      const over = await invite(lc.owner);
+      expect(over.status).toBe(422);
+      expect(over.body.error).toMatchObject({ code: 'PLAN_LIMIT', details: { kind: 'staff', limit: 3, current: 3 } });
+      expect(over.body.error.message).toContain('allows 3 staff accounts');
+      const branch = await lc.owner.post('/branches', { name: 'Second branch', code: 'SEC', timezone: 'Asia/Karachi' });
+      expect(branch.status).toBe(422);
+      expect(branch.body.error).toMatchObject({ code: 'PLAN_LIMIT', details: { kind: 'branches', limit: 1 } });
+      expect((await lc.owner.get('/organization/plan')).body).toMatchObject({ usage: { staff: 3, branches: 1 }, entitlements: { maxStaff: 3 } });
+      const o = (await superAdmin.get(`/platform/clinics/${lc.id}/overview`)).body;
+      expect(o.usage).toMatchObject({ staffCounted: 3, branches: 1 });
+      expect(o.clinic.entitlements.maxStaff).toBe(3);
+    });
+
+    it('applies exceptions for one clinic: a higher limit, an added feature, a feature taken away', async () => {
+      const r = await setPlan(lc.id, { planId: starter.id, staffLimitOverride: 5, branchLimitOverride: 2, extraFeatures: ['lab'] });
+      expect(r.body.entitlements).toMatchObject({ maxStaff: 5, maxBranches: 2, features: ['lab'] });
+      expect((await invite(lc.owner)).status).toBe(201);
+      expect((await lc.owner.post('/branches', { name: 'Second branch', code: 'SEC', timezone: 'Asia/Karachi' })).status).toBe(201);
+      expect((await lc.owner.get('/lab-orders')).status).toBe(200);
+      // The plan itself is unchanged for other clinics.
+      expect((await planByName('Starter')).features).toEqual([]);
+      // Taking away a feature the plan has.
+      const hospital = await planByName('Hospital');
+      const h = await setPlan(lc.id, { planId: hospital.id, removedFeatures: ['surgery'] });
+      expect(h.body.entitlements.features).toEqual(expect.arrayContaining(['hospital', 'lab', 'reports']));
+      expect(h.body.entitlements.features).not.toContain('surgery');
+      expect((await lc.owner.get('/surgeries')).body.error.code).toBe('PLAN_FEATURE');
+      expect((await lc.owner.get('/admissions')).status).toBe(200);
+      expect((await setPlan(lc.id, { planId: hospital.id, extraFeatures: ['lab'], removedFeatures: ['lab'] })).body.error.code).toBe('FEATURE_CONFLICT');
+    });
+
+    it('a lowered limit keeps what the clinic has but allows nothing more', async () => {
+      const r = await setPlan(lc.id, { planId: starter.id, staffLimitOverride: 2 });
+      expect(r.body.entitlements.maxStaff).toBe(2);
+      expect((await lc.owner.get('/clients')).status).toBe(200); // nobody is locked out
+      const over = await invite(lc.owner);
+      expect(over.body.error.code).toBe('PLAN_LIMIT');
+      // Pausing someone frees a place only below the limit; reactivating is counted too.
+      const staff = ((await lc.owner.get('/staff')).body.data ?? (await lc.owner.get('/staff')).body) as any[];
+      const other = staff.find((m) => m.user.email.endsWith('@limits.test') && m.status === 'ACTIVE') ?? staff.find((m) => m.user.email.endsWith('@limits.test'));
+      expect((await lc.owner.patch(`/staff/${other.id}`, { status: 'SUSPENDED' })).status).toBe(200);
+      const back = await lc.owner.patch(`/staff/${other.id}`, { status: 'ACTIVE' });
+      expect(back.status).toBe(422);
+      expect(back.body.error.code).toBe('PLAN_LIMIT');
+    });
+
+    it('records plan changes in the clinic history and rejects switched-off plans', async () => {
+      const events = (await superAdmin.get(`/platform/clinics/${lc.id}/overview`)).body.events as any[];
+      const changed = events.filter((e) => e.action === 'platform.clinic_plan_changed');
+      expect(changed.length).toBeGreaterThanOrEqual(4);
+      expect(changed[changed.length - 1].summary).toContain('No plan → Starter');
+
+      const custom = (await superAdmin.post('/platform/plans', { name: 'Custom', description: null, priceMonthlyMinor: 0, currency: 'PKR', maxStaff: null, maxBranches: null, features: ['lab'], isActive: false, sortOrder: 9 })).body;
+      expect((await setPlan(lc.id, { planId: custom.id })).body.error.code).toBe('PLAN_UNAVAILABLE');
+      expect((await superAdmin.post('/platform/plans', { name: 'Custom', maxStaff: null, maxBranches: null, features: [], priceMonthlyMinor: 0 })).status).toBe(409);
+      expect((await superAdmin.post('/platform/plans', { name: 'Bad', maxStaff: 0, maxBranches: null, features: [], priceMonthlyMinor: 0 })).status).toBe(400);
+      expect((await superAdmin.post('/platform/plans', { name: 'Bad2', maxStaff: null, maxBranches: null, features: ['teleport'], priceMonthlyMinor: 0 })).status).toBe(400);
+      // A plan on clinics cannot be deleted; an unused one can.
+      expect((await superAdmin.call('delete', `/platform/plans/${starter.id}`)).body.error.code).toBe('PLAN_IN_USE');
+      expect((await superAdmin.call('delete', `/platform/plans/${custom.id}`)).status).toBe(204);
+    });
+
+    it('changing a plan changes every clinic on it at once, and a new clinic can start on a plan', async () => {
+      const clinicPlan = await planByName('Clinic');
+      const edit = await superAdmin.call('put', `/platform/plans/${clinicPlan.id}`, { name: 'Clinic', description: clinicPlan.description, priceMonthlyMinor: clinicPlan.priceMonthlyMinor, currency: 'PKR', maxStaff: 12, maxBranches: 1, features: ['lab', 'boarding', 'reports', 'branding'], isActive: true, sortOrder: 2 });
+      expect(edit.body).toMatchObject({ maxStaff: 12, clinicCount: 0 });
+
+      const created = await superAdmin.post('/platform/clinics', { name: 'Cedar Vets', slug: 'cedar', country: 'PK', branchName: 'Main branch', ownerName: 'Cara Cedar', ownerEmail: 'cara@cedar.test', ownerAccess: 'TEMPORARY_PASSWORD', planId: clinicPlan.id });
+      expect(created.status).toBe(201);
+      expect(created.body.clinic).toMatchObject({ planName: 'Clinic' });
+      expect((await settled(created.body.clinic.id)).status).toBe('ACTIVE');
+      const cara = client('cedar');
+      expect((await cara.login('cara@cedar.test', created.body.temporaryPassword)).status).toBe(200);
+      expect(cara.session.entitlements).toMatchObject({ planName: 'Clinic', maxStaff: 12, maxBranches: 1, features: ['lab', 'boarding', 'reports', 'branding'] });
+      expect(cara.session.permissions).toContain('lab.read');
+      expect(cara.session.permissions).not.toContain('hospital.read');
+
+      // Raising the plan reaches the clinic without it signing in again.
+      await superAdmin.call('put', `/platform/plans/${clinicPlan.id}`, { name: 'Clinic', description: null, priceMonthlyMinor: 0, currency: 'PKR', maxStaff: 12, maxBranches: 1, features: ['lab', 'boarding', 'reports', 'branding', 'hospital'], isActive: true, sortOrder: 2 });
+      expect((await cara.get('/auth/session')).body.permissions).toContain('hospital.read');
+      // Back to no plan: nothing limited.
+      await setPlan(lc.id, { planId: null });
+      expect((await lc.owner.get('/auth/session')).body.entitlements).toMatchObject({ planName: null, maxStaff: null });
+    });
   });
 
   it('pauses and reactivates a clinic without losing data', async () => {

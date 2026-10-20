@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { OPTIONAL_MODULES, enabledModules, type OptionalModule } from '@vcms/shared';
+import { featureAllowed } from '../../common/tenancy/entitlements';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { notFound, ruleViolation } from '../../common/http/errors';
@@ -138,17 +139,25 @@ export class OnboardingService {
 
   async modules() {
     const org = await this.org();
-    return { enabled: enabledModules(org.disabledModules), available: [...OPTIONAL_MODULES], chosenAt: org.modulesChosenAt };
+    // `locked`: areas the clinic's plan does not include (shown as "ask NextCore", never switchable here).
+    const locked = OPTIONAL_MODULES.filter((m) => !featureAllowed(m));
+    return {
+      enabled: enabledModules(org.disabledModules).filter(featureAllowed),
+      available: OPTIONAL_MODULES.filter((m) => featureAllowed(m)),
+      locked,
+      chosenAt: org.modulesChosenAt,
+    };
   }
 
   /** Switching a module off only hides it (menus, shortcuts, dashboard panels); no data is changed or deleted. */
   async setModules(enabled: OptionalModule[]) {
     const id = RequestContext.orgId();
-    const on = new Set(enabled);
-    const disabled = OPTIONAL_MODULES.filter((m) => !on.has(m));
     await this.prisma.raw.$transaction(async (tx) => {
       const before = await tx.organization.findUniqueOrThrow({ where: { id } });
       const was = enabledModules(before.disabledModules);
+      // Areas outside the plan keep their earlier choice, so an upgrade brings them back as the clinic had them.
+      const on = new Set<OptionalModule>([...enabled.filter(featureAllowed), ...was.filter((m) => !featureAllowed(m))]);
+      const disabled = OPTIONAL_MODULES.filter((m) => !on.has(m));
       // Keep any unknown (future or retired) keys the clinic switched off.
       const keep = before.disabledModules.filter((m) => !(OPTIONAL_MODULES as readonly string[]).includes(m));
       await tx.organization.update({ where: { id }, data: { disabledModules: [...keep, ...disabled], modulesChosenAt: before.modulesChosenAt ?? new Date() } });

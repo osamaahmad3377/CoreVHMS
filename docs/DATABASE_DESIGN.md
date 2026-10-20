@@ -29,6 +29,11 @@ AuditEvent (organizationId nullable for pre-tenant events such as failed logins)
 Counter (organizationId, key) → value
 Tenant (slug unique, databaseName unique, status PROVISIONING|ACTIVE|SUSPENDED|FAILED, owner, organizationId)
 ```
+**Plans** (platform database): `Plan` (name, price for reference, `maxStaff` / `maxBranches` where null = unlimited,
+`features` keys, `isActive`) and, on `Tenant`, `planId` (restrict on delete; null = no limits) with per-clinic
+exceptions `staffLimitOverride`, `branchLimitOverride`, `extraFeatures`, `removedFeatures`. Check constraints keep
+limits positive.
+
 **Branding** (white label) lives on `Organization`: `brandName`, `logoAttachmentId`, `iconAttachmentId`,
 `primaryColor`, `sidebarColor` (both `#rrggbb`, check constraints), `loginHeadline`, `loginMessage` and
 `brandingUpdatedAt` (cache-busting for image URLs). Logo and icon are attachments of target `Branding`.

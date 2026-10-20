@@ -521,3 +521,31 @@ Items from the feature matrix that need no external device, data source or provi
   - New Playwright scenarios in `flow.spec.ts`: Hand over opens the dispense window without leaving the list; Book opens with patient, reason and Vaccination type set.
   - `preventive.spec.ts` and `calendar-views.spec.ts` pass; `pharmacy-lab.spec.ts` 4 of 5. The failing scenario signs in as `lab@demo.pk`, whose demo password was changed by an earlier run (demo-data drift; re-seeding restores it).
   - Typecheck and ESLint clean. No API changes, so the API suites were not re-run.
+
+### 2026-10-20 — Plans: the super admin chooses what each clinic may use
+- **Requested by the owner:** the super admin should change a clinic's plan and decide which features the client may use and how many staff and branches it may have, professionally.
+- **Plans (platform database):** `Plan` (name, price for reference, staff and branch limits where unlimited is null, feature list, switched on or off). Starter, Clinic and Hospital are created the first time. Features: Lab & X-ray, Hospital, Surgery, Livestock, Boarding, Insurance, Reports and Branding. Everyday work is in every plan.
+- **Per clinic:** a plan, plus optional exceptions for that clinic only: its own staff or branch limit, features added or taken away (`Tenant.planId` and four override columns). A clinic with no plan, and every clinic that existed before plans, has no limits.
+- **Enforcement on the server:**
+  - Entitlements are resolved from the plan and exceptions (`resolveEntitlements`) and travel with every request (`TenantRef`, cached 15 s and cleared immediately when the plan changes).
+  - Features: permissions are named by area (`lab.read`, `reports.view`, …), so a plan that lacks an area removes those permissions from everyone in the clinic. Every route and the whole interface follow, without per-route rules. A denied request answers `PLAN_FEATURE` with a plain message.
+  - Limits: adding or reactivating staff (active and invited count) and adding or reopening a branch answer `PLAN_LIMIT` with the numbers.
+  - Lowering a limit or a plan never removes anyone; a clinic above it keeps what it has and cannot add more.
+  - Role checks ignore permissions outside the plan, so an owner can still assign ordinary roles (found by the tests).
+  - Dashboard panels and Services you offer follow the plan; areas outside the plan keep the clinic's earlier on/off choice for an upgrade.
+- **Super admin:**
+  - A Plans page with plan cards and an add/edit dialog.
+  - Each clinic's page has a Plan & limits card: choose the plan, see usage against the limits, change the limits or features for this clinic, and an over-limit warning.
+  - The clinics list shows the plan, and Add clinic chooses one.
+  - Every change is in the clinic's history; new platform permission `platform.plans.manage`.
+- **Owner:** Settings → Your plan (plan, two usage meters, what is included or locked, "ask NextCore"); Add staff and Add branch show "3 of 5 used" and are disabled with the reason when full; Services you offer shows locked areas.
+- **Tests executed:**
+  - Shared 48/48: new `plans.test.ts`.
+  - API 204/204 in 35 suites: 7 new plan tests in `multi-clinic.int-spec.ts`. They cover:
+    - the starter plans and who may manage plans;
+    - areas closing for everyone (lab, branding and reports answer `PLAN_FEATURE`) while everything else keeps working;
+    - staff and branch limits, per-clinic exceptions, and lowered limits that keep what exists;
+    - the history, switched-off plans, plans in use that cannot be deleted;
+    - plan edits reaching clinics at once, and a new clinic starting on a plan.
+  - Browser run as super admin and as the owner of the demo clinic: choose Starter with a staff limit of 12, the owner's menu loses Lab, Hospital and Reports, Your plan and the staff page show the limits, no console errors.
+- **Not included:** taking payment from clinics or invoicing them; usage-based or per-patient charging; trial periods and expiry dates (a clinic can be paused).

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Branding } from '../branding';
+import type { Entitlements } from '../plans';
 import type { OptionalModule } from '../modules';
 
 export const passwordPolicy = z
@@ -97,4 +98,6 @@ export interface SessionContext {
   features: { clientPortal: boolean };
   /** Signed in at the super admin address (multi-clinic hosting). */
   platform: boolean;
+  /** What the clinic's plan allows (multi-clinic hosting); null when nothing is limited. */
+  entitlements: Entitlements | null;
 }

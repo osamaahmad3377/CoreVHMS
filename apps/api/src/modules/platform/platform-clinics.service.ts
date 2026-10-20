@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import type { Tenant } from '@prisma/client';
-import type { ClinicOverview, ClinicUsage, CreateClinicInput, PlatformClinic } from '@vcms/shared';
+import type { Plan, Tenant } from '@prisma/client';
+import type { ClinicOverview, ClinicPlanInput, ClinicUsage, CreateClinicInput, PlanFeature, PlatformClinic } from '@vcms/shared';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { randomToken, sha256 } from '../../common/crypto/crypto';
@@ -10,14 +10,16 @@ import { escapeHtml, layout, MailService } from '../../common/mail/mail.service'
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { addressFor, multiClinic, RESERVED_SLUGS } from '../../common/tenancy/hosts';
 import { createDatabase, databaseExists, migrateDatabase, tenantDatabaseName } from '../../common/tenancy/tenant-databases';
-import { TenancyService, tenantRef } from '../../common/tenancy/tenancy.service';
+import { TenancyService, entitlementsOf, tenantRef } from '../../common/tenancy/tenancy.service';
 import { OrgBootstrapService } from '../organizations/org-bootstrap.service';
 import { TEMP_PASSWORD_DAYS } from '../users/users.service';
 
 const INVITE_DAYS = 7;
 
 
-export function toClinic(t: Tenant): PlatformClinic {
+export type TenantWithPlan = Tenant & { plan?: Plan | null };
+
+export function toClinic(t: TenantWithPlan): PlatformClinic {
   return {
     id: t.id,
     slug: t.slug,
@@ -30,6 +32,13 @@ export function toClinic(t: Tenant): PlatformClinic {
     ownerEmail: t.ownerEmail,
     ownerAccess: t.ownerAccess as PlatformClinic['ownerAccess'],
     lastError: t.lastError,
+    planId: t.planId,
+    planName: t.plan?.name ?? null,
+    staffLimitOverride: t.staffLimitOverride,
+    branchLimitOverride: t.branchLimitOverride,
+    extraFeatures: t.extraFeatures as PlanFeature[],
+    removedFeatures: t.removedFeatures as PlanFeature[],
+    entitlements: entitlementsOf(t),
     provisionedAt: t.provisionedAt?.toISOString() ?? null,
     suspendedAt: t.suspendedAt?.toISOString() ?? null,
     createdAt: t.createdAt.toISOString(),
@@ -62,14 +71,14 @@ export class PlatformClinicsService {
 
   private async find(id: string) {
     this.assertPlatform();
-    const t = await this.prisma.control.tenant.findUnique({ where: { id } });
+    const t = await this.prisma.control.tenant.findUnique({ where: { id }, include: { plan: true } });
     if (!t) throw notFound('Clinic');
     return t;
   }
 
   async list() {
     this.assertPlatform();
-    const rows = await this.prisma.control.tenant.findMany({ orderBy: { createdAt: 'desc' } });
+    const rows = await this.prisma.control.tenant.findMany({ orderBy: { createdAt: 'desc' }, include: { plan: true } });
     return rows.map(toClinic);
   }
 
@@ -89,15 +98,17 @@ export class PlatformClinicsService {
         usage = await RequestContext.runInTenant(tenantRef(t), async () => {
           const raw = this.prisma.raw;
           const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
-          const [staff, activeStaff, clients, patients, appointmentsThisMonth, lastSignIn] = await Promise.all([
+          const [staff, activeStaff, staffCounted, branches, clients, patients, appointmentsThisMonth, lastSignIn] = await Promise.all([
             raw.membership.count(),
             raw.membership.count({ where: { status: 'ACTIVE' } }),
+            raw.membership.count({ where: { status: { in: ['ACTIVE', 'INVITED'] } } }),
+            raw.branch.count({ where: { isActive: true } }),
             raw.client.count({ where: { status: { not: 'MERGED' } } }),
             raw.patient.count({ where: { status: { not: 'MERGED' } } }),
             raw.appointment.count({ where: { startsAt: { gte: monthStart } } }),
             raw.user.findFirst({ where: { lastLoginAt: { not: null } }, orderBy: { lastLoginAt: 'desc' }, select: { lastLoginAt: true } }),
           ]);
-          return { staff, activeStaff, clients, patients, appointmentsThisMonth, lastSignInAt: lastSignIn?.lastLoginAt?.toISOString() ?? null };
+          return { staff, activeStaff, staffCounted, branches, clients, patients, appointmentsThisMonth, lastSignInAt: lastSignIn?.lastLoginAt?.toISOString() ?? null };
         });
       } catch (e) {
         this.log.warn(`Usage for ${t.slug} unavailable: ${(e as Error).message}`);
@@ -122,6 +133,8 @@ export class PlatformClinicsService {
     if (await databaseExists(this.prisma.control, databaseName)) {
       throw conflict(`A database named ${databaseName} already exists on the server. Choose another address, or remove that database first.`);
     }
+    const plan = input.planId ? await this.prisma.control.plan.findUnique({ where: { id: input.planId } }) : null;
+    if (input.planId && (!plan || !plan.isActive)) throw ruleViolation('PLAN_UNAVAILABLE', 'Choose a plan that is switched on');
     const temporaryPassword = input.ownerAccess === 'TEMPORARY_PASSWORD' ? generateTemporaryPassword() : null;
     const tenant = await this.prisma.control.$transaction(async (tx) => {
       const t = await tx.tenant.create({
@@ -136,9 +149,12 @@ export class PlatformClinicsService {
           ownerAccess: input.ownerAccess,
           ownerPasswordHash: temporaryPassword ? await hashPassword(temporaryPassword) : null,
           createdById: RequestContext.get()?.userId ?? null,
+          planId: plan?.id ?? null,
+          planChangedAt: plan ? new Date() : null,
         },
+        include: { plan: true },
       });
-      await this.audit.record({ action: 'platform.clinic_created', entityType: 'Tenant', entityId: t.id, summary: `${t.name} (${t.slug})`, organizationId: null }, tx);
+      await this.audit.record({ action: 'platform.clinic_created', entityType: 'Tenant', entityId: t.id, summary: `${t.name} (${t.slug})${plan ? ` · ${plan.name} plan` : ''}`, organizationId: null }, tx);
       return t;
     });
     this.start(tenant.id);
@@ -147,6 +163,50 @@ export class PlatformClinicsService {
       temporaryPassword,
       expiresAt: temporaryPassword ? new Date(Date.now() + TEMP_PASSWORD_DAYS * 86400_000).toISOString() : null,
     };
+  }
+
+  /**
+   * Chooses a clinic's plan and any exceptions for this clinic (its own staff or branch limit, features added or
+   * taken away). Applies within seconds, on every request. Existing staff and branches are never removed: a clinic
+   * above a lowered limit keeps what it has but cannot add more.
+   */
+  async assignPlan(id: string, input: ClinicPlanInput) {
+    const t = await this.find(id);
+    const plan = input.planId ? await this.prisma.control.plan.findUnique({ where: { id: input.planId } }) : null;
+    if (input.planId && !plan) throw notFound('Plan');
+    if (plan && !plan.isActive && plan.id !== t.planId) throw ruleViolation('PLAN_UNAVAILABLE', 'That plan is switched off. Switch it on first, or choose another plan.');
+    // Exceptions only make sense on a plan; "no plan" means no limits at all.
+    const o = plan
+      ? { staffLimitOverride: input.staffLimitOverride, branchLimitOverride: input.branchLimitOverride, extraFeatures: input.extraFeatures, removedFeatures: input.removedFeatures }
+      : { staffLimitOverride: null, branchLimitOverride: null, extraFeatures: [], removedFeatures: [] };
+    const overlap = o.extraFeatures.filter((f) => o.removedFeatures.includes(f));
+    if (overlap.length) throw ruleViolation('FEATURE_CONFLICT', `${overlap.join(', ')} cannot be both added and taken away`);
+    const before = entitlementsOf(t);
+    await this.prisma.control.$transaction(async (tx) => {
+      const after = await tx.tenant.update({ where: { id }, data: { planId: plan?.id ?? null, ...o, planChangedAt: new Date() }, include: { plan: true } });
+      const now = entitlementsOf(after);
+      const gained = now.features.filter((f) => !before.features.includes(f));
+      const lost = before.features.filter((f) => !now.features.includes(f));
+      await this.audit.record(
+        {
+          action: 'platform.clinic_plan_changed',
+          entityType: 'Tenant',
+          entityId: id,
+          summary: [
+            `${before.planName ?? 'No plan'} → ${now.planName ?? 'No plan'}`,
+            `staff ${before.maxStaff ?? 'no limit'} → ${now.maxStaff ?? 'no limit'}`,
+            `branches ${before.maxBranches ?? 'no limit'} → ${now.maxBranches ?? 'no limit'}`,
+            gained.length && `added: ${gained.join(', ')}`,
+            lost.length && `removed: ${lost.join(', ')}`,
+          ].filter(Boolean).join(' · '),
+          changes: { entitlements: { from: before, to: now } },
+          organizationId: null,
+        },
+        tx,
+      );
+    });
+    this.tenancy.forget(t.slug);
+    return this.get(id);
   }
 
   /** Sets up a clinic that failed part-way (each step is safe to repeat). */

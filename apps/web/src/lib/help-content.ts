@@ -366,6 +366,20 @@ export const GUIDES: HelpGuide[] = [
     keywords: ['refund', 'pay', 'receipt', 'cash', 'card', 'credit', 'deposit'],
   },
   {
+    id: 'your-plan',
+    title: 'See what your plan includes',
+    summary: 'Your plan, how many staff accounts and branches you use, and which areas are included.',
+    area: 'Management',
+    anyOf: ['org.manage'],
+    steps: [
+      'Settings → Your plan.',
+      'The two meters show staff accounts and branches used against your plan. Active and invited staff count; paused staff and paused branches do not.',
+      'Areas marked “Not in your plan” are closed for everyone in the clinic. To add one, or to get more staff or another branch, ask NextCore to change your plan. It applies within seconds.',
+    ],
+    tips: ['If you are over a limit you keep everyone and everything you have; you just cannot add more until you are under it.', 'Add staff and Add branch are greyed out, with the reason, when you are at the limit.'],
+    links: [{ label: 'Your plan', href: '/settings/plan' }],
+  },
+  {
     id: 'branding',
     title: 'Put your logo, colours and name on the app',
     summary: 'Make the app your clinic’s own: logo, colours, font, sign-in page, printed letterhead and emails.',

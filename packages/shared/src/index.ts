@@ -22,3 +22,4 @@ export * from './schemas/livestock';
 export * from './schemas/services';
 export * from './schemas/platform';
 export * from './branding';
+export * from './plans';

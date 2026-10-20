@@ -4,6 +4,7 @@ import { COUNTRIES, type ClinicOverview } from '@vcms/shared';
 import { AlertTriangle, CalendarDays, Clock, ExternalLink, History, KeyRound, Loader2, PauseCircle, PawPrint, Play, RotateCcw, UserCheck, Users } from 'lucide-react';
 import { use, useState } from 'react';
 import { ErrorState, LoadingRows, PageHeader } from '@/components/page';
+import { ClinicPlanCard } from '@/components/platform/clinic-plan-card';
 import { ClinicActionsMenu, CopyButton, OwnerAccessDialog, StatusBadge, shortAddress, useClinicActions, type OwnerAccess } from '@/components/platform/clinic-ui';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,6 +20,7 @@ const EVENT_LABELS: Record<string, string> = {
   'platform.clinic_reactivated': 'Reactivated',
   'platform.clinic_owner_password_reset': 'New owner password created',
   'platform.clinic_added_existing': 'Existing database added',
+  'platform.clinic_plan_changed': 'Plan changed',
 };
 
 function Stat({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: React.ReactNode; sub?: string }) {
@@ -53,7 +55,7 @@ export default function PlatformClinicPage({ params }: { params: Promise<{ id: s
       <PageHeader
         breadcrumbs={[{ label: 'Clinics', href: '/platform' }, { label: c.name }]}
         title={<span className="flex flex-wrap items-center gap-2">{c.name} <StatusBadge status={c.status} /></span>}
-        description={`${COUNTRIES.find((x) => x.code === c.country)?.name ?? c.country} · added ${fmtDate(c.createdAt)}`}
+        description={`${COUNTRIES.find((x) => x.code === c.country)?.name ?? c.country} · ${c.planName ? `${c.planName} plan` : 'no plan'} · added ${fmtDate(c.createdAt)}`}
         actions={
           <>
             {c.status === 'ACTIVE' && <Button asChild variant="outline"><a href={`${c.address}/login`} target="_blank" rel="noreferrer"><ExternalLink /> Open sign-in page</a></Button>}
@@ -106,6 +108,7 @@ export default function PlatformClinicPage({ params }: { params: Promise<{ id: s
                     <li key={e.id} className="relative text-sm">
                       <span className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full bg-primary" />
                       <p className="font-medium">{EVENT_LABELS[e.action] ?? e.action}</p>
+                      {e.action === 'platform.clinic_plan_changed' && e.summary && <p className="text-xs">{e.summary}</p>}
                       <p className="text-xs text-muted-foreground">{fmtDateTime(e.createdAt)}{e.actorName ? ` · ${e.actorName}` : ''}</p>
                     </li>
                   ))}
@@ -137,6 +140,10 @@ export default function PlatformClinicPage({ params }: { params: Promise<{ id: s
               )}
             </CardContent>
           </Card>
+          {(c.status === 'ACTIVE' || c.status === 'SUSPENDED') && (
+            // Keyed on the saved plan, so the form restarts from what was saved.
+            <ClinicPlanCard key={JSON.stringify([c.planId, c.staffLimitOverride, c.branchLimitOverride, c.extraFeatures, c.removedFeatures])} overview={q.data} />
+          )}
           <Card>
             <CardHeader><CardTitle>Technical details</CardTitle></CardHeader>
             <CardContent>

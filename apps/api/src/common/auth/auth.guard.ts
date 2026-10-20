@@ -7,6 +7,8 @@ import { SessionService } from '../../modules/auth/session.service';
 import { CSRF_HEADER, SESSION_COOKIE } from './session-cookies';
 import { ALLOW_DURING_PASSWORD_CHANGE, ANY_PERMISSIONS, IS_PORTAL, IS_PUBLIC, PERMISSIONS, SKIP_CSRF } from './decorators';
 import { safeEqual } from '../crypto/crypto';
+import { featureOfPermission } from '@vcms/shared';
+import { assertFeature, featureAllowed } from '../tenancy/entitlements';
 import { isAllowedOrigin } from '../tenancy/hosts';
 import { requestHost } from '../tenancy/tenant-resolver.middleware';
 
@@ -63,8 +65,14 @@ export class AuthGuard implements CanActivate {
     const all = this.reflector.getAllAndOverride<string[]>(PERMISSIONS, handlers) ?? [];
     const any = this.reflector.getAllAndOverride<string[]>(ANY_PERMISSIONS, handlers) ?? [];
     const granted = resolved.context.permissions;
-    if (all.length && !all.every((p) => granted.has(p))) throw forbidden();
-    if (any.length && !any.some((p) => granted.has(p))) throw forbidden();
+    const denied = (needed: readonly string[]) => {
+      // Tell a clinic whose plan lacks the area so, instead of a bare "no permission".
+      const locked = needed.map(featureOfPermission).find((f) => f && !featureAllowed(f));
+      if (locked) assertFeature(locked);
+      throw forbidden();
+    };
+    if (all.length && !all.every((p) => granted.has(p))) denied(all.filter((p) => !granted.has(p)));
+    if (any.length && !any.some((p) => granted.has(p))) denied(any);
     return true;
   }
 

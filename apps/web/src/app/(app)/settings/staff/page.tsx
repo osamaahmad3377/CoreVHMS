@@ -18,10 +18,12 @@ import { Avatar } from '@/components/ui/misc';
 import { Tip } from '@/components/ui/tooltip';
 import { api, qs } from '@/lib/api';
 import { fmtDateTime, fmtRelative } from '@/lib/format';
+import { limitNote, usePlanUsage } from '@/hooks/use-plan-usage';
 import { useSession } from '@/lib/session';
 
 export default function StaffPage() {
   const { can, session } = useSession();
+  const plan = usePlanUsage();
   const qc = useQueryClient();
   const [q, setQ] = useState('');
   const list = useQuery({ queryKey: ['staff', q], queryFn: () => api.get<Member[]>(`/staff${qs({ q })}`) });
@@ -61,10 +63,15 @@ export default function StaffPage() {
       <Card>
         <CardHeader className="flex-wrap">
           <CardTitle>Staff accounts</CardTitle>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {plan.staff.max !== null && (
+              <span className={`text-xs ${plan.staff.canAdd ? 'text-muted-foreground' : 'font-medium text-warning'}`} title="Active and invited people count; paused staff do not">
+                {limitNote(plan.staff, 'staff accounts')}{!plan.staff.canAdd && ' — full'}
+              </span>
+            )}
             <SearchInput value={q} onChange={setQ} placeholder="Search staff" />
             {can('users.manage') && (
-              <Button size="sm" onClick={() => setDlg({ open: true, member: null, key: Date.now() })}>
+              <Button size="sm" disabled={!plan.staff.canAdd} title={plan.staff.canAdd ? undefined : `Your ${plan.plan ?? ''} plan allows ${plan.staff.max} staff accounts. Pause someone or ask NextCore for a bigger plan.`} onClick={() => setDlg({ open: true, member: null, key: Date.now() })}>
                 <UserPlus /> Add staff
               </Button>
             )}

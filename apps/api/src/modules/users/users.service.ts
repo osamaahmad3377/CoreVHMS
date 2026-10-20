@@ -7,6 +7,7 @@ import { generateTemporaryPassword, hashPassword } from '../../common/crypto/pas
 import { conflict, forbidden, notFound, ruleViolation } from '../../common/http/errors';
 import { emailBrandOf, emailButton, escapeHtml, layout, MailService } from '../../common/mail/mail.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { assertWithinLimit, holds } from '../../common/tenancy/entitlements';
 import { appUrl } from '../../common/tenancy/hosts';
 
 const INVITE_DAYS = 7;
@@ -60,7 +61,7 @@ export class UsersService {
     const roles = await this.prisma.db.role.findMany({ where: { id: { in: roleIds } }, include: { permissions: true } });
     if (roles.length !== new Set(roleIds).size) throw ruleViolation('INVALID_ROLE', 'One or more roles do not exist');
     for (const r of roles) {
-      const missing = r.permissions.filter((p) => !ctx.permissions.has(p.permission));
+      const missing = r.permissions.filter((p) => !holds(ctx.permissions, p.permission));
       if (missing.length) throw forbidden(`You cannot assign the role "${r.name}" because it grants permissions you do not have`);
     }
     return roles;
@@ -71,8 +72,14 @@ export class UsersService {
     if (count !== new Set(branchIds).size) throw ruleViolation('INVALID_BRANCH', 'One or more branches do not exist');
   }
 
+  /** Staff accounts counted against the plan: people who can sign in or have been invited (paused ones are not). */
+  staffCount() {
+    return this.prisma.raw.membership.count({ where: { status: { in: ['ACTIVE', 'INVITED'] } } });
+  }
+
   async invite(input: InviteUserInput) {
     const orgId = RequestContext.orgId();
+    assertWithinLimit('staff', await this.staffCount());
     await this.assertAssignableRoles(input.roleIds);
     await this.assertBranches(input.branchIds);
 
@@ -126,6 +133,7 @@ export class UsersService {
   async createWithTemporaryPassword(input: InviteUserInput) {
     const ctx = RequestContext.require();
     const orgId = RequestContext.orgId();
+    assertWithinLimit('staff', await this.staffCount());
     await this.assertAssignableRoles(input.roleIds);
     await this.assertBranches(input.branchIds);
     const password = generateTemporaryPassword();
@@ -244,6 +252,9 @@ ${emailButton(link, 'Accept invitation', emailBrandOf(org))}
     // Members cannot be managed by someone lacking their permissions (prevents demoting an owner).
     const currentRoleIds = before.roles.map((r) => r.roleId);
     await this.assertAssignableRoles(currentRoleIds);
+
+    // Bringing a paused person back adds to the staff count.
+    if (input.status === 'ACTIVE' && before.status === 'SUSPENDED') assertWithinLimit('staff', await this.staffCount());
 
     if (before.id === ctx.membershipId && (input.status === 'SUSPENDED' || input.roleIds)) {
       throw ruleViolation('SELF_CHANGE', 'You cannot change your own roles or suspend yourself');

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Branding } from '../branding';
+import type { Entitlements, PlanFeature } from '../plans';
 
 /** A clinic's subdomain: 3–30 lowercase letters, numbers and single hyphens, starting with a letter. */
 export const clinicAddressSchema = z
@@ -17,6 +18,8 @@ export const createClinicSchema = z.object({
   ownerEmail: z.string().trim().toLowerCase().email(),
   /** Temporary password shown once to the super admin, or an invitation email to the owner. */
   ownerAccess: z.enum(['TEMPORARY_PASSWORD', 'INVITATION']),
+  /** The plan to start on; omit for a clinic without limits. */
+  planId: z.string().uuid().nullish(),
 });
 export type CreateClinicInput = z.infer<typeof createClinicSchema>;
 
@@ -35,6 +38,15 @@ export interface PlatformClinic {
   ownerEmail: string;
   ownerAccess: 'TEMPORARY_PASSWORD' | 'INVITATION';
   lastError: string | null;
+  /** The clinic's plan and the super admin's exceptions for this clinic. */
+  planId: string | null;
+  planName: string | null;
+  staffLimitOverride: number | null;
+  branchLimitOverride: number | null;
+  extraFeatures: PlanFeature[];
+  removedFeatures: PlanFeature[];
+  /** What the clinic may actually use (plan + exceptions). */
+  entitlements: Entitlements;
   provisionedAt: string | null;
   suspendedAt: string | null;
   createdAt: string;
@@ -44,6 +56,9 @@ export interface PlatformClinic {
 export interface ClinicUsage {
   staff: number;
   activeStaff: number;
+  /** Staff accounts counted against the plan: active and invited. */
+  staffCounted: number;
+  branches: number;
   clients: number;
   patients: number;
   appointmentsThisMonth: number;

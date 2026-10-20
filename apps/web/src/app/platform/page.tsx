@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { COUNTRIES, type CreateClinicInput, type PlatformClinic, createClinicSchema } from '@vcms/shared';
+import { COUNTRIES, type CreateClinicInput, type PlatformClinic, type PlatformPlan, createClinicSchema } from '@vcms/shared';
 import { AlertTriangle, Building2, CheckCircle2, ExternalLink, KeyRound, Loader2, Mail, PauseCircle, Plus, RotateCcw } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
@@ -10,6 +10,7 @@ import { FormError } from '@/components/forms/form-error';
 import { EmptyState, ErrorState, LoadingRows, PageHeader } from '@/components/page';
 import { ClinicActionsMenu, CopyButton, OwnerAccessDialog, STATUS, StatusBadge, shortAddress, useClinicActions, type OwnerAccess } from '@/components/platform/clinic-ui';
 import { SearchInput } from '@/components/search-input';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -17,6 +18,7 @@ import { Input, NativeSelect } from '@/components/ui/input';
 import { TBody, TD, TH, THead, TR, Table } from '@/components/ui/table';
 import { ApiError, api } from '@/lib/api';
 import { fmtDate } from '@/lib/format';
+import { limitText } from '@/components/platform/plan-ui';
 import { useHostInfo } from '@/lib/host';
 import { cn } from '@/lib/utils';
 
@@ -26,12 +28,17 @@ function suggestAddress(name: string) {
   return s.slice(0, 30).replace(/-+$/, '');
 }
 
-const EMPTY: CreateClinicInput = { name: '', slug: '', country: 'PK', branchName: 'Main branch', ownerName: '', ownerEmail: '', ownerAccess: 'TEMPORARY_PASSWORD' };
+const EMPTY: CreateClinicInput = { name: '', slug: '', country: 'PK', branchName: 'Main branch', ownerName: '', ownerEmail: '', ownerAccess: 'TEMPORARY_PASSWORD', planId: null };
 
 function AddClinicDialog({ open, onOpenChange, onOwnerAccess }: { open: boolean; onOpenChange: (o: boolean) => void; onOwnerAccess: (r: OwnerAccess) => void }) {
   const qc = useQueryClient();
   const baseDomain = useHostInfo().data?.baseDomain;
+  const plans = useQuery({ queryKey: ['platform-plans'], queryFn: () => api.get<PlatformPlan[]>('/platform/plans') });
+  const available = (plans.data ?? []).filter((p) => p.isActive);
   const [v, setV] = useState<CreateClinicInput>(EMPTY);
+  // undefined = not touched: the first available plan is chosen for the new clinic ('' = deliberately no plan).
+  const [planChoice, setPlanChoice] = useState<string | undefined>(undefined);
+  const planId = planChoice ?? available[0]?.id ?? '';
   const [addressEdited, setAddressEdited] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +46,7 @@ function AddClinicDialog({ open, onOpenChange, onOwnerAccess }: { open: boolean;
 
   const reset = () => {
     setV(EMPTY);
+    setPlanChoice(undefined);
     setAddressEdited(false);
     setErrors({});
     setError(null);
@@ -62,7 +70,7 @@ function AddClinicDialog({ open, onOpenChange, onOwnerAccess }: { open: boolean;
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    const parsed = createClinicSchema.safeParse(v);
+    const parsed = createClinicSchema.safeParse({ ...v, planId: planId || null });
     if (!parsed.success) {
       setErrors(Object.fromEntries(parsed.error.issues.map((i) => [i.path.join('.'), i.message])));
       return;
@@ -110,6 +118,14 @@ function AddClinicDialog({ open, onOpenChange, onOwnerAccess }: { open: boolean;
               />
               {baseDomain && <span className="shrink-0 text-sm text-muted-foreground">.{baseDomain}</span>}
             </div>
+          </Field>
+          <Field label="Plan" htmlFor="c-plan" hint="What the clinic may use, and its staff and branch limits. You can change it later.">
+            <NativeSelect id="c-plan" value={planId} onChange={(e) => setPlanChoice(e.target.value)} disabled={plans.isLoading}>
+              {available.map((p) => (
+                <option key={p.id} value={p.id}>{p.name} — {limitText(p.maxStaff).toLowerCase()} staff, {limitText(p.maxBranches).toLowerCase()} branch{p.maxBranches === 1 ? '' : 'es'}</option>
+              ))}
+              <option value="">No plan (no limits)</option>
+            </NativeSelect>
           </Field>
           <fieldset className="grid gap-3 rounded-md border p-3">
             <legend className="px-1 text-sm font-medium">Clinic owner</legend>
@@ -221,7 +237,7 @@ export default function PlatformClinicsPage() {
         ) : (
           <Table>
             <THead>
-              <TR><TH>Clinic</TH><TH className="hidden sm:table-cell">Web address</TH><TH>Status</TH><TH className="hidden md:table-cell">Owner</TH><TH className="hidden lg:table-cell">Added</TH><TH className="w-px"><span className="sr-only">Actions</span></TH></TR>
+              <TR><TH>Clinic</TH><TH className="hidden sm:table-cell">Web address</TH><TH className="hidden md:table-cell">Plan</TH><TH>Status</TH><TH className="hidden md:table-cell">Owner</TH><TH className="hidden lg:table-cell">Added</TH><TH className="w-px"><span className="sr-only">Actions</span></TH></TR>
             </THead>
             <TBody>
               {rows.map((c) => (
@@ -236,6 +252,9 @@ export default function PlatformClinicsPage() {
                       <span className="break-all">{shortAddress(c.address)}</span>
                       <CopyButton text={c.address} what="Address" />
                     </div>
+                  </TD>
+                  <TD className="hidden md:table-cell">
+                    {c.planName ? <Badge variant="secondary">{c.planName}</Badge> : <span className="text-xs text-muted-foreground">No limits</span>}
                   </TD>
                   <TD>
                     <StatusBadge status={c.status} />
@@ -260,7 +279,7 @@ export default function PlatformClinicsPage() {
                   </TD>
                 </TR>
               ))}
-              {!rows.length && <TR><TD colSpan={6} className="py-8 text-center text-muted-foreground">No clinics match. <button type="button" className="text-primary hover:underline" onClick={() => { setQ(''); setFilter('ALL'); }}>Show all clinics</button></TD></TR>}
+              {!rows.length && <TR><TD colSpan={7} className="py-8 text-center text-muted-foreground">No clinics match. <button type="button" className="text-primary hover:underline" onClick={() => { setQ(''); setFilter('ALL'); }}>Show all clinics</button></TD></TR>}
             </TBody>
           </Table>
         )}

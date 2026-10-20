@@ -13,7 +13,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
   const router = useRouter();
   const { canAny, session } = useSession();
   // Pages for services the clinic does not offer (Settings → Services you offer) are hidden.
-  const items = visibleSettings(canAny, session.organization?.enabledModules);
+  const items = visibleSettings(canAny, session.organization?.enabledModules, !!session.entitlements);
   const current = items.find((i) => pathname.startsWith(i.href));
   return (
     <RequirePermission anyOf={['org.manage', 'branches.manage', 'users.read', 'roles.manage', 'settings.manage', 'branding.manage']}>

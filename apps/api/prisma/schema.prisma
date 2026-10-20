@@ -25,6 +25,27 @@ enum TenantStatus {
   FAILED
 }
 
+/// A subscription plan the super admin offers: what a clinic may use. Lives in the platform database
+/// (the table exists, empty, in clinic databases too). Null limits mean "unlimited".
+model Plan {
+  id                String   @id @default(uuid()) @db.Uuid
+  name              String   @unique
+  description       String?
+  /// Monthly price in minor units, for the super admin's reference (billing itself is outside the app).
+  priceMonthlyMinor Int      @default(0)
+  currency          String   @default("PKR") @db.Char(3)
+  maxStaff          Int?
+  maxBranches       Int?
+  /// Feature keys from the plan catalogue (packages/shared/src/plans.ts).
+  features          String[] @default([])
+  isActive          Boolean  @default(true)
+  sortOrder         Int      @default(0)
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(3)
+
+  tenants Tenant[]
+}
+
 model Tenant {
   id                String       @id @default(uuid()) @db.Uuid
   /// Subdomain: <slug>.<BASE_DOMAIN>
@@ -49,7 +70,18 @@ model Tenant {
   createdAt         DateTime     @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime     @updatedAt @db.Timestamptz(3)
 
+  /// The clinic's plan; null = no plan assigned (full access, no limits).
+  planId              String?   @db.Uuid
+  plan                Plan?     @relation(fields: [planId], references: [id], onDelete: Restrict)
+  /// Per-clinic exceptions to the plan (null / empty = follow the plan).
+  staffLimitOverride  Int?
+  branchLimitOverride Int?
+  extraFeatures       String[]  @default([])
+  removedFeatures     String[]  @default([])
+  planChangedAt       DateTime? @db.Timestamptz(3)
+
   @@index([status])
+  @@index([planId])
 }
 
 // ───────────────────────────── Tenancy & identity ─────────────────────────────

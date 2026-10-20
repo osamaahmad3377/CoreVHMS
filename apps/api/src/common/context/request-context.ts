@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import type { Entitlements } from '@vcms/shared';
 
 export interface RequestContextStore {
   requestId: string;
@@ -24,6 +25,8 @@ export interface TenantRef {
   slug: string;
   name: string;
   databaseName: string;
+  /** What the clinic's plan allows. Absent (internal work such as set-up) means no limits. */
+  entitlements?: Entitlements;
 }
 
 const storage = new AsyncLocalStorage<RequestContextStore>();

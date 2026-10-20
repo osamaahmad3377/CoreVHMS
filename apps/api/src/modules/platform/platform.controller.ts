@@ -1,7 +1,7 @@
-import { Body, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Query, Req, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query, Req, Res } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { clinicAddressSchema, createClinicSchema, type HostInfo } from '@vcms/shared';
+import { clinicAddressSchema, clinicPlanSchema, createClinicSchema, planInputSchema, type HostInfo } from '@vcms/shared';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { Public, RequirePermissions } from '../../common/auth/decorators';
@@ -15,6 +15,7 @@ import { env } from '../../config/env';
 import { AttachmentsService } from '../attachments/attachments.service';
 import { BrandImage, OrganizationsService, brandingOf } from '../organizations/organizations.service';
 import { PlatformClinicsService } from './platform-clinics.service';
+import { PlatformPlansService } from './platform-plans.service';
 
 @ApiTags('platform')
 @Controller('platform/clinics')
@@ -46,6 +47,13 @@ export class PlatformClinicsController {
     return this.clinics.create(body);
   }
 
+  @Put(':id/plan')
+  @RequirePermissions('platform.plans.manage')
+  @ApiZodBody(clinicPlanSchema)
+  assignPlan(@Param('id', ParseUUIDPipe) id: string, @Body(zp(clinicPlanSchema)) body: z.infer<typeof clinicPlanSchema>) {
+    return this.clinics.assignPlan(id, body);
+  }
+
   @Post(':id/retry')
   @HttpCode(200)
   @RequirePermissions('platform.clinics.manage')
@@ -72,6 +80,39 @@ export class PlatformClinicsController {
   @RequirePermissions('platform.clinics.manage')
   ownerPassword(@Param('id', ParseUUIDPipe) id: string) {
     return this.clinics.resetOwnerPassword(id);
+  }
+}
+
+@ApiTags('platform')
+@Controller('platform/plans')
+export class PlatformPlansController {
+  constructor(private readonly plans: PlatformPlansService) {}
+
+  @Get()
+  @RequirePermissions('platform.plans.manage')
+  list() {
+    return this.plans.list();
+  }
+
+  @Post()
+  @RequirePermissions('platform.plans.manage')
+  @ApiZodBody(planInputSchema)
+  create(@Body(zp(planInputSchema)) body: z.infer<typeof planInputSchema>) {
+    return this.plans.create(body);
+  }
+
+  @Put(':id')
+  @RequirePermissions('platform.plans.manage')
+  @ApiZodBody(planInputSchema)
+  update(@Param('id', ParseUUIDPipe) id: string, @Body(zp(planInputSchema)) body: z.infer<typeof planInputSchema>) {
+    return this.plans.update(id, body);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  @RequirePermissions('platform.plans.manage')
+  async remove(@Param('id', ParseUUIDPipe) id: string) {
+    await this.plans.remove(id);
   }
 }
 

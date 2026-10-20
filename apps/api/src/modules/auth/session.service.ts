@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { Session, User } from '@prisma/client';
-import { ALL_PLATFORM_PERMISSIONS, enabledModules, type SessionContext } from '@vcms/shared';
+import { ALL_PLATFORM_PERMISSIONS, enabledModules, hasFeature, permissionInPlan, type SessionContext } from '@vcms/shared';
 import { env } from '../../config/env';
 import { RequestContext, RequestContextStore } from '../../common/context/request-context';
 import { randomToken, sha256 } from '../../common/crypto/crypto';
@@ -86,7 +86,9 @@ export class SessionService {
       if (m && m.status === 'ACTIVE' && m.organization.status === 'ACTIVE') {
         organizationId = m.organizationId;
         membershipId = m.id;
-        permissions = new Set(m.roles.flatMap((r) => r.role.permissions.map((p) => p.permission)));
+        // Areas the clinic's plan does not include are closed for everyone, whatever their role says.
+        const entitlements = RequestContext.get()?.tenant?.entitlements;
+        permissions = new Set(m.roles.flatMap((r) => r.role.permissions.map((p) => p.permission)).filter((p) => permissionInPlan(entitlements, p)));
         branchIds = m.branches.filter((b) => b.branch.isActive).map((b) => b.branchId);
         if (branchHeader && branchIds.includes(branchHeader)) branchId = branchHeader;
         else if (session.branchId && branchIds.includes(session.branchId)) branchId = session.branchId;
@@ -140,7 +142,8 @@ export class SessionService {
         country: org.country,
         currency: org.currency,
         logoUrl: org.logoAttachmentId ? `/api/v1/organization/logo` : null,
-        enabledModules: enabledModules(org.disabledModules),
+        // The clinic's own choices (Services you offer), limited to what its plan includes.
+        enabledModules: enabledModules(org.disabledModules).filter((m) => hasFeature(RequestContext.get()?.tenant?.entitlements, m)),
         branding: brandingOf(org),
       };
       const m = await this.prisma.raw.membership.findUniqueOrThrow({
@@ -174,6 +177,7 @@ export class SessionService {
       csrfToken: session.csrfToken,
       features: { clientPortal: env().CLIENT_PORTAL_ENABLED },
       platform: RequestContext.get()?.platform === true,
+      entitlements: RequestContext.get()?.tenant?.entitlements ?? null,
     };
   }
 }

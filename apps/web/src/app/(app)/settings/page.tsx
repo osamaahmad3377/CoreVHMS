@@ -8,7 +8,7 @@ import { useSession } from '@/lib/session';
 export default function SettingsIndex() {
   const { canAny, session } = useSession();
   // Pages for services the clinic does not offer (Settings → Services you offer) are hidden.
-  const items = visibleSettings(canAny, session.organization?.enabledModules);
+  const items = visibleSettings(canAny, session.organization?.enabledModules, !!session.entitlements);
   return (
     <div className="grid gap-6">
       {SETTINGS_GROUPS.map((g) => {

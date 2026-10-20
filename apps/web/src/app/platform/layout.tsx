@@ -1,6 +1,8 @@
 'use client';
 import { useQueryClient } from '@tanstack/react-query';
-import { LogOut, ShieldCheck } from 'lucide-react';
+import { Building2, LayoutList, LogOut, ShieldCheck } from 'lucide-react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 import { FirstPasswordChange } from '@/components/auth/first-password';
 import { ConfirmProvider } from '@/components/confirm';
@@ -14,6 +16,7 @@ import { useSessionQuery } from '@/lib/session';
 export default function PlatformLayout({ children }: { children: React.ReactNode }) {
   const session = useSessionQuery();
   const qc = useQueryClient();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (session.error instanceof ApiError && session.error.status === 401) {
@@ -51,6 +54,16 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
           <span className="flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
             <ShieldCheck className="h-3.5 w-3.5" /> Super admin
           </span>
+          <nav aria-label="Super admin" className="ml-4 flex gap-1">
+            {[
+              { href: '/platform', label: 'Clinics', icon: Building2, active: pathname === '/platform' || pathname.startsWith('/platform/clinics') },
+              ...(session.data.permissions.includes('platform.plans.manage') ? [{ href: '/platform/plans', label: 'Plans', icon: LayoutList, active: pathname.startsWith('/platform/plans') }] : []),
+            ].map((i) => (
+              <Link key={i.href} href={i.href} aria-current={i.active ? 'page' : undefined} className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${i.active ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
+                <i.icon className="h-4 w-4" /> {i.label}
+              </Link>
+            ))}
+          </nav>
           <div className="ml-auto flex items-center gap-2">
             <span className="hidden text-sm text-muted-foreground sm:inline">{session.data.user.name}</span>
             <Button variant="ghost" size="sm" onClick={logout}><LogOut /> Sign out</Button>

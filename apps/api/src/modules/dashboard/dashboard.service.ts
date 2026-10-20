@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { enabledModules, type OptionalModule } from '@vcms/shared';
+import { featureAllowed } from '../../common/tenancy/entitlements';
 import { RequestContext } from '../../common/context/request-context';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { localDayBounds } from '../../common/time/tz';
@@ -147,7 +148,7 @@ export class DashboardService {
     const ctx = RequestContext.require();
     const perms = ctx.permissions;
     const org = await this.prisma.raw.organization.findUnique({ where: { id: RequestContext.orgId() }, select: { disabledModules: true } });
-    const on = new Set(enabledModules(org?.disabledModules));
+    const on = new Set(enabledModules(org?.disabledModules).filter(featureAllowed));
     const visible = this.widgets.filter((w) => {
       const module = w.module ?? MODULE_OF_WIDGET[w.key];
       return perms.has(w.permission) && (!module || on.has(module));

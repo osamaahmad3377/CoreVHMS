@@ -4,6 +4,7 @@ import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { forbidden, notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { holds } from '../../common/tenancy/entitlements';
 
 @Injectable()
 export class RolesService {
@@ -45,7 +46,7 @@ export class RolesService {
     const ownerOnly = permissions.filter((p) => (OWNER_ONLY_PERMISSIONS as readonly string[]).includes(p));
     if (ownerOnly.length) throw ruleViolation('OWNER_ONLY_PERMISSION', 'Only the clinic owner can change the branding; it cannot be given to another role');
     const mine = RequestContext.require().permissions;
-    const escalation = permissions.filter((p) => !mine.has(p));
+    const escalation = permissions.filter((p) => !holds(mine, p));
     if (escalation.length) throw forbidden('A role cannot grant permissions you do not hold yourself');
     return [...new Set(permissions)];
   }
@@ -83,7 +84,7 @@ export class RolesService {
       // Removing permissions you do not hold is also an escalation vector in reverse (locking others out) — allowed only within your own scope.
       const removed = before.filter((p) => !permissions.includes(p));
       const mine = RequestContext.require().permissions;
-      if (removed.some((p) => !mine.has(p))) throw forbidden('You cannot remove permissions you do not hold yourself');
+      if (removed.some((p) => !holds(mine, p))) throw forbidden('You cannot remove permissions you do not hold yourself');
     }
     return this.prisma.db.$transaction(async (tx) => {
       const updated = await tx.role.update({

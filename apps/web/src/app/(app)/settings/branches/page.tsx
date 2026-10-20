@@ -19,6 +19,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input, NativeSelect } from '@/components/ui/input';
 import { ApiError, api } from '@/lib/api';
+import { limitNote, usePlanUsage } from '@/hooks/use-plan-usage';
 import { useSession } from '@/lib/session';
 import type { Branch } from '@/lib/types';
 
@@ -119,14 +120,22 @@ function BranchDialog({ branch, open, onOpenChange }: { branch?: Branch | null; 
 export default function BranchesPage() {
   const q = useQuery({ queryKey: ['branches'], queryFn: () => api.get<Branch[]>('/branches') });
   const [dlg, setDlg] = useState<{ open: boolean; branch?: Branch | null }>({ open: false });
+  const plan = usePlanUsage();
   return (
     <RequirePermission anyOf={['branches.manage']}>
       <Card>
         <CardHeader>
           <CardTitle>Branches</CardTitle>
-          <Button size="sm" onClick={() => setDlg({ open: true, branch: null })}>
-            <Plus /> Add branch
-          </Button>
+          <div className="flex items-center gap-2">
+            {plan.branches.max !== null && (
+              <span className={`text-xs ${plan.branches.canAdd ? 'text-muted-foreground' : 'font-medium text-warning'}`} title="Paused branches do not count">
+                {limitNote(plan.branches, 'branches')}{!plan.branches.canAdd && ' — full'}
+              </span>
+            )}
+            <Button size="sm" disabled={!plan.branches.canAdd} title={plan.branches.canAdd ? undefined : `Your ${plan.plan ?? ''} plan allows ${plan.branches.max} branch${plan.branches.max === 1 ? '' : 'es'}. Pause one you no longer use or ask NextCore for a bigger plan.`} onClick={() => setDlg({ open: true, branch: null })}>
+              <Plus /> Add branch
+            </Button>
+          </div>
         </CardHeader>
         <DataTable
           query={q}

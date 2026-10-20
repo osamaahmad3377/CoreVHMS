@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { OPTIONAL_MODULES, OPTIONAL_MODULE_INFO, type OptionalModule } from '@vcms/shared';
-import { Info } from 'lucide-react';
+import { Info, Lock } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { FormError } from '@/components/forms/form-error';
@@ -16,6 +16,8 @@ import { useSession } from '@/lib/session';
 interface ModulesState {
   enabled: OptionalModule[];
   available: OptionalModule[];
+  /** Areas the clinic's plan does not include. */
+  locked?: OptionalModule[];
   chosenAt: string | null;
 }
 
@@ -25,7 +27,8 @@ function ModulesForm({ initial }: { initial: ModulesState }) {
   const [enabled, setEnabled] = useState<Set<OptionalModule>>(new Set(initial.enabled));
   const [error, setError] = useState<string | null>(null);
   useEffect(() => setEnabled(new Set(initial.enabled)), [initial.enabled]);
-  const changed = OPTIONAL_MODULES.some((m) => enabled.has(m) !== initial.enabled.includes(m));
+  const locked = new Set(initial.locked ?? []);
+  const changed = OPTIONAL_MODULES.some((m) => !locked.has(m) && enabled.has(m) !== initial.enabled.includes(m));
   const save = useMutation({
     mutationFn: () => api.put<ModulesState>('/setup/modules', { enabled: OPTIONAL_MODULES.filter((m) => enabled.has(m)) }),
     onSuccess: async (d) => {
@@ -62,6 +65,17 @@ function ModulesForm({ initial }: { initial: ModulesState }) {
         <ul className="divide-y rounded-md border">
           {OPTIONAL_MODULES.map((m) => {
             const id = `module-${m}`;
+            if (locked.has(m)) {
+              return (
+                <li key={m} className="flex items-center gap-4 bg-muted/40 px-4 py-3 text-muted-foreground">
+                  <Lock className="h-4 w-4 shrink-0" aria-hidden />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium">{OPTIONAL_MODULE_INFO[m].label}</span>
+                    <span className="block text-xs">Not in your plan. Ask NextCore to add it.</span>
+                  </span>
+                </li>
+              );
+            }
             return (
               <li key={m} className="flex items-center gap-4 px-4 py-3">
                 <label htmlFor={id} className="min-w-0 flex-1 cursor-pointer">

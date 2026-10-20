@@ -4,7 +4,7 @@ import { AttachmentsService } from '../attachments/attachments.service';
 import { ApiTags } from '@nestjs/swagger';
 import { branchSchema, branchUpdateSchema, brandingUpdateSchema, organizationUpdateSchema } from '@vcms/shared';
 import { z } from 'zod';
-import { RequirePermissions } from '../../common/auth/decorators';
+import { RequireAnyPermission, RequirePermissions } from '../../common/auth/decorators';
 import { ApiZodBody, zp } from '../../common/http/zod';
 import { BrandImage, OrganizationsService } from './organizations.service';
 
@@ -17,6 +17,13 @@ export class OrganizationsController {
     private readonly orgs: OrganizationsService,
     private readonly attachments: AttachmentsService,
   ) {}
+
+  /** The clinic's plan, limits and how much is used. */
+  @Get('organization/plan')
+  @RequireAnyPermission('org.manage', 'users.read', 'branches.manage')
+  plan() {
+    return this.orgs.plan();
+  }
 
   // ── Branding (white label): owner only ──
 
