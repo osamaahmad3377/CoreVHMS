@@ -184,6 +184,12 @@ describe('Prescriptions & pharmacy', () => {
     expect((await vet.client.post(`/prescriptions/${draft.body.id}/cancel`, { reason: 'x' })).status).toBe(422);
     const rep = await vet.client.post(`/prescriptions/${draft.body.id}/repeat`);
     expect(rep.body).toMatchObject({ status: 'DRAFT', repeatOfId: draft.body.id });
+    // Repeated from inside a consultation: attached to that consultation, and only to this patient's.
+    const visit = await vet.client.post('/encounters', { patientId: patient.id });
+    expect(visit.status).toBe(201);
+    const inVisit = await vet.client.post(`/prescriptions/${draft.body.id}/repeat`, { encounterId: visit.body.id });
+    expect(inVisit.body).toMatchObject({ status: 'DRAFT', repeatOfId: draft.body.id, encounterId: visit.body.id });
+    expect((await vet.client.post(`/prescriptions/${draft.body.id}/repeat`, { encounterId: '00000000-0000-4000-8000-000000000000' })).body.error.code).toBe('INVALID_ENCOUNTER');
   });
 
   it('freezes authorised prescription items at the database level', async () => {

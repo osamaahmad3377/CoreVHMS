@@ -212,10 +212,11 @@ export class PharmacyController {
     return this.prescriptions.dispense(id, body);
   }
 
+  /** A new draft copying an earlier prescription; give `encounterId` to attach it to the consultation in progress. */
   @Post('prescriptions/:id/repeat')
   @RequirePermissions('prescriptions.write')
-  repeat(@Param('id', UUID) id: string) {
-    return this.prescriptions.repeat(id);
+  repeat(@Param('id', UUID) id: string, @Body(zp(z.object({ encounterId: z.string().uuid().nullish() }).default({}))) body: { encounterId?: string | null }) {
+    return this.prescriptions.repeat(id, body.encounterId ?? null);
   }
 
   // ── Administration & withdrawals ──

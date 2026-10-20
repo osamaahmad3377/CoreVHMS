@@ -420,11 +420,15 @@ export class PrescriptionsService {
   }
 
   /** Creates a new draft copying a previous prescription (repeat / re-prescribe). */
-  async repeat(id: string) {
+  async repeat(id: string, encounterId: string | null = null) {
     const ctx = RequestContext.require();
     const src = await this.prisma.db.prescription.findUnique({ where: { id }, include: { items: true, patient: true } });
     if (!src) throw notFound('Prescription');
     if (src.patient.status !== 'ACTIVE') throw ruleViolation('PATIENT_NOT_ACTIVE', 'The patient is not active');
+    if (encounterId) {
+      const e = await this.prisma.db.encounter.findUnique({ where: { id: encounterId } });
+      if (!e || e.patientId !== src.patientId) throw ruleViolation('INVALID_ENCOUNTER', 'The consultation must belong to this patient');
+    }
     const newId = await this.prisma.db.$transaction(async (tx) => {
       const number = await this.counters.next(tx, 'prescription');
       const rx = await tx.prescription.create({
@@ -434,6 +438,7 @@ export class PrescriptionsService {
           number,
           patientId: src.patientId,
           clientId: src.clientId,
+          encounterId,
           weightKg: src.patient.latestWeightKg ?? src.weightKg,
           notes: src.notes,
           repeatOfId: src.id,

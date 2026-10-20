@@ -14,7 +14,7 @@ import { fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { DiagnosticOrder, LabTest } from '@/lib/types';
 
-export function LabOrderDialog({ open, onOpenChange, patient, encounterId, onCreated }: { open: boolean; onOpenChange: (o: boolean) => void; patient: { id: string; name: string }; encounterId?: string | null; onCreated?: (o: DiagnosticOrder) => void }) {
+export function LabOrderDialog({ open, onOpenChange, patient, encounterId, onCreated, initialTestIds }: { open: boolean; onOpenChange: (o: boolean) => void; patient: { id: string; name: string }; encounterId?: string | null; onCreated?: (o: DiagnosticOrder) => void; /** Tests already ticked when the window opens (e.g. "order again"). */ initialTestIds?: string[] }) {
   const { currency } = useSession();
   const qc = useQueryClient();
   const tests = useQuery({ queryKey: ['lab-tests'], queryFn: () => api.get<LabTest[]>('/lab-tests'), enabled: open, staleTime: 120_000 });
@@ -25,12 +25,14 @@ export function LabOrderDialog({ open, onOpenChange, patient, encounterId, onCre
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     if (open) {
-      setSelected([]);
+      setSelected(initialTestIds ?? []);
       setPriority('ROUTINE');
       setNotes('');
       setFilter('');
       setError(null);
     }
+    // Reset only when the window opens; the ticked tests are read at that moment.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   const grouped = useMemo(() => {
     const list = (tests.data ?? []).filter((t) => !filter || `${t.name} ${t.code}`.toLowerCase().includes(filter.toLowerCase()));

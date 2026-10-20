@@ -12,6 +12,7 @@ import { ConsultationCharges } from '@/components/clinical/charges-card';
 import { DiagnosesPanel } from '@/components/clinical/diagnoses-panel';
 import { FinishConsultationDialog } from '@/components/clinical/finish-dialog';
 import { NoteEditor, type WorkflowStep } from '@/components/clinical/note-editor';
+import { PastButton, PastRecordsProvider } from '@/components/clinical/past-records';
 import { VisitOutcome, type OutcomeState } from '@/components/clinical/visit-outcome';
 import { VisitReview } from '@/components/clinical/visit-review';
 import { NoteView } from '@/components/clinical/note-view';
@@ -44,6 +45,11 @@ const scrollTo = (id: string, focusId?: string) => {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   if (focusId) setTimeout(() => document.getElementById(focusId)?.focus(), 300);
 };
+
+/** A right-aligned row of "Past …" buttons at the top of a step. */
+function PastRow({ children }: { children: React.ReactNode }) {
+  return <div className="flex flex-wrap justify-end gap-1.5">{children}</div>;
+}
 
 function Workspace() {
   const { id } = useParams<{ id: string }>();
@@ -173,7 +179,12 @@ function Workspace() {
       title: 'Arrival & vitals',
       hint: 'Why they came, and the measurements taken',
       fields: ['presentingComplaint'],
-      extra: <VitalsPanel ref={vitalsRef} encounterId={enc.id} vitals={enc.vitals} editable={writable} onSaved={refresh} />,
+      extra: (
+        <>
+          <PastRow><PastButton tab="vitals" label="Past vitals" /></PastRow>
+          <VitalsPanel ref={vitalsRef} encounterId={enc.id} vitals={enc.vitals} editable={writable} onSaved={refresh} />
+        </>
+      ),
       badge: enc.vitals.length ? plural(enc.vitals.length, 'reading') : null,
       done: enc.vitals.length > 0,
       ignoreFieldsForDone: true,
@@ -183,7 +194,12 @@ function Workspace() {
       title: 'History',
       hint: 'Past history, and what the client tells you',
       fields: ['history', 'subjective'],
-      extra: <ProblemsPanel patientId={enc.patient.id} editable={writable} />,
+      extra: (
+        <>
+          <PastRow><PastButton tab="problems" label="Past problems" /></PastRow>
+          <ProblemsPanel patientId={enc.patient.id} editable={writable} />
+        </>
+      ),
     },
     { id: 'exam', title: 'Examination', hint: 'What you find when you examine', fields: ['objective'], exam: true },
     {
@@ -193,6 +209,10 @@ function Workspace() {
       fields: ['assessment'],
       extra: (
         <>
+          <PastRow>
+            <PastButton tab="diagnoses" label="Past diagnoses" />
+            <PastButton tab="tests" label="Past tests" />
+          </PastRow>
           <DiagnosesPanel encounterId={enc.id} diagnoses={enc.diagnoses} editable={writable} onSaved={refresh} />
           <LabOrdersPanel patient={enc.patient} encounterId={enc.id} editable={active} dialogOpen={labOpen} onDialogOpenChange={setLabOpen} />
         </>
@@ -207,6 +227,10 @@ function Workspace() {
       fields: ['plan'],
       extra: (
         <>
+          <PastRow>
+            <PastButton tab="medicines" label="Past medicines given" />
+            <PastButton tab="prescriptions" label="Past prescriptions" />
+          </PastRow>
           <AdministrationsPanel patient={enc.patient} encounterId={enc.id} editable={active} dialogOpen={giveOpen} onDialogOpenChange={setGiveOpen} />
           <PrescriptionsPanel patient={enc.patient} encounterId={enc.id} editable={active} dialogOpen={rxOpen} onDialogOpenChange={setRxOpen} />
         </>
@@ -241,6 +265,7 @@ function Workspace() {
       fields: ['followUpInstructions'],
       extra: (
         <>
+          <PastRow><PastButton tab="documents" label="Past photos & documents" /></PastRow>
           <TasksPanel encounterId={enc.id} patientId={enc.patient.id} tasks={enc.tasks} editable={writable} onSaved={refresh} onBookFollowUp={can('appointments.write') ? () => setFollowUp(true) : undefined} />
           <Card id="attachments-card">
             <CardHeader>
@@ -353,6 +378,7 @@ function Workspace() {
       {workspace ? (
         <div className="grid min-w-0 grid-cols-1 gap-4 [&>*]:min-w-0">
           {signedCards}
+          <PastRecordsProvider patientId={enc.patient.id} patientName={enc.patient.name} encounterId={enc.id}>
           <Card>
             <CardContent className="p-4 sm:p-5">
               <NoteEditor
@@ -368,6 +394,7 @@ function Workspace() {
               />
             </CardContent>
           </Card>
+          </PastRecordsProvider>
           {supersededBlock}
         </div>
       ) : (

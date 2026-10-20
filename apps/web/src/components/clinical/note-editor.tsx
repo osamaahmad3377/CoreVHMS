@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { EXAM_SYSTEMS, NOTE_PHRASE_FIELDS, type NotePhraseField } from '@vcms/shared';
-import { Activity, ArrowLeft, ArrowRight, Check, CheckCircle2, FileSignature, Loader2, MousePointerClick, Save, Settings2, Trash2 } from 'lucide-react';
+import { Activity, ArrowLeft, ArrowRight, Check, CheckCircle2, FileSignature, History, Loader2, MousePointerClick, Save, Settings2, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -12,6 +12,7 @@ import { Button } from '../ui/button';
 import { Input, NativeSelect, Textarea } from '../ui/input';
 import { Label } from '../ui/label';
 import { NoteSection } from './note-section';
+import { PastButton, usePastRecords } from './past-records';
 import { QuickPicks } from './quick-picks';
 import { useNotePhrases, useTemplates } from '@/hooks/use-catalog';
 import { api } from '@/lib/api';
@@ -115,6 +116,27 @@ export function vitalsText(v: Vitals) {
   return parts.join(', ');
 }
 
+/** "Fill from last visit" (only while the field is empty) and "Past": the earlier entries beside the note. */
+function PastTools({ field, value, onFill }: { field: NotePhraseField; value: string; onFill: (text: string) => void }) {
+  const past = usePastRecords();
+  const last = past?.lastText(field);
+  return (
+    <>
+      {last && !value.trim() && (
+        <button
+          type="button"
+          onClick={() => onFill(last.text)}
+          title={`Copies what was written on ${fmtDateTime(last.at)}`}
+          className="inline-flex h-7 items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 text-xs font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <History className="h-3 w-3" /> Fill from last visit
+        </button>
+      )}
+      <PastButton tab="notes" field={field} />
+    </>
+  );
+}
+
 /** Save functions of open editors with unsaved changes, so "Finish consultation" can save them before signing. */
 const pendingSaves = new Set<() => Promise<unknown>>();
 export async function flushNoteDrafts() {
@@ -157,6 +179,7 @@ export function NoteEditor({
   const confirm = useConfirm();
   const templates = useTemplates();
   const phrases = useNotePhrases();
+  const past = usePastRecords();
   // Tap-to-add buttons can be switched off by people who prefer typing; remembered on this computer.
   const [picksOn, setPicksOn] = useState(true);
   useEffect(() => {
@@ -249,6 +272,20 @@ export function NoteEditor({
     setDirty(true);
   };
 
+  // The Past records panel (beside the note) copies earlier text into a field through this.
+  const contentRef = useRef(content);
+  contentRef.current = content;
+  useEffect(() => {
+    if (!past) return;
+    past.registerApplier((field, text, mode) => {
+      const prev = String(contentRef.current[field] ?? '');
+      set(field, mode === 'replace' || !prev.trim() ? text : `${prev.trimEnd()}\n${text}`);
+      return prev;
+    });
+    return () => past.registerApplier(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [past]);
+
   const applyTemplate = async (id: string) => {
     const t = templates.data?.find((x) => x.id === id);
     if (!t) return;
@@ -311,11 +348,14 @@ export function NoteEditor({
           {f.letter && <span className="mr-1.5 font-mono text-xs font-normal text-muted-foreground" aria-hidden>{f.letter}</span>}
           {f.label}
         </Label>
-        {f.key === 'objective' && latestVitals && vitalsText(latestVitals) && (
-          <Button type="button" size="sm" variant="outline" className="ml-auto h-7 text-xs" onClick={insertVitals}>
-            <Activity /> Insert vitals
-          </Button>
-        )}
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          {f.key === 'objective' && latestVitals && vitalsText(latestVitals) && (
+            <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={insertVitals}>
+              <Activity /> Insert vitals
+            </Button>
+          )}
+          {past && (NOTE_PHRASE_FIELDS as readonly string[]).includes(f.key) && <PastTools field={f.key as NotePhraseField} value={String(content[f.key] ?? '')} onFill={(t) => set(f.key, t)} />}
+        </div>
       </div>
       {picksOn && (NOTE_PHRASE_FIELDS as readonly string[]).includes(f.key) && (
         <QuickPicks field={f.key as NotePhraseField} value={String(content[f.key] ?? '')} onChange={(v) => set(f.key, v)} phrases={phrases.data ?? []} />
