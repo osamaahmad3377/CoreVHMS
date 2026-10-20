@@ -1,3 +1,4 @@
+import { PatientRecordService } from '../patients/patient-record.service';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { ClientMergeService } from '../clients/client-merge.service';
@@ -14,6 +15,7 @@ export class PharmacyIntegrations implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly privacy: ClientPrivacyService,
+    private readonly record: PatientRecordService,
     private readonly timeline: PatientTimelineService,
     private readonly patientMerge: PatientMergeService,
     private readonly clientMerge: ClientMergeService,
@@ -94,6 +96,32 @@ export class PharmacyIntegrations implements OnModuleInit {
         ]);
         return { awaitingAuthorization, readyToDispense };
       },
+    });
+
+    this.record.register({
+      name: 'prescriptions',
+      title: 'Prescriptions and medicines supplied',
+      anyOf: ['prescriptions.read'],
+      load: async (patientId) =>
+        (
+          await this.prisma.db.prescription.findMany({
+            where: { patientId },
+            include: { items: { include: { product: { select: { name: true } }, dispensations: true } } },
+            orderBy: { createdAt: 'asc' },
+          })
+        ).map((p) => ({ ...p, prescriptionNo: prescriptionNo(p.number) })),
+    });
+    this.record.register({
+      name: 'administrations',
+      title: 'Medicines given in the clinic',
+      anyOf: ['clinical.read', 'prescriptions.read'],
+      load: (patientId) => this.prisma.db.medicationAdministration.findMany({ where: { patientId }, include: { product: { select: { name: true } } }, orderBy: { administeredAt: 'asc' } }),
+    });
+    this.record.register({
+      name: 'withdrawals',
+      title: 'Withdrawal periods (food animals)',
+      anyOf: ['prescriptions.read', 'livestock.read'],
+      load: (patientId) => this.prisma.db.patientWithdrawal.findMany({ where: { patientId }, include: { product: { select: { name: true } } }, orderBy: { treatedAt: 'asc' } }),
     });
 
     this.privacy.registerExport({

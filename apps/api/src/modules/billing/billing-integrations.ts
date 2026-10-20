@@ -1,3 +1,5 @@
+import { invoiceNo } from './invoices.service';
+import { PatientRecordService } from '../patients/patient-record.service';
 import type { Product } from '@prisma/client';
 import { calculateDose } from '@vcms/shared';
 import type { Allocation } from '../inventory/stock.engine';
@@ -55,6 +57,7 @@ export class BillingIntegrations implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly privacy: ClientPrivacyService,
+    private readonly record: PatientRecordService,
     private readonly charges: ChargeCaptureService,
     private readonly inventory: InventoryService,
     private readonly prescriptions: PrescriptionsService,
@@ -255,6 +258,16 @@ export class BillingIntegrations implements OnModuleInit {
           valueMinor: overview.totals.valueMinor,
         };
       },
+    });
+
+    this.record.register({
+      name: 'billing',
+      title: 'Invoices and payments',
+      anyOf: ['billing.read'],
+      load: async (patientId) => ({
+        invoices: (await this.prisma.db.invoice.findMany({ where: { patientId }, include: { lines: true, creditNotes: true }, orderBy: { createdAt: 'asc' } })).map((i) => ({ ...i, invoiceNo: invoiceNo(i.number) })),
+        estimates: await this.prisma.db.estimate.findMany({ where: { patientId }, include: { lines: true }, orderBy: { createdAt: 'asc' } }),
+      }),
     });
 
     this.privacy.registerExport({

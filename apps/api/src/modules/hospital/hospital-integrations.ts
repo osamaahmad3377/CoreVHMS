@@ -1,3 +1,4 @@
+import { PatientRecordService } from '../patients/patient-record.service';
 import { overdueCutoff } from '@vcms/shared';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { RequestContext } from '../../common/context/request-context';
@@ -20,6 +21,7 @@ export class HospitalIntegrations implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly privacy: ClientPrivacyService,
+    private readonly record: PatientRecordService,
     private readonly timeline: PatientTimelineService,
     private readonly patientMerge: PatientMergeService,
     private readonly clientMerge: ClientMergeService,
@@ -113,6 +115,19 @@ export class HospitalIntegrations implements OnModuleInit {
         });
         return { today: rows.map((s) => ({ id: s.id, surgeryNo: surgeryNo(s.number), procedure: s.procedure, status: s.status, scheduledAt: s.scheduledAt, patient: s.patient, theatre: s.theatre?.name ?? null })) };
       },
+    });
+
+    this.record.register({
+      name: 'admissions',
+      title: 'Hospital stays',
+      anyOf: ['hospital.read'],
+      load: async (patientId) => (await this.prisma.db.admission.findMany({ where: { patientId }, include: { notes: { orderBy: { createdAt: 'asc' } }, orders: { include: { product: { select: { name: true } } } } }, orderBy: { admittedAt: 'asc' } })).map((a) => ({ ...a, admissionNo: admissionNo(a.number) })),
+    });
+    this.record.register({
+      name: 'surgeries',
+      title: 'Surgeries',
+      anyOf: ['surgery.read'],
+      load: async (patientId) => (await this.prisma.db.surgery.findMany({ where: { patientId }, include: { addenda: { orderBy: { createdAt: 'asc' } } }, orderBy: { scheduledAt: 'asc' } })).map((s) => ({ ...s, surgeryNo: surgeryNo(s.number) })),
     });
 
     this.privacy.registerExport({

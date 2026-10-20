@@ -1,3 +1,4 @@
+import { PatientRecordService } from '../patients/patient-record.service';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { enumLabel } from '@vcms/shared';
 import { RequestContext } from '../../common/context/request-context';
@@ -20,6 +21,7 @@ export class BoardingIntegrations implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly privacy: ClientPrivacyService,
+    private readonly record: PatientRecordService,
     private readonly timeline: PatientTimelineService,
     private readonly patientMerge: PatientMergeService,
     private readonly clientMerge: ClientMergeService,
@@ -92,6 +94,16 @@ export class BoardingIntegrations implements OnModuleInit {
         const g = (s: string) => grooming.find((x) => x.status === s)?._count ?? 0;
         return { inHouse, arrivingToday: arriving, departingToday: departing, grooming: { waiting: g('WAITING'), inProgress: g('IN_PROGRESS'), ready: g('READY') } };
       },
+    });
+
+    this.record.register({
+      name: 'boardingAndGrooming',
+      title: 'Boarding and grooming',
+      anyOf: ['boarding.read'],
+      load: async (patientId) => ({
+        stays: (await this.prisma.db.boardingStay.findMany({ where: { patientId }, include: { logs: { orderBy: { recordedAt: 'asc' } } }, orderBy: { createdAt: 'asc' } })).map((s) => ({ ...s, stayNo: stayNo(s.number) })),
+        grooming: (await this.prisma.db.groomingJob.findMany({ where: { patientId }, include: { services: true }, orderBy: { createdAt: 'asc' } })).map((g) => ({ ...g, groomingNo: groomingNo(g.number) })),
+      }),
     });
 
     this.privacy.registerExport({

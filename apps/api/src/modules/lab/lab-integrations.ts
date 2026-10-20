@@ -1,3 +1,4 @@
+import { PatientRecordService } from '../patients/patient-record.service';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AttachmentsService } from '../attachments/attachments.service';
@@ -14,6 +15,7 @@ export class LabIntegrations implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly privacy: ClientPrivacyService,
+    private readonly record: PatientRecordService,
     private readonly timeline: PatientTimelineService,
     private readonly patientMerge: PatientMergeService,
     private readonly clientMerge: ClientMergeService,
@@ -84,6 +86,22 @@ export class LabIntegrations implements OnModuleInit {
     });
 
     // Only released results are part of the record shared with the client.
+    this.record.register({
+      name: 'diagnostics',
+      title: 'Lab tests and imaging',
+      anyOf: ['lab.read'],
+      load: async (patientId) =>
+        (
+          await this.prisma.db.diagnosticOrder.findMany({
+            where: { patientId, status: { not: 'CANCELLED' } },
+            include: {
+              items: { include: { test: { select: { name: true, category: true } }, results: { include: { analyte: { select: { name: true } } }, orderBy: { enteredAt: 'asc' } }, imagingReport: true } },
+            },
+            orderBy: { createdAt: 'asc' },
+          })
+        ).map((o) => ({ ...o, orderNo: labOrderNo(o.number) })),
+    });
+
     this.privacy.registerExport({
       name: 'diagnostics',
       load: (clientId) => this.prisma.db.diagnosticOrder.findMany({ where: { clientId, status: 'RELEASED' }, include: { items: { include: { results: true } } }, orderBy: { createdAt: 'asc' } }),

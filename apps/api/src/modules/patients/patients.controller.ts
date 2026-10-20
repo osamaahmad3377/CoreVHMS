@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Res } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import {
   alertSchema,
@@ -12,10 +12,12 @@ import {
   updatePatientSchema,
   weightSchema,
 } from '@vcms/shared';
+import type { Response } from 'express';
 import { z } from 'zod';
 import { RequirePermissions } from '../../common/auth/decorators';
 import { ApiZodBody, ApiZodQuery, zp } from '../../common/http/zod';
 import { PatientMergeService } from './patient-merge.service';
+import { PatientRecordService } from './patient-record.service';
 import { PatientTimelineService } from './patient-timeline.service';
 import { PatientsService } from './patients.service';
 
@@ -37,6 +39,7 @@ export class PatientsController {
     private readonly patients: PatientsService,
     private readonly merger: PatientMergeService,
     private readonly timelines: PatientTimelineService,
+    private readonly record: PatientRecordService,
   ) {}
 
   @Get()
@@ -66,6 +69,25 @@ export class PatientsController {
   @RequirePermissions('patients.read')
   get(@Param('id', UUID) id: string) {
     return this.patients.get(id);
+  }
+
+  /** Everything held about the patient, for the "Complete record" page. Each section needs its own permission. */
+  @Get(':id/record')
+  @RequirePermissions('patients.read')
+  completeRecord(@Param('id', UUID) id: string) {
+    return this.record.build(id);
+  }
+
+  /** The same complete record as a downloadable file. Audited. */
+  @Get(':id/record-export')
+  @RequirePermissions('patients.export')
+  async recordExport(@Param('id', UUID) id: string, @Res() res: Response) {
+    const data = await this.record.build(id, { exported: true });
+    const safe = data.patient.name.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').slice(0, 40) || 'patient';
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="patient-record-${safe}-${new Date().toISOString().slice(0, 10)}.json"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(JSON.stringify(data, null, 2));
   }
 
   @Get(':id/timeline')

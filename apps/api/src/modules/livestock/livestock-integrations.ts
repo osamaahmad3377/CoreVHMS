@@ -1,3 +1,4 @@
+import { PatientRecordService } from '../patients/patient-record.service';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { enumLabel } from '@vcms/shared';
 import { RequestContext } from '../../common/context/request-context';
@@ -21,6 +22,7 @@ export class LivestockIntegrations implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly privacy: ClientPrivacyService,
+    private readonly record: PatientRecordService,
     private readonly timeline: PatientTimelineService,
     private readonly patientMerge: PatientMergeService,
     private readonly clientMerge: ClientMergeService,
@@ -113,6 +115,17 @@ export class LivestockIntegrations implements OnModuleInit {
           birthsDue14Days: due.length,
         };
       },
+    });
+
+    this.record.register({
+      name: 'livestock',
+      title: 'Livestock records',
+      anyOf: ['livestock.read'],
+      load: async (patientId) => ({
+        movements: await this.prisma.db.livestockMovement.findMany({ where: { patientId }, orderBy: { createdAt: 'asc' } }),
+        breeding: await this.prisma.db.breedingEvent.findMany({ where: { patientId, voidedAt: null }, orderBy: { createdAt: 'asc' } }),
+        production: await this.prisma.db.productionRecord.findMany({ where: { patientId, voidedAt: null }, orderBy: { createdAt: 'asc' } }),
+      }),
     });
 
     this.privacy.registerExport({

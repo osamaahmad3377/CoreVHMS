@@ -1,8 +1,10 @@
+'use client';
 import { enumLabel } from '@vcms/shared';
-import { PawPrint, Scale, User } from 'lucide-react';
+import { FileText, PawPrint, Scale, User } from 'lucide-react';
 import Link from 'next/link';
 import { HospitalStatusChip } from '../hospital/status-chip';
 import { fmtAge, fmtWeight } from '@/lib/format';
+import { useSession } from '@/lib/session';
 import type { AlertSummary } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { AlertChip, StatusBadge } from '../status';
@@ -30,6 +32,7 @@ export function PatientBanner({ patient, className, compact }: { patient: Banner
   const breed = typeof patient.breed === 'string' ? patient.breed : (patient.breed?.name ?? patient.breedText);
   const alerts = patient.alerts.filter((a) => a.isActive !== false);
   const critical = alerts.some((a) => a.severity === 'CRITICAL');
+  const { can } = useSession();
   return (
     <div
       className={cn(
@@ -75,9 +78,20 @@ export function PatientBanner({ patient, className, compact }: { patient: Banner
           )}
         </div>
       )}
-      <div className="flex flex-wrap gap-1 sm:ml-auto sm:justify-end" aria-label="Medical alerts">
+      <div className="flex flex-wrap items-center gap-1 sm:ml-auto sm:justify-end" aria-label="Medical alerts">
         {alerts.length ? alerts.map((a) => <AlertChip key={a.id} alert={a} />) : <span className="text-xs text-muted-foreground">No active alerts</span>}
       </div>
+      {can('patients.read') && (
+        <a
+          href={`/patients/${patient.id}/record`}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Opens everything recorded about this patient in a new tab"
+          className="inline-flex h-8 shrink-0 items-center gap-1.5 self-start rounded-md border bg-background px-2.5 text-xs font-medium hover:bg-muted sm:self-center"
+        >
+          <FileText className="h-3.5 w-3.5" /> Complete record
+        </a>
+      )}
     </div>
   );
 }

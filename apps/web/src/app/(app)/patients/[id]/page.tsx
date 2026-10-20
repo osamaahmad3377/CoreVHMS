@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { enumLabel } from '@vcms/shared';
-import {
+import { FileText,
   Archive,
   ArchiveRestore,
   BedDouble,
@@ -175,6 +175,11 @@ function PatientRecord() {
               <Siren /> Triage
             </Button>
           )}
+          <Button size="sm" variant="outline" asChild title="Opens everything recorded about this patient in a new tab">
+            <a href={`/patients/${p.id}/record`} target="_blank" rel="noopener noreferrer">
+              <FileText /> Complete record
+            </a>
+          </Button>
           {editable && (
             <Button size="sm" variant="outline" onClick={() => setDlg('edit')}>
               <Edit /> Edit

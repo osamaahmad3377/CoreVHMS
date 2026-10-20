@@ -1,3 +1,4 @@
+import { PatientRecordService } from '../patients/patient-record.service';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { enumLabel } from '@vcms/shared';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -17,6 +18,7 @@ export class InsuranceIntegrations implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly privacy: ClientPrivacyService,
+    private readonly record: PatientRecordService,
     private readonly timeline: PatientTimelineService,
     private readonly patientMerge: PatientMergeService,
     private readonly clientMerge: ClientMergeService,
@@ -87,6 +89,17 @@ export class InsuranceIntegrations implements OnModuleInit {
         ]);
         return { claimsAwaitingDecision: awaiting, claimsQueried: queried, insurerOwedMinor: approvedUnpaid.reduce((n, c) => n + (c.approvedMinor ?? 0) - c.paidMinor, 0), openReferrals: referrals };
       },
+    });
+
+    this.record.register({
+      name: 'insurance',
+      title: 'Insurance and referrals',
+      anyOf: ['insurance.read'],
+      load: async (patientId) => ({
+        policies: await this.prisma.db.insurancePolicy.findMany({ where: { patientId }, include: { provider: { select: { name: true } } }, orderBy: { createdAt: 'asc' } }),
+        claims: (await this.prisma.db.insuranceClaim.findMany({ where: { patientId }, orderBy: { createdAt: 'asc' } })).map((c) => ({ ...c, claimNo: claimNo(c.number) })),
+        referrals: (await this.prisma.db.referral.findMany({ where: { patientId }, orderBy: { createdAt: 'asc' } })).map((r) => ({ ...r, referralNo: referralNo(r.number) })),
+      }),
     });
 
     this.privacy.registerExport({

@@ -37,6 +37,7 @@ export const PERMISSION_GROUPS = {
       'patients.write': 'Register and edit patients',
       'patients.merge': 'Merge duplicate patients',
       'patients.archive': 'Archive patients and record deaths/transfers',
+      'patients.export': 'Download a patient’s complete record (everything held about the patient)',
     },
   },
   scheduling: {
@@ -247,7 +248,7 @@ export const SYSTEM_ROLE_TEMPLATES: RoleTemplate[] = [
     permissions: pick(
       ['dashboard', 'clinical', 'ai', 'prescriptions', 'pharmacy', 'lab', 'hospital', 'surgery', 'preventive', 'triage',
         'appointments', 'livestock', 'documents'],
-      ['clients.read', 'clients.write', 'patients.read', 'patients.write', 'patients.archive', 'billing.read',
+      ['clients.read', 'clients.write', 'patients.read', 'patients.write', 'patients.archive', 'patients.export', 'billing.read',
         'billing.write', 'inventory.read', 'reports.view', 'communications.read', 'communications.send',
         'boarding.read', 'insurance.read', 'insurance.write', 'staff.read', 'procurement.request'],
       ['formulary.manage' as Permission],

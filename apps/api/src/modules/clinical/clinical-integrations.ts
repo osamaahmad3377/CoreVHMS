@@ -1,3 +1,4 @@
+import { PatientRecordService } from '../patients/patient-record.service';
 import { formatInTimeZone } from 'date-fns-tz';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { RequestContext } from '../../common/context/request-context';
@@ -18,6 +19,7 @@ export class ClinicalIntegrations implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly privacy: ClientPrivacyService,
+    private readonly record: PatientRecordService,
     private readonly timeline: PatientTimelineService,
     private readonly patientMerge: PatientMergeService,
     private readonly clientMerge: ClientMergeService,
@@ -201,6 +203,62 @@ export class ClinicalIntegrations implements OnModuleInit {
           take: 10,
         });
         return { dueOrOverdue: rows.map((t) => ({ id: t.id, title: t.title, type: t.type, dueAt: t.dueAt, overdue: t.dueAt < new Date(), patient: t.patient })) };
+      },
+    });
+
+    // ── Complete patient record ──
+    this.record.register({
+      name: 'consultations',
+      title: 'Consultations',
+      anyOf: ['clinical.read'],
+      load: async (patientId) => {
+        const rows = await this.prisma.db.encounter.findMany({
+          where: { patientId },
+          include: {
+            clinician: { select: { user: { select: { name: true } } } },
+            appointment: { select: { appointmentType: { select: { name: true } } } },
+            // Drafts are working documents; signed notes and their earlier versions are the record.
+            notes: { where: { status: { in: ['SIGNED', 'SUPERSEDED'] } }, orderBy: { createdAt: 'asc' } },
+            vitals: { orderBy: { recordedAt: 'asc' } },
+            diagnoses: { orderBy: { createdAt: 'asc' } },
+            tasks: { orderBy: { dueAt: 'asc' } },
+          },
+          orderBy: { startedAt: 'asc' },
+        });
+        return rows.map(({ clinician, appointment, ...e }) => ({ ...e, encounterNo: encounterNo(e.number), clinician: clinician?.user.name ?? null, appointmentType: appointment?.appointmentType.name ?? null }));
+      },
+    });
+    this.record.register({
+      name: 'problems',
+      title: 'Problem list',
+      anyOf: ['clinical.read'],
+      load: (patientId) => this.prisma.db.problemListItem.findMany({ where: { patientId }, orderBy: { createdAt: 'asc' } }),
+    });
+    this.record.register({
+      name: 'appointments',
+      title: 'Appointments',
+      anyOf: ['appointments.read'],
+      load: async (patientId) => {
+        const rows = await this.prisma.db.appointment.findMany({
+          where: { patientId },
+          include: { appointmentType: { select: { name: true } }, clinician: { select: { user: { select: { name: true } } } } },
+          orderBy: { startsAt: 'asc' },
+        });
+        return rows.map(({ appointmentType, clinician, ...a }) => ({ ...a, appointmentNo: appointmentNo(a.number), appointmentType: appointmentType.name, clinician: clinician?.user.name ?? null }));
+      },
+    });
+    this.record.register({
+      name: 'documents',
+      title: 'Documents and photos',
+      anyOf: ['documents.read', 'clinical.read'],
+      load: async (patientId) => {
+        const encounters = await this.prisma.db.encounter.findMany({ where: { patientId }, select: { id: true } });
+        const rows = await this.prisma.db.attachment.findMany({
+          where: { deletedAt: null, OR: [{ entityType: 'Patient', entityId: patientId }, { entityType: 'Encounter', entityId: { in: encounters.map((e) => e.id) } }] },
+          orderBy: { createdAt: 'asc' },
+        });
+        // The files themselves are downloaded one by one from the link; the record lists what exists.
+        return rows.map((a) => ({ id: a.id, fileName: a.fileName, category: a.category, description: a.description, mimeType: a.mimeType, sizeBytes: a.sizeBytes, uploadedBy: a.uploadedByName, uploadedAt: a.createdAt, attachedTo: a.entityType, downloadPath: `/api/v1/attachments/${a.id}/download` }));
       },
     });
 

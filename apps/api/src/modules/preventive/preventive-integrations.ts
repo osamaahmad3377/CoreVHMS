@@ -1,3 +1,4 @@
+import { PatientRecordService } from '../patients/patient-record.service';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { branchToday } from '../../common/time/branch-timezone';
@@ -13,6 +14,7 @@ export class PreventiveIntegrations implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly privacy: ClientPrivacyService,
+    private readonly record: PatientRecordService,
     private readonly care: CareService,
     private readonly administrations: AdministrationsService,
     private readonly timeline: PatientTimelineService,
@@ -57,6 +59,13 @@ export class PreventiveIntegrations implements OnModuleInit {
         ]);
         return { overdue, dueThisWeek: dueWeek };
       },
+    });
+
+    this.record.register({
+      name: 'preventiveCare',
+      title: 'Vaccinations and preventive care',
+      anyOf: ['preventive.read'],
+      load: (patientId) => this.prisma.db.careItem.findMany({ where: { patientId }, orderBy: { dueDate: 'asc' } }),
     });
 
     this.privacy.registerExport({
