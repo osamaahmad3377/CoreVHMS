@@ -11,7 +11,8 @@ import { LastVisitStrip, PatientHistoryDialog, useCanSeeHistory } from '@/compon
 import { ConsultationCharges } from '@/components/clinical/charges-card';
 import { DiagnosesPanel } from '@/components/clinical/diagnoses-panel';
 import { FinishConsultationDialog } from '@/components/clinical/finish-dialog';
-import { NoteEditor } from '@/components/clinical/note-editor';
+import { NoteEditor, type WorkflowStep } from '@/components/clinical/note-editor';
+import { VisitReview } from '@/components/clinical/visit-review';
 import { NoteView } from '@/components/clinical/note-view';
 import { AdministrationsPanel, LabOrdersPanel, PrescriptionsPanel, WithdrawalBanner } from '@/components/clinical/orders-panels';
 import { ProblemsPanel } from '@/components/clinical/problems-panel';
@@ -57,6 +58,7 @@ function Workspace() {
   const [followUp, setFollowUp] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [step, setStep] = useState<string | null>(null);
   const canSeeHistory = useCanSeeHistory();
   const [rxOpen, setRxOpen] = useState(false);
   const [giveOpen, setGiveOpen] = useState(false);
@@ -106,17 +108,133 @@ function Workspace() {
   const followUpType = types.data?.find((t) => t.category === 'FOLLOW_UP' && t.isActive !== false);
   const hasPrescriptions = (rx.data?.data ?? []).some((p) => p.status !== 'CANCELLED');
   const active = enc.status !== 'CANCELLED';
+  // An open consultation is run as a guided visit; a finished one is shown as a read-only record.
+  const workspace = enc.status === 'OPEN' && writable;
+  const draft = drafts.find((d) => !d.amendsId) ?? null;
+  const firstTodo = !enc.vitals.length ? 'arrival' : !(draft?.history || draft?.subjective) ? 'history' : !draft?.objective ? 'exam' : !enc.diagnoses.length ? 'diagnosis' : !draft?.plan ? 'treatment' : 'advice';
+  const currentStep = step ?? firstTodo;
+  /** Opens a step of the visit, then lets the screen draw it before doing something inside it. */
+  const goStep = (id: string, then?: () => void) => {
+    setStep(id);
+    if (then) setTimeout(then, 80);
+  };
 
   const actions = [
     canSeeHistory && { label: 'History', icon: History, onClick: () => setHistoryOpen(true) },
-    writable && { label: 'Vitals', icon: Activity, onClick: () => vitalsRef.current?.openForm() },
-    writable && { label: 'Diagnosis', icon: ClipboardList, onClick: () => scrollTo('diagnoses-card', 'diagnosis-term') },
-    active && can('prescriptions.write') && { label: 'Prescribe', icon: Pill, onClick: () => setRxOpen(true) },
-    active && canAny('clinical.write', 'hospital.write', 'pharmacy.dispense') && { label: 'Give medicine now', icon: Syringe, onClick: () => setGiveOpen(true) },
-    active && can('lab.read') && can('lab.order') && { label: 'Order test', icon: FlaskConical, onClick: () => setLabOpen(true) },
+    writable && { label: 'Vitals', icon: Activity, onClick: () => (workspace ? goStep('arrival', () => vitalsRef.current?.openForm()) : vitalsRef.current?.openForm()) },
+    writable && { label: 'Diagnosis', icon: ClipboardList, onClick: () => (workspace ? goStep('diagnosis', () => document.getElementById('diagnosis-term')?.focus()) : scrollTo('diagnoses-card', 'diagnosis-term')) },
+    active && can('prescriptions.write') && { label: 'Prescribe', icon: Pill, onClick: () => (workspace ? goStep('treatment', () => setRxOpen(true)) : setRxOpen(true)) },
+    active && canAny('clinical.write', 'hospital.write', 'pharmacy.dispense') && { label: 'Give medicine now', icon: Syringe, onClick: () => (workspace ? goStep('treatment', () => setGiveOpen(true)) : setGiveOpen(true)) },
+    active && can('lab.read') && can('lab.order') && { label: 'Order test', icon: FlaskConical, onClick: () => (workspace ? goStep('diagnosis', () => setLabOpen(true)) : setLabOpen(true)) },
     active && can('appointments.write') && { label: 'Follow-up', icon: CalendarPlus, onClick: () => setFollowUp(true) },
-    writable && { label: 'Upload', icon: Upload, onClick: () => scrollTo('attachments-card') },
+    writable && { label: 'Upload', icon: Upload, onClick: () => (workspace ? goStep('advice', () => scrollTo('attachments-card')) : scrollTo('attachments-card')) },
   ].filter(Boolean) as { label: string; icon: React.ComponentType<{ className?: string }>; onClick: () => void }[];
+
+  const signedCards = signed.map((n) => {
+            const pendingAmendment = amendmentDraftFor(n.id);
+            return (
+              <Card key={n.id} id={pendingAmendment ? `note-${pendingAmendment.id}` : undefined}>
+                <CardContent className="grid gap-4">
+                  <NoteView note={n} onAmend={can('clinical.amend') && !pendingAmendment && amending?.id !== n.id ? () => setAmending(n) : undefined} />
+                  {(amending?.id === n.id || pendingAmendment) && (
+                    <div className="rounded-md border-2 border-dashed border-warning/50 p-3">
+                      <NoteEditor encounterId={enc.id} speciesCategory={enc.patient.species.category} note={pendingAmendment ?? n} amending={!pendingAmendment} onDone={() => setAmending(null)} latestVitals={latestVitals} />
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          });
+
+  const supersededBlock = superseded.length > 0 && (
+            <details className="rounded-lg border bg-card p-4">
+              <summary className="cursor-pointer text-sm font-medium">Previous versions ({superseded.length})</summary>
+              <div className="mt-4 grid gap-6">
+                {superseded.map((n) => (
+                  <NoteView key={n.id} note={n} compact />
+                ))}
+              </div>
+            </details>
+          );
+
+  const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+  const workflow: WorkflowStep[] = [
+    {
+      id: 'arrival',
+      title: 'Arrival & vitals',
+      hint: 'Why they came, and the measurements taken',
+      fields: ['presentingComplaint'],
+      extra: <VitalsPanel ref={vitalsRef} encounterId={enc.id} vitals={enc.vitals} editable={writable} onSaved={refresh} />,
+      badge: enc.vitals.length ? plural(enc.vitals.length, 'reading') : null,
+      done: enc.vitals.length > 0,
+      ignoreFieldsForDone: true,
+    },
+    {
+      id: 'history',
+      title: 'History',
+      hint: 'Past history, and what the client tells you',
+      fields: ['history', 'subjective'],
+      extra: <ProblemsPanel patientId={enc.patient.id} editable={writable} />,
+    },
+    { id: 'exam', title: 'Examination', hint: 'What you find when you examine', fields: ['objective'], exam: true },
+    {
+      id: 'diagnosis',
+      title: 'Diagnosis & tests',
+      hint: 'What you think is wrong, and tests to confirm it',
+      fields: ['assessment'],
+      extra: (
+        <>
+          <DiagnosesPanel encounterId={enc.id} diagnoses={enc.diagnoses} editable={writable} onSaved={refresh} />
+          <LabOrdersPanel patient={enc.patient} encounterId={enc.id} editable={active} dialogOpen={labOpen} onDialogOpenChange={setLabOpen} />
+        </>
+      ),
+      badge: enc.diagnoses.length ? plural(enc.diagnoses.length, 'diagnosis', 'diagnoses') : null,
+      done: enc.diagnoses.length > 0,
+    },
+    {
+      id: 'treatment',
+      title: 'Treatment',
+      hint: 'Medicine given now, prescriptions, and the plan',
+      fields: ['plan'],
+      extra: (
+        <>
+          <AdministrationsPanel patient={enc.patient} encounterId={enc.id} editable={active} dialogOpen={giveOpen} onDialogOpenChange={setGiveOpen} />
+          <PrescriptionsPanel patient={enc.patient} encounterId={enc.id} editable={active} dialogOpen={rxOpen} onDialogOpenChange={setRxOpen} />
+        </>
+      ),
+      badge: hasPrescriptions ? 'Prescribed' : null,
+      done: hasPrescriptions,
+    },
+    {
+      id: 'advice',
+      title: 'Advice & follow-up',
+      hint: 'What to tell the client, and the next visit',
+      fields: ['followUpInstructions'],
+      extra: (
+        <>
+          <TasksPanel encounterId={enc.id} patientId={enc.patient.id} tasks={enc.tasks} editable={writable} onSaved={refresh} onBookFollowUp={can('appointments.write') ? () => setFollowUp(true) : undefined} />
+          <Card id="attachments-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Paperclip className="h-4 w-4 text-muted-foreground" /> Photos & documents
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <AttachmentsPanel entityType="Encounter" entityId={enc.id} canWrite={writable} />
+            </CardContent>
+          </Card>
+        </>
+      ),
+      badge: enc.tasks.length ? plural(enc.tasks.length, 'follow-up') : null,
+      done: enc.tasks.length > 0,
+    },
+    {
+      id: 'review',
+      title: 'Review & finish',
+      hint: 'Check everything, then finish the visit',
+      extra: (ctx) => <VisitReview encounter={enc} hasPrescriptions={hasPrescriptions} ctx={ctx} onFinish={() => setFinishing(true)} />,
+    },
+  ];
 
   return (
     <>
@@ -203,6 +321,27 @@ function Workspace() {
         />
       )}
 
+      {workspace ? (
+        <div className="grid min-w-0 grid-cols-1 gap-4 [&>*]:min-w-0">
+          {signedCards}
+          <Card>
+            <CardContent className="p-4 sm:p-5">
+              <NoteEditor
+                key="visit"
+                encounterId={enc.id}
+                speciesCategory={enc.patient.species.category}
+                note={draft}
+                chiefComplaint={enc.chiefComplaint}
+                latestVitals={latestVitals}
+                workflow={workflow}
+                stepId={currentStep}
+                onStepChange={(id) => setStep(id)}
+              />
+            </CardContent>
+          </Card>
+          {supersededBlock}
+        </div>
+      ) : (
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="grid min-w-0 grid-cols-1 content-start gap-4 [&>*]:min-w-0">
           {drafts
@@ -223,21 +362,7 @@ function Workspace() {
               </Card>
             ))}
 
-          {signed.map((n) => {
-            const pendingAmendment = amendmentDraftFor(n.id);
-            return (
-              <Card key={n.id} id={pendingAmendment ? `note-${pendingAmendment.id}` : undefined}>
-                <CardContent className="grid gap-4">
-                  <NoteView note={n} onAmend={can('clinical.amend') && !pendingAmendment && amending?.id !== n.id ? () => setAmending(n) : undefined} />
-                  {(amending?.id === n.id || pendingAmendment) && (
-                    <div className="rounded-md border-2 border-dashed border-warning/50 p-3">
-                      <NoteEditor encounterId={enc.id} speciesCategory={enc.patient.species.category} note={pendingAmendment ?? n} amending={!pendingAmendment} onDone={() => setAmending(null)} latestVitals={latestVitals} />
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
+          {signedCards}
 
           {(newNote || current.length === 0) && writable && !drafts.some((d) => !d.amendsId) && (
             <Card>
@@ -256,16 +381,7 @@ function Workspace() {
           )}
           {!writable && current.length === 0 && <EmptyState title="No clinical notes" />}
 
-          {superseded.length > 0 && (
-            <details className="rounded-lg border bg-card p-4">
-              <summary className="cursor-pointer text-sm font-medium">Previous versions ({superseded.length})</summary>
-              <div className="mt-4 grid gap-6">
-                {superseded.map((n) => (
-                  <NoteView key={n.id} note={n} compact />
-                ))}
-              </div>
-            </details>
-          )}
+          {supersededBlock}
         </div>
 
         <div className="grid min-w-0 grid-cols-1 content-start gap-4 [&>*]:min-w-0">
@@ -296,6 +412,7 @@ function Workspace() {
           </Card>
         </div>
       </div>
+      )}
       <PatientHistoryDialog patientId={enc.patient.id} patientName={enc.patient.name} currentId={enc.id} open={historyOpen} onOpenChange={setHistoryOpen} />
       <FinishConsultationDialog
         encounter={enc}

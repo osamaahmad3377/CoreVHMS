@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { EXAM_SYSTEMS, NOTE_PHRASE_FIELDS, type NotePhraseField } from '@vcms/shared';
-import { Activity, CheckCircle2, FileSignature, Loader2, MousePointerClick, Save, Settings2, Trash2 } from 'lucide-react';
+import { Activity, ArrowLeft, ArrowRight, Check, CheckCircle2, FileSignature, Loader2, MousePointerClick, Save, Settings2, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -75,6 +75,31 @@ const SECTIONS: { id: string; title: string; hint: string; fields: (keyof Conten
   { id: 'plan', title: 'Plan and advice', hint: 'What happens next, and what to tell the client', fields: ['plan', 'followUpInstructions'] },
 ];
 
+/** One step of a guided consultation: note fields and/or other things to do (vitals, diagnoses, medicines, tests…). */
+/** What a step's content can see of the note and the other steps. */
+export interface StepContext {
+  content: Content;
+  done: Record<string, boolean>;
+  goStep: (id: string) => void;
+}
+
+export interface WorkflowStep {
+  id: string;
+  title: string;
+  hint: string;
+  fields?: (keyof Content)[];
+  /** Show the physical-examination checklist in this step. */
+  exam?: boolean;
+  /** The step's other content, e.g. the vital-signs form or the prescriptions list. A function gets the note as written so far. */
+  extra?: React.ReactNode | ((ctx: StepContext) => React.ReactNode);
+  /** A short count shown beside the step, e.g. "2 diagnoses". */
+  badge?: string | null;
+  /** The step counts as done even if none of its note fields has text (e.g. vitals recorded). */
+  done?: boolean;
+  /** Text in the step's note fields does not make it done; only `done` does (e.g. vitals must be recorded). */
+  ignoreFieldsForDone?: boolean;
+}
+
 /** "Temp 39.8 °C, Weight 18 kg, Heart rate 120/min, …" from a vitals row. */
 export function vitalsText(v: Vitals) {
   const parts: string[] = [];
@@ -107,7 +132,14 @@ export function NoteEditor({
   speciesCategory,
   chiefComplaint,
   latestVitals,
+  workflow,
+  stepId,
+  onStepChange,
 }: {
+  /** A guided visit: the steps to show, in order (otherwise the note is shown as five collapsible steps). */
+  workflow?: WorkflowStep[];
+  stepId?: string;
+  onStepChange?: (id: string) => void;
   encounterId: string;
   /** Reason from the booking or check-in, used to start an empty presenting complaint. */
   chiefComplaint?: string | null;
@@ -158,6 +190,8 @@ export function NoteEditor({
   const saving = useRef(false);
 
   useEffect(() => {
+    // The draft this editor just created comes back with an id: keep what is on screen.
+    if (!amending && note?.id && note.id === noteId) return;
     setContent(fromNote(note, amending ? null : chiefComplaint));
     setNoteId(amending ? null : (note?.id ?? null));
     setStatus(amending ? 'DRAFT' : (note?.status ?? 'DRAFT'));
@@ -322,6 +356,14 @@ export function NoteEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const steps = workflow ?? [];
+  const stepDone = (st: WorkflowStep) => !!st.done || (!st.ignoreFieldsForDone && !!st.fields?.some((k) => String(content[k] ?? '').trim())) || (!!st.exam && content.examFindings.some((f) => f.status !== 'NOT_EXAMINED'));
+  const activeStep = steps.length ? (stepId && steps.some((st) => st.id === stepId) ? stepId : steps[0].id) : '';
+  const goStep = (id: string) => {
+    onStepChange?.(id);
+    if (typeof window !== 'undefined') document.getElementById('consult-steps')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   const examBlock = (
       <fieldset className="rounded-lg border p-3">
         <legend className="px-1 text-sm font-medium">Physical examination</legend>
@@ -369,6 +411,73 @@ export function NoteEditor({
       </fieldset>
   );
 
+  const stepBody = (st: WorkflowStep, n: number) => (
+    <div className="grid gap-5">
+      {(showAll || steps.length > 0) && (
+        <div className="flex flex-wrap items-baseline gap-x-3">
+          <h2 className="text-base font-semibold">{st.title}</h2>
+          <span className="text-xs text-muted-foreground">Step {n + 1} of {steps.length} · {st.hint}</span>
+        </div>
+      )}
+      {st.fields?.map((k) => renderField(FIELDS.find((f) => f.key === k)!))}
+      {st.exam && examBlock}
+      {typeof st.extra === 'function' ? st.extra({ content, done: Object.fromEntries(steps.map((x) => [x.id, stepDone(x)])), goStep }) : st.extra}
+      {!showAll && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+          {n > 0 ? (
+            <Button type="button" variant="ghost" size="sm" onClick={() => goStep(steps[n - 1].id)}><ArrowLeft /> Back: {steps[n - 1].title}</Button>
+          ) : <span />}
+          {n < steps.length - 1 && (
+            <Button type="button" size="sm" onClick={() => goStep(steps[n + 1].id)}>Next: {steps[n + 1].title} <ArrowRight /></Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  const wizard = (
+    <div id="consult-steps" className="grid scroll-mt-20 gap-4 lg:grid-cols-[14.5rem_minmax(0,1fr)]">
+      <nav aria-label="Consultation steps" className="min-w-0 lg:sticky lg:top-20 lg:self-start">
+        <ol className="flex gap-1.5 overflow-x-auto pb-1 lg:grid lg:gap-1 lg:overflow-visible lg:pb-0">
+          {steps.map((st, n) => {
+            const done = stepDone(st);
+            const current = !showAll && st.id === activeStep;
+            return (
+              <li key={st.id} className="shrink-0 lg:shrink">
+                <button
+                  type="button"
+                  aria-current={current ? 'step' : undefined}
+                  onClick={() => (showAll ? document.getElementById(`step-${st.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) : goStep(st.id))}
+                  className={cn('flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', current ? 'border-primary/50 bg-primary/10 font-semibold' : 'border-transparent hover:bg-muted')}
+                >
+                  <span className={cn('grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-semibold', done ? 'bg-success text-white' : current ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>
+                    {done ? <Check className="h-3.5 w-3.5" aria-hidden /> : n + 1}
+                  </span>
+                  <span className="min-w-0 flex-1 whitespace-nowrap lg:whitespace-normal">
+                    <span className="block leading-tight">{st.title}</span>
+                    {st.badge && <span className="block text-2xs font-normal text-muted-foreground">{st.badge}</span>}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+        <button type="button" onClick={toggleShowAll} className="mt-2 hidden text-xs font-medium text-primary hover:underline lg:block">{showAll ? 'Show one step at a time' : 'Show all steps'}</button>
+      </nav>
+      <div className="min-w-0">
+        <div className="mb-3 flex items-center justify-between text-xs lg:hidden">
+          <span className="font-medium">{steps.filter(stepDone).length} of {steps.length} steps done</span>
+          <button type="button" onClick={toggleShowAll} className="font-medium text-primary hover:underline">{showAll ? 'Show one step at a time' : 'Show all steps'}</button>
+        </div>
+        {steps.map((st, n) => (
+          <div key={st.id} id={`step-${st.id}`} hidden={!showAll && st.id !== activeStep} className={cn(showAll && 'mb-6 rounded-xl border bg-card p-4')}>
+            {stepBody(st, n)}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -413,6 +522,8 @@ export function NoteEditor({
           <p className="text-xs text-muted-foreground">The signed original stays in the record unchanged. This amendment replaces it as the current version once signed.</p>
         </div>
       )}
+      {workflow ? wizard : (
+        <>
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-[10rem] flex-1">
           <div className="mb-1 flex items-center justify-between text-xs">
@@ -443,6 +554,8 @@ export function NoteEditor({
           </NoteSection>
         ))}
       </div>
+        </>
+      )}
 
       <div className="sticky bottom-0 z-10 -mb-2 flex flex-wrap items-center justify-end gap-2 border-t bg-card/95 pb-3 pt-3 backdrop-blur">
         {noteId && !amending && (
