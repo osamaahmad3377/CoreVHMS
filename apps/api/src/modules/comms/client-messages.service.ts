@@ -3,6 +3,7 @@ import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { notFound } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { WhatsAppService } from '../integrations/whatsapp.service';
 import { MessagesService } from './messages.service';
 
 /** Secure client ↔ clinic messaging (staff side). The portal side lives in the portal module. */
@@ -12,6 +13,7 @@ export class ClientMessagesService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly messages: MessagesService,
+    private readonly whatsapp: WhatsAppService,
   ) {}
 
   /** Conversations with the latest message and unread inbound count. */
@@ -44,10 +46,14 @@ export class ClientMessagesService {
     if (!client) throw notFound('Client');
     const portal = await this.prisma.db.portalAccess.findFirst({ where: { clientId, isActive: true } });
     const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: ctx.organizationId! } });
+    // The client wrote on WhatsApp in the last 24 hours: the reply goes back on WhatsApp.
+    const byWhatsApp = !!client.mobilePhone && (await this.whatsapp.sending(ctx.organizationId!)).active && (await this.whatsapp.inReplyWindow(clientId));
     return this.prisma.db.$transaction(async (tx) => {
-      const m = await tx.clientMessage.create({ data: { organizationId: ctx.organizationId!, clientId, direction: 'OUTBOUND', subject: subject ?? null, body, authorName: ctx.userName ?? 'Clinic', staffUserId: ctx.userId } });
-      // Let the client know there is a message waiting (the content itself stays in the portal).
-      if (portal && client.email) {
+      const m = await tx.clientMessage.create({ data: { organizationId: ctx.organizationId!, clientId, direction: 'OUTBOUND', kind: byWhatsApp ? 'WHATSAPP' : 'MESSAGE', subject: subject ?? null, body, authorName: ctx.userName ?? 'Clinic', staffUserId: ctx.userId } });
+      if (byWhatsApp) {
+        await this.messages.enqueueTemplate(tx, 'GENERAL', 'WHATSAPP', { clinicName: org.name, clientName: client.displayName, body }, { clientId, recipient: client.mobilePhone, sourceType: 'ClientMessage', sourceId: m.id, dedupeKey: `wa-reply:${m.id}` });
+      } else if (portal && client.email) {
+        // Let the client know there is a message waiting (the content itself stays in the portal).
         await this.messages.enqueueTemplate(tx, 'GENERAL', 'EMAIL', { clinicName: org.name, body: `Hello ${client.displayName},\n\nYou have a new message from ${org.name} in the client portal.` }, { clientId, recipient: client.email, sourceType: 'ClientMessage', sourceId: m.id, dedupeKey: `portal-msg:${m.id}` });
       }
       await this.audit.record({ action: 'client_message.sent', entityType: 'Client', entityId: clientId, summary: subject ?? body.slice(0, 60) }, tx);

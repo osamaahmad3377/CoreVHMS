@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { MessageChannel, OutboundMessage, Prisma } from '@prisma/client';
+import { toWhatsAppNumber } from '@vcms/shared';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { notFound, ruleViolation } from '../../common/http/errors';
@@ -8,8 +9,9 @@ import { EmailBrand, emailBrandOf } from '../../common/mail/mail.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenancyService } from '../../common/tenancy/tenancy.service';
 import type { ScopedTx } from '../../common/prisma/tenant-extension';
+import { WhatsAppService } from '../integrations/whatsapp.service';
 import { ChannelRegistry } from './channels';
-import { renderTemplate, TemplatesService } from './templates.service';
+import { defaultTemplate, renderTemplate, TemplatesService } from './templates.service';
 
 export const MAX_ATTEMPTS = 5;
 /** Per-organisation sending limit per minute (protects provider accounts and clients from bursts). */
@@ -26,6 +28,15 @@ export interface EnqueueInput {
   dedupeKey?: string | null;
   sourceType?: string | null;
   sourceId?: string | null;
+  /** The values the text was written from (a WhatsApp template or an email fallback is filled from them). */
+  vars?: Record<string, string | number | null | undefined> | null;
+}
+
+/** The contact details a channel choice needs. */
+export interface ClientContactInfo {
+  email: string | null;
+  mobilePhone: string | null;
+  preferredChannel: string;
 }
 
 type Db = ScopedTx | PrismaService['db'];
@@ -36,7 +47,7 @@ type Db = ScopedTx | PrismaService['db'];
  * that triggered it, and a dedupe key guarantees the same notification is not sent twice.
  */
 @Injectable()
-export class MessagesService {
+export class MessagesService implements OnModuleInit {
   private readonly log = new Logger(MessagesService.name);
   private dispatching = false;
 
@@ -46,7 +57,31 @@ export class MessagesService {
     private readonly channels: ChannelRegistry,
     private readonly templates: TemplatesService,
     private readonly tenancy: TenancyService,
+    private readonly whatsapp: WhatsAppService,
   ) {}
+
+  onModuleInit() {
+    // WhatsApp accepted a message but later could not deliver it: send it by email instead when the clinic wants that.
+    this.whatsapp.onFailed(async (m) => {
+      const msg = await this.prisma.raw.outboundMessage.findUnique({ where: { id: m.id } });
+      if (msg) await this.fallbackToEmail(msg);
+    });
+  }
+
+  /**
+   * The channel for a client: their preferred one when it works for this clinic, otherwise the next that does.
+   * With WhatsApp set to "every client with a mobile", WhatsApp comes first unless the client asked for email.
+   */
+  async chooseChannel(client: ClientContactInfo): Promise<MessageChannel> {
+    const orgId = RequestContext.orgId();
+    const preferred = (['EMAIL', 'SMS', 'WHATSAPP'].includes(client.preferredChannel) ? client.preferredChannel : 'SMS') as MessageChannel;
+    const wa = await this.whatsapp.sending(orgId);
+    const order: MessageChannel[] = wa.active && wa.policy === 'ALL_MOBILE' && preferred !== 'EMAIL' ? ['WHATSAPP', preferred, 'EMAIL', 'SMS'] : [preferred, 'EMAIL', 'WHATSAPP', 'SMS'];
+    for (const ch of [...new Set(order)]) {
+      if (MessagesService.recipientFor(client, ch) && (await this.channels.forOrg(ch, orgId)).configured) return ch;
+    }
+    return preferred;
+  }
 
   /** Stores a message for delivery. Returns the existing message when the dedupe key was already used. */
   async enqueue(db: Db, input: EnqueueInput): Promise<OutboundMessage> {
@@ -55,8 +90,22 @@ export class MessagesService {
       const existing = await db.outboundMessage.findFirst({ where: { dedupeKey: input.dedupeKey } });
       if (existing) return existing;
     }
-    const adapter = this.channels.get(input.channel);
-    const skipReason = !input.recipient ? 'No contact details for this channel' : !adapter.configured ? `No ${input.channel === 'WHATSAPP' ? 'WhatsApp' : input.channel} provider is configured` : null;
+    const adapter = await this.channels.forOrg(input.channel, orgId);
+    let recipient = input.recipient;
+    // WhatsApp needs the number in international form (country code, digits only).
+    if (input.channel === 'WHATSAPP' && recipient) {
+      const org = await this.prisma.raw.organization.findUnique({ where: { id: orgId }, select: { country: true } });
+      recipient = toWhatsAppNumber(recipient, org?.country);
+    }
+    const skipReason = !recipient
+      ? input.channel === 'WHATSAPP' && input.recipient
+        ? 'The mobile number is not a full WhatsApp number'
+        : 'No contact details for this channel'
+      : !adapter.configured
+        ? input.channel === 'WHATSAPP'
+          ? 'WhatsApp is not connected (Settings → Integrations)'
+          : `No ${input.channel} provider is configured`
+        : null;
     try {
       return await db.outboundMessage.create({
         data: {
@@ -64,13 +113,14 @@ export class MessagesService {
           clientId: input.clientId ?? null,
           patientId: input.patientId ?? null,
           channel: input.channel,
-          recipient: input.recipient ?? '—',
+          recipient: recipient ?? input.recipient ?? '—',
           subject: input.subject ?? null,
           body: input.body,
           purpose: input.purpose,
           dedupeKey: input.dedupeKey ?? null,
           sourceType: input.sourceType ?? null,
           sourceId: input.sourceId ?? null,
+          templateVars: input.vars ? (input.vars as Prisma.InputJsonValue) : undefined,
           status: skipReason ? 'SKIPPED' : 'QUEUED',
           lastError: skipReason,
           createdByName: RequestContext.get()?.userName ?? 'System',
@@ -88,7 +138,7 @@ export class MessagesService {
   async enqueueTemplate(db: Db, purpose: string, channel: MessageChannel, vars: Record<string, string | number | null | undefined>, input: Omit<EnqueueInput, 'subject' | 'body' | 'purpose' | 'channel'>) {
     const t = await this.templates.get(purpose, channel);
     if (!t) throw ruleViolation('NO_TEMPLATE', `No active ${purpose} template for ${channel}`);
-    return this.enqueue(db, { ...input, channel, purpose, subject: t.subject ? renderTemplate(t.subject, vars) : null, body: renderTemplate(t.body, vars) });
+    return this.enqueue(db, { ...input, channel, purpose, vars, subject: t.subject ? renderTemplate(t.subject, vars) : null, body: renderTemplate(t.body, vars) });
   }
 
   /** Which contact detail to use for a client and channel. */
@@ -127,7 +177,7 @@ export class MessagesService {
       data: rows.map((r) => ({ ...r, client: clients.find((c) => c.id === r.clientId) ?? null })),
       meta: { page: q.page, pageSize: q.pageSize, total },
       last30Days: Object.fromEntries(counts.map((c) => [c.status, c._count])),
-      channels: this.channels.status(),
+      channels: await this.channels.status(RequestContext.orgId()),
     };
   }
 
@@ -200,20 +250,46 @@ export class MessagesService {
         await raw.outboundMessage.update({ where: { id: m.id }, data: { status: 'QUEUED', attempts: m.attempts - 1, nextAttemptAt: new Date(Date.now() + 60_000) } });
         continue;
       }
-      const result = await this.channels.get(m.channel).send({ recipient: m.recipient, subject: m.subject, body: m.body, brand: await brandOf(m.organizationId) });
+      const adapter = await this.channels.forOrg(m.channel, m.organizationId);
+      const result = await adapter.send({ recipient: m.recipient, subject: m.subject, body: m.body, brand: await brandOf(m.organizationId), purpose: m.purpose, vars: m.templateVars as Record<string, unknown> | null });
       if (result.ok) {
         await raw.outboundMessage.update({ where: { id: m.id }, data: { status: 'SENT', sentAt: new Date(), providerMessageId: result.providerMessageId ?? null, lastError: null } });
         sentLastMinute.set(m.organizationId, (sentLastMinute.get(m.organizationId) ?? 0) + 1);
         sent++;
       } else {
-        const final = m.attempts >= MAX_ATTEMPTS;
-        await raw.outboundMessage.update({
+        const final = m.attempts >= MAX_ATTEMPTS || !!result.permanent;
+        const after = await raw.outboundMessage.update({
           where: { id: m.id },
           data: { status: final ? 'FAILED' : 'QUEUED', lastError: result.error ?? 'Unknown error', nextAttemptAt: new Date(Date.now() + 2 ** (m.attempts - 1) * 60_000) },
         });
+        if (final) await this.fallbackToEmail(after);
         failed++;
       }
     }
     return { claimed: claimed.length, sent, failed };
+  }
+
+  /**
+   * A WhatsApp message that finally failed goes by email instead, when the clinic chose that and the client has
+   * an email address. Written from the same values, with the clinic's email wording; sent once (dedupe key).
+   */
+  async fallbackToEmail(m: OutboundMessage) {
+    if (m.channel !== 'WHATSAPP' || m.status !== 'FAILED' || !m.clientId) return null;
+    const raw = this.prisma.raw;
+    if (!(await this.whatsapp.sending(m.organizationId)).fallbackToEmail) return null;
+    const client = await raw.client.findFirst({ where: { id: m.clientId, organizationId: m.organizationId }, select: { email: true } });
+    if (!client?.email) return null;
+    const saved = await raw.messageTemplate.findFirst({ where: { organizationId: m.organizationId, purpose: m.purpose, channel: 'EMAIL', isActive: true } });
+    const t = saved ?? defaultTemplate(m.purpose, 'EMAIL');
+    const vars = (m.templateVars ?? {}) as Record<string, string | number | null | undefined>;
+    const subject = t?.subject ? renderTemplate(t.subject, vars) : 'Message from your veterinary clinic';
+    const body = t ? renderTemplate(t.body, vars) : m.body;
+    const dedupeKey = `whatsapp-fallback:${m.id}`;
+    if (await raw.outboundMessage.findFirst({ where: { organizationId: m.organizationId, dedupeKey } })) return null;
+    const email = await raw.outboundMessage.create({
+      data: { organizationId: m.organizationId, clientId: m.clientId, patientId: m.patientId, channel: 'EMAIL', recipient: client.email, subject, body, purpose: m.purpose, dedupeKey, sourceType: m.sourceType, sourceId: m.sourceId, templateVars: m.templateVars ?? undefined, createdByName: 'System (WhatsApp failed, sent by email)' },
+    });
+    await raw.outboundMessage.update({ where: { id: m.id }, data: { lastError: `${m.lastError ?? 'Not delivered'} — sent by email instead.` } });
+    return email;
   }
 }

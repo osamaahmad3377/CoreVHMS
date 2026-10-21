@@ -361,6 +361,8 @@ model Organization {
   supplierReturnLines    SupplierReturnLine[]
   productCategories      ProductCategory[]
   receiptSettings        ReceiptSettings?
+  whatsAppIntegration    WhatsAppIntegration?
+  whatsAppTemplateLinks  WhatsAppTemplateLink[]
 }
 
 model Branch {
@@ -3599,6 +3601,11 @@ model OutboundMessage {
   dedupeKey         String?
   sourceType        String?
   sourceId          String?
+  /// The values the message was written from, so a channel can re-render it (WhatsApp templates, email fallback).
+  templateVars      Json?
+  /// Delivery receipts from the provider (WhatsApp: delivered to the phone, read by the client).
+  deliveredAt       DateTime?      @db.Timestamptz(3)
+  readAt            DateTime?      @db.Timestamptz(3)
   createdByName     String?
   createdAt         DateTime       @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime       @updatedAt @db.Timestamptz(3)
@@ -3606,6 +3613,7 @@ model OutboundMessage {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   @@unique([organizationId, dedupeKey])
+  @@index([providerMessageId])
   @@index([status, nextAttemptAt])
   @@index([organizationId, clientId, createdAt])
   @@index([organizationId, createdAt])
@@ -4670,4 +4678,55 @@ model ReceiptSettings {
   updatedByName          String?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+}
+
+// ───────────────────────────── Integrations ─────────────────────────────
+
+/// A clinic's own WhatsApp Business number (Meta WhatsApp Cloud API). Secrets are encrypted at rest.
+model WhatsAppIntegration {
+  id                 String    @id @default(uuid()) @db.Uuid
+  organizationId     String    @unique @db.Uuid
+  /// Send reminders and notifications by WhatsApp (the connection can be kept while sending is paused).
+  enabled            Boolean   @default(false)
+  phoneNumberId      String
+  businessAccountId  String
+  accessTokenEnc     String
+  appSecretEnc       String?
+  /// Random key in the webhook address, identifying this clinic's number.
+  webhookKey         String    @unique
+  /// Token Meta echoes when the webhook address is registered.
+  verifyToken        String
+  displayPhoneNumber String?
+  verifiedName       String?
+  qualityRating      String?
+  /// PREFERRED = only clients who chose WhatsApp; ALL_MOBILE = every client with a mobile number unless they chose email.
+  sendPolicy         String    @default("PREFERRED")
+  /// When a WhatsApp message cannot be delivered, send it by email instead (if the client has an email address).
+  fallbackToEmail    Boolean   @default(true)
+  connectedByName    String?
+  lastVerifiedAt     DateTime? @db.Timestamptz(3)
+  lastError          String?
+  lastWebhookAt      DateTime? @db.Timestamptz(3)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+}
+
+/// Which approved WhatsApp message template a kind of message uses, and which values fill its {{1}}, {{2}}…
+model WhatsAppTemplateLink {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  purpose        String
+  templateName   String
+  language       String
+  /// Our variable names, in the order of the template's {{1}}, {{2}}…
+  params         String[]
+  updatedByName  String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, purpose])
 }

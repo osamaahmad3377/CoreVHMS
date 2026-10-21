@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MESSAGE_CHANNELS, MESSAGE_STATUSES, enumLabel, type Paginated } from '@vcms/shared';
-import { AlertTriangle, CalendarPlus, Inbox, MessageSquare, RefreshCw, Send, X } from 'lucide-react';
+import { AlertTriangle, CalendarPlus, Check, CheckCheck, Inbox, MessageCircle, MessageSquare, RefreshCw, Send, X } from 'lucide-react';
 import Link from 'next/link';
 import { Suspense, useState } from 'react';
 import { toast } from 'sonner';
@@ -23,6 +23,17 @@ import { tabListClass, tabTriggerClass } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 
 type Log = Paginated<OutboundMessage> & { last30Days: Record<string, number>; channels: { channel: string; configured: boolean; provider: string }[] };
+
+/** WhatsApp receipts: one grey tick sent, two grey delivered, two blue read. */
+function DeliveryTicks({ m }: { m: OutboundMessage }) {
+  const label = m.readAt ? `Read ${fmtDateTime(m.readAt)}` : m.deliveredAt ? `Delivered ${fmtDateTime(m.deliveredAt)}` : 'Sent — waiting for the phone';
+  const Icon = m.readAt || m.deliveredAt ? CheckCheck : Check;
+  return (
+    <span className={cn('mt-0.5 flex items-center gap-1 text-2xs', m.readAt ? 'text-[#34B7F1]' : 'text-muted-foreground')} title={label}>
+      <Icon className="h-3.5 w-3.5" aria-hidden /> {m.readAt ? 'Read' : m.deliveredAt ? 'Delivered' : 'Sent'}
+    </span>
+  );
+}
 
 function MessageLog() {
   const qc = useQueryClient();
@@ -47,7 +58,10 @@ function MessageLog() {
       {!!missing.length && (
         <Card className="border-warning/40 bg-warning/5 p-3 text-sm">
           <AlertTriangle className="mr-2 inline h-4 w-4 text-warning" />
-          {missing.map((c) => enumLabel(c.channel)).join(' and ')} {missing.length > 1 ? 'are' : 'is'} not connected to a provider yet, so those messages are logged as <b>Not sent</b>. Email is delivered{q.data?.channels.find((c) => c.channel === 'EMAIL')?.provider === 'SMTP' ? ' through your mail server' : ''}. Reminders fall back to email when the client has an email address.
+          {missing.map((c) => enumLabel(c.channel)).join(' and ')} {missing.length > 1 ? 'are' : 'is'} not connected yet, so those messages are logged as <b>Not sent</b>. Email is delivered{q.data?.channels.find((c) => c.channel === 'EMAIL')?.provider === 'SMTP' ? ' through your mail server' : ''}. Reminders fall back to email when the client has an email address.
+          {missing.some((c) => c.channel === 'WHATSAPP') && can('integrations.manage') && (
+            <Link href="/settings/integrations/whatsapp" className="ml-1 font-semibold text-primary hover:underline">Connect WhatsApp →</Link>
+          )}
         </Card>
       )}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -81,7 +95,7 @@ function MessageLog() {
             { key: 'client', header: 'Client', cell: (m) => (m.client ? <Link className="text-sm hover:underline" href={`/clients/${m.client.id}`}>{m.client.displayName}</Link> : <span className="text-sm text-muted-foreground">—</span>) },
             { key: 'what', header: 'Message', cell: (m) => <div className="max-w-md"><p className="truncate text-sm font-medium">{m.subject ?? enumLabel(m.purpose)}</p><p className={cn('text-xs text-muted-foreground', open === m.id ? 'whitespace-pre-wrap' : 'truncate')}>{m.body}</p></div> },
             { key: 'ch', header: 'Channel', cell: (m) => <span className="text-sm">{enumLabel(m.channel)}<span className="block text-xs text-muted-foreground">{m.recipient}</span></span> },
-            { key: 'st', header: 'Status', cell: (m) => <span><MessageStatusBadge status={m.status} />{m.lastError && <span className="block max-w-[200px] truncate text-2xs text-muted-foreground" title={m.lastError}>{m.lastError}</span>}{m.sentAt && <span className="block text-2xs text-muted-foreground">{fmtDateTime(m.sentAt)}</span>}</span> },
+            { key: 'st', header: 'Status', cell: (m) => <span><MessageStatusBadge status={m.status} />{m.lastError && <span className="block max-w-[200px] truncate text-2xs text-muted-foreground" title={m.lastError}>{m.lastError}</span>}{m.sentAt && <span className="block text-2xs text-muted-foreground">{fmtDateTime(m.sentAt)}</span>}{m.channel === 'WHATSAPP' && m.status === 'SENT' && <DeliveryTicks m={m} />}</span> },
             {
               key: 'act',
               header: '',
@@ -130,7 +144,7 @@ function ClientInbox() {
               </li>
             ))}
           </ul>
-        ) : <EmptyState icon={Inbox} title="No client messages" description="Messages and feedback sent from the client portal appear here." />}
+        ) : <EmptyState icon={Inbox} title="No client messages" description="Clients’ WhatsApp replies and messages from the client portal appear here." />}
       </Card>
       <Card className="flex min-h-[400px] flex-col">
         {selected && thread.data ? (
@@ -140,15 +154,16 @@ function ClientInbox() {
               {thread.data.messages.map((m) => (
                 <div key={m.id} className={cn('max-w-[80%] rounded-lg px-3 py-2 text-sm', m.direction === 'INBOUND' ? 'self-start bg-muted' : 'self-end bg-primary text-primary-foreground')}>
                   {m.kind === 'FEEDBACK' && <Badge variant="warning" className="mb-1">Feedback</Badge>}
+                  {m.kind === 'WHATSAPP' && <span className={cn('mb-1 flex items-center gap-1 text-2xs font-semibold', m.direction === 'INBOUND' ? 'text-[#128C7E] dark:text-[#25D366]' : 'text-primary-foreground/90')}><MessageCircle className="h-3 w-3" /> WhatsApp</span>}
                   {m.subject && <p className="font-semibold">{m.subject}</p>}
                   <p className="whitespace-pre-wrap">{m.body}</p>
-                  <p className={cn('mt-1 text-2xs', m.direction === 'INBOUND' ? 'text-muted-foreground' : 'text-primary-foreground/80')}>{m.authorName} · {fmtDateTime(m.createdAt)}{m.direction === 'OUTBOUND' && (m.readAt ? ' · read' : ' · not read yet')}</p>
+                  <p className={cn('mt-1 text-2xs', m.direction === 'INBOUND' ? 'text-muted-foreground' : 'text-primary-foreground/80')}>{m.authorName} · {fmtDateTime(m.createdAt)}{m.direction === 'OUTBOUND' && m.kind !== 'WHATSAPP' && (m.readAt ? ' · read' : ' · not read yet')}</p>
                 </div>
               ))}
             </CardContent>
             {can('communications.send') && (
               <div className="flex gap-2 border-t p-3">
-                <Textarea aria-label="Reply" rows={2} value={reply} maxLength={4000} onChange={(e) => setReply(e.target.value)} placeholder="Write a reply… (the client is emailed that a message is waiting)" />
+                <Textarea aria-label="Reply" rows={2} value={reply} maxLength={4000} onChange={(e) => setReply(e.target.value)} placeholder={thread.data.messages.some((m) => m.direction === 'INBOUND' && m.kind === 'WHATSAPP' && Date.now() - new Date(m.createdAt).getTime() < 86_400_000) ? 'Write a reply… (sent on WhatsApp)' : 'Write a reply… (the client is emailed that a message is waiting)'} />
                 <Button disabled={!reply.trim()} loading={send.isPending} onClick={() => send.mutate()}><Send /> Send</Button>
               </div>
             )}
@@ -201,10 +216,14 @@ function Requests() {
 function Messages() {
   const url = useUrlState();
   const portal = usePortalEnabled();
-  const tab = portal ? url.get('tab', 'log') : 'log';
-  const unread = useQuery({ queryKey: ['client-messages', 'unread'], queryFn: () => api.get<{ unread: number }>('/client-messages/unread'), refetchInterval: 30_000, enabled: portal });
+  // Clients' WhatsApp replies arrive in "Client messages", so the tab shows when WhatsApp is connected too.
+  const channels = useQuery({ queryKey: ['messages', 'channels'], queryFn: () => api.get<Log>('/messages?pageSize=1'), select: (r) => r.channels, staleTime: 60_000 });
+  const whatsapp = !!channels.data?.find((c) => c.channel === 'WHATSAPP')?.configured;
+  const conversations = portal || whatsapp;
+  const tab = conversations ? url.get('tab', 'log') : 'log';
+  const unread = useQuery({ queryKey: ['client-messages', 'unread'], queryFn: () => api.get<{ unread: number }>('/client-messages/unread'), refetchInterval: 30_000, enabled: conversations });
   const requests = useQuery({ queryKey: ['appointment-requests'], queryFn: () => api.get<AppointmentRequestRow[]>('/appointment-requests'), enabled: portal });
-  if (!portal) {
+  if (!conversations) {
     return (
       <>
         <PageHeader title="Messages" help="communications" description="Reminders and messages sent to clients, with their delivery status." />
@@ -214,9 +233,9 @@ function Messages() {
   }
   return (
     <>
-      <PageHeader title="Messages" help="communications" description="Reminders and messages to clients, secure messages from the client portal, and online appointment requests." />
+      <PageHeader title="Messages" help="communications" description={portal ? 'Reminders and messages to clients, conversations with clients, and online appointment requests.' : 'Reminders and messages to clients, and clients’ WhatsApp replies.'} />
       <div className={cn(tabListClass, 'mb-6')} role="tablist">
-        {[['log', 'Message log', 0], ['inbox', 'Client messages', unread.data?.unread ?? 0], ['requests', 'Appointment requests', requests.data?.length ?? 0]].map(([k, l, n]) => (
+        {([['log', 'Message log', 0], ['inbox', 'Client messages', unread.data?.unread ?? 0], ...(portal ? [['requests', 'Appointment requests', requests.data?.length ?? 0]] : [])] as [string, string, number][]).map(([k, l, n]) => (
           <button key={k as string} role="tab" aria-selected={tab === k} onClick={() => url.set({ tab: k as string, client: null })} className={tabTriggerClass()}>
             {l}{(n as number) > 0 && <Badge variant="destructive" className="px-1.5 py-0">{n}</Badge>}
           </button>

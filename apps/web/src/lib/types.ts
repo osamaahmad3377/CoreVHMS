@@ -1270,8 +1270,45 @@ export interface OutboundMessage {
   attempts: number;
   lastError: string | null;
   sentAt: string | null;
+  /** WhatsApp receipts. */
+  deliveredAt: string | null;
+  readAt: string | null;
   createdAt: string;
   createdByName: string | null;
+}
+
+/** Settings → Integrations → WhatsApp. */
+export interface WhatsAppOverview {
+  connected: boolean;
+  enabled: boolean;
+  phoneNumberId: string | null;
+  businessAccountId: string | null;
+  displayPhoneNumber: string | null;
+  verifiedName: string | null;
+  qualityRating: string | null;
+  sendPolicy: 'PREFERRED' | 'ALL_MOBILE';
+  fallbackToEmail: boolean;
+  hasAppSecret: boolean;
+  webhookPath: string | null;
+  verifyToken: string | null;
+  connectedByName: string | null;
+  lastVerifiedAt: string | null;
+  lastError: string | null;
+  lastWebhookAt: string | null;
+  links: { purpose: string; templateName: string; language: string; params: string[]; updatedByName: string | null; updatedAt: string }[];
+  last30Days: { sent: number; failed: number; queued: number; skipped: number; delivered: number; read: number };
+}
+
+export interface WhatsAppTemplate {
+  name: string;
+  language: string;
+  status: string;
+  category: string;
+  header: string | null;
+  body: string;
+  paramCount: number;
+  supported: boolean;
+  note: string | null;
 }
 
 export interface MessageTemplate {

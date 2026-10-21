@@ -2,6 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
+import { json } from 'express';
 import helmet from 'helmet';
 import { requestContextMiddleware } from './common/context/request-context.middleware';
 import { AllExceptionsFilter } from './common/http/exception.filter';
@@ -21,6 +22,8 @@ export function configureApp(app: INestApplication) {
   app.use(requestContextMiddleware);
   app.use(tenantResolverMiddleware(app.get(TenancyService)));
   if (env().LOG_REQUESTS) app.use(requestLoggerMiddleware);
+  // Webhooks keep the exact bytes received, to check the sender's signature.
+  app.use('/api/v1/webhooks', json({ limit: '2mb', verify: (req, _res, buf) => ((req as { rawBody?: Buffer }).rawBody = buf) }));
   express.useBodyParser('json', { limit: '2mb' });
   app.setGlobalPrefix('api/v1');
   app.useGlobalFilters(new AllExceptionsFilter());

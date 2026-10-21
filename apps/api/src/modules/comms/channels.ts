@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { MessageChannel } from '@prisma/client';
 import { EmailBrand, escapeHtml, layout, MailService } from '../../common/mail/mail.service';
+import { WhatsAppService } from '../integrations/whatsapp.service';
 
 export interface ChannelMessage {
   recipient: string;
@@ -8,12 +9,17 @@ export interface ChannelMessage {
   body: string;
   /** The sending clinic's branding (sender name, colour, reply-to, signature). */
   brand?: EmailBrand;
+  /** Kind of message and the values it was written from (WhatsApp fills an approved template with them). */
+  purpose?: string;
+  vars?: Record<string, unknown> | null;
 }
 
 export interface ChannelResult {
   ok: boolean;
   providerMessageId?: string;
   error?: string;
+  /** Retrying will not help (a person has to fix something first). */
+  permanent?: boolean;
 }
 
 export interface ChannelAdapter {
@@ -35,10 +41,20 @@ class EmailAdapter implements ChannelAdapter {
   }
 }
 
-/**
- * Placeholder for channels without a configured provider. No SMS or WhatsApp provider has been
- * integrated or tested yet, so these channels report "not configured" instead of pretending to send.
- */
+/** The clinic's own WhatsApp Business number (Settings → Integrations → WhatsApp). */
+class WhatsAppAdapter implements ChannelAdapter {
+  readonly provider = 'WhatsApp Business (Meta)';
+  constructor(
+    private readonly whatsapp: WhatsAppService,
+    private readonly organizationId: string,
+    readonly configured: boolean,
+  ) {}
+  send(m: ChannelMessage): Promise<ChannelResult> {
+    return this.whatsapp.send(this.organizationId, { recipient: m.recipient, body: m.body, purpose: m.purpose ?? 'GENERAL', vars: m.vars });
+  }
+}
+
+/** Placeholder for channels without a configured provider (SMS): reports "not configured" instead of pretending to send. */
 class NotConfiguredAdapter implements ChannelAdapter {
   readonly configured = false;
   readonly provider = 'Not configured';
@@ -50,14 +66,26 @@ class NotConfiguredAdapter implements ChannelAdapter {
 
 @Injectable()
 export class ChannelRegistry {
-  private readonly adapters: Record<MessageChannel, ChannelAdapter>;
-  constructor(mail: MailService) {
-    this.adapters = { EMAIL: new EmailAdapter(mail), SMS: new NotConfiguredAdapter('SMS'), WHATSAPP: new NotConfiguredAdapter('WhatsApp') };
+  private readonly email: ChannelAdapter;
+  private readonly sms: ChannelAdapter = new NotConfiguredAdapter('SMS');
+  constructor(
+    mail: MailService,
+    private readonly whatsapp: WhatsAppService,
+  ) {
+    this.email = new EmailAdapter(mail);
   }
-  get(channel: MessageChannel) {
-    return this.adapters[channel];
+
+  /** The adapter for a channel in one clinic (WhatsApp is each clinic's own number). */
+  async forOrg(channel: MessageChannel, organizationId: string): Promise<ChannelAdapter> {
+    if (channel === 'EMAIL') return this.email;
+    if (channel === 'SMS') return this.sms;
+    return new WhatsAppAdapter(this.whatsapp, organizationId, (await this.whatsapp.sending(organizationId)).active);
   }
-  status() {
-    return (Object.keys(this.adapters) as MessageChannel[]).map((c) => ({ channel: c, configured: this.adapters[c].configured, provider: this.adapters[c].provider }));
+
+  async status(organizationId: string) {
+    return Promise.all((['EMAIL', 'SMS', 'WHATSAPP'] as MessageChannel[]).map(async (c) => {
+      const a = await this.forOrg(c, organizationId);
+      return { channel: c, configured: a.configured, provider: a.configured || c !== 'WHATSAPP' ? a.provider : 'Not connected' };
+    }));
   }
 }

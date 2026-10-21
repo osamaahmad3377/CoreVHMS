@@ -62,7 +62,7 @@ describe('Communications and reminders', () => {
     expect((await prisma().outboundMessage.findUniqueOrThrow({ where: { id: sent.body.id } })).status).toBe('SENT');
 
     const registry = (await getApp()).get(ChannelRegistry);
-    const spy = jest.spyOn(registry.get('EMAIL'), 'send').mockResolvedValue({ ok: false, error: 'SMTP down' });
+    const spy = jest.spyOn(await registry.forOrg('EMAIL', 'any-clinic'), 'send').mockResolvedValue({ ok: false, error: 'SMTP down' });
     try {
       const m2 = await org.owner.post('/messages', { clientId: client.id, channel: 'EMAIL', body: 'Second' });
       await dispatch();
@@ -106,7 +106,8 @@ describe('Communications and reminders', () => {
     const anon = await portalClient();
     expect((await anon.post('/portal/auth/login', { email: 'x@example.test', password: 'whatever-123' })).status).toBe(404);
     expect((await org.owner.post(`/clients/${client.id}/portal-invite`)).status).toBe(404);
-    expect((await org.owner.get('/client-messages')).status).toBe(404);
+    // Conversations stay available without the portal: WhatsApp replies arrive there too.
+    expect((await org.owner.get('/client-messages')).body).toEqual([]);
     expect((await org.owner.get('/appointment-requests')).status).toBe(404);
     expect((await org.owner.get('/dashboard')).body.widgets.communications).toMatchObject({ unreadMessages: 0, pendingRequests: 0 });
   });

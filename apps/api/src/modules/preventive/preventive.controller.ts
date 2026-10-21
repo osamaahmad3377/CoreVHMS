@@ -1,3 +1,4 @@
+import { formatInTimeZone } from 'date-fns-tz';
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CARE_KINDS, cancelCareSchema, careItemSchema, careRepeatSchema, careProtocolSchema, completeCareSchema, deferCareSchema } from '@vcms/shared';
@@ -140,7 +141,7 @@ export class PreventiveController {
     if (!client) throw notFound('Owner');
     if (!client.remindersConsent) return { status: 'OPTED_OUT' };
     const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: RequestContext.orgId() } });
-    const channel = client.preferredChannel === 'EMAIL' || !client.mobilePhone ? 'EMAIL' : client.preferredChannel === 'WHATSAPP' ? 'WHATSAPP' : 'SMS';
+    const channel = await this.messages.chooseChannel(client);
     const due = effectiveDue(item);
     const today = await branchToday(this.prisma);
     const overdue = due < today;
@@ -149,8 +150,8 @@ export class PreventiveController {
         tx,
         overdue ? 'CARE_OVERDUE' : 'CARE_REMINDER',
         channel,
-        { clinicName: org.name, clinicPhoneLine: org.phone ? ` on ${org.phone}` : '', clientName: client.displayName, petNames: item.patient.name, items: `• ${item.patient.name}: ${item.title} — ${due.toISOString().slice(0, 10)}`, itemsShort: item.title },
-        { clientId: client.id, patientId: item.patientId, recipient: channel === 'EMAIL' ? client.email : client.mobilePhone, dedupeKey: `manual-care:${item.id}:${today.toISOString().slice(0, 10)}`, sourceType: 'CareItem', sourceId: item.id },
+        { clinicName: org.name, clinicPhone: org.phone ?? '', clinicPhoneLine: org.phone ? ` on ${org.phone}` : '', clientName: client.displayName, petNames: item.patient.name, items: `• ${item.patient.name}: ${item.title} — ${due.toISOString().slice(0, 10)}`, itemsShort: item.title, dueDate: formatInTimeZone(due, 'UTC', 'd MMM yyyy') },
+        { clientId: client.id, patientId: item.patientId, recipient: MessagesService.recipientFor(client, channel), dedupeKey: `manual-care:${item.id}:${today.toISOString().slice(0, 10)}`, sourceType: 'CareItem', sourceId: item.id },
       );
       await tx.careItem.update({ where: { id }, data: overdue ? { overdueRemindedAt: new Date() } : { remindedAt: new Date() } });
       await this.audit.record({ action: 'care_item.reminder_sent', entityType: 'Patient', entityId: item.patientId, summary: item.title }, tx);

@@ -1,12 +1,13 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { MESSAGE_CHANNELS, MESSAGE_STATUSES, commsSettingsSchema, sendMessageSchema, templateSchema } from '@vcms/shared';
+import { MESSAGE_CHANNELS, MESSAGE_STATUSES, commsSettingsSchema, sendMessageSchema, staffReplySchema, templateSchema } from '@vcms/shared';
 import { z } from 'zod';
 import { AuditService, diff } from '../../common/audit/audit.service';
 import { RequireAnyPermission, RequirePermissions } from '../../common/auth/decorators';
 import { RequestContext } from '../../common/context/request-context';
 import { ApiZodBody, ApiZodQuery, zp } from '../../common/http/zod';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { ClientMessagesService } from './client-messages.service';
 import { MessagesService } from './messages.service';
 import { RemindersService } from './reminders.service';
 import { TemplatesService } from './templates.service';
@@ -30,6 +31,7 @@ export class CommsController {
     private readonly messages: MessagesService,
     private readonly templates: TemplatesService,
     private readonly reminders: RemindersService,
+    private readonly clientMessages: ClientMessagesService,
   ) {}
 
   @Get('messages')
@@ -99,5 +101,31 @@ export class CommsController {
       await this.audit.record({ action: 'communications_settings.updated', entityType: 'Organization', entityId: id, changes: diff(before, after, Object.keys(body)) }, tx);
     });
     return this.settings();
+  }
+
+  // ── Conversations with clients (client portal messages and WhatsApp replies) ──
+  @Get('client-messages')
+  @RequirePermissions('communications.read')
+  inbox() {
+    return this.clientMessages.inbox();
+  }
+
+  @Get('client-messages/unread')
+  @RequirePermissions('communications.read')
+  unread() {
+    return this.clientMessages.unreadCount();
+  }
+
+  @Get('client-messages/:clientId')
+  @RequirePermissions('communications.read')
+  thread(@Param('clientId', UUID) clientId: string) {
+    return this.clientMessages.thread(clientId);
+  }
+
+  @Post('client-messages')
+  @RequirePermissions('communications.send')
+  @ApiZodBody(staffReplySchema)
+  reply(@Body(zp(staffReplySchema)) body: z.infer<typeof staffReplySchema>) {
+    return this.clientMessages.reply(body.clientId, body.body, body.subject);
   }
 }

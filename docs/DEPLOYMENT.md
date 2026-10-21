@@ -120,11 +120,26 @@ NODE_ENV=production PORT=3000 node apps/web/.next/standalone/apps/web/server.js
 Copy `apps/web/.next/static` to `apps/web/.next/standalone/apps/web/.next/static` and `apps/web/public` to
 `apps/web/.next/standalone/apps/web/public` after building. Run both under a process manager (systemd).
 
+## 6a. WhatsApp (each clinic's own number)
+
+Clinics connect their own WhatsApp Business number in **Settings → Integrations → WhatsApp** (staff with
+`integrations.manage`): Phone number ID, WhatsApp Business Account ID, a permanent System User token and the
+Meta app secret. The token and secret are stored encrypted with `ENCRYPTION_KEY`.
+
+- The API calls `https://graph.facebook.com` (override with `WHATSAPP_GRAPH_URL`; version `WHATSAPP_API_VERSION`,
+  default `v21.0`), so the server needs outbound HTTPS.
+- Meta must reach the webhook shown on the settings page: `https://<clinic address>/api/v1/webhooks/whatsapp/<key>`.
+  It goes through the web server like every `/api` call, so it works wherever the clinic's address is public over
+  HTTPS. Delivery receipts, read receipts, failures and clients' replies arrive there; calls are checked against
+  the app secret (`X-Hub-Signature-256`).
+- Messages that start a conversation need a Meta-approved template; the settings page links one to each kind of
+  message and chooses which value fills each `{{1}}`, `{{2}}`…
+
 ## 7. What this release does not include
 
 - **Offline / desktop mode.** The application needs a network connection to the server. Offline field
   visits and a desktop build are planned, not implemented.
-- **Electronic integrations** with SMS/WhatsApp providers, payment gateways, insurers or lab analysers.
+- **Electronic integrations** with SMS providers, payment gateways, insurers or lab analysers (WhatsApp is included, §6a).
   Email is the only delivery channel that works out of the box.
 - **High availability.** The compose stack is a single host. For multiple hosts, use a managed PostgreSQL
   service and an object-storage adapter for uploaded files (the storage layer is behind an interface).

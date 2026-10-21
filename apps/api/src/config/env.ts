@@ -42,6 +42,9 @@ const envSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
+  // WhatsApp Business Platform (Meta Cloud API). Each clinic connects its own number in Settings → Integrations.
+  WHATSAPP_GRAPH_URL: z.string().url().default('https://graph.facebook.com'),
+  WHATSAPP_API_VERSION: z.string().regex(/^v\d+\.\d+$/).default('v21.0'),
   MAX_UPLOAD_MB: z.coerce.number().int().min(1).max(200).default(20),
   /**
    * Multi-clinic hosting. Unset: one installation serves the clinics in DATABASE_URL (single-clinic mode).

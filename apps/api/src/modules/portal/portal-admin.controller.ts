@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { requestDecisionSchema, staffReplySchema } from '@vcms/shared';
+import { requestDecisionSchema } from '@vcms/shared';
 import { z } from 'zod';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequireAnyPermission, RequirePermissions } from '../../common/auth/decorators';
@@ -9,7 +9,6 @@ import { notFound, ruleViolation } from '../../common/http/errors';
 import { zp } from '../../common/http/zod';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AttachmentsService } from '../attachments/attachments.service';
-import { ClientMessagesService } from '../comms/client-messages.service';
 import { PortalAuthService } from './portal-auth.service';
 
 const UUID = new ParseUUIDPipe();
@@ -25,7 +24,6 @@ export class PortalAdminController {
     private readonly auth: PortalAuthService,
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly clientMessages: ClientMessagesService,
     private readonly attachments: AttachmentsService,
   ) {}
 
@@ -87,31 +85,6 @@ export class PortalAdminController {
       await this.audit.record({ action: `appointment_request.${body.action}`, entityType: 'Client', entityId: r.clientId, summary: r.reason }, tx);
       return after;
     });
-  }
-
-  // ── Secure client messages ──
-  @Get('client-messages')
-  @RequirePermissions('communications.read')
-  inbox() {
-    return this.clientMessages.inbox();
-  }
-
-  @Get('client-messages/unread')
-  @RequirePermissions('communications.read')
-  unread() {
-    return this.clientMessages.unreadCount();
-  }
-
-  @Get('client-messages/:clientId')
-  @RequirePermissions('communications.read')
-  thread(@Param('clientId', UUID) clientId: string) {
-    return this.clientMessages.thread(clientId);
-  }
-
-  @Post('client-messages')
-  @RequirePermissions('communications.send')
-  reply(@Body(zp(staffReplySchema)) body: z.infer<typeof staffReplySchema>) {
-    return this.clientMessages.reply(body.clientId, body.body, body.subject);
   }
 
   // ── Documents shared with the client ──

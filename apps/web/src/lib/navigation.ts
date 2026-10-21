@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   LayoutList,
   LifeBuoy,
+  MessageCircle,
   MessageSquare,
   Palette,
   PawPrint,
@@ -112,7 +113,7 @@ export const NAV: NavSection[] = [
         label: 'Settings',
         href: '/settings',
         icon: Settings,
-        anyOf: ['org.manage', 'branches.manage', 'users.read', 'roles.manage', 'settings.manage'],
+        anyOf: ['org.manage', 'branches.manage', 'users.read', 'roles.manage', 'settings.manage', 'integrations.manage'],
         ready: true,
       },
       { label: 'Activity log', href: '/audit', icon: ScrollText, anyOf: ['audit.read'], ready: true },
@@ -125,8 +126,8 @@ export const NAV: NavSection[] = [
   },
 ];
 
-export type SettingsGroup = 'Your clinic' | 'Staff & access' | 'Prices & billing' | 'Rooms & spaces' | 'Clinical setup';
-export const SETTINGS_GROUPS: SettingsGroup[] = ['Your clinic', 'Staff & access', 'Prices & billing', 'Rooms & spaces', 'Clinical setup'];
+export type SettingsGroup = 'Your clinic' | 'Staff & access' | 'Prices & billing' | 'Rooms & spaces' | 'Clinical setup' | 'Integrations';
+export const SETTINGS_GROUPS: SettingsGroup[] = ['Your clinic', 'Staff & access', 'Prices & billing', 'Rooms & spaces', 'Clinical setup', 'Integrations'];
 
 /** Settings pages, grouped the way an owner thinks about them; `hint` is the one-line description on the Settings home page. */
 export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyOf: Permission[]; group: SettingsGroup; hint: string; module?: OptionalModule; /** Only where the installation has plans (multi-clinic hosting). */ plansOnly?: boolean }[] = [
@@ -150,6 +151,7 @@ export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyO
   { label: 'Species & breeds', href: '/settings/species', icon: PawPrint, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Already filled in; add a breed if one is missing' },
   { label: 'Normal vital-sign ranges', href: '/settings/vital-references', icon: Activity, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Normal temperature, heart rate… per species, to flag readings' },
   { label: 'Surgical checklist', href: '/settings/surgery-checklist', icon: Scissors, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Safety checks ticked before each operation', module: 'surgery' },
+  { label: 'WhatsApp', href: '/settings/integrations/whatsapp', icon: MessageCircle, anyOf: ['integrations.manage'], group: 'Integrations', hint: 'Send reminders and messages from your own WhatsApp Business number' },
   { label: 'Livestock pregnancy lengths', href: '/settings/livestock', icon: Tractor, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Used to work out calving and lambing dates', module: 'livestock' },
 ];
 

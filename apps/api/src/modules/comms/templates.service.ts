@@ -22,6 +22,11 @@ const DEFAULTS: { purpose: string; channel: MessageChannel; subject?: string; bo
   { purpose: 'GENERAL', channel: 'WHATSAPP', body: '{{body}}' },
 ];
 
+/** The built-in wording for a purpose and channel (used when a clinic has not saved its own yet). */
+export function defaultTemplate(purpose: string, channel: MessageChannel) {
+  return DEFAULTS.find((d) => d.purpose === purpose && d.channel === channel) ?? null;
+}
+
 /** Fills {{placeholders}}; unknown placeholders become empty strings. */
 export function renderTemplate(text: string, vars: Record<string, string | number | null | undefined>) {
   return text.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => (vars[k] === null || vars[k] === undefined ? '' : String(vars[k])));

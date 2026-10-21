@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { MessageChannel } from '@prisma/client';
 import { formatInTimeZone } from 'date-fns-tz';
 import { RequestContext } from '../../common/context/request-context';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -36,15 +35,6 @@ export class RemindersService {
     private readonly tenancy: TenancyService,
   ) {}
 
-  /** Preferred channel when usable, otherwise email, otherwise the preferred channel (logged as not sent). */
-  private channelFor(c: ClientContact): MessageChannel {
-    const preferred = (['EMAIL', 'SMS', 'WHATSAPP'].includes(c.preferredChannel) ? c.preferredChannel : 'SMS') as MessageChannel;
-    if (preferred !== 'EMAIL' && c.mobilePhone) return preferred;
-    if (preferred === 'EMAIL' && c.email) return 'EMAIL';
-    if (c.email) return 'EMAIL';
-    return preferred;
-  }
-
   @Cron(CronExpression.EVERY_HOUR)
   async hourly() {
     if (process.env.NODE_ENV === 'test') return;
@@ -64,7 +54,7 @@ export class RemindersService {
   async run(now = new Date()) {
     const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: RequestContext.orgId() } });
     const today = new Date(localParts(now, org.defaultTimezone).date);
-    const base = { clinicName: org.name, clinicPhoneLine: org.phone ? ` on ${org.phone}` : '' };
+    const base = { clinicName: org.name, clinicPhone: org.phone ?? '', clinicPhoneLine: org.phone ? ` on ${org.phone}` : '' };
     const due = await this.careReminders('CARE_REMINDER', today, org.reminderLeadDays, org.overdueReminderDays, base);
     const overdue = await this.careReminders('CARE_OVERDUE', today, org.reminderLeadDays, org.overdueReminderDays, base);
     const appointments = await this.appointmentReminders(now, org.appointmentReminderHours, base);
@@ -99,7 +89,7 @@ export class RemindersService {
       await db.$transaction(async (tx) => {
         // Opted-out clients get no message; their items are still flagged so we don't re-check them hourly.
         if (client.remindersConsent) {
-          const channel = this.channelFor(client);
+          const channel = await this.messages.chooseChannel(client);
           const pets = [...new Set(list.map((i) => i.patient.name))];
           await this.messages.enqueueTemplate(
             tx,
@@ -111,6 +101,7 @@ export class RemindersService {
               petNames: pets.join(' & '),
               items: list.map((i) => `• ${i.patient.name}: ${i.title} — ${(i.status === 'DEFERRED' && i.deferredUntil ? i.deferredUntil : i.dueDate).toISOString().slice(0, 10)}`).join('\n'),
               itemsShort: [...new Set(list.map((i) => i.title))].join(', '),
+              dueDate: formatInTimeZone(list.map((i) => (i.status === 'DEFERRED' && i.deferredUntil ? i.deferredUntil : i.dueDate)).sort((x, y) => x.getTime() - y.getTime())[0], 'UTC', 'd MMM yyyy'),
             },
             { clientId: client.id, patientId: list.length === 1 ? list[0].patientId : null, recipient: MessagesService.recipientFor(client, channel), dedupeKey: `${purpose}:${client.id}:${stamp}`, sourceType: 'CareItem', sourceId: list[0].id },
           );
@@ -133,7 +124,7 @@ export class RemindersService {
       const client = a.client as unknown as ClientContact;
       await db.$transaction(async (tx) => {
         if (client.remindersConsent && client.status === 'ACTIVE') {
-          const channel = this.channelFor(client);
+          const channel = await this.messages.chooseChannel(client);
           await this.messages.enqueueTemplate(
             tx,
             'APPOINTMENT_REMINDER',
