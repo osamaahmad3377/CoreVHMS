@@ -15,14 +15,20 @@ export function Logo({ collapsed }: { collapsed?: boolean }) {
   const { session } = useSession();
   const branding = session.organization?.branding;
   const logo = logoFor(branding, menuIsDark(branding));
-  const icon = collapsed ? (branding?.iconUrl ?? logo) : (logo ?? branding?.iconUrl);
+  // With an uploaded logo only the logo shows; without one only the clinic name does.
+  const icon = collapsed ? (branding?.iconUrl ?? logo) : logo;
   const height = collapsed ? 32 : MENU_LOGO_HEIGHT[branding?.menuLogoSize ?? 'MEDIUM'];
   const name = branding?.brandName ?? session.organization?.name ?? 'NextCore';
   return (
-    <Link href="/dashboard" className={cn('flex min-w-0 flex-col items-center text-center text-sidebar-strong', !collapsed && 'w-full gap-2')} aria-label={`${name} — home`}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={icon ?? '/favicon.svg'} alt="" style={{ height }} className={cn('max-w-full shrink-0 object-contain', !icon && 'aspect-square')} />
-      {!collapsed && <span className="line-clamp-2 block w-full text-balance text-[0.9375rem] font-semibold leading-tight tracking-tight">{name}</span>}
+    <Link href="/dashboard" className={cn('flex min-w-0 flex-col items-center text-center text-sidebar-strong', !collapsed && 'w-full')} aria-label={`${name} — home`}>
+      {icon ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={icon} alt={collapsed ? '' : name} style={{ height }} className="max-w-full shrink-0 object-contain" />
+      ) : collapsed ? (
+        <span aria-hidden className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-active text-sm font-semibold text-white">{name.trim().charAt(0).toUpperCase()}</span>
+      ) : (
+        <span className="line-clamp-2 block w-full text-balance text-lg font-semibold leading-tight tracking-tight">{name}</span>
+      )}
     </Link>
   );
 }

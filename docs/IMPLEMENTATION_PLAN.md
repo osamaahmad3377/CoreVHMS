@@ -640,4 +640,4 @@ Items from the feature matrix that need no external device, data source or provi
 
 - **Sidebar redesign**: wider 256px menu with the branch shown under the logo, rounded icon chips on every item, a raised active pill, a user card with role and "Collapse menu" at the bottom, a rounded slide-in drawer on phones/iPads. Uses only the clinic colours, so white-label menus still work.
 
-- **Menu logo**: the logo now sits at the top of the side menu with the clinic name below it; Settings → Branding → Menu logo sets its size (small / medium / large). New column `Organization.menuLogoSize` (migration `20261022090000_menu_logo_size`).
+- **Menu logo**: the logo now sits at the top of the side menu alone when uploaded (the clinic name shows only when there is no logo); Settings → Branding → Menu logo sets its size (small / medium / large). New column `Organization.menuLogoSize` (migration `20261022090000_menu_logo_size`).
