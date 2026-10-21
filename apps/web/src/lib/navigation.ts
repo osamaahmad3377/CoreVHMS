@@ -57,7 +57,6 @@ export const NAV: NavSection[] = [
     label: 'Overview',
     items: [
       { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, anyOf: ['dashboard.view'], ready: true },
-      { label: 'Help centre', href: '/help', icon: LifeBuoy, anyOf: [], ready: true },
     ],
   },
   {
@@ -118,6 +117,11 @@ export const NAV: NavSection[] = [
       },
       { label: 'Activity log', href: '/audit', icon: ScrollText, anyOf: ['audit.read'], ready: true },
     ],
+  },
+  {
+    // Always last in the menu, for everyone.
+    label: 'Help',
+    items: [{ label: 'Help centre', href: '/help', icon: LifeBuoy, anyOf: [], ready: true }],
   },
 ];
 
