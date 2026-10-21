@@ -735,7 +735,7 @@ At the end of each milestone, report:
 
 ## 32. Decisions and Current Status
 
-_Last updated: 2026-10-19. The detailed status is kept in `docs/FEATURE_MATRIX.md` and the progress log in `docs/IMPLEMENTATION_PLAN.md`; this section records decisions that change or narrow the brief above._
+_Last updated: 2026-10-21. The detailed status is kept in `docs/FEATURE_MATRIX.md` and the progress log in `docs/IMPLEMENTATION_PLAN.md`; this section records decisions that change or narrow the brief above._
 
 ### Decisions
 - **AI (section 12, Milestone 9):** deferred; not started.
@@ -769,11 +769,32 @@ _Last updated: 2026-10-19. The detailed status is kept in `docs/FEATURE_MATRIX.m
 - **White-label branding (2026-10-19):** each clinic's owner sets these in Settings → Branding:
   - look and feel: ready-made themes, name, logos (including a dark-background version), browser-tab icon, colours, font, corner style and default light/dark theme;
   - the sign-in page: layout, background (menu colour, colour blend or photo) and text;
-  - a letterhead on all printed documents;
+  - a letterhead on all printed documents, which the owner designs: ready-made designs (Classic, Centred, Minimal, Plain text), logo position and size, clinic-name size, line style, which of address, phone and tax number to show, footer alignment, and a pre-printed-paper mode that leaves a blank space at the top;
   - email sender name and signature.
   - Only the owner role can do this. The permission cannot be given to any other role.
   - Branding shows in the app, on the clinic's sign-in page, in the browser tab, on printouts and in staff emails.
   - Colours are adjusted automatically where needed, so text stays readable.
+- **Consultation as a guided visit (2026-10-21):** an open consultation runs in the order of a real visit, as eight steps with a step list and progress.
+  - The steps are: Arrival & vitals, History, Examination, Diagnosis & tests, Treatment, Next steps, Advice & follow-up, Review & finish.
+  - The vitals, problem list, diagnoses, lab and X-ray orders, medicines, prescriptions, follow-up tasks, photos and charges each live in the step where they belong.
+  - "Next steps" lets the vet admit to hospital, schedule surgery, refer to a specialist or book a recheck without leaving the consultation, shown only when the clinic offers that service and the user has the permission.
+  - A finished consultation keeps a read-only record layout. Tests open in a window over the consultation.
+  - Earlier consultations open in full, read-only, in the same window, from the "Last seen" line or the History button.
+- **Fast notes (2026-10-21):** under each note field are tap-to-add buttons (quick picks).
+  - Questions with one answer (Eating, Drinking, Energy, Hydration, Gums…) replace each other; each question can have a normal answer, and "Fill in the normal answers" adds it wherever nothing is answered yet.
+  - Each clinic owns its list in Settings → Quick note phrases. The starter set holds everyday observations only, with no doses or treatment schedules, and is added once per clinic.
+  - The text stays fully editable and the vet still reads and signs the note.
+- **Past records beside the visit (2026-10-21):** a panel docked next to the consultation shows earlier notes (any of the seven fields), vitals, problems, diagnoses, medicines given, prescriptions, tests and documents.
+  - The vet can copy forward: use or add an earlier note text (with undo), add a resolved problem again, add a diagnosis, prescribe again (a new draft attached to this consultation, doses copied as written and to be checked), order the same tests again.
+  - Photos and documents can be viewed but not copied.
+- **Complete patient record (2026-10-21):** one printable page with everything held about a patient, opened in a new tab from the patient page or the patient banner on any clinical screen. Each section appears only if the user may see that kind of record.
+  - Downloading all of it as a file needs the permission `patients.export` (owner, practice manager and veterinarian), and every download is audited.
+  - A finished consultation can also be printed in full on the clinic letterhead.
+- **The system recommends the next step (2026-10-21):** people should not have to search for features.
+  - A "What's next?" button on every screen lists what needs doing now, most urgent first.
+  - Search accepts plain words ("take a payment") through an "I want to…" list of everyday jobs, filtered by role and by the clinic's services.
+  - A "Suggested next" line on the patient page is chosen from that patient's situation.
+  - New staff get a short welcome tour at first sign-in, small "?" explanations on confusing fields, and technical error messages rewritten as short instructions.
 - **Multi-clinic hosting (2026-10-19):** switched on by `BASE_DOMAIN`.
   - Each clinic has its own PostgreSQL database and web address, `<clinic>.<domain>`.
   - Only the super admin adds clinics, at `admin.<domain>`. The new clinic's database is created, migrated and set up automatically.
@@ -783,7 +804,7 @@ _Last updated: 2026-10-19. The detailed status is kept in `docs/FEATURE_MATRIX.m
 ### Status
 - **Milestones 1–8:** complete.
 - **Milestone 10:** complete except user acceptance testing by clinic staff.
-- **Production deployment, backups and operations:** documented in `docs/DEPLOYMENT.md`, `docs/OPERATIONS.md`, `docs/SECURITY.md` and `docs/PRIVACY.md`. Backup and restore are tested end to end by `scripts/test-backup-restore.sh`, which the CI workflow runs.
+- **Production deployment, backups and operations:** documented in `docs/DEPLOYMENT.md`, `docs/OPERATIONS.md`, `docs/SECURITY.md` and `docs/PRIVACY.md`. Backup and restore are tested end to end by `scripts/test-backup-restore.sh`, which the CI workflow runs. The GitHub Actions workflow (`.github/workflows/ci.yml`) runs lint, type checks, unit and integration tests and the Docker/backup test on every push; its browser-test job is still being brought to green (the test-browser install step must run inside `apps/web`).
 - **Added after Milestone 10:**
   - Calendar month view and drag-to-reschedule.
   - Clinical activity report.
@@ -798,6 +819,11 @@ _Last updated: 2026-10-19. The detailed status is kept in `docs/FEATURE_MATRIX.m
   - Multi-clinic hosting with a super admin area, one database per clinic and subdomain addresses (DEPLOYMENT.md §8).
   - White-label branding per clinic (owner only): logo, icon, colours, name and sign-in page.
   - Plans for clinics: staff and branch limits, included features and per-clinic exceptions, set by the super admin.
+  - Premium visual refresh: softer layered shadows, gradient dashboard banner, restyled sign-in pages, themed charts, a thin page-loading bar and rounded toast messages, all driven by the clinic's own colours, font and corner style so white-label branding still applies.
+  - Letterhead designer, printable finished consultation and the complete patient record (see the decisions above).
+  - Fast consultation notes: quick picks, normal answers, five-step note layout, the guided eight-step visit, past records beside the visit, tests in a window, and admit / surgery / refer / recheck from inside the consultation.
+  - Everyday ease of use: "What's next?", the "I want to…" finder, welcome tour, "?" help tips, plain-language errors and the agreed vocabulary applied to leftover wording.
+  - Fixes found by running on a different machine: the sales-by-item CSV now takes currency decimals from the app instead of the machine's currency data.
   - Ease of use for first-day staff, based on usability walkthroughs as an untrained receptionist, vet, pharmacist, lab tech and owner:
     - Dashboard by role: reception sees Waiting now and Arriving next with Check in; the owner sees Money today.
     - Short menu names, and a grouped Settings home page.
