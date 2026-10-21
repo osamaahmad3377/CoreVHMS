@@ -18,6 +18,7 @@ import { fmtDate, fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import { shiftDate, todayIn, zonedInstant } from '@/lib/time';
 import { STATUS_LABEL } from '@/lib/labels';
+import { tabListClass, tabTriggerClass } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 
 /** 34000 → 34k, 1250000 → 1.3M (chart axes). */
@@ -221,9 +222,9 @@ function Reports() {
         actions={<Button size="sm" variant="outline" asChild><a href={`/api/v1/reports/${report.key}${qs({ ...params, format: 'csv' })}`} download><Download /> CSV</a></Button>}
       />
       <div className="mb-4 grid gap-3">
-        <div className="flex flex-wrap gap-1 border-b pb-3" role="tablist" aria-label="Report">
+        <div className={cn(tabListClass, 'flex-wrap')} role="tablist" aria-label="Report">
           {available.map((r) => (
-            <button key={r.key} role="tab" aria-selected={r.key === report.key} onClick={() => url.set({ report: r.key })} className={cn('rounded-md px-3 py-1.5 text-sm', r.key === report.key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>{r.label}</button>
+            <button key={r.key} role="tab" aria-selected={r.key === report.key} onClick={() => url.set({ report: r.key })} className={tabTriggerClass()}>{r.label}</button>
           ))}
         </div>
         <div className="flex min-h-[52px] flex-wrap items-end gap-2">

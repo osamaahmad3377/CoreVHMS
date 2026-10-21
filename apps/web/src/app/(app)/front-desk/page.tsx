@@ -19,6 +19,7 @@ import { TriageDialog } from '@/components/scheduling/triage-dialog';
 import { Stat } from '@/components/stat';
 import { AlertChip } from '@/components/status';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input, NativeSelect } from '@/components/ui/input';
@@ -284,12 +285,12 @@ function FrontDesk() {
             {columns.map((c) => {
               const items = q.data![c.key] as Appointment[];
               return (
-                <Card key={c.key} className="flex flex-col bg-muted/30">
-                  <CardHeader className="bg-card">
+                <Card key={c.key} className="flex flex-col">
+                  <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <c.icon className="h-4 w-4 text-muted-foreground" /> {c.title}
                     </CardTitle>
-                    <span className="rounded-full bg-muted px-2 text-xs tabular">{items.length}</span>
+                    <Badge variant="secondary" className="tabular">{items.length}</Badge>
                   </CardHeader>
                   {items.length ? (
                     <ul className="grid gap-2 p-2">

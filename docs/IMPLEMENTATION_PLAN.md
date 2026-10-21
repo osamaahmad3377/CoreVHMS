@@ -641,3 +641,9 @@ Items from the feature matrix that need no external device, data source or provi
 - **Sidebar redesign**: wider 256px menu with the branch shown under the logo, rounded icon chips on every item, a raised active pill, a user card with role and "Collapse menu" at the bottom, a rounded slide-in drawer on phones/iPads. Uses only the clinic colours, so white-label menus still work.
 
 - **Menu logo**: the logo now sits at the top of the side menu alone when uploaded (the clinic name shows only when there is no logo); Settings → Branding → Menu logo sets its size (small / medium / large). New column `Organization.menuLogoSize` (migration `20261022090000_menu_logo_size`).
+
+### 2026-10-22 — Glass redesign (branch `redesign`)
+- Glassmorphism design system (`docs/DESIGN_SYSTEM.md`): tokens for colour (indigo primary, cyan secondary, semantic AA colours), glass (tint, alpha, edge, highlight, blur), radius, spacing, motion; gradient background with soft brand-coloured shapes; Plus Jakarta Sans.
+- Shared glass surfaces (`.surface`, `.surface-strong`, `.surface-flat`, `.surface-menu`, `.action-bar`) used by Card, Dialog, menus, popovers, toasts, tabs and forms; solid fallbacks without `backdrop-filter` or with reduced transparency; no blur inside blur.
+- Floating glass side menu and top bar, slide-in glass drawer on phones/tablets, pill buttons, glass inputs with inline validation, shared tab bar (`tabListClass` / `tabTriggerClass`) replacing eight copies, content-shaped skeletons, glass empty states and toasts.
+- Branding: a light menu colour now applies in light mode only (dark mode keeps its dark glass menu); `--brand-2` derived from the clinic colour; "Sharp" corners also square the buttons.
