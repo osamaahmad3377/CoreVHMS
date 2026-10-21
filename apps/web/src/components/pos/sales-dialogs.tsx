@@ -11,7 +11,7 @@ import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog';
 import { receiptFromInvoice } from '../receipts/receipt-document';
 import { ReceiptPreview } from '../receipts/use-receipt';
-import type { CartLine } from './model';
+import type { CartLine, SaleDiscount } from './model';
 import type { PickedClient } from '../clients/client-picker';
 import { api } from '@/lib/api';
 import { fmtMoney, fmtRelative, fmtTime } from '@/lib/format';
@@ -22,6 +22,7 @@ export interface HeldSale {
   at: string;
   client: PickedClient | null;
   lines: CartLine[];
+  saleDiscount?: SaleDiscount | null;
 }
 
 /** Today's counter sales at this branch, with receipt reprint. */
@@ -88,7 +89,7 @@ export function HeldSalesDialog({ open, onOpenChange, held, currency, onRecall, 
   currency: string;
   onRecall: (h: HeldSale) => void;
   onDelete: (id: string) => void;
-  totalOf: (lines: CartLine[]) => number;
+  totalOf: (lines: CartLine[], saleDiscount?: SaleDiscount | null) => number;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -103,7 +104,7 @@ export function HeldSalesDialog({ open, onOpenChange, held, currency, onRecall, 
               <li key={h.id} className="flex items-center gap-3 px-3 py-2">
                 <Clock className="h-4 w-4 text-muted-foreground" />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium">{h.client?.displayName ?? 'Walk-in'} · {fmtMoney(totalOf(h.lines), currency)}</span>
+                  <span className="block text-sm font-medium">{h.client?.displayName ?? 'Walk-in'} · {fmtMoney(totalOf(h.lines, h.saleDiscount), currency)}</span>
                   <span className="block truncate text-xs text-muted-foreground">{fmtRelative(h.at)} · {h.lines.map((l) => `${l.quantity}× ${l.item.name}`).join(', ')}</span>
                 </span>
                 <Button size="sm" onClick={() => onRecall(h)}><RotateCcw /> Resume</Button>

@@ -4,7 +4,7 @@ import { calcLine, sumLines, type LineInputBody } from '@vcms/shared';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { CounterService, formatNumber } from '../../common/counter/counter.service';
-import { conflict, notFound, ruleViolation } from '../../common/http/errors';
+import { conflict, forbidden, notFound, ruleViolation } from '../../common/http/errors';
 import { pageArgs, paginated } from '../../common/http/pagination';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { ScopedTx } from '../../common/prisma/tenant-extension';
@@ -249,6 +249,7 @@ export class CashService {
     const ctx = RequestContext.require();
     const { session, expectedCashMinor } = await this.expected(sessionId);
     if (session.status !== 'OPEN') throw ruleViolation('SESSION_CLOSED', 'This cash drawer is already closed');
+    if (!ctx.permissions.has('cash.manage') && session.openedById !== ctx.userId) throw forbidden('Only the person who opened this cash drawer, or a manager, can close it');
     const variance = countedCashMinor - expectedCashMinor;
     if (variance !== 0 && !notes) throw ruleViolation('VARIANCE_NOTE', 'Explain the difference before closing');
     return this.prisma.db.$transaction(async (tx) => {

@@ -309,9 +309,10 @@ export class BillingController {
     return this.cash.expected(id);
   }
 
+  /** A manager can close any drawer; a cashier can close the one they opened themselves. */
   @Post('cash/sessions/:id/close')
   @HttpCode(200)
-  @RequirePermissions('cash.manage')
+  @RequireAnyPermission('cash.manage', 'pos.use')
   @ApiZodBody(closeSessionSchema)
   close(@Param('id', UUID) id: string, @Body(zp(closeSessionSchema)) body: z.infer<typeof closeSessionSchema>) {
     return this.cash.close(id, body.countedCashMinor, body.notes);

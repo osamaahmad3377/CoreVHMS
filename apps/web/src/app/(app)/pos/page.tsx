@@ -13,9 +13,10 @@ import { PosCart } from '@/components/pos/cart';
 import { PosCatalog } from '@/components/pos/catalog';
 import { MoneyInput, parseMoney } from '@/components/billing/money';
 import { Field } from '@/components/forms/field';
+import { CloseDrawerDialog, OpenDrawerDialog } from '@/components/billing/cash-dialogs';
 import { CollectPrescriptionDialog } from '@/components/pos/prescription-collect';
 import { RxNoteDialog } from '@/components/pos/rx-note-dialog';
-import { blockReason, cartTotals, chargeItem, customItem, isOutOfStock, toChargeIds, toInvoiceLines, type CartLine, type Tender } from '@/components/pos/model';
+import { applySaleDiscount, blockReason, cartTotals, chargeItem, customItem, isOutOfStock, toChargeIds, toInvoiceLines, saleDiscountAmount, type CartLine, type SaleDiscount, type Tender } from '@/components/pos/model';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useConfirm } from '@/components/confirm';
@@ -115,7 +116,10 @@ function Pos() {
   const [showHeld, setShowHeld] = useState(false);
   const [payBalance, setPayBalance] = useState(false);
   const [otherItem, setOtherItem] = useState(false);
+  const [saleDiscount, setSaleDiscount] = useState<SaleDiscount | null>(null);
   const [collectOpen, setCollectOpen] = useState(false);
+  const [openingDrawer, setOpeningDrawer] = useState(false);
+  const [closingDrawer, setClosingDrawer] = useState<string | null>(null);
   // A prescription-only item waiting for the note that says who approved selling it without a prescription.
   const [pendingRx, setPendingRx] = useState<PosItem | null>(null);
   const heldKey = `vcms.pos.held.${session.organization?.id}.${session.branch?.id}`;
@@ -137,8 +141,12 @@ function Pos() {
   const allowNegative = catalog.data?.allowNegativeStock ?? false;
   const allowRx = catalog.data?.sellWithoutPrescription ?? false;
   const openRegister = (registers.data ?? []).find((r) => r.sessions.length);
+  const canCloseDrawer = !!openRegister && (can('cash.manage') || openRegister.sessions[0].openedById === session.user.id);
   const cashBlocked = !!settings.data?.requireCashSession && registers.isSuccess && !openRegister;
-  const totals = useMemo(() => cartTotals(lines, inclusive), [lines, inclusive]);
+  // The whole-sale discount is spread over the lines, so totals, invoice and receipt all agree.
+  const effective = useMemo(() => applySaleDiscount(lines, saleDiscount), [lines, saleDiscount]);
+  const totals = useMemo(() => cartTotals(effective, inclusive), [effective, inclusive]);
+  const discountOnSale = useMemo(() => saleDiscountAmount(lines, saleDiscount), [lines, saleDiscount]);
   const qtyInCart = useCallback((item: PosItem) => lines.filter((l) => l.item.type === item.type && l.item.id === item.id).reduce((n, l) => n + l.quantity, 0), [lines]);
 
   const addLine = useCallback((item: PosItem, rxNote?: string) => {
@@ -184,12 +192,13 @@ function Pos() {
   const clearSale = () => {
     setLines([]);
     setClient(null);
+    setSaleDiscount(null);
     setSearch('');
     searchRef.current?.focus();
   };
 
   const hold = () => {
-    const next = [{ id: crypto.randomUUID(), at: new Date().toISOString(), client, lines }, ...held].slice(0, 20);
+    const next = [{ id: crypto.randomUUID(), at: new Date().toISOString(), client, lines, saleDiscount }, ...held].slice(0, 20);
     setHeld(next);
     writeHeld(heldKey, next);
     toast.success('Sale paused');
@@ -203,6 +212,7 @@ function Pos() {
     }
     setLines(h.lines);
     setClient(h.client);
+    setSaleDiscount(h.saleDiscount ?? null);
     const next = held.filter((x) => x.id !== h.id);
     setHeld(next);
     writeHeld(heldKey, next);
@@ -215,7 +225,7 @@ function Pos() {
     setBusy(true);
     let invoice: Invoice;
     try {
-      invoice = await api.post<Invoice>('/invoices', { isPos: true, clientId: client?.id ?? null, chargeIds: toChargeIds(lines), lines: toInvoiceLines(lines), issue: true });
+      invoice = await api.post<Invoice>('/invoices', { isPos: true, clientId: client?.id ?? null, chargeIds: toChargeIds(lines), lines: toInvoiceLines(effective), issue: true });
     } catch (e) {
       setBusy(false);
       toast.error(e instanceof ApiError ? e.message : 'The sale could not be completed');
@@ -264,20 +274,33 @@ function Pos() {
     clearSale();
   };
 
-  // Keyboard: F2 focuses the scanner/search field, F9 opens payment.
+  // Keyboard, as on a till: F2 scan/search, F8 pause the sale, F9 take payment; Delete removes the last item and
+  // + / − change its quantity (these three only when no box or window has the focus).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const typing = !!(e.target as HTMLElement | null)?.closest('input, textarea, select, [role="dialog"], [contenteditable]');
       if (e.key === 'F2') {
         e.preventDefault();
         if (!result) searchRef.current?.focus();
       } else if (e.key === 'F9') {
         e.preventDefault();
         if (!result && lines.length && totals.totalMinor > 0) setTendering(true);
+      } else if (e.key === 'F8') {
+        e.preventDefault();
+        if (!result && lines.length) hold();
+      } else if (!result && !typing && lines.length && ['Delete', '+', '=', '-'].includes(e.key)) {
+        e.preventDefault();
+        const last = lines[lines.length - 1];
+        if (last.item.type === 'CHARGE' && e.key !== 'Delete') return;
+        const qty = e.key === 'Delete' ? 0 : last.quantity + (e.key === '-' ? -1 : 1);
+        if (qty > 0 && blockReason(last.item, qty - 1, allowNegative, allowRx) && e.key !== '-') return;
+        setLines((ls) => (qty <= 0 ? ls.slice(0, -1) : ls.map((l, i) => (i === ls.length - 1 ? { ...l, quantity: qty } : l))));
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [result, lines.length, totals.totalMinor]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, lines, totals.totalMinor, allowNegative, allowRx, client, saleDiscount, held]);
 
   // Print in a frame sized to the receipt roll (paper width, logo and copies from the receipt settings).
   useEffect(() => {
@@ -297,22 +320,25 @@ function Pos() {
         <>
           {openRegister ? (
             localDate(openRegister.sessions[0].openedAt, tz) === todayIn(tz) ? (
-              <Badge variant="success" className="gap-1 py-1"><Landmark className="h-3 w-3" /> Cash drawer open since {fmtTime(openRegister.sessions[0].openedAt)}</Badge>
+              <>
+                <Badge variant="success" className="gap-1 py-1"><Landmark className="h-3 w-3" /> Cash drawer open since {fmtTime(openRegister.sessions[0].openedAt)}</Badge>
+                {canCloseDrawer && <Button size="sm" variant="outline" onClick={() => setClosingDrawer(openRegister.sessions[0].id)}>Close drawer</Button>}
+              </>
             ) : (
-              <span className="inline-flex" title={`${openRegister.name} was opened on ${fmtDateTime(openRegister.sessions[0].openedAt)} and not closed. Count the cash and close it, then open it again for today.`}>
-                {can('cash.manage') ? (
-                  <Link href="/billing/cash"><Badge variant="warning" className="gap-1 py-1"><Landmark className="h-3 w-3" /> Yesterday’s cash drawer was not closed — count and close it</Badge></Link>
+              <>
+                <Badge variant="warning" className="gap-1 py-1" title={`${openRegister.name} was opened on ${fmtDateTime(openRegister.sessions[0].openedAt)} and not closed.`}><Landmark className="h-3 w-3" /> Yesterday’s cash drawer was not closed</Badge>
+                {canCloseDrawer ? (
+                  <Button size="sm" variant="outline" onClick={() => setClosingDrawer(openRegister.sessions[0].id)}>Count and close it</Button>
                 ) : (
-                  <Badge variant="warning" className="gap-1 py-1"><Landmark className="h-3 w-3" /> Yesterday’s cash drawer was not closed — please tell your manager</Badge>
+                  <span className="text-xs text-muted-foreground">Ask {openRegister.sessions[0].openedByName ?? 'the person who opened it'} or your manager to close it.</span>
                 )}
-              </span>
+              </>
             )
           ) : registers.isSuccess ? (
-            can('cash.manage') ? (
-              <Link href="/billing/cash"><Badge variant={cashBlocked ? 'destructive' : 'secondary'} className="gap-1 py-1"><Landmark className="h-3 w-3" /> Cash drawer closed — open it to take cash</Badge></Link>
-            ) : (
-              <Badge variant={cashBlocked ? 'destructive' : 'secondary'} className="gap-1 py-1"><Landmark className="h-3 w-3" /> Cash drawer closed{cashBlocked ? ' — ask your manager to open it to take cash' : ''}</Badge>
-            )
+            <>
+              <Badge variant={cashBlocked ? 'destructive' : 'secondary'} className="gap-1 py-1"><Landmark className="h-3 w-3" /> Cash drawer closed{cashBlocked ? ' — open it to take cash' : ''}</Badge>
+              <Button size="sm" variant={cashBlocked ? 'default' : 'outline'} onClick={() => setOpeningDrawer(true)}>Open cash drawer</Button>
+            </>
           ) : null}
           {can('pharmacy.dispense') && <Button size="sm" onClick={() => setCollectOpen(true)}><Pill /> Collect a prescription</Button>}
           <Button size="sm" variant="outline" onClick={() => setShowHeld(true)}><Clock /> Paused sales{held.length ? ` (${held.length})` : ''}</Button>
@@ -331,6 +357,8 @@ function Pos() {
 
   const dialogs = (
     <>
+      <OpenDrawerDialog open={openingDrawer} onOpenChange={setOpeningDrawer} registers={registers.data ?? []} />
+      <CloseDrawerDialog sessionId={closingDrawer} onClose={() => setClosingDrawer(null)} />
       <RxNoteDialog
         open={!!pendingRx}
         itemName={pendingRx?.name ?? ''}
@@ -351,7 +379,7 @@ function Pos() {
           setPrintJob({ invoice: inv, payments: inv.allocations.map((a) => ({ method: a.payment.method, amountMinor: a.amountMinor, receiptNo: a.payment.receiptNo })) });
         }}
       />
-      <HeldSalesDialog open={showHeld} onOpenChange={setShowHeld} held={held} currency={currency} onRecall={recall} onDelete={(id) => { const next = held.filter((h) => h.id !== id); setHeld(next); writeHeld(heldKey, next); }} totalOf={(ls) => cartTotals(ls, inclusive).totalMinor} />
+      <HeldSalesDialog open={showHeld} onOpenChange={setShowHeld} held={held} currency={currency} onRecall={recall} onDelete={(id) => { const next = held.filter((h) => h.id !== id); setHeld(next); writeHeld(heldKey, next); }} totalOf={(ls, d) => cartTotals(applySaleDiscount(ls, d ?? null), inclusive).totalMinor} />
     </>
   );
 
@@ -431,6 +459,9 @@ function Pos() {
             <PosCart
               lines={lines}
               onChange={setLines}
+              saleDiscount={saleDiscount}
+              onSaleDiscount={setSaleDiscount}
+              saleDiscountMinor={discountOnSale}
               client={client}
               onClient={setClient}
               totals={totals}
@@ -456,7 +487,7 @@ function Pos() {
           </div>
         )}
         <p className="mt-3 hidden text-xs text-muted-foreground xl:block">
-          <Kbd>F2</Kbd> scan / search · <Kbd>Enter</Kbd> add scanned code · <Kbd>F9</Kbd> take payment · <Kbd>Esc</Kbd> clear search
+          <Kbd>F2</Kbd> scan / search · <Kbd>Enter</Kbd> add scanned code · <Kbd>+</Kbd> <Kbd>−</Kbd> quantity of last item · <Kbd>Del</Kbd> remove it · <Kbd>F8</Kbd> pause sale · <Kbd>F9</Kbd> take payment · <Kbd>Esc</Kbd> clear search
         </p>
       </div>
       <OtherItemDialog

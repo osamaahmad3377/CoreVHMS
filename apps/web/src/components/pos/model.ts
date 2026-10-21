@@ -57,6 +57,39 @@ export const CATEGORIES = [
   { key: 'VACCINE', label: 'Vaccines' },
 ] as const;
 
+/** A discount on the whole sale: a percentage, or a fixed amount in minor units. */
+export interface SaleDiscount {
+  mode: 'PCT' | 'AMT';
+  value: number;
+}
+
+/**
+ * Spreads a whole-sale discount over the lines in proportion to what each costs (medicines already handed out
+ * on a prescription are left alone), so the invoice carries it as ordinary line discounts and the tax stays right.
+ */
+export function applySaleDiscount(lines: CartLine[], d: SaleDiscount | null): CartLine[] {
+  if (!d || d.value <= 0) return lines;
+  const base = lines.map((l) => (l.item.type === 'CHARGE' ? 0 : Math.max(0, Math.round(l.quantity * l.priceMinor) - l.discountMinor)));
+  const sum = base.reduce((n, b) => n + b, 0);
+  if (sum <= 0) return lines;
+  const total = d.mode === 'PCT' ? Math.round((sum * Math.min(d.value, 100)) / 100) : Math.min(Math.round(d.value), sum);
+  const shares = base.map((b) => Math.floor((total * b) / sum));
+  // The few units lost to rounding go to the biggest lines, one each.
+  let rest = total - shares.reduce((n, x) => n + x, 0);
+  for (const i of base.map((b, k) => [b, k] as const).sort((a, b) => b[0] - a[0]).map((x) => x[1])) {
+    if (rest <= 0) break;
+    if (base[i] > shares[i]) {
+      shares[i] += 1;
+      rest -= 1;
+    }
+  }
+  return lines.map((l, i) => (shares[i] ? { ...l, discountMinor: l.discountMinor + shares[i] } : l));
+}
+
+/** How much the whole-sale discount takes off, in minor units. */
+export const saleDiscountAmount = (lines: CartLine[], d: SaleDiscount | null) =>
+  applySaleDiscount(lines, d).reduce((n, l, i) => n + (l.discountMinor - lines[i].discountMinor), 0);
+
 export function lineAmounts(l: CartLine, inclusive: boolean) {
   return calcLine({ quantity: l.quantity, unitPriceMinor: l.priceMinor, discountMinor: Math.min(l.discountMinor, Math.round(l.quantity * l.priceMinor)), taxRateBasisPoints: l.item.taxRateBasisPoints }, inclusive);
 }

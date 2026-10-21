@@ -1,12 +1,12 @@
 'use client';
 import { fromMinor } from '@vcms/shared';
-import { Minus, Pencil, Plus, ShoppingCart, Trash2, UserRound, X } from 'lucide-react';
+import { Minus, Pencil, Percent, Plus, ShoppingCart, Trash2, UserRound, X } from 'lucide-react';
 import { useState } from 'react';
 import { MoneyInput, bpToPct, parseMoney } from '../billing/money';
 import { ClientPicker, type PickedClient } from '../clients/client-picker';
 import { Button } from '../ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
-import { blockReason, lineAmounts, type CartLine } from './model';
+import { blockReason, lineAmounts, type CartLine, type SaleDiscount } from './model';
 import { fmtMoney } from '@/lib/format';
 import { qtyUnit } from '@/lib/labels';
 import { cn } from '@/lib/utils';
@@ -49,9 +49,42 @@ function LineEditPopover({ line, currency, onSave }: { line: CartLine; currency:
   );
 }
 
+/** "Discount" on the whole sale: a percentage or a fixed amount, spread over the items. */
+function SaleDiscountPopover({ currency, onApply }: { currency: string; onApply: (d: SaleDiscount) => void }) {
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<'PCT' | 'AMT'>('PCT');
+  const [value, setValue] = useState('');
+  const amount = mode === 'PCT' ? Number(value) : (parseMoney(value, currency) ?? 0);
+  const valid = amount > 0 && (mode !== 'PCT' || amount <= 100);
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) { setValue(''); setMode('PCT'); } }}>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs"><Percent /> Discount</Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="grid w-72 gap-3">
+        <p className="text-sm font-medium">Discount on the whole sale</p>
+        <div className="grid grid-cols-2 gap-1 rounded-md bg-muted p-1" role="radiogroup" aria-label="Discount kind">
+          {([['PCT', 'Percent (%)'], ['AMT', 'Amount']] as const).map(([k, label]) => (
+            <button key={k} type="button" role="radio" aria-checked={mode === k} onClick={() => { setMode(k); setValue(''); }} className={cn('rounded px-2 py-1 text-xs font-medium', mode === k ? 'bg-card shadow-sm' : 'text-muted-foreground')}>{label}</button>
+          ))}
+        </div>
+        {mode === 'PCT' ? (
+          <input autoFocus inputMode="decimal" aria-label="Discount percent" placeholder="e.g. 10" value={value} onChange={(e) => setValue(e.target.value.replace(/[^\d.]/g, ''))} className="h-9 w-full rounded-md border border-input bg-card px-3 text-sm" />
+        ) : (
+          <MoneyInput autoFocus currency={currency} value={value} onChange={(e) => setValue(e.target.value)} />
+        )}
+        <Button size="sm" disabled={!valid} onClick={() => { onApply({ mode, value: mode === 'PCT' ? amount : amount }); setOpen(false); }}>Apply discount</Button>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function PosCart({
   lines,
   onChange,
+  saleDiscount,
+  onSaleDiscount,
+  saleDiscountMinor,
   client,
   onClient,
   totals,
@@ -66,6 +99,10 @@ export function PosCart({
 }: {
   lines: CartLine[];
   onChange: (lines: CartLine[]) => void;
+  saleDiscount: SaleDiscount | null;
+  onSaleDiscount: (d: SaleDiscount | null) => void;
+  /** How much the whole-sale discount takes off. */
+  saleDiscountMinor: number;
   client: PickedClient | null;
   onClient: (c: PickedClient | null) => void;
   totals: { subtotalMinor: number; taxMinor: number; totalMinor: number; discountMinor: number };
@@ -165,7 +202,15 @@ export function PosCart({
         )}
         <dl className="grid gap-1 text-sm">
           <div className="flex justify-between text-muted-foreground"><dt>{items} item{items === 1 ? '' : 's'} · subtotal (excl. tax)</dt><dd className="tabular">{fmtMoney(totals.subtotalMinor, currency)}</dd></div>
-          {!!totals.discountMinor && <div className="flex justify-between text-success"><dt>Discounts</dt><dd className="tabular">−{fmtMoney(totals.discountMinor, currency)}</dd></div>}
+          {totals.discountMinor - saleDiscountMinor > 0 && <div className="flex justify-between text-success"><dt>Discounts</dt><dd className="tabular">−{fmtMoney(totals.discountMinor - saleDiscountMinor, currency)}</dd></div>}
+          {saleDiscount && saleDiscountMinor > 0 ? (
+            <div className="flex items-center justify-between text-success">
+              <dt className="flex items-center gap-1">Sale discount{saleDiscount.mode === 'PCT' ? ` (${saleDiscount.value}%)` : ''}<Button variant="ghost" size="icon-sm" className="h-5 w-5" aria-label="Remove the sale discount" onClick={() => onSaleDiscount(null)}><X /></Button></dt>
+              <dd className="tabular">−{fmtMoney(saleDiscountMinor, currency)}</dd>
+            </div>
+          ) : allowOverrides && lines.length > 0 ? (
+            <div className="flex justify-end"><SaleDiscountPopover currency={currency} onApply={onSaleDiscount} /></div>
+          ) : null}
           <div className="flex justify-between text-muted-foreground"><dt>Tax{inclusive ? ' (included)' : ''}</dt><dd className="tabular">{fmtMoney(totals.taxMinor, currency)}</dd></div>
           <div className="mt-1 flex items-baseline justify-between border-t pt-2"><dt className="text-base font-semibold">Total</dt><dd className="text-2xl font-bold tabular tracking-tight">{fmtMoney(totals.totalMinor, currency)}</dd></div>
         </dl>

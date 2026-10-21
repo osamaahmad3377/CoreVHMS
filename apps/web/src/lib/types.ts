@@ -918,6 +918,7 @@ export interface CashRegister {
 export interface CashSession {
   id: string;
   registerId: string;
+  openedById?: string;
   status: 'OPEN' | 'CLOSED';
   openingFloatMinor: number;
   expectedCashMinor: number | null;

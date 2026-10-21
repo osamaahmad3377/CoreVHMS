@@ -149,6 +149,23 @@ describe('Billing, payments & finance', () => {
     r = r; // eslint-friendly
   });
 
+  it('lets a cashier open and close the cash drawer they opened, but not someone else\'s', async () => {
+    const s = await setup();
+    const alice = await staff(s.org, 'pharmacy');
+    const bob = await staff(s.org, 'receptionist');
+    const opened = await alice.client.post('/cash/sessions', { registerId: s.registerId, openingFloatMinor: 10000 });
+    expect(opened.status).toBe(201);
+    // Another cashier cannot close it; the person who opened it, and a manager, can.
+    const refused = await bob.client.post(`/cash/sessions/${opened.body.id}/close`, { countedCashMinor: 10000 });
+    expect(refused.status).toBe(403);
+    const closed = await alice.client.post(`/cash/sessions/${opened.body.id}/close`, { countedCashMinor: 10000 });
+    expect(closed.status).toBe(200);
+    expect(closed.body).toMatchObject({ status: 'CLOSED', varianceMinor: 0 });
+    const again = await bob.client.post('/cash/sessions', { registerId: s.registerId, openingFloatMinor: 0 });
+    expect(again.status).toBe(201);
+    expect((await s.org.owner.post(`/cash/sessions/${again.body.id}/close`, { countedCashMinor: 0 })).status).toBe(200);
+  });
+
   it('sells prescription-only items without a prescription only when the clinic allows it, with a note, to walk-in customers, and never controlled ones', async () => {
     const s = await setup();
     const f = await stockFixture(s.org);
