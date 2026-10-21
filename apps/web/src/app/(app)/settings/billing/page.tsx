@@ -82,7 +82,7 @@ function Options() {
         {toggle('pricesIncludeTax', 'Prices include tax', 'Your prices already include sales tax. The invoice shows the tax part separately.')}
         {toggle('requireCashSession', 'Cash drawer must be open to take cash', 'Staff can take cash, refund or pay expenses only after opening the cash drawer for the day.')}
         {toggle('allowNegativeStock', 'Allow selling when stock shows zero', 'Turn on only while you are still entering your stock.')}
-        {toggle('sellWithoutPrescription', 'Sell prescription-only items without a prescription', 'When on, the shop counter can sell these medicines and vaccines to anyone, including customers who are not clients. The seller writes who approved it, and it is kept on the invoice. Controlled medicines always need a prescription.')}
+        {toggle('sellWithoutPrescription', 'Sell prescription-only items without a prescription', 'When on, the shop counter can sell these medicines and vaccines to anyone, including customers who are not clients. The sale is marked on the invoice, and the seller can write who approved it. Controlled medicines always need a prescription.')}
         {toggle('poRequiresSecondApprover', 'Purchase orders need a second person to approve', 'When on, the person who makes an order cannot approve it. When off, they can approve and send it in one step.')}
         <div className="flex items-end gap-2 py-3">
           <Field label="Days to pay" htmlFor="bs-terms" hint="How many days clients have to pay. 0 = pay straight away."><Input id="bs-terms" className="w-28" inputMode="numeric" value={terms} onChange={(e) => setTerms(e.target.value)} /></Field>

@@ -116,16 +116,16 @@ export class InvoicesService {
       const p = await db.product.findUnique({ where: { id: l.productId! } });
       if (!p || !p.isActive) throw ruleViolation('INVALID_PRODUCT', 'Product not found');
       // Prescription-only medicines (and, at the counter, vaccines) need a prescription, unless the clinic allows
-      // selling without one and the sale says who approved it. Controlled medicines always need a prescription.
+      // selling without one (the sale is then marked on the invoice and in the log). Controlled medicines always need a prescription.
       const rxOnly = p.requiresPrescription && (p.type === 'MEDICINE' || (isPos && p.type === 'VACCINE'));
       if (rxOnly) {
         if (p.isControlled) throw ruleViolation('PRESCRIPTION_REQUIRED', `${p.name} is a controlled medicine and always needs a prescription.`);
         if (!rx?.allowed) {
           throw ruleViolation('PRESCRIPTION_REQUIRED', p.type === 'VACCINE' ? `${p.name} must be administered by the clinic, not sold at the counter.` : `${p.name} is prescription-only. Dispense it from an authorised prescription.`);
         }
+        // Who approved it is optional; the sale is recorded as made without a prescription either way.
         const note = l.withoutPrescriptionNote?.trim();
-        if (!note) throw ruleViolation('PRESCRIPTION_NOTE_REQUIRED', `Say who approved selling ${p.name} without a prescription.`);
-        rx.notes.push(`${p.name} — ${note}`);
+        rx.notes.push(note ? `${p.name} — ${note}` : p.name);
       }
       if (l.unitPriceMinor === undefined && p.sellPriceMinor === null) throw ruleViolation('NO_PRICE', `${p.name} has no selling price`);
       return { kind: l.kind, productId: p.id, description: l.description ?? p.name, quantity: l.quantity, unitPriceMinor: l.unitPriceMinor ?? p.sellPriceMinor!, discountMinor: l.discountMinor, taxRateBasisPoints: l.taxRateBasisPoints ?? (await this.charges.taxFor(db, p.taxRateId)) };

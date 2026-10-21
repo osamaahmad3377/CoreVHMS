@@ -6,10 +6,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '../ui/input';
 
 /**
- * Asked when a prescription-only item is added to a sale without a prescription (a clinic setting allows it):
- * who approved it, or why. The answer is kept on the invoice and in the activity log.
+ * Asked when a prescription-only item is added to a sale without a prescription (a clinic setting allows it).
+ * Who approved it, or why, can be written down but is not required; the sale is marked either way.
  */
-export function RxNoteDialog({ itemName, open, onCancel, onConfirm }: { itemName: string; open: boolean; onCancel: () => void; onConfirm: (note: string) => void }) {
+export function RxNoteDialog({ itemName, open, onCancel, onConfirm }: { itemName: string; open: boolean; onCancel: () => void; onConfirm: (note: string | undefined) => void }) {
   const [note, setNote] = useState('');
   useEffect(() => {
     if (open) setNote('');
@@ -20,15 +20,15 @@ export function RxNoteDialog({ itemName, open, onCancel, onConfirm }: { itemName
         <DialogHeader>
           <DialogTitle>Sell without a prescription?</DialogTitle>
           <DialogDescription>
-            {itemName} is normally given on a prescription. Say who approved selling it without one, or why. This is written on the invoice. Controlled medicines can never be sold this way.
+            {itemName} is normally given on a prescription. The sale is marked as made without one. You can write who approved it, or why. Controlled medicines can never be sold this way.
           </DialogDescription>
         </DialogHeader>
-        <Field label="Approved by, or reason" htmlFor="rx-note" required>
-          <Input id="rx-note" autoFocus value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Dr Raza agreed by phone" onKeyDown={(e) => e.key === 'Enter' && note.trim() && onConfirm(note.trim())} />
+        <Field label="Approved by, or reason (optional)" htmlFor="rx-note">
+          <Input id="rx-note" autoFocus value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Dr Raza agreed by phone" onKeyDown={(e) => e.key === 'Enter' && onConfirm(note.trim() || undefined)} />
         </Field>
         <DialogFooter>
           <Button variant="outline" onClick={onCancel}>Cancel</Button>
-          <Button disabled={!note.trim()} onClick={() => onConfirm(note.trim())}>Add to sale</Button>
+          <Button onClick={() => onConfirm(note.trim() || undefined)}>Add to sale</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

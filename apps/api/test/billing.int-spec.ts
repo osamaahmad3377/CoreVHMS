@@ -162,8 +162,10 @@ describe('Billing, payments & finance', () => {
     expect(cat.sellWithoutPrescription).toBe(true);
     expect(cat.items.find((i: { id: string }) => i.id === f.product.id)).toMatchObject({ rxOnly: true, controlled: false });
 
-    // On: a note saying who approved it is required.
-    expect((await sell()).body.error.code).toBe('PRESCRIPTION_NOTE_REQUIRED');
+    // On: the note is optional, but the sale is still marked as made without a prescription.
+    const bare = await sell();
+    expect(bare.status).toBe(201);
+    expect(bare.body.notes).toContain('Sold without a prescription');
     // A walk-in customer (no client) can buy it, and the invoice and the audit log say it was sold without a prescription.
     const sale = await sell({ withoutPrescriptionNote: 'Dr Raza agreed by phone' });
     expect(sale.status).toBe(201);
@@ -171,7 +173,7 @@ describe('Billing, payments & finance', () => {
     expect(sale.body.notes).toContain('Sold without a prescription');
     expect(sale.body.notes).toContain('Dr Raza agreed by phone');
     expect(await prisma().auditEvent.findFirst({ where: { organizationId: s.org.orgId, action: 'invoice.sold_without_prescription', entityId: sale.body.id } })).toBeTruthy();
-    expect((await s.org.owner.get(`/stock/products/${f.product.id}`)).body.batches[0].onHand).toBe(18);
+    expect((await s.org.owner.get(`/stock/products/${f.product.id}`)).body.batches[0].onHand).toBe(16);
 
     // Controlled medicines always need a prescription, whatever the setting.
     const ctrl = await s.org.owner.post('/products', { name: 'Controlled test', type: 'MEDICINE', strengthValue: 10, strengthUnit: 'mg', dispensingUnit: 'tablet', minDispenseIncrement: 1, sellPriceMinor: 900, requiresPrescription: true, isControlled: true, controlledSchedule: 'S8' });
