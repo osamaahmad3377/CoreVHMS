@@ -44,7 +44,26 @@ export function Providers({ children, defaultTheme = 'light' }: { children: Reac
       <QueryClientProvider client={client}>
         <TooltipProvider delayDuration={300}>
           {children}
-          <Toaster richColors closeButton position="bottom-right" duration={TOAST_MS} className="print:hidden" toastOptions={{ classNames: { toast: '!rounded-xl !shadow-pop !border-border/60 !font-sans', title: '!font-medium' } }} />
+          <Toaster
+            closeButton
+            position="bottom-right"
+            duration={TOAST_MS}
+            className="print:hidden"
+            toastOptions={{
+              // Glass toasts; the icon and a thin edge carry the meaning (success, error, warning, info).
+              classNames: {
+                toast: '!surface-strong !rounded-xl !border !font-sans !text-foreground !gap-3 !p-4',
+                title: '!font-semibold',
+                description: '!text-muted-foreground',
+                closeButton: '!surface-flat !text-foreground',
+                actionButton: '!rounded-pill !bg-primary !text-primary-foreground !font-semibold',
+                success: '!border-success/40 [&_[data-icon]]:!text-success',
+                error: '!border-destructive/40 [&_[data-icon]]:!text-destructive',
+                warning: '!border-warning/40 [&_[data-icon]]:!text-warning',
+                info: '!border-info/40 [&_[data-icon]]:!text-info',
+              },
+            }}
+          />
         </TooltipProvider>
       </QueryClientProvider>
     </ThemeProvider>

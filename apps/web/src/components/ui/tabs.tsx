@@ -7,7 +7,7 @@ export const Tabs = TabsPrimitive.Root;
 
 export const TabsList = React.forwardRef<React.ElementRef<typeof TabsPrimitive.List>, React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>>(
   ({ className, ...props }, ref) => (
-    <TabsPrimitive.List ref={ref} className={cn('flex h-10 items-end gap-1 overflow-x-auto border-b', className)} {...props} />
+    <TabsPrimitive.List ref={ref} className={cn('surface-flat inline-flex h-auto max-w-full items-center gap-1 overflow-x-auto rounded-pill p-1 [scrollbar-width:none]', className)} {...props} />
   ),
 );
 TabsList.displayName = 'TabsList';
@@ -17,7 +17,7 @@ export const TabsTrigger = React.forwardRef<React.ElementRef<typeof TabsPrimitiv
     <TabsPrimitive.Trigger
       ref={ref}
       className={cn(
-        '-mb-px inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 border-transparent px-3 pb-2 pt-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:border-primary data-[state=active]:text-foreground',
+        'inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-pill px-4 text-sm font-medium text-muted-foreground transition-all duration-200 ease-apple hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_3px_hsl(var(--shadow)/0.12)] dark:data-[state=active]:bg-white/10',
         className,
       )}
       {...props}

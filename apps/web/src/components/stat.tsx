@@ -24,11 +24,11 @@ export function Stat({
     success: { chip: 'bg-success/12 text-success ring-success/20', glow: 'from-success/12' },
   }[tone];
   const body = (
-    <Card className={cn('group relative flex h-full items-start gap-3 overflow-hidden p-4 sm:gap-3.5 sm:p-5 transition-all duration-200', href && 'hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-card-hover')}>
+    <Card className={cn('group relative flex h-full items-start gap-3 overflow-hidden p-4 sm:gap-4 sm:p-6', href && 'surface-hover')}>
       {/* A soft wash of the tile's colour in the corner. */}
       <span aria-hidden className={cn('pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-gradient-to-br to-transparent opacity-80 blur-xl transition-opacity group-hover:opacity-100', tones.glow)} />
       {Icon && (
-        <span className={cn('relative hidden rounded-xl p-2.5 ring-1 min-[480px]:block ring-inset', tones.chip)}>
+        <span className={cn('relative hidden rounded-full p-2.5 ring-1 ring-inset min-[480px]:block', tones.chip)}>
           <Icon className="h-[18px] w-[18px]" />
         </span>
       )}

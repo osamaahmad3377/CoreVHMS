@@ -47,7 +47,8 @@ export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () 
   const mod = useModKey();
 
   return (
-    <header className="no-print glass sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border/50 px-3 sm:px-6">
+    <div className="no-print sticky top-0 z-30 px-3 pt-3 sm:px-4 lg:px-6">
+    <header className="glass flex h-14 items-center gap-2 rounded-2xl border border-[hsl(var(--glass-edge))] px-2 shadow-card sm:px-3">
       <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenu} aria-label="Open navigation">
         <Menu />
       </Button>
@@ -56,7 +57,7 @@ export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () 
         onClick={onSearch}
         aria-label={`Search everything (${mod} K)`}
         title={`Search a name, or type what you want to do (${mod} K)`}
-        className="flex h-9 min-w-0 shrink items-center gap-2 rounded-lg bg-foreground/[0.05] px-3 text-sm text-muted-foreground transition-all duration-200 ease-apple hover:bg-foreground/[0.08] sm:w-full sm:max-w-md sm:px-3.5"
+        className="flex h-10 min-w-0 shrink items-center gap-2 rounded-pill bg-foreground/[0.05] px-3 text-sm text-muted-foreground ring-1 ring-inset ring-foreground/[0.06] transition-all duration-200 ease-apple hover:bg-foreground/[0.08] sm:w-full sm:max-w-md sm:px-4"
       >
         <Search className="h-4 w-4 shrink-0" />
         <span className="hidden flex-1 truncate text-left sm:block">Search a name or phone<span className="hidden lg:inline"> — or type what you want to do</span></span>
@@ -140,7 +141,7 @@ export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () 
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2 rounded-md p-1 hover:bg-muted" aria-label="Account menu">
+            <button className="flex items-center gap-2 rounded-pill p-1 pr-1.5 transition-colors hover:bg-foreground/[0.06]" aria-label="Account menu">
               <Avatar name={session.user.name} />
               <span className="hidden text-left leading-tight xl:block">
                 <span className="block max-w-[200px] truncate text-sm font-medium">{session.user.name}</span>
@@ -181,5 +182,6 @@ export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () 
         </DropdownMenu>
       </div>
     </header>
+    </div>
   );
 }

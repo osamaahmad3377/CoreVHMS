@@ -2,7 +2,7 @@ import { isDarkColour, type Branding } from '@vcms/shared';
 import { PawPrint } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const DEFAULT_MENU = '#f4f4f7';
+const DEFAULT_MENU = '#ffffff';
 const GLOW = 'radial-gradient(760px 460px at 92% -8%, hsl(var(--primary) / 0.55), transparent 62%), radial-gradient(640px 420px at -8% 112%, hsl(var(--info) / 0.32), transparent 62%)';
 
 /** A logo for light surfaces that switches to the dark-background version in dark mode (when there is one). */

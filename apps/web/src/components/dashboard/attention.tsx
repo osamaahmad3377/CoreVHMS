@@ -87,8 +87,8 @@ export function AttentionList({ items, title = 'Needs your attention' }: { items
   const shown = all ? items : items.slice(0, 7);
   if (!items.length) {
     return (
-      <div className="flex items-center gap-3 rounded-lg border bg-success/5 px-4 py-3">
-        <CheckCircle2 className="h-5 w-5 text-success" />
+      <div className="surface flex items-center gap-4 rounded-xl px-6 py-5">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-success/10 text-success ring-1 ring-inset ring-success/20"><CheckCircle2 className="h-5 w-5" /></span>
         <div>
           <p className="text-sm font-medium">You’re all caught up</p>
           <p className="text-xs text-muted-foreground">Nothing needs your attention right now. New work appears here as it comes in.</p>
@@ -97,14 +97,14 @@ export function AttentionList({ items, title = 'Needs your attention' }: { items
     );
   }
   return (
-    <section aria-label={title} className="overflow-hidden rounded-lg border bg-card shadow-sm">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5">
-        <h2 className="text-sm font-semibold">{title}</h2>
+    <section aria-label={title} className="surface overflow-hidden rounded-xl">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-foreground/[0.06] px-6 py-4">
+        <h2 className="text-base font-semibold tracking-tight">{title}</h2>
         <span className="flex flex-wrap gap-1.5 text-2xs">
           {(['danger', 'warning', 'info'] as const).map((s) => {
             const n = items.filter((i) => i.severity === s).length;
             return n ? (
-              <span key={s} className="flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium">
+              <span key={s} className="flex items-center gap-1.5 rounded-pill bg-foreground/[0.05] px-2.5 py-1 font-semibold ring-1 ring-inset ring-foreground/[0.06]">
                 <span className={cn('h-2 w-2 rounded-full', TONE[s].dot)} />
                 {TONE[s].label} <span className="tabular">{n}</span>
               </span>
@@ -112,17 +112,17 @@ export function AttentionList({ items, title = 'Needs your attention' }: { items
           })}
         </span>
       </header>
-      <ul className="divide-y">
+      <ul className="divide-y divide-foreground/[0.05]">
         {shown.map((i) => (
           <li key={i.key}>
             {/* Phones: the action wraps under the text, so nothing scrolls sideways. */}
-            <Link href={i.href} className="group flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none sm:flex-nowrap">
-              <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-md', TONE[i.severity].icon)}><i.icon className="h-4 w-4" /></span>
+            <Link href={i.href} className="group flex flex-wrap items-center gap-x-3 gap-y-1 px-6 py-3 transition-colors duration-200 hover:bg-[hsl(var(--glass)/0.5)] focus-visible:bg-[hsl(var(--glass)/0.5)] focus-visible:outline-none sm:flex-nowrap">
+              <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', TONE[i.severity].icon)}><i.icon className="h-4 w-4" /></span>
               <span className="min-w-0 flex-1">
                 <span className="block break-words text-sm font-medium">{i.text}</span>
                 {i.detail && <span className="block break-words text-xs text-muted-foreground sm:truncate">{i.detail}</span>}
               </span>
-              <span className="flex basis-full items-center gap-1 pl-11 text-xs font-medium text-primary sm:basis-auto sm:shrink-0 sm:pl-0">
+              <span className="flex basis-full items-center gap-1 pl-12 text-xs font-semibold text-primary sm:basis-auto sm:shrink-0 sm:pl-0">
                 {i.action} <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
               </span>
             </Link>
@@ -130,7 +130,7 @@ export function AttentionList({ items, title = 'Needs your attention' }: { items
         ))}
       </ul>
       {items.length > 7 && (
-        <button type="button" onClick={() => setAll((v) => !v)} className="w-full border-t px-4 py-2 text-xs font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground">
+        <button type="button" onClick={() => setAll((v) => !v)} className="min-h-11 w-full border-t border-foreground/[0.06] px-6 py-2.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-[hsl(var(--glass)/0.5)] hover:text-foreground">
           {all ? 'Show fewer' : `Show ${items.length - 7} more`}
         </button>
       )}

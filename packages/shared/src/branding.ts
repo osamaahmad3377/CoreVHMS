@@ -16,7 +16,7 @@ export const BRAND_FONTS = ['SYSTEM', 'INTER', 'ROBOTO', 'OPEN_SANS', 'LATO', 'P
 export type BrandFont = (typeof BRAND_FONTS)[number];
 /** Font names as shown to the owner; SYSTEM is the device's own interface font. */
 export const BRAND_FONT_LABELS: Record<BrandFont, string> = {
-  SYSTEM: 'System font (SF Pro on Apple devices)',
+  SYSTEM: 'Plus Jakarta Sans (standard)',
   INTER: 'Inter',
   ROBOTO: 'Roboto',
   OPEN_SANS: 'Open Sans',
@@ -37,7 +37,7 @@ export type PrintSize = 'SMALL' | 'MEDIUM' | 'LARGE';
 export type PrintRule = 'BAND' | 'LINE' | 'DOUBLE' | 'NONE';
 
 /** Corner roundness of buttons, fields and cards (the theme's --radius). */
-export const CORNER_RADIUS: Record<CornerStyle, string> = { SHARP: '0.25rem', STANDARD: '0.875rem', ROUNDED: '1.375rem' };
+export const CORNER_RADIUS: Record<CornerStyle, string> = { SHARP: '0.375rem', STANDARD: '1rem', ROUNDED: '1.5rem' };
 
 export const brandingUpdateSchema = z.object({
   /** Name shown in the menu, on the sign-in page and in the browser tab; empty = the clinic name. */
@@ -205,7 +205,7 @@ function readableOn(c: Hsl, against: [number, number, number], ratio: number, di
 
 const css = ({ h, s, l }: Hsl) => `${h.toFixed(1)} ${s.toFixed(1)}% ${l.toFixed(1)}%`;
 const WHITE: [number, number, number] = [255, 255, 255];
-const DARK_BG: [number, number, number] = [13, 20, 24]; // the dark theme's page background
+const DARK_BG: [number, number, number] = [11, 12, 22]; // the dark theme's page background
 const INK = { h: 200, s: 30, l: 11 };
 
 /**
@@ -216,7 +216,11 @@ const INK = { h: 200, s: 30, l: 11 };
 export function brandThemeVariables(b: { primaryColor?: string | null; sidebarColor?: string | null; cornerStyle?: CornerStyle | null; brandFont?: BrandFont | null }) {
   const light: Record<string, string> = {};
   const dark: Record<string, string> = {};
+  /** Variables for light mode only (dark mode keeps its own defaults). */
+  const lightOnly: Record<string, string> = {};
   if (b.cornerStyle && b.cornerStyle !== 'STANDARD') light['--radius'] = CORNER_RADIUS[b.cornerStyle];
+  // Sharp corners: buttons and chips follow the corners instead of being pill-shaped.
+  if (b.cornerStyle === 'SHARP') light['--radius-pill'] = CORNER_RADIUS.SHARP;
   // Font files are self-hosted by the web app, which defines --font-<name> for each choice.
   if (b.brandFont && b.brandFont !== 'SYSTEM') {
     const fallback = b.brandFont === 'MERRIWEATHER' ? 'Georgia, serif' : 'ui-sans-serif, system-ui, sans-serif';
@@ -235,6 +239,8 @@ export function brandThemeVariables(b: { primaryColor?: string | null; sidebarCo
       '--accent': css({ h: base.h, s: Math.min(base.s, 45), l: 93 }),
       '--accent-foreground': css(readableOn({ h: base.h, s: base.s, l: 22 }, hslToRgb({ h: base.h, s: Math.min(base.s, 45), l: 93 }), 4.5, -1)),
       '--sidebar-active': css({ ...p, l: Math.min(Math.max(p.l, 28), 40) }),
+      // The secondary accent (background shapes, gradients): the brand colour turned towards cyan.
+      '--brand-2': css({ h: (base.h + 50) % 360, s: Math.min(Math.max(base.s, 55), 85), l: 45 }),
     });
     Object.assign(dark, {
       '--primary': css(pd),
@@ -243,6 +249,7 @@ export function brandThemeVariables(b: { primaryColor?: string | null; sidebarCo
       '--accent': css({ h: base.h, s: Math.min(base.s, 40), l: 16 }),
       '--accent-foreground': css({ h: base.h, s: Math.min(base.s, 50), l: 80 }),
       '--sidebar-active': css({ ...pd, l: Math.min(Math.max(pd.l, 26), 36) }),
+      '--brand-2': css({ h: (base.h + 50) % 360, s: Math.min(Math.max(base.s, 55), 85), l: 58 }),
     });
   }
   if (b.sidebarColor) {
@@ -254,17 +261,22 @@ export function brandThemeVariables(b: { primaryColor?: string | null; sidebarCo
       '--sidebar-strong': darkMenu ? '0 0% 100%' : css({ h: sb.h, s: Math.min(sb.s, 30), l: 8 }),
       '--sidebar-border': css({ ...sb, l: darkMenu ? Math.min(sb.l + 8, 100) : Math.max(sb.l - 10, 0) }),
       '--sidebar-hover': darkMenu ? '0 0% 100% / 0.06' : '0 0% 0% / 0.06',
+      // A chosen menu colour stays recognisable: firmer glass.
+      '--sidebar-alpha': '0.9',
     };
-    Object.assign(light, vars);
-    Object.assign(dark, vars);
+    // A light menu colour would glare in dark mode, so dark mode keeps its own dark glass menu.
+    if (darkMenu) {
+      Object.assign(light, vars);
+      Object.assign(dark, vars);
+    } else Object.assign(lightOnly, vars);
   }
-  return { light, dark };
+  return { light, dark, lightOnly };
 }
 
 /** CSS that applies a clinic's colours on top of the default theme (empty when it uses the defaults). */
 export function brandThemeCss(b: Parameters<typeof brandThemeVariables>[0]): string {
-  const { light, dark } = brandThemeVariables(b);
+  const { light, dark, lightOnly } = brandThemeVariables(b);
   const block = (sel: string, v: Record<string, string>) =>
     Object.keys(v).length ? `${sel}{${Object.entries(v).map(([k, x]) => `${k}:${x}`).join(';')}}` : '';
-  return block(':root', light) + block('.dark', dark);
+  return block(':root', light) + block(':root:not(.dark)', lightOnly) + block('.dark', dark);
 }

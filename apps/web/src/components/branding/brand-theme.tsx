@@ -5,11 +5,14 @@ import { useEffect } from 'react';
 import { themeChosen } from '@/lib/theme-choice';
 
 /** The app's default side-menu colour (globals.css --sidebar), used when the clinic has not chosen one. */
-const DEFAULT_MENU = '#f4f4f7';
+const DEFAULT_MENU = '#ffffff';
 
-/** True when the clinic's side menu is dark, so it needs the logo version made for dark backgrounds. */
-export function menuIsDark(branding: Branding | null | undefined) {
-  return isDarkColour(branding?.sidebarColor ?? DEFAULT_MENU);
+/**
+ * True when the clinic's side menu is dark, so it needs the logo version made for dark backgrounds.
+ * In dark mode the menu is always dark (a light menu colour only applies in light mode).
+ */
+export function menuIsDark(branding: Branding | null | undefined, darkTheme = false) {
+  return darkTheme || isDarkColour(branding?.sidebarColor ?? DEFAULT_MENU);
 }
 
 /** The logo for a background: the dark-background version when there is one, otherwise the normal logo. */

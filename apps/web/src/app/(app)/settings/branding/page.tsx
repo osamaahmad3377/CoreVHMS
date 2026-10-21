@@ -214,7 +214,7 @@ function ImagePicker({ kind, url, label, hint, shape = 'wide', dark, orgId, onCh
 /** Applies the draft's theme variables (colours, font, corners) to a preview, in light or dark. */
 function Themed({ b, dark, className, children }: { b: Branding; dark?: boolean; className?: string; children: React.ReactNode }) {
   const v = brandThemeVariables(b);
-  const vars = dark ? { ...v.light, ...v.dark } : v.light;
+  const vars = dark ? { ...v.light, ...v.dark } : { ...v.light, ...v.lightOnly };
   return (
     <div className={cn('font-sans text-foreground', dark && 'dark', className)} style={vars as React.CSSProperties}>
       {children}

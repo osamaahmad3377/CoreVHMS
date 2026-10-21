@@ -50,7 +50,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     });
 
   return (
-    <div className="flex min-h-screen">
+    <div className="app-canvas flex min-h-screen">
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-card focus:px-3 focus:py-2">
         Skip to content
       </a>
@@ -58,8 +58,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <Dialog.Root open={mobileOpen} onOpenChange={setMobileOpen}>
         <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/50 backdrop-blur-[2px] lg:hidden" />
-          <Dialog.Content className="fixed inset-y-0 left-0 z-50 flex w-[min(300px,86vw)] flex-col rounded-r-3xl bg-sidebar pb-[env(safe-area-inset-bottom)] shadow-pop lg:hidden">
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-[hsl(var(--shadow)/0.35)] backdrop-blur-sm lg:hidden" />
+          <Dialog.Content className="surface-menu fixed inset-y-2 left-2 z-50 flex w-[min(300px,86vw)] flex-col rounded-2xl pb-[env(safe-area-inset-bottom)] [--sidebar-alpha:0.92] duration-300 ease-apple data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:slide-in-from-left-8 data-[state=closed]:slide-out-to-left-8 data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 lg:hidden">
             <Dialog.Title className="sr-only">Navigation</Dialog.Title>
             <div className="relative flex items-center justify-center px-5 pb-3 pt-6">
               <Logo />
@@ -74,9 +74,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </Dialog.Portal>
       </Dialog.Root>
 
-      <div className="app-canvas flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         <Topbar onMenu={() => setMobileOpen(true)} onSearch={() => setSearchOpen(true)} />
-        <main id="main" className="page-enter mx-auto w-full max-w-[1600px] flex-1 px-4 py-6 sm:px-8 sm:py-8">
+        <main id="main" className="page-enter mx-auto w-full max-w-[1600px] flex-1 px-4 pb-8 pt-6 sm:px-6 lg:px-8 lg:pt-8">
           {children}
         </main>
       </div>

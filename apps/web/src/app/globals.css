@@ -3,81 +3,117 @@
 @tailwind utilities;
 
 @layer base {
+  /*
+   * NextCore glass design tokens. Colours are HSL triplets so Tailwind can add opacity (bg-primary/10).
+   * A clinic's Branding (colours, menu colour, font, corners) overrides the brand tokens at runtime.
+   */
   :root {
-    /* Calm, neutral surfaces: warm-grey canvas, pure-white cards, near-black text. */
-    --background: 240 11% 96.5%;
-    --foreground: 240 3% 11.5%;
+    /* Palette: indigo primary, cyan secondary accent, cool neutrals. */
+    --background: 228 33% 97%;
+    --foreground: 232 28% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 240 3% 11.5%;
+    --card-foreground: 232 28% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 3% 11.5%;
-    --primary: 172 78% 27%;
+    --popover-foreground: 232 28% 12%;
+    --primary: 243 75% 57%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 240 9% 94%;
-    --secondary-foreground: 240 3% 16%;
-    --muted: 240 9% 95%;
-    --muted-foreground: 240 2% 42%;
-    --accent: 172 42% 94%;
-    --accent-foreground: 172 80% 17%;
-    --destructive: 3 78% 47%;
+    --brand-2: 189 88% 38%;
+    --secondary: 230 30% 94%;
+    --secondary-foreground: 232 25% 18%;
+    --muted: 230 28% 95%;
+    --muted-foreground: 231 12% 38%;
+    --accent: 243 85% 96%;
+    --accent-foreground: 243 60% 33%;
+    --destructive: 354 72% 46%;
     --destructive-foreground: 0 0% 100%;
-    --warning: 35 92% 42%;
+    --warning: 30 92% 33%;
     --warning-foreground: 0 0% 100%;
-    --success: 142 62% 32%;
+    --success: 155 70% 27%;
     --success-foreground: 0 0% 100%;
-    --info: 211 100% 44%;
+    --info: 211 90% 41%;
     --info-foreground: 0 0% 100%;
-    /* Hairlines: barely there. */
-    --border: 240 6% 89%;
-    --input: 240 6% 84%;
-    --ring: 172 78% 30%;
-    --radius: 0.875rem;
-    /* Shadows are neutral and very soft. */
-    --shadow: 240 12% 12%;
-    /* The default side menu is light and quiet; clinics that choose a menu colour (Branding) replace these. */
-    --sidebar: 240 12% 96%;
-    --sidebar-foreground: 240 3% 28%;
-    --sidebar-border: 240 6% 89%;
-    --sidebar-active: 172 70% 29%;
-    /* Brightest text in the side menu and its hover tint; clinics with a dark menu colour get light values (Branding). */
-    --sidebar-strong: 240 3% 10%;
-    --sidebar-hover: 240 10% 10% / 0.06;
-    /* The clinic's font (Branding). By default the system font: SF Pro on Apple devices, Inter elsewhere. */
-    --font-brand: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', var(--font-inter), ui-sans-serif, system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --border: 230 22% 87%;
+    --input: 230 20% 82%;
+    --ring: 243 75% 57%;
+    --shadow: 235 35% 22%;
+
+    /* Glass: surface tint, opacity, edge, highlight and blur. */
+    --glass: 0 0% 100%;
+    --glass-alpha: 0.6;
+    --glass-strong-alpha: 0.84;
+    --glass-edge: 0 0% 100% / 0.7;
+    --glass-highlight: 0 0% 100% / 0.85;
+    --glass-blur: 20px;
+    --glass-saturate: 1.6;
+
+    /* Background shapes behind the glass. */
+    --blob-1: var(--primary);
+    --blob-2: var(--brand-2);
+    --blob-3: 322 80% 72%;
+    --blob-alpha: 0.26;
+
+    /* Shape and spacing (8px grid; Tailwind's 2, 4, 6, 8… steps). */
+    --radius: 1rem;
+    --radius-pill: 999px;
+    --space: 8px;
+    --tap: 44px;
+    --ease: cubic-bezier(0.32, 0.72, 0, 1);
+
+    /* Side menu (glass). A clinic's menu colour replaces these and makes it more opaque. */
+    --sidebar: 0 0% 100%;
+    --sidebar-alpha: 0.55;
+    --sidebar-foreground: 232 14% 30%;
+    --sidebar-border: 0 0% 100% / 0.7;
+    --sidebar-active: 243 75% 57%;
+    --sidebar-strong: 232 28% 10%;
+    --sidebar-hover: 232 40% 30% / 0.07;
+
+    --font-brand: var(--font-jakarta), -apple-system, BlinkMacSystemFont, 'Segoe UI', ui-sans-serif, system-ui, Roboto, Arial, sans-serif;
   }
 
   .dark {
     color-scheme: dark;
-    --background: 240 6% 4.5%;
-    --foreground: 240 5% 95%;
-    --card: 240 5% 10%;
-    --card-foreground: 240 5% 95%;
-    --popover: 240 5% 12%;
-    --popover-foreground: 240 5% 95%;
-    --primary: 172 62% 42%;
-    --primary-foreground: 240 6% 5%;
-    --secondary: 240 4% 17%;
-    --secondary-foreground: 240 5% 92%;
-    --muted: 240 4% 14%;
-    --muted-foreground: 240 3% 62%;
-    --accent: 172 40% 16%;
-    --accent-foreground: 172 50% 80%;
-    --destructive: 3 80% 60%;
-    --destructive-foreground: 0 0% 100%;
-    --warning: 38 92% 52%;
-    --warning-foreground: 240 6% 5%;
-    --success: 142 55% 48%;
-    --success-foreground: 240 6% 5%;
-    --info: 211 100% 64%;
-    --info-foreground: 240 6% 5%;
-    --border: 240 4% 20%;
-    --input: 240 4% 26%;
-    --ring: 172 62% 42%;
-    --shadow: 0 0% 0%;
-    --sidebar: 240 6% 8%;
-    --sidebar-foreground: 240 4% 76%;
-    --sidebar-border: 240 4% 15%;
-    --sidebar-active: 172 55% 30%;
+    --background: 234 32% 6.5%;
+    --foreground: 228 40% 96%;
+    --card: 233 28% 13%;
+    --card-foreground: 228 40% 96%;
+    --popover: 233 28% 13%;
+    --popover-foreground: 228 40% 96%;
+    --primary: 243 95% 74%;
+    --primary-foreground: 240 45% 9%;
+    --brand-2: 187 80% 55%;
+    --secondary: 233 22% 19%;
+    --secondary-foreground: 228 30% 92%;
+    --muted: 233 22% 16%;
+    --muted-foreground: 230 18% 72%;
+    --accent: 243 45% 20%;
+    --accent-foreground: 243 90% 86%;
+    --destructive: 354 85% 66%;
+    --destructive-foreground: 240 45% 8%;
+    --warning: 38 95% 60%;
+    --warning-foreground: 240 45% 8%;
+    --success: 152 60% 52%;
+    --success-foreground: 240 45% 8%;
+    --info: 208 95% 68%;
+    --info-foreground: 240 45% 8%;
+    --border: 232 20% 22%;
+    --input: 232 18% 28%;
+    --ring: 243 95% 74%;
+    --shadow: 240 60% 2%;
+
+    --glass: 233 30% 14%;
+    --glass-alpha: 0.55;
+    --glass-strong-alpha: 0.86;
+    --glass-edge: 0 0% 100% / 0.09;
+    --glass-highlight: 0 0% 100% / 0.07;
+    --blob-3: 300 70% 55%;
+    --blob-alpha: 0.2;
+
+    --sidebar: 233 30% 12%;
+    --sidebar-alpha: 0.6;
+    --sidebar-foreground: 230 18% 76%;
+    --sidebar-border: 0 0% 100% / 0.08;
+    --sidebar-active: 243 75% 62%;
     --sidebar-strong: 0 0% 100%;
     --sidebar-hover: 0 0% 100% / 0.07;
   }
@@ -90,16 +126,18 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    font-feature-settings: 'cv11', 'ss01', 'cv05';
-    letter-spacing: -0.011em;
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    letter-spacing: -0.006em;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
   }
   h1, h2, h3 {
-    letter-spacing: -0.022em;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
   }
-  /* Lighter, finer icon strokes, like SF Symbols. */
+  /* One line-icon set (Lucide) with one stroke weight everywhere. */
   svg.lucide {
     stroke-width: 1.75;
   }
@@ -115,22 +153,35 @@
   .tabular {
     font-variant-numeric: tabular-nums;
   }
-  /* A soft glow of the clinic's own colour at the top of the page, so every screen has depth. */
+  /*
+   * The page background: a soft gradient with a few large, blurred colour shapes (radial gradients, so no
+   * blur filter is needed) fixed behind the glass. Colours follow the clinic's brand.
+   */
   .app-canvas {
-    background-image: radial-gradient(1100px 380px at 50% -200px, hsl(var(--primary) / 0.05), transparent 72%);
-    background-repeat: no-repeat;
+    position: relative;
+    isolation: isolate;
   }
-  .dark .app-canvas {
-    background-image: radial-gradient(1100px 380px at 50% -200px, hsl(var(--primary) / 0.12), transparent 72%);
+  .app-canvas::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(38rem 30rem at 8% 4%, hsl(var(--blob-1) / var(--blob-alpha)), transparent 70%),
+      radial-gradient(34rem 28rem at 92% 12%, hsl(var(--blob-2) / var(--blob-alpha)), transparent 70%),
+      radial-gradient(40rem 32rem at 70% 96%, hsl(var(--blob-3) / calc(var(--blob-alpha) * 0.8)), transparent 70%),
+      radial-gradient(30rem 26rem at 18% 88%, hsl(var(--blob-2) / calc(var(--blob-alpha) * 0.55)), transparent 70%),
+      linear-gradient(160deg, hsl(var(--background)) 0%, hsl(var(--muted)) 100%);
   }
-  /* Frosted glass: the page shows through, softened. */
+  /* A strong frosted bar (top bar). */
   .glass {
-    background-color: hsl(var(--background) / 0.72);
-    -webkit-backdrop-filter: saturate(1.8) blur(22px);
-    backdrop-filter: saturate(1.8) blur(22px);
+    background-color: hsl(var(--glass) / var(--glass-strong-alpha));
+    -webkit-backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
+    backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
   }
   .text-gradient {
-    background-image: linear-gradient(120deg, hsl(var(--primary)), hsl(var(--info)));
+    background-image: linear-gradient(120deg, hsl(var(--primary)), hsl(var(--brand-2)));
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -141,8 +192,78 @@
     animation: shimmer 1.6s linear infinite;
   }
   .page-enter {
-    animation: fade-up 0.42s cubic-bezier(0.32, 0.72, 0, 1) both;
+    animation: fade-up 0.3s var(--ease) both;
   }
+}
+
+
+/*
+ * Glass components, defined once and used by the UI primitives (Card, Dialog, menus, inputs, side menu).
+ *   .surface        a glass card: translucent, blurred, thin light edge, inner top highlight, soft shadow
+ *   .surface-strong a more opaque glass panel for dialogs, menus and drawers, where text must stay crisp
+ *   .surface-flat   a glass surface without blur, for glass inside glass (avoids stacked blurs)
+ */
+@layer components {
+  .surface,
+  .surface-strong {
+    background-color: hsl(var(--glass) / var(--glass-alpha));
+    border: 1px solid hsl(var(--glass-edge));
+    box-shadow:
+      inset 0 1px 0 hsl(var(--glass-highlight)),
+      0 1px 2px hsl(var(--shadow) / 0.05),
+      0 8px 24px -6px hsl(var(--shadow) / 0.1);
+    -webkit-backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
+    backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
+  }
+  .surface-strong {
+    background-color: hsl(var(--glass) / var(--glass-strong-alpha));
+    box-shadow:
+      inset 0 1px 0 hsl(var(--glass-highlight)),
+      0 2px 6px hsl(var(--shadow) / 0.08),
+      0 32px 72px -16px hsl(var(--shadow) / 0.35);
+  }
+  .surface-flat {
+    background-color: hsl(var(--glass) / 0.5);
+    border: 1px solid hsl(var(--glass-edge));
+  }
+  /* Glass inside glass: no second blur (performance), slightly firmer tint instead. */
+  .surface .surface,
+  .surface-strong .surface {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background-color: hsl(var(--glass) / 0.5);
+    box-shadow: inset 0 1px 0 hsl(var(--glass-highlight)), 0 1px 2px hsl(var(--shadow) / 0.04);
+  }
+  .surface-hover {
+    transition: transform 0.25s var(--ease), box-shadow 0.25s var(--ease), background-color 0.25s var(--ease);
+  }
+  .surface-hover:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      inset 0 1px 0 hsl(var(--glass-highlight)),
+      0 2px 4px hsl(var(--shadow) / 0.06),
+      0 18px 40px -10px hsl(var(--shadow) / 0.2);
+  }
+  /* Side menu glass, tinted with the clinic's menu colour. */
+  .surface-menu {
+    background-color: hsl(var(--sidebar) / var(--sidebar-alpha));
+    border: 1px solid hsl(var(--sidebar-border));
+    box-shadow: inset 0 1px 0 hsl(var(--glass-highlight)), 0 12px 40px -12px hsl(var(--shadow) / 0.22);
+    -webkit-backdrop-filter: saturate(var(--glass-saturate)) blur(24px);
+    backdrop-filter: saturate(var(--glass-saturate)) blur(24px);
+  }
+}
+
+/* Browsers without backdrop-filter: solid surfaces, so text keeps its contrast. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .surface, .surface-strong, .glass { background-color: hsl(var(--card)); }
+  .surface-flat { background-color: hsl(var(--card)); }
+  .surface-menu { background-color: hsl(var(--sidebar)); }
+}
+/* Users who ask for less transparency get solid surfaces too. */
+@media (prefers-reduced-transparency: reduce) {
+  .surface, .surface-strong, .glass, .surface-flat { background-color: hsl(var(--card)); backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .surface-menu { background-color: hsl(var(--sidebar)); backdrop-filter: none; -webkit-backdrop-filter: none; }
 }
 
 @keyframes fade-up {
@@ -155,14 +276,14 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .page-enter, .shimmer { animation: none; }
+  .surface-hover:hover { transform: none; }
   * { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
 }
 
 /* Touch screens (phones, iPads): iOS zooms into inputs below 16px, and fingers need bigger targets. */
 @media (max-width: 1023px) and (pointer: coarse) {
   input:not([type='checkbox']):not([type='radio']), select, textarea { font-size: 16px; }
-  button, [role='button'], select, input:not([type='checkbox']):not([type='radio']) { min-height: 40px; }
-  [role='tab'] { min-height: 36px; }
+  button, [role='button'], select, input:not([type='checkbox']):not([type='radio']), [role='tab'], [role='menuitem'] { min-height: var(--tap); }
 }
 @media (max-width: 639px) {
   main { padding-bottom: max(1.5rem, env(safe-area-inset-bottom)); }
@@ -175,7 +296,12 @@
   body {
     background: white;
   }
-  .app-canvas {
-    background-image: none !important;
+  .app-canvas::before {
+    display: none !important;
+  }
+  .surface, .surface-strong, .surface-flat, .glass {
+    background: white !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
   }
 }

@@ -51,8 +51,8 @@ export function QuickActions() {
       {keys.map((k) => {
         const a = ACTIONS[k];
         return (
-          <Link key={k} href={a.href} title={a.hint} className="group flex min-h-11 items-center gap-2.5 rounded-lg border bg-card px-3 py-2.5 shadow-sm transition-colors hover:border-primary/50 hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-ring">
-            <span className="shrink-0 rounded-md bg-primary/10 p-1.5 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground"><a.icon className="h-4 w-4" /></span>
+          <Link key={k} href={a.href} title={a.hint} className="surface surface-hover group flex min-h-14 items-center gap-3 rounded-xl px-3 py-3 focus-visible:ring-2 focus-visible:ring-ring">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/15 to-brand-2/15 text-primary ring-1 ring-inset ring-primary/15 transition-colors duration-200 group-hover:from-primary group-hover:to-brand-2 group-hover:text-white"><a.icon className="h-4 w-4" /></span>
             <span className="min-w-0 text-sm font-semibold leading-tight">{a.label}</span>
           </Link>
         );

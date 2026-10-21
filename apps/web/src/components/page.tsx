@@ -70,8 +70,11 @@ export function EmptyState({
 }) {
   return (
     <div className={cn('flex flex-col items-center justify-center gap-2 px-6 py-12 text-center', className)}>
-      <div className="mb-2 rounded-2xl bg-gradient-to-br from-primary/15 to-info/10 p-4 ring-1 ring-inset ring-primary/15">
-        <Icon className="h-6 w-6 text-primary" />
+      <div className="relative mb-3">
+        <span aria-hidden className="absolute inset-0 -z-10 scale-150 rounded-full bg-gradient-to-br from-primary/25 to-brand-2/25 blur-2xl" />
+        <div className="surface-flat flex h-16 w-16 items-center justify-center rounded-2xl shadow-card">
+          <Icon className="h-7 w-7 text-primary" />
+        </div>
       </div>
       <p className="text-base font-semibold tracking-tight">{title}</p>
       {description && <p className="max-w-sm text-sm text-muted-foreground">{description}</p>}
@@ -89,7 +92,7 @@ export function ErrorState({ error, onRetry, className }: { error: unknown; onRe
       <div className="mb-1 rounded-full bg-destructive/10 p-3">
         <AlertTriangle className="h-5 w-5 text-destructive" />
       </div>
-      <p className="text-sm font-medium">{forbidden ? 'Access denied' : notFound ? 'Not found' : 'Something went wrong'}</p>
+      <p className="text-base font-semibold">{forbidden ? 'Access denied' : notFound ? 'Not found' : 'Something went wrong'}</p>
       <p className="max-w-md text-sm text-muted-foreground">
         {forbidden ? 'Your role does not include permission to view this.' : e?.message ?? 'Something went wrong. Please try again.'}
       </p>
@@ -105,9 +108,15 @@ export function ErrorState({ error, onRetry, className }: { error: unknown; onRe
 
 export function LoadingRows({ rows = 6, className }: { rows?: number; className?: string }) {
   return (
-    <div className={cn('grid gap-2 p-4', className)} aria-busy="true" aria-label="Loading">
+    <div className={cn('grid gap-4 p-6', className)} aria-busy="true" aria-label="Loading">
       {Array.from({ length: rows }).map((_, i) => (
-        <Skeleton key={i} className="h-8 w-full" />
+        <div key={i} className="flex items-center gap-4">
+          <Skeleton className="h-9 w-9 shrink-0 rounded-full" />
+          <div className="grid flex-1 gap-2">
+            <Skeleton className="h-3.5 rounded-pill" style={{ width: `${70 - ((i * 13) % 30)}%` }} />
+            <Skeleton className="h-3 rounded-pill" style={{ width: `${45 - ((i * 7) % 20)}%` }} />
+          </div>
+        </div>
       ))}
     </div>
   );

@@ -1,4 +1,4 @@
-import { Inter, Lato, Merriweather, Nunito, Open_Sans, Poppins, Roboto } from 'next/font/google';
+import { Inter, Plus_Jakarta_Sans, Lato, Merriweather, Nunito, Open_Sans, Poppins, Roboto } from 'next/font/google';
 
 /**
  * Fonts a clinic can choose in Settings → Branding. They are downloaded at build time and served from this
@@ -7,6 +7,8 @@ import { Inter, Lato, Merriweather, Nunito, Open_Sans, Poppins, Roboto } from 'n
  */
 // next/font needs literal options on each call (no shared object or spread).
 const inter = Inter({ subsets: ['latin'], display: 'swap', preload: true, variable: '--font-inter' });
+/** The standard interface font. */
+const jakarta = Plus_Jakarta_Sans({ subsets: ['latin'], display: 'swap', preload: true, variable: '--font-jakarta' });
 const roboto = Roboto({ subsets: ['latin'], display: 'swap', preload: false, weight: ['400', '500', '700'], variable: '--font-roboto' });
 const openSans = Open_Sans({ subsets: ['latin'], display: 'swap', preload: false, variable: '--font-open-sans' });
 const lato = Lato({ subsets: ['latin'], display: 'swap', preload: false, weight: ['400', '700'], variable: '--font-lato' });
@@ -15,4 +17,4 @@ const nunito = Nunito({ subsets: ['latin'], display: 'swap', preload: false, var
 const merriweather = Merriweather({ subsets: ['latin'], display: 'swap', preload: false, weight: ['400', '700'], variable: '--font-merriweather' });
 
 /** Class names that define every brand font's CSS variable; put them on <html>. */
-export const brandFontVariables = [inter, roboto, openSans, lato, poppins, nunito, merriweather].map((f) => f.variable).join(' ');
+export const brandFontVariables = [jakarta, inter, roboto, openSans, lato, poppins, nunito, merriweather].map((f) => f.variable).join(' ');

@@ -2,7 +2,7 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 
 export const inputClass =
-  'flex h-10 w-full rounded-md border border-transparent bg-foreground/[0.045] px-3.5 py-1 text-sm transition-[background-color,border-color,box-shadow] duration-200 ease-apple placeholder:text-muted-foreground/75 hover:bg-foreground/[0.07] focus-visible:border-ring/60 focus-visible:bg-card focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/25 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-destructive aria-[invalid=true]:bg-destructive/5 aria-[invalid=true]:ring-destructive/20';
+  'flex h-10 w-full rounded-lg border border-foreground/[0.1] bg-[hsl(var(--glass)/0.55)] px-4 py-1 text-sm shadow-[inset_0_1px_2px_hsl(var(--shadow)/0.05)] transition-[background-color,border-color,box-shadow] duration-200 ease-apple placeholder:text-muted-foreground/80 hover:border-foreground/20 focus-visible:border-primary/60 focus-visible:bg-[hsl(var(--glass)/0.92)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/15 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-destructive/70 aria-[invalid=true]:bg-destructive/[0.04] aria-[invalid=true]:ring-4 aria-[invalid=true]:ring-destructive/15';
 
 const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(({ className, type, ...props }, ref) => (
   <input type={type} className={cn(inputClass, 'file:border-0 file:bg-transparent file:text-sm file:font-medium', className)} ref={ref} {...props} />

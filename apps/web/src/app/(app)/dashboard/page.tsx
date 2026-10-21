@@ -157,12 +157,12 @@ export default function DashboardPage() {
           <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
             <AttentionList items={attention} title={frontline ? 'Still to do' : 'Needs your attention'} />
             {glance.length > 0 && (
-              <section aria-label="Today at a glance" className="grid content-start gap-3 rounded-xl bg-card p-4 shadow-card">
-                <h2 className="px-1 text-sm font-semibold tracking-tight">Today at a glance</h2>
+              <section aria-label="Today at a glance" className="surface grid content-start gap-4 rounded-xl p-6">
+                <h2 className="text-base font-semibold tracking-tight">Today at a glance</h2>
                 <ul className="grid grid-cols-2 gap-2">
                   {glance.map((g) => (
                     <li key={g.label}>
-                      <Link href={g.href} className="flex h-full items-center gap-3 rounded-lg border border-border/60 bg-background/60 px-3 py-2.5 transition-all duration-150 hover:-translate-y-px hover:border-primary/40 hover:bg-primary/5 hover:shadow-card">
+                      <Link href={g.href} className="surface-flat flex h-full min-h-14 items-center gap-3 rounded-lg px-3 py-2.5 transition-all duration-200 ease-apple hover:-translate-y-px hover:bg-[hsl(var(--glass)/0.85)] hover:shadow-card">
                         <g.icon className={cn('h-4 w-4 shrink-0', g.tone === 'warning' ? 'text-warning' : 'text-muted-foreground')} />
                         <span className="min-w-0">
                           <span className="block text-lg font-semibold leading-tight tabular">{g.value}</span>

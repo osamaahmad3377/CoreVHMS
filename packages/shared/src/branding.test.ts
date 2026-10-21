@@ -34,7 +34,7 @@ describe('clinic branding', () => {
     for (const colour of ['#0f766e', '#2563eb', '#facc15', '#a3e635', '#ffffff', '#000000']) {
       const { light, dark } = brandThemeVariables({ primaryColor: colour });
       expect(contrastRatio(hslToHex(light['--primary']), '#ffffff')).toBeGreaterThanOrEqual(2.95);
-      expect(contrastRatio(hslToHex(dark['--primary']), '#0d1418')).toBeGreaterThanOrEqual(2.95);
+      expect(contrastRatio(hslToHex(dark['--primary']), '#0b0c16')).toBeGreaterThanOrEqual(2.95);
       // Button text on the main colour.
       expect(contrastRatio(hslToHex(light['--primary']), hslToHex(light['--primary-foreground']))).toBeGreaterThanOrEqual(4.4);
     }
@@ -44,11 +44,12 @@ describe('clinic branding', () => {
 
   it('switches the menu text between light and dark for the menu colour', () => {
     const darkMenu = brandThemeVariables({ sidebarColor: '#0f172a' }).light;
-    const lightMenu = brandThemeVariables({ sidebarColor: '#f8fafc' }).light;
+    const lightMenu = brandThemeVariables({ sidebarColor: '#f8fafc' }).lightOnly;
     expect(darkMenu['--sidebar-strong']).toBe('0 0% 100%');
     expect(contrastRatio(hslToHex(lightMenu['--sidebar-strong']), '#f8fafc')).toBeGreaterThan(10);
     expect(contrastRatio(hslToHex(lightMenu['--sidebar-foreground']), '#f8fafc')).toBeGreaterThanOrEqual(4.5);
-    expect(brandThemeCss({ sidebarColor: '#f8fafc' })).toMatch(/^:root\{--sidebar:.*\}\.dark\{--sidebar:.*\}$/);
+    expect(brandThemeCss({ sidebarColor: '#f8fafc' })).toMatch(/^:root:not\(\.dark\)\{--sidebar:.*\}$/);
+    expect(brandThemeCss({ sidebarColor: '#0f172a' })).toMatch(/^:root\{--sidebar:.*\}\.dark\{--sidebar:.*\}$/);
   });
 
   it('applies font and corners, and leaves the defaults alone', () => {
