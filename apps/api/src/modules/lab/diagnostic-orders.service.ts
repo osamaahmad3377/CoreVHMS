@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, SampleType } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
+import { ClientEvents } from '../../common/events/client-events';
 import { RequestContext } from '../../common/context/request-context';
 import { CounterService, formatNumber } from '../../common/counter/counter.service';
 import { notFound, ruleViolation } from '../../common/http/errors';
@@ -76,6 +77,7 @@ export class DiagnosticOrdersService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly counters: CounterService,
+    private readonly events: ClientEvents,
   ) {}
 
   async list(q: { page: number; pageSize: number; q?: string; status?: string; patientId?: string; encounterId?: string; critical?: boolean }) {
@@ -334,6 +336,7 @@ export class DiagnosticOrdersService {
       await tx.diagnosticOrder.update({ where: { id: orderId }, data: { status: 'RELEASED', releasedById: ctx.userId, releasedByName: ctx.userName, releasedAt: new Date() } });
       await this.audit.record({ action: 'lab_order.released', entityType: 'DiagnosticOrder', entityId: orderId, summary: labOrderNo(o.number) }, tx);
     });
+    await this.events.emit({ type: 'LAB_RESULTS_READY', orderId });
     return this.get(orderId);
   }
 

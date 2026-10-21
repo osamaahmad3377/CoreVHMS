@@ -363,6 +363,7 @@ model Organization {
   receiptSettings        ReceiptSettings?
   whatsAppIntegration    WhatsAppIntegration?
   whatsAppTemplateLinks  WhatsAppTemplateLink[]
+  ClientNotificationRule ClientNotificationRule[]
 }
 
 model Branch {
@@ -4729,4 +4730,20 @@ model WhatsAppTemplateLink {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   @@unique([organizationId, purpose])
+}
+
+/// Settings → Client notifications: whether a kind of automatic message goes by WhatsApp and/or by email.
+/// No row = the defaults (WhatsApp on when connected, email off).
+model ClientNotificationRule {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  event          String
+  whatsapp       Boolean  @default(true)
+  email          Boolean  @default(false)
+  updatedByName  String?
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, event])
 }

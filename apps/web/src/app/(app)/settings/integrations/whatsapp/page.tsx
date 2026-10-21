@@ -1,7 +1,8 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { WHATSAPP_PURPOSE_LABELS, WHATSAPP_PURPOSES, type WhatsAppPurpose } from '@vcms/shared';
-import { AlertTriangle, CheckCheck, CheckCircle2, ExternalLink, Eye, EyeOff, Link2, MessageCircle, PlugZap, RefreshCw, Send, ShieldCheck, Unplug, Webhook, XCircle } from 'lucide-react';
+import { AlertTriangle, BellRing, CheckCheck, ChevronRight, CheckCircle2, ExternalLink, Eye, EyeOff, Link2, MessageCircle, PlugZap, RefreshCw, Send, ShieldCheck, Unplug, Webhook, XCircle } from 'lucide-react';
+import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirm } from '@/components/confirm';
@@ -328,6 +329,14 @@ function Connected({ data }: { data: WhatsAppOverview }) {
               </span>
               <Switch checked={data.fallbackToEmail} disabled={settings.isPending} onCheckedChange={(v) => settings.mutate({ fallbackToEmail: v })} aria-label="Fall back to email" />
             </label>
+            <Link href="/settings/notifications" className="group flex items-center gap-3 rounded-xl surface-flat p-3 transition-colors hover:bg-[hsl(var(--glass)/0.85)]">
+              <BellRing className="h-5 w-5 shrink-0 text-primary" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold">Client notifications</span>
+                <span className="block text-xs text-muted-foreground">Booking confirmed, appointment moved, results ready, payment received… choose which go out.</span>
+              </span>
+              <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+            </Link>
           </CardContent>
         </Card>
 

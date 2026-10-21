@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { CareKind, CareProtocol, CareRepeatUnit, Prisma } from '@prisma/client';
 import { addRepeat, repeatSummary } from '@vcms/shared';
 import { AuditService, diff } from '../../common/audit/audit.service';
+import { ClientEvents } from '../../common/events/client-events';
 import { RequestContext } from '../../common/context/request-context';
 import { conflict, notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -52,6 +53,7 @@ export class CareService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly administrations: AdministrationsService,
+    private readonly events: ClientEvents,
   ) {}
 
   // ── Protocols ──
@@ -285,6 +287,8 @@ export class CareService {
         if (!done) throw conflict('This care item was completed by someone else');
       });
     }
+    // Given at this clinic: the owner gets a note with the next due date (not for doses given elsewhere).
+    if (item.kind === 'VACCINATION' && input.mode !== 'ELSEWHERE') await this.events.emit({ type: 'VACCINATION_GIVEN', careItemId: id });
     return shapeItem(await this.prisma.db.careItem.findUniqueOrThrow({ where: { id }, include: itemInclude }), await branchToday(this.prisma));
   }
 

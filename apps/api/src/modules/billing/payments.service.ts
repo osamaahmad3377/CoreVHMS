@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PaymentMethod, Prisma } from '@prisma/client';
 import { calcLine, sumLines, type LineInputBody } from '@vcms/shared';
 import { AuditService } from '../../common/audit/audit.service';
+import { ClientEvents } from '../../common/events/client-events';
 import { RequestContext } from '../../common/context/request-context';
 import { CounterService, formatNumber } from '../../common/counter/counter.service';
 import { conflict, forbidden, notFound, ruleViolation } from '../../common/http/errors';
@@ -37,6 +38,7 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly counters: CounterService,
+    private readonly events: ClientEvents,
   ) {}
 
   private async org() {
@@ -117,6 +119,7 @@ export class PaymentsService {
         if (within) await within(tx, p.id);
         return p.id;
       });
+      if (input.clientId) await this.events.emit({ type: 'PAYMENT_RECEIVED', paymentId: id });
       return this.get(id);
     } catch (e) {
       // A concurrent request with the same idempotency key won the race: return its payment.

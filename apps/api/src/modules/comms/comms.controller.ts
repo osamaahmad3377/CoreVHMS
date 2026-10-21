@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { MESSAGE_CHANNELS, MESSAGE_STATUSES, commsSettingsSchema, sendMessageSchema, staffReplySchema, templateSchema } from '@vcms/shared';
+import { MESSAGE_CHANNELS, MESSAGE_STATUSES, clientNotificationRuleSchema, commsSettingsSchema, sendMessageSchema, staffReplySchema, templateSchema } from '@vcms/shared';
 import { z } from 'zod';
 import { AuditService, diff } from '../../common/audit/audit.service';
 import { RequireAnyPermission, RequirePermissions } from '../../common/auth/decorators';
@@ -8,6 +8,7 @@ import { RequestContext } from '../../common/context/request-context';
 import { ApiZodBody, ApiZodQuery, zp } from '../../common/http/zod';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { ClientMessagesService } from './client-messages.service';
+import { ClientNotificationsService } from './client-notifications.service';
 import { MessagesService } from './messages.service';
 import { RemindersService } from './reminders.service';
 import { TemplatesService } from './templates.service';
@@ -32,6 +33,7 @@ export class CommsController {
     private readonly templates: TemplatesService,
     private readonly reminders: RemindersService,
     private readonly clientMessages: ClientMessagesService,
+    private readonly notifications: ClientNotificationsService,
   ) {}
 
   @Get('messages')
@@ -127,5 +129,19 @@ export class CommsController {
   @ApiZodBody(staffReplySchema)
   reply(@Body(zp(staffReplySchema)) body: z.infer<typeof staffReplySchema>) {
     return this.clientMessages.reply(body.clientId, body.body, body.subject);
+  }
+
+  // ── Automatic client notifications (Settings → Client notifications) ──
+  @Get('client-notifications')
+  @RequireAnyPermission('settings.manage', 'integrations.manage')
+  notificationSettings() {
+    return this.notifications.overview();
+  }
+
+  @Put('client-notifications')
+  @RequireAnyPermission('settings.manage', 'integrations.manage')
+  @ApiZodBody(clientNotificationRuleSchema)
+  saveNotification(@Body(zp(clientNotificationRuleSchema)) body: z.infer<typeof clientNotificationRuleSchema>) {
+    return this.notifications.saveRule(body);
   }
 }

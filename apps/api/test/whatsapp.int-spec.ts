@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto';
 import request from 'supertest';
 import { MessagesService } from '../src/modules/comms/messages.service';
-import { closeApp, getApp, makeClient, prisma, registerOrg, staff } from './helpers';
+import { booking, closeApp, futureDate, getApp, karachi, makeClient, prisma, registerOrg, schedulingFixture, staff } from './helpers';
 
 /** A stand-in for Meta's Graph API: records requests and answers like WhatsApp Cloud API does. */
 function fakeMeta() {
@@ -130,6 +130,64 @@ describe('WhatsApp integration', () => {
       // Disconnecting stops WhatsApp; the log stays.
       expect((await org.owner.del('/integrations/whatsapp')).body.connected).toBe(false);
       expect(await prisma().outboundMessage.count({ where: { organizationId: org.orgId, channel: 'WHATSAPP' } })).toBeGreaterThan(0);
+    } finally {
+      meta.restore();
+    }
+  });
+
+  it('notifies clients on WhatsApp when appointments are booked, moved and cancelled and when they pay, following the clinic’s choices', async () => {
+    const meta = fakeMeta();
+    try {
+      const org = await registerOrg();
+      const f = await schedulingFixture(org);
+      await prisma().client.update({ where: { id: f.client.id }, data: { mobilePhone: '0301 2223334', email: `n-${Date.now()}@example.test`, preferredChannel: 'WHATSAPP' } });
+      const day = futureDate(5);
+      const forClient = () => prisma().outboundMessage.findMany({ where: { clientId: f.client.id }, orderBy: { createdAt: 'asc' } });
+
+      // Not connected: nothing goes out (email is off by default).
+      const before = await org.owner.post('/appointments', booking(org, f, karachi(day, '09:00')));
+      expect(before.status).toBe(201);
+      expect(await forClient()).toHaveLength(0);
+
+      await org.owner.call('put', '/integrations/whatsapp', CONNECT);
+      await org.owner.patch('/integrations/whatsapp/settings', { enabled: true });
+      expect((await org.owner.get('/client-notifications')).body).toMatchObject({ whatsapp: { connected: true, active: true }, rules: expect.arrayContaining([{ event: 'APPOINTMENT_BOOKED', whatsapp: true, email: false, updatedByName: null }]) });
+
+      const a = await org.owner.post('/appointments', booking(org, f, karachi(day, '10:00')));
+      let msgs = await forClient();
+      expect(msgs).toEqual([expect.objectContaining({ purpose: 'APPOINTMENT_BOOKED', channel: 'WHATSAPP', recipient: '923012223334', status: 'QUEUED', sourceId: a.body.id })]);
+      expect(msgs[0].body).toContain(f.patient.name);
+      expect(msgs[0].templateVars).toMatchObject({ petName: f.patient.name, appointmentType: expect.any(String), branchName: 'Main Clinic' });
+
+      await org.owner.patch(`/appointments/${a.body.id}`, { startsAt: karachi(day, '11:00') });
+      await org.owner.patch(`/appointments/${a.body.id}`, { notes: 'Bring vaccination card' }); // not a time change: no message
+      await org.owner.post(`/appointments/${a.body.id}/status`, { action: 'cancel', reason: 'Clinic closed' });
+      msgs = await forClient();
+      expect(msgs.map((m) => m.purpose)).toEqual(['APPOINTMENT_BOOKED', 'APPOINTMENT_RESCHEDULED', 'APPOINTMENT_CANCELLED']);
+
+      // The clinic switches a notification off, and turns email on for payments; a client who prefers email gets email.
+      expect((await org.owner.call('put', '/client-notifications', { event: 'APPOINTMENT_BOOKED', whatsapp: false, email: false })).status).toBe(200);
+      await org.owner.post('/appointments', booking(org, f, karachi(day, '13:00')));
+      expect((await forClient()).filter((m) => m.purpose === 'APPOINTMENT_BOOKED')).toHaveLength(1);
+
+      await org.owner.post('/cash/registers', { branchId: org.branchId, name: 'Desk' }).then((r) => org.owner.post('/cash/sessions', { registerId: r.body.id, openingFloatMinor: 0 }));
+      await prisma().client.update({ where: { id: f.client.id }, data: { preferredChannel: 'EMAIL' } });
+      await org.owner.call('put', '/client-notifications', { event: 'PAYMENT_RECEIVED', whatsapp: true, email: true });
+      const paid = await org.owner.post('/payments', { clientId: f.client.id, amountMinor: 150000, method: 'CASH', allocations: [] });
+      expect(paid.status).toBe(201);
+      const receipt = (await forClient()).find((m) => m.purpose === 'PAYMENT_RECEIVED');
+      expect(receipt).toMatchObject({ channel: 'EMAIL', subject: expect.stringMatching(/^Payment received — RCPT-/) });
+      expect(receipt?.body).toMatch(/1,500/);
+
+      // A vaccination given here tells the owner the next due date (on WhatsApp: email is off for this one).
+      const vac = await org.owner.post('/care-items', { patientId: f.patient.id, kind: 'VACCINATION', title: 'Rabies vaccination', dueDate: futureDate(0), repeatEvery: 1, repeatUnit: 'YEAR' });
+      await org.owner.post(`/care-items/${vac.body.id}/complete`, { mode: 'DONE' });
+      const given = (await forClient()).find((m) => m.purpose === 'VACCINATION_GIVEN');
+      expect(given).toMatchObject({ channel: 'WHATSAPP', templateVars: expect.objectContaining({ vaccineName: 'Rabies vaccination', nextDueDate: expect.stringMatching(/\d{4}$/) }) });
+
+      // Staff without settings rights cannot change notifications.
+      const reception = await staff(org, 'receptionist');
+      expect((await reception.client.call('put', '/client-notifications', { event: 'PAYMENT_RECEIVED', whatsapp: false, email: false })).status).toBe(403);
     } finally {
       meta.restore();
     }

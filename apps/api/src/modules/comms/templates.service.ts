@@ -20,6 +20,28 @@ const DEFAULTS: { purpose: string; channel: MessageChannel; subject?: string; bo
   { purpose: 'GENERAL', channel: 'EMAIL', subject: 'Message from {{clinicName}}', body: '{{body}}' },
   { purpose: 'GENERAL', channel: 'SMS', body: '{{body}}' },
   { purpose: 'GENERAL', channel: 'WHATSAPP', body: '{{body}}' },
+  // Automatic client notifications (Settings → Client notifications).
+  { purpose: 'APPOINTMENT_BOOKED', channel: 'EMAIL', subject: 'Appointment booked: {{petName}} on {{appointmentTime}}', body: 'Hello {{clientName}},\n\nYour appointment for {{petName}} ({{appointmentType}}) at {{clinicName}}, {{branchName}} is booked for {{appointmentTime}}.\n\nIf you need to change it, please contact us{{clinicPhoneLine}}.' },
+  { purpose: 'APPOINTMENT_BOOKED', channel: 'SMS', body: '{{clinicName}}: {{petName}} booked for {{appointmentTime}} ({{appointmentType}}). To change call{{clinicPhoneLine}}.' },
+  { purpose: 'APPOINTMENT_BOOKED', channel: 'WHATSAPP', body: 'Hello {{clientName}}, your appointment for {{petName}} ({{appointmentType}}) at {{clinicName}}, {{branchName}} is booked for {{appointmentTime}}. Reply here or call{{clinicPhoneLine}} if you need to change it.' },
+  { purpose: 'APPOINTMENT_RESCHEDULED', channel: 'EMAIL', subject: 'Appointment moved: {{petName}} now on {{appointmentTime}}', body: 'Hello {{clientName}},\n\nThe appointment for {{petName}} at {{clinicName}} has moved to {{appointmentTime}} ({{appointmentType}}).\n\nIf this time does not suit you, please contact us{{clinicPhoneLine}}.' },
+  { purpose: 'APPOINTMENT_RESCHEDULED', channel: 'SMS', body: '{{clinicName}}: {{petName}} appointment moved to {{appointmentTime}}. Questions? Call{{clinicPhoneLine}}.' },
+  { purpose: 'APPOINTMENT_RESCHEDULED', channel: 'WHATSAPP', body: 'Hello {{clientName}}, the appointment for {{petName}} at {{clinicName}} has moved to {{appointmentTime}}. Reply here if this time does not suit you.' },
+  { purpose: 'APPOINTMENT_CANCELLED', channel: 'EMAIL', subject: 'Appointment cancelled: {{petName}} on {{appointmentTime}}', body: 'Hello {{clientName}},\n\nThe appointment for {{petName}} at {{clinicName}} on {{appointmentTime}} has been cancelled.\n\nTo book another time, please contact us{{clinicPhoneLine}}.' },
+  { purpose: 'APPOINTMENT_CANCELLED', channel: 'SMS', body: '{{clinicName}}: {{petName}} appointment on {{appointmentTime}} is cancelled. To rebook call{{clinicPhoneLine}}.' },
+  { purpose: 'APPOINTMENT_CANCELLED', channel: 'WHATSAPP', body: 'Hello {{clientName}}, the appointment for {{petName}} at {{clinicName}} on {{appointmentTime}} has been cancelled. Reply here or call{{clinicPhoneLine}} to book another time.' },
+  { purpose: 'LAB_RESULTS_READY', channel: 'EMAIL', subject: '{{petName}}’s test results are ready', body: 'Hello {{clientName}},\n\nThe results for {{petName}} ({{testNames}}) are ready. Your vet will go through them with you — please contact us{{clinicPhoneLine}} if you have not heard from us.' },
+  { purpose: 'LAB_RESULTS_READY', channel: 'SMS', body: '{{clinicName}}: {{petName}}’s test results are ready. Your vet will be in touch, or call{{clinicPhoneLine}}.' },
+  { purpose: 'LAB_RESULTS_READY', channel: 'WHATSAPP', body: 'Hello {{clientName}}, {{petName}}’s test results ({{testNames}}) are ready at {{clinicName}}. Your vet will go through them with you.' },
+  { purpose: 'PATIENT_DISCHARGED', channel: 'EMAIL', subject: '{{petName}} is going home', body: 'Hello {{clientName}},\n\n{{petName}} has been discharged from {{clinicName}}.\n\nHome care: {{homeCare}}\nCheck-up: {{followUpDate}}\n\nIf you are worried at any time, please contact us{{clinicPhoneLine}}.' },
+  { purpose: 'PATIENT_DISCHARGED', channel: 'SMS', body: '{{clinicName}}: {{petName}} is discharged. Check-up: {{followUpDate}}. Worried? Call{{clinicPhoneLine}}.' },
+  { purpose: 'PATIENT_DISCHARGED', channel: 'WHATSAPP', body: 'Hello {{clientName}}, {{petName}} has been discharged from {{clinicName}}. Home care: {{homeCare}}. Check-up: {{followUpDate}}. If you are worried, reply here or call{{clinicPhoneLine}}.' },
+  { purpose: 'PAYMENT_RECEIVED', channel: 'EMAIL', subject: 'Payment received — {{receiptNumber}}', body: 'Hello {{clientName}},\n\nThank you. We received {{amount}} on {{paymentDate}} (receipt {{receiptNumber}}).\nStill owed: {{balance}}.\n\n{{clinicName}}' },
+  { purpose: 'PAYMENT_RECEIVED', channel: 'SMS', body: '{{clinicName}}: thank you, {{amount}} received ({{receiptNumber}}). Still owed: {{balance}}.' },
+  { purpose: 'PAYMENT_RECEIVED', channel: 'WHATSAPP', body: 'Hello {{clientName}}, thank you — {{clinicName}} received {{amount}} on {{paymentDate}} (receipt {{receiptNumber}}). Still owed: {{balance}}.' },
+  { purpose: 'VACCINATION_GIVEN', channel: 'EMAIL', subject: '{{petName}}: {{vaccineName}} done', body: 'Hello {{clientName}},\n\n{{petName}} had {{vaccineName}} at {{clinicName}} on {{givenDate}}. Next due: {{nextDueDate}}. We will remind you before then.' },
+  { purpose: 'VACCINATION_GIVEN', channel: 'SMS', body: '{{clinicName}}: {{petName}} had {{vaccineName}} on {{givenDate}}. Next due: {{nextDueDate}}.' },
+  { purpose: 'VACCINATION_GIVEN', channel: 'WHATSAPP', body: 'Hello {{clientName}}, {{petName}} had {{vaccineName}} at {{clinicName}} on {{givenDate}}. Next due: {{nextDueDate}} — we will remind you before then.' },
 ];
 
 /** The built-in wording for a purpose and channel (used when a clinic has not saved its own yet). */

@@ -2,6 +2,7 @@ import type { OptionalModule, Permission } from '@vcms/shared';
 import {
   Activity,
   BarChart3,
+  BellRing,
   Bed,
   Boxes,
   Building2,
@@ -138,6 +139,7 @@ export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyO
   { label: 'Branches', href: '/settings/branches', icon: Building2, anyOf: ['branches.manage'], group: 'Your clinic', hint: 'Each location, its address and time zone' },
   { label: 'Receipts & printing', href: '/settings/receipts', icon: Printer, anyOf: ['settings.manage'], group: 'Your clinic', hint: 'Receipt size, logo and the text printed on it' },
   { label: 'Reminder messages', href: '/settings/communications', icon: MessageSquare, anyOf: ['settings.manage'], group: 'Your clinic', hint: 'When reminders are sent and what they say' },
+  { label: 'Client notifications', href: '/settings/notifications', icon: BellRing, anyOf: ['settings.manage', 'integrations.manage'], group: 'Your clinic', hint: 'Booking confirmed, results ready, payment received… on WhatsApp or email' },
   { label: 'Staff accounts', href: '/settings/staff', icon: Users, anyOf: ['users.read'], group: 'Staff & access', hint: 'Add staff, reset passwords, suspend access' },
   { label: 'Roles & permissions', href: '/settings/roles', icon: Shield, anyOf: ['roles.manage', 'users.read'], group: 'Staff & access', hint: 'What each job is allowed to see and do (advanced)' },
   { label: 'Services & prices', href: '/settings/services', icon: Receipt, anyOf: ['settings.manage'], group: 'Prices & billing', hint: 'Your price list: consultations, vaccinations, procedures' },

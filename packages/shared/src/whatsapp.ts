@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CLIENT_NOTIFICATION_EVENTS, type ClientNotificationEvent } from './enums';
 
 /**
  * WhatsApp Business Platform (Meta Cloud API) — the parts shared by the API and the settings screen:
@@ -10,7 +11,7 @@ export const WHATSAPP_SEND_POLICIES = ['PREFERRED', 'ALL_MOBILE'] as const;
 export type WhatsAppSendPolicy = (typeof WHATSAPP_SEND_POLICIES)[number];
 
 /** Kinds of message a clinic can send by WhatsApp (those that are only ever emailed are left out). */
-export const WHATSAPP_PURPOSES = ['APPOINTMENT_REMINDER', 'CARE_REMINDER', 'CARE_OVERDUE', 'GENERAL'] as const;
+export const WHATSAPP_PURPOSES = ['APPOINTMENT_REMINDER', 'CARE_REMINDER', 'CARE_OVERDUE', ...CLIENT_NOTIFICATION_EVENTS, 'GENERAL'] as const;
 export type WhatsAppPurpose = (typeof WHATSAPP_PURPOSES)[number];
 
 export const WHATSAPP_PURPOSE_LABELS: Record<WhatsAppPurpose, { title: string; text: string }> = {
@@ -18,7 +19,26 @@ export const WHATSAPP_PURPOSE_LABELS: Record<WhatsAppPurpose, { title: string; t
   CARE_REMINDER: { title: 'Vaccination & care due', text: 'Vaccinations, deworming and checks coming up.' },
   CARE_OVERDUE: { title: 'Vaccination & care overdue', text: 'When something due has been missed.' },
   GENERAL: { title: 'Messages from staff', text: 'Messages typed by staff to a client.' },
+  ...({
+    APPOINTMENT_BOOKED: { title: 'Appointment booked', text: 'Confirmation as soon as an appointment is booked.' },
+    APPOINTMENT_RESCHEDULED: { title: 'Appointment moved', text: 'When the date or time of an appointment changes.' },
+    APPOINTMENT_CANCELLED: { title: 'Appointment cancelled', text: 'When the clinic cancels an appointment.' },
+    LAB_RESULTS_READY: { title: 'Test results ready', text: 'When lab or X-ray results are finalised.' },
+    PATIENT_DISCHARGED: { title: 'Discharged from hospital', text: 'When an animal goes home, with home-care instructions.' },
+    PAYMENT_RECEIVED: { title: 'Payment received', text: 'A thank-you with the receipt number and anything still owed.' },
+    VACCINATION_GIVEN: { title: 'Vaccination given', text: 'After a vaccination is recorded, with the next due date.' },
+  } satisfies Record<ClientNotificationEvent, { title: string; text: string }>),
 };
+
+const APPOINTMENT_VARS = [
+  { key: 'clientName', label: 'Client name', example: 'Ahmed Khan' },
+  { key: 'petName', label: 'Animal name', example: 'Bella' },
+  { key: 'appointmentTime', label: 'Date and time', example: 'Thu 23 Oct, 10:30' },
+  { key: 'appointmentType', label: 'Appointment type', example: 'Vaccination' },
+  { key: 'branchName', label: 'Branch', example: 'Gulberg' },
+  { key: 'clinicName', label: 'Clinic name', example: 'City Vet Clinic' },
+  { key: 'clinicPhone', label: 'Clinic phone', example: '042 1234567' },
+];
 
 /** The values each kind of message can fill a template's {{1}}, {{2}}… with. */
 export const WHATSAPP_VARIABLES: Record<WhatsAppPurpose, { key: string; label: string; example: string }[]> = {
@@ -49,6 +69,40 @@ export const WHATSAPP_VARIABLES: Record<WhatsAppPurpose, { key: string; label: s
   GENERAL: [
     { key: 'clientName', label: 'Client name', example: 'Ahmed Khan' },
     { key: 'body', label: 'The message text', example: 'Bella is ready to be collected.' },
+    { key: 'clinicName', label: 'Clinic name', example: 'City Vet Clinic' },
+  ],
+  APPOINTMENT_BOOKED: APPOINTMENT_VARS,
+  APPOINTMENT_RESCHEDULED: APPOINTMENT_VARS,
+  APPOINTMENT_CANCELLED: APPOINTMENT_VARS,
+  LAB_RESULTS_READY: [
+    { key: 'clientName', label: 'Client name', example: 'Ahmed Khan' },
+    { key: 'petName', label: 'Animal name', example: 'Bella' },
+    { key: 'testNames', label: 'Tests', example: 'Complete blood count, X-ray' },
+    { key: 'clinicName', label: 'Clinic name', example: 'City Vet Clinic' },
+    { key: 'clinicPhone', label: 'Clinic phone', example: '042 1234567' },
+  ],
+  PATIENT_DISCHARGED: [
+    { key: 'clientName', label: 'Client name', example: 'Ahmed Khan' },
+    { key: 'petName', label: 'Animal name', example: 'Bella' },
+    { key: 'homeCare', label: 'Home-care instructions', example: 'Rest for 3 days, tablets twice daily with food' },
+    { key: 'followUpDate', label: 'Check-up date', example: '30 Oct 2026' },
+    { key: 'clinicName', label: 'Clinic name', example: 'City Vet Clinic' },
+    { key: 'clinicPhone', label: 'Clinic phone', example: '042 1234567' },
+  ],
+  PAYMENT_RECEIVED: [
+    { key: 'clientName', label: 'Client name', example: 'Ahmed Khan' },
+    { key: 'amount', label: 'Amount paid', example: 'Rs 2,500' },
+    { key: 'receiptNumber', label: 'Receipt number', example: 'RCT-000123' },
+    { key: 'paymentDate', label: 'Date', example: '22 Oct 2026' },
+    { key: 'balance', label: 'Still owed', example: 'Rs 0' },
+    { key: 'clinicName', label: 'Clinic name', example: 'City Vet Clinic' },
+  ],
+  VACCINATION_GIVEN: [
+    { key: 'clientName', label: 'Client name', example: 'Ahmed Khan' },
+    { key: 'petName', label: 'Animal name', example: 'Bella' },
+    { key: 'vaccineName', label: 'Vaccination', example: 'Rabies vaccination' },
+    { key: 'givenDate', label: 'Date given', example: '22 Oct 2026' },
+    { key: 'nextDueDate', label: 'Next due', example: '22 Oct 2027' },
     { key: 'clinicName', label: 'Clinic name', example: 'City Vet Clinic' },
   ],
 };
@@ -121,4 +175,11 @@ export const whatsappTestSchema = z.object({
   to: z.string().trim().min(6, 'Enter the mobile number to send the test to').max(32),
   /** Send this kind of message's linked template with example values (default: Meta's hello_world template). */
   purpose: z.enum(WHATSAPP_PURPOSES).optional(),
+});
+
+/** Settings → Client notifications: per event, by WhatsApp (when connected) and/or by email. */
+export const clientNotificationRuleSchema = z.object({
+  event: z.enum(CLIENT_NOTIFICATION_EVENTS),
+  whatsapp: z.boolean(),
+  email: z.boolean(),
 });

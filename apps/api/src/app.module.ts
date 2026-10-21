@@ -20,6 +20,7 @@ import { PharmacyModule } from './modules/pharmacy/pharmacy.module';
 import { LabModule } from './modules/lab/lab.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { BillingModule } from './modules/billing/billing.module';
+import { ClientEventsModule } from './common/events/client-events';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { CommsModule } from './modules/comms/comms.module';
 import { PortalModule } from './modules/portal/portal.module';
@@ -49,6 +50,7 @@ import { env } from './config/env';
     }),
     ScheduleModule.forRoot(),
     PrismaModule,
+    ClientEventsModule,
     TenancyModule,
     AuditModule,
     CounterModule,

@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Admission, AdmissionOutcome, CprStatus, PatientCondition, Prisma } from '@prisma/client';
 import { AuditService, diff } from '../../common/audit/audit.service';
+import { ClientEvents } from '../../common/events/client-events';
 import { RequestContext } from '../../common/context/request-context';
 import { CounterService, formatNumber } from '../../common/counter/counter.service';
 import { conflict, notFound, ruleViolation } from '../../common/http/errors';
@@ -53,6 +54,7 @@ export class AdmissionsService {
     private readonly charges: ChargeCaptureService,
     private readonly treatments: TreatmentsService,
     private readonly tenancy: TenancyService,
+    private readonly events: ClientEvents,
   ) {}
 
   // ── Daily charges ──
@@ -325,6 +327,8 @@ export class AdmissionsService {
       }
       await this.audit.record({ action: 'admission.discharged', entityType: 'Patient', entityId: a.patientId, summary: `${admissionNo(a.number)}: ${input.outcome.toLowerCase().replace('_', ' ')}${missed ? ` · ${missed} due treatment(s) never recorded` : ''}` }, tx);
     });
+    // Only a happy going-home gets an automatic message; a death or transfer is told to the owner by a person.
+    if (input.outcome === 'DISCHARGED_HOME') await this.events.emit({ type: 'PATIENT_DISCHARGED', admissionId: id });
     return this.get(id);
   }
 

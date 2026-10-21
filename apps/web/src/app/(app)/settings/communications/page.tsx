@@ -24,13 +24,21 @@ const PLACEHOLDERS: Record<string, string> = {
   PORTAL_INVITE: '{{clientName}} {{clinicName}} {{link}}',
   PORTAL_RESET: '{{clientName}} {{link}}',
   GENERAL: '{{body}} {{clientName}} {{clinicName}}',
+  APPOINTMENT_BOOKED: '{{clientName}} {{petName}} {{appointmentType}} {{appointmentTime}} {{branchName}} {{clinicName}} {{clinicPhoneLine}}',
+  APPOINTMENT_RESCHEDULED: '{{clientName}} {{petName}} {{appointmentType}} {{appointmentTime}} {{branchName}} {{clinicName}} {{clinicPhoneLine}}',
+  APPOINTMENT_CANCELLED: '{{clientName}} {{petName}} {{appointmentType}} {{appointmentTime}} {{branchName}} {{clinicName}} {{clinicPhoneLine}}',
+  LAB_RESULTS_READY: '{{clientName}} {{petName}} {{testNames}} {{clinicName}} {{clinicPhoneLine}}',
+  PATIENT_DISCHARGED: '{{clientName}} {{petName}} {{homeCare}} {{followUpDate}} {{clinicName}} {{clinicPhoneLine}}',
+  PAYMENT_RECEIVED: '{{clientName}} {{amount}} {{receiptNumber}} {{paymentDate}} {{balance}} {{clinicName}}',
+  VACCINATION_GIVEN: '{{clientName}} {{petName}} {{vaccineName}} {{givenDate}} {{nextDueDate}} {{clinicName}}',
 };
 
 /** Plain names for the placeholders, shown on the Insert buttons. */
 const PLACEHOLDER_LABELS: Record<string, string> = {
   clientName: 'Client name', petNames: 'Pet names', petName: 'Pet name', items: 'What is due', itemsShort: 'What is due (short)',
   clinicName: 'Clinic name', clinicPhoneLine: 'Clinic phone', appointmentType: 'Appointment type', appointmentTime: 'Appointment time',
-  link: 'Link', body: 'Your message',
+  link: 'Link', body: 'Your message', branchName: 'Branch', testNames: 'Tests', homeCare: 'Home care', followUpDate: 'Check-up date',
+  amount: 'Amount paid', receiptNumber: 'Receipt number', paymentDate: 'Payment date', balance: 'Still owed', vaccineName: 'Vaccination', givenDate: 'Date given', nextDueDate: 'Next due',
 };
 const placeholderList = (purpose: string) => (PLACEHOLDERS[purpose] ?? '').split(' ').filter(Boolean).map((p) => p.replace(/[{}]/g, ''));
 
