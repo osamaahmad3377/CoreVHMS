@@ -51,10 +51,10 @@ export class BillingConfigService {
   }
 
   private view(o: Organization) {
-    return { currency: o.currency, allowNegativeStock: o.allowNegativeStock, pricesIncludeTax: o.pricesIncludeTax, paymentTermsDays: o.paymentTermsDays, requireCashSession: o.requireCashSession, poRequiresSecondApprover: o.poRequiresSecondApprover };
+    return { currency: o.currency, allowNegativeStock: o.allowNegativeStock, pricesIncludeTax: o.pricesIncludeTax, paymentTermsDays: o.paymentTermsDays, requireCashSession: o.requireCashSession, poRequiresSecondApprover: o.poRequiresSecondApprover, sellWithoutPrescription: o.sellWithoutPrescription };
   }
 
-  async updateSettings(input: Partial<{ allowNegativeStock: boolean; pricesIncludeTax: boolean; paymentTermsDays: number; requireCashSession: boolean; poRequiresSecondApprover: boolean }>) {
+  async updateSettings(input: Partial<{ allowNegativeStock: boolean; pricesIncludeTax: boolean; paymentTermsDays: number; requireCashSession: boolean; poRequiresSecondApprover: boolean; sellWithoutPrescription: boolean }>) {
     const id = RequestContext.orgId();
     return this.prisma.raw.$transaction(async (tx) => {
       const before = await tx.organization.findUniqueOrThrow({ where: { id } });

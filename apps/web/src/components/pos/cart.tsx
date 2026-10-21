@@ -126,6 +126,7 @@ export function PosCart({
                     </div>
                     <p className="text-sm font-semibold tabular">{fmtMoney(a.grossMinor, currency)}</p>
                   </div>
+                  {l.rxNote && <p className="mt-1 text-2xs text-warning">Sold without a prescription: {l.rxNote}</p>}
                   <div className="mt-1.5 flex items-center gap-1">
                     {!fixed && (
                     <div className="flex items-center rounded-md border">

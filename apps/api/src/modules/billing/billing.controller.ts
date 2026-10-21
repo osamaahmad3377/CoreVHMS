@@ -61,6 +61,7 @@ const settingsSchema = z.object({
   paymentTermsDays: z.coerce.number().int().min(0).max(365).optional(),
   requireCashSession: z.boolean().optional(),
   poRequiresSecondApprover: z.boolean().optional(),
+  sellWithoutPrescription: z.boolean().optional(),
 });
 
 @ApiTags('billing')

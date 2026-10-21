@@ -26,8 +26,10 @@ export interface PosItem {
   trackStock: boolean;
   /** Usable stock at the branch's default location; null when the item is not stock-tracked. */
   available: number | null;
-  /** Prescription-only medicines and vaccines are listed for information but cannot be sold at the counter. */
+  /** Prescription-only medicines and vaccines: sold at the counter only against a prescription, or (if the clinic allows it) with a note saying who approved. */
   rxOnly: boolean;
+  /** Controlled medicines always need a prescription. */
+  controlled: boolean;
 }
 
 /** Search words, lower-cased, with a simple plural "s" removed ("dogs" → "dog", "foods" → "food"). */
@@ -57,6 +59,8 @@ export class PosService {
     items: PosItem[];
     exact: PosItem | null;
     allowNegativeStock: boolean;
+    /** The clinic lets prescription-only items be sold without a prescription (with a note). */
+    sellWithoutPrescription: boolean;
     /** Product types with at least one item that can be sold at the counter, so empty sections can be hidden. */
     sellableTypes: string[];
     /** Tax applied to an "other item" typed in at the counter. */
@@ -105,7 +109,8 @@ export class PosService {
           }
         : {}),
     };
-    const [products, services, rates, org, sellable] = await Promise.all([
+    const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: ctx.organizationId! }, select: { allowNegativeStock: true, sellWithoutPrescription: true } });
+    const [products, services, rates, sellable] = await Promise.all([
       wantProducts
         ? db.product.findMany({ where: productWhere, include: { productCategory: { select: { name: true } } }, orderBy: { name: 'asc' }, take: q.limit })
         : Promise.resolve([]),
@@ -117,10 +122,9 @@ export class PosService {
           })
         : Promise.resolve([]),
       db.taxRate.findMany({ where: { isActive: true } }),
-      this.prisma.raw.organization.findUniqueOrThrow({ where: { id: ctx.organizationId! }, select: { allowNegativeStock: true } }),
       // Types with something sellable here: priced, active, and not a prescription-only medicine or vaccine.
       db.product.findMany({
-        where: { isActive: true, sellPriceMinor: { not: null }, NOT: { requiresPrescription: true, type: { in: ['MEDICINE', 'VACCINE'] } } },
+        where: { isActive: true, sellPriceMinor: { not: null }, NOT: { requiresPrescription: true, type: { in: ['MEDICINE', 'VACCINE'] }, ...(org.sellWithoutPrescription ? { isControlled: true } : {}) } },
         distinct: ['type'],
         select: { type: true },
       }),
@@ -157,6 +161,7 @@ export class PosService {
         trackStock: p.trackStock && !!location,
         available: p.trackStock && location ? available(p.id) : null,
         rxOnly: p.requiresPrescription && (p.type === 'MEDICINE' || p.type === 'VACCINE'),
+        controlled: p.isControlled,
       })),
       ...services.map((s) => ({
         type: 'SERVICE' as const,
@@ -176,6 +181,7 @@ export class PosService {
         trackStock: false,
         available: null,
         rxOnly: false,
+        controlled: false,
       })),
     ];
     // A scanned barcode or typed SKU/service code that identifies exactly one item.
@@ -184,6 +190,7 @@ export class PosService {
       items,
       exact: exactMatches.length === 1 ? exactMatches[0] : null,
       allowNegativeStock: org.allowNegativeStock,
+      sellWithoutPrescription: org.sellWithoutPrescription,
       sellableTypes: sellable.map((p) => p.type),
       defaultTaxRateBasisPoints: defaultBp,
     };

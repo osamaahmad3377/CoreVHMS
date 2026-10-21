@@ -14,6 +14,7 @@ import { PosCatalog } from '@/components/pos/catalog';
 import { MoneyInput, parseMoney } from '@/components/billing/money';
 import { Field } from '@/components/forms/field';
 import { CollectPrescriptionDialog } from '@/components/pos/prescription-collect';
+import { RxNoteDialog } from '@/components/pos/rx-note-dialog';
 import { blockReason, cartTotals, chargeItem, customItem, isOutOfStock, toChargeIds, toInvoiceLines, type CartLine, type Tender } from '@/components/pos/model';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -115,6 +116,8 @@ function Pos() {
   const [payBalance, setPayBalance] = useState(false);
   const [otherItem, setOtherItem] = useState(false);
   const [collectOpen, setCollectOpen] = useState(false);
+  // A prescription-only item waiting for the note that says who approved selling it without a prescription.
+  const [pendingRx, setPendingRx] = useState<PosItem | null>(null);
   const heldKey = `vcms.pos.held.${session.organization?.id}.${session.branch?.id}`;
   const [held, setHeld] = useState<HeldSale[]>([]);
   useEffect(() => setHeld(readHeld(heldKey)), [heldKey]);
@@ -132,25 +135,35 @@ function Pos() {
 
   const inclusive = settings.data?.pricesIncludeTax ?? false;
   const allowNegative = catalog.data?.allowNegativeStock ?? false;
+  const allowRx = catalog.data?.sellWithoutPrescription ?? false;
   const openRegister = (registers.data ?? []).find((r) => r.sessions.length);
   const cashBlocked = !!settings.data?.requireCashSession && registers.isSuccess && !openRegister;
   const totals = useMemo(() => cartTotals(lines, inclusive), [lines, inclusive]);
   const qtyInCart = useCallback((item: PosItem) => lines.filter((l) => l.item.type === item.type && l.item.id === item.id).reduce((n, l) => n + l.quantity, 0), [lines]);
 
+  const addLine = useCallback((item: PosItem, rxNote?: string) => {
+    setLines((ls) => {
+      const existing = ls.find((l) => l.item.type === item.type && l.item.id === item.id);
+      return existing ? ls.map((l) => (l === existing ? { ...l, quantity: l.quantity + 1 } : l)) : [...ls, { key: crypto.randomUUID(), item, quantity: 1, priceMinor: item.priceMinor!, discountMinor: 0, rxNote }];
+    });
+  }, []);
+
   const add = useCallback(
     (item: PosItem) => {
-      const reason = blockReason(item, qtyInCart(item), allowNegative);
+      const reason = blockReason(item, qtyInCart(item), allowNegative, allowRx);
       if (reason) {
         if (isOutOfStock(item, allowNegative)) toast.error('Out of stock — tell your manager', { description: item.name });
         else toast.error(`${item.name}: ${reason.toLowerCase()}`);
         return;
       }
-      setLines((ls) => {
-        const existing = ls.find((l) => l.item.type === item.type && l.item.id === item.id);
-        return existing ? ls.map((l) => (l === existing ? { ...l, quantity: l.quantity + 1 } : l)) : [...ls, { key: crypto.randomUUID(), item, quantity: 1, priceMinor: item.priceMinor!, discountMinor: 0 }];
-      });
+      // A prescription-only item sold without a prescription needs a note, asked once per item in the basket.
+      if (item.rxOnly && !lines.some((l) => l.item.type === item.type && l.item.id === item.id)) {
+        setPendingRx(item);
+        return;
+      }
+      addLine(item);
     },
-    [qtyInCart, allowNegative],
+    [qtyInCart, allowNegative, allowRx, lines, addLine],
   );
 
   /** Enter in the search box: a barcode scanner or a typed SKU/code adds the item directly. */
@@ -158,7 +171,7 @@ function Pos() {
     const term = value.trim();
     if (!term) return;
     const data = await qc.fetchQuery({ queryKey: ['pos', 'catalog', '', term], queryFn: () => api.get<Catalog>(`/pos/catalog${qs({ q: term })}`) });
-    const sellable = data.items.filter((i) => !i.rxOnly);
+    const sellable = data.items.filter((i) => !i.rxOnly || (allowRx && !i.controlled));
     const hit = data.exact ?? (sellable.length === 1 ? sellable[0] : null);
     if (hit) {
       add(hit);
@@ -318,6 +331,15 @@ function Pos() {
 
   const dialogs = (
     <>
+      <RxNoteDialog
+        open={!!pendingRx}
+        itemName={pendingRx?.name ?? ''}
+        onCancel={() => setPendingRx(null)}
+        onConfirm={(note) => {
+          if (pendingRx) addLine(pendingRx, note);
+          setPendingRx(null);
+        }}
+      />
       <CollectPrescriptionDialog open={collectOpen} onOpenChange={setCollectOpen} client={client} onClient={setClient} onCollected={addCollected} />
       <TodaySalesDialog
         open={showToday}
@@ -403,6 +425,7 @@ function Pos() {
             onAdd={add}
             sellableTypes={catalog.data?.sellableTypes}
             canAddProducts={can('inventory.write')}
+            allowRx={allowRx}
           />
           <div id="pos-basket" className="scroll-mt-20 lg:sticky lg:top-20 lg:h-[calc(100vh-10.5rem)]">
             <PosCart

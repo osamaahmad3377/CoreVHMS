@@ -29,6 +29,8 @@ export const lineSchema = z
     unitPriceMinor: z.coerce.number().int().min(0).optional(),
     discountMinor: z.coerce.number().int().min(0).default(0),
     taxRateBasisPoints: z.coerce.number().int().min(0).max(10000).optional(),
+    /** Who approved selling a prescription-only item without a prescription (needed only for those items). */
+    withoutPrescriptionNote: optText(200),
   })
   .refine((l) => l.kind !== 'SERVICE' || !!l.serviceId, { path: ['serviceId'], message: 'Choose a service' })
   .refine((l) => l.kind !== 'PRODUCT' || !!l.productId, { path: ['productId'], message: 'Choose a product' })

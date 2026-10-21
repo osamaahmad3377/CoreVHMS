@@ -149,6 +149,37 @@ describe('Billing, payments & finance', () => {
     r = r; // eslint-friendly
   });
 
+  it('sells prescription-only items without a prescription only when the clinic allows it, with a note, to walk-in customers, and never controlled ones', async () => {
+    const s = await setup();
+    const f = await stockFixture(s.org);
+    await s.org.owner.post('/stock/receipts', { supplierId: f.supplierId, locationId: f.locationId, lines: [{ productId: f.product.id, batchNumber: 'NX1', quantity: 20, unitCostMinor: 200 }] });
+    const sell = (extra: Record<string, unknown> = {}, productId = f.product.id) => s.org.owner.post('/invoices', { isPos: true, lines: [{ kind: 'PRODUCT', productId, quantity: 2, ...extra }], issue: true });
+
+    // Off by default: refused, even with a note.
+    expect((await sell({ withoutPrescriptionNote: 'Client request' })).body.error.code).toBe('PRESCRIPTION_REQUIRED');
+    expect((await s.org.owner.patch('/billing/settings', { sellWithoutPrescription: true })).body.sellWithoutPrescription).toBe(true);
+    const cat = (await s.org.owner.get('/pos/catalog')).body;
+    expect(cat.sellWithoutPrescription).toBe(true);
+    expect(cat.items.find((i: { id: string }) => i.id === f.product.id)).toMatchObject({ rxOnly: true, controlled: false });
+
+    // On: a note saying who approved it is required.
+    expect((await sell()).body.error.code).toBe('PRESCRIPTION_NOTE_REQUIRED');
+    // A walk-in customer (no client) can buy it, and the invoice and the audit log say it was sold without a prescription.
+    const sale = await sell({ withoutPrescriptionNote: 'Dr Raza agreed by phone' });
+    expect(sale.status).toBe(201);
+    expect(sale.body).toMatchObject({ clientId: null, status: 'ISSUED', isPos: true });
+    expect(sale.body.notes).toContain('Sold without a prescription');
+    expect(sale.body.notes).toContain('Dr Raza agreed by phone');
+    expect(await prisma().auditEvent.findFirst({ where: { organizationId: s.org.orgId, action: 'invoice.sold_without_prescription', entityId: sale.body.id } })).toBeTruthy();
+    expect((await s.org.owner.get(`/stock/products/${f.product.id}`)).body.batches[0].onHand).toBe(18);
+
+    // Controlled medicines always need a prescription, whatever the setting.
+    const ctrl = await s.org.owner.post('/products', { name: 'Controlled test', type: 'MEDICINE', strengthValue: 10, strengthUnit: 'mg', dispensingUnit: 'tablet', minDispenseIncrement: 1, sellPriceMinor: 900, requiresPrescription: true, isControlled: true, controlledSchedule: 'S8' });
+    const refused = await sell({ withoutPrescriptionNote: 'x' }, ctrl.body.id);
+    expect(refused.body.error.code).toBe('PRESCRIPTION_REQUIRED');
+    expect((await s.org.owner.get('/pos/catalog?q=Controlled')).body.items[0]).toMatchObject({ controlled: true });
+  });
+
   it('handles counter sales: stock is issued at invoice issue, prescription-only medicines are refused, voids restock', async () => {
     const s = await setup();
     const f = await stockFixture(s.org);

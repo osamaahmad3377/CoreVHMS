@@ -273,6 +273,8 @@ model Organization {
   /// Purchase orders must be approved by someone other than the person who raised them. Clinics that
   /// existed before this setting keep the rule (migration backfills true); new clinics start without it.
   poRequiresSecondApprover Boolean                    @default(false)
+  /// Prescription-only medicines may be sold without a prescription (with a note saying who approved it); controlled medicines never.
+  sellWithoutPrescription  Boolean                    @default(false)
   /// Prescribing screen asks "This is N tablets per dose — is that correct?" above this many countable units
   /// per dose. A data-entry safety prompt, not a dose limit.
   rxConfirmUnitsPerDose    Int                        @default(4)

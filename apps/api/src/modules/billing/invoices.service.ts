@@ -105,7 +105,7 @@ export class InvoicesService {
   }
 
   /** Resolves a manual line against the catalogue (price, description and tax), allowing explicit overrides. */
-  private async resolveLine(l: LineInputBody, isPos = false) {
+  private async resolveLine(l: LineInputBody, isPos = false, rx?: { allowed: boolean; notes: string[] }) {
     const db = this.prisma.db;
     if (l.kind === 'SERVICE') {
       const s = await db.service.findUnique({ where: { id: l.serviceId! } });
@@ -115,9 +115,18 @@ export class InvoicesService {
     if (l.kind === 'PRODUCT') {
       const p = await db.product.findUnique({ where: { id: l.productId! } });
       if (!p || !p.isActive) throw ruleViolation('INVALID_PRODUCT', 'Product not found');
-      if (p.requiresPrescription && p.type === 'MEDICINE') throw ruleViolation('PRESCRIPTION_REQUIRED', `${p.name} is prescription-only. Dispense it from an authorised prescription.`);
-      // Prescription vaccines are administered (and billed) in the clinic, never sold over the counter.
-      if (isPos && p.requiresPrescription && p.type === 'VACCINE') throw ruleViolation('PRESCRIPTION_REQUIRED', `${p.name} must be administered by the clinic, not sold at the counter.`);
+      // Prescription-only medicines (and, at the counter, vaccines) need a prescription, unless the clinic allows
+      // selling without one and the sale says who approved it. Controlled medicines always need a prescription.
+      const rxOnly = p.requiresPrescription && (p.type === 'MEDICINE' || (isPos && p.type === 'VACCINE'));
+      if (rxOnly) {
+        if (p.isControlled) throw ruleViolation('PRESCRIPTION_REQUIRED', `${p.name} is a controlled medicine and always needs a prescription.`);
+        if (!rx?.allowed) {
+          throw ruleViolation('PRESCRIPTION_REQUIRED', p.type === 'VACCINE' ? `${p.name} must be administered by the clinic, not sold at the counter.` : `${p.name} is prescription-only. Dispense it from an authorised prescription.`);
+        }
+        const note = l.withoutPrescriptionNote?.trim();
+        if (!note) throw ruleViolation('PRESCRIPTION_NOTE_REQUIRED', `Say who approved selling ${p.name} without a prescription.`);
+        rx.notes.push(`${p.name} — ${note}`);
+      }
       if (l.unitPriceMinor === undefined && p.sellPriceMinor === null) throw ruleViolation('NO_PRICE', `${p.name} has no selling price`);
       return { kind: l.kind, productId: p.id, description: l.description ?? p.name, quantity: l.quantity, unitPriceMinor: l.unitPriceMinor ?? p.sellPriceMinor!, discountMinor: l.discountMinor, taxRateBasisPoints: l.taxRateBasisPoints ?? (await this.charges.taxFor(db, p.taxRateId)) };
     }
@@ -202,7 +211,9 @@ export class InvoicesService {
       if (!encounterId && encounters.length === 1 && patients.length === 1) encounterId = encounters[0];
     }
     const resolved: Awaited<ReturnType<InvoicesService['resolveLine']>>[] = [];
-    for (const l of input.lines) resolved.push(await this.resolveLine(l, input.isPos));
+    const rx = { allowed: org.sellWithoutPrescription, notes: [] as string[] };
+    for (const l of input.lines) resolved.push(await this.resolveLine(l, input.isPos, rx));
+    const withoutRx = rx.notes.length ? `Sold without a prescription: ${rx.notes.join('; ')}` : null;
     const id = await this.prisma.db.$transaction(async (tx) => {
       const inv = await tx.invoice.create({
         data: {
@@ -214,12 +225,13 @@ export class InvoicesService {
           currency: org.currency,
           pricesIncludeTax: org.pricesIncludeTax,
           isPos: input.isPos,
-          notes: input.notes,
+          notes: [input.notes, withoutRx].filter(Boolean).join('\n') || null,
           createdById: ctx.userId!,
           createdByName: ctx.userName ?? 'Unknown',
         },
       });
       await this.addLines(tx, inv.id, org.pricesIncludeTax, 0, resolved, input.chargeIds, input.clientId ?? null);
+      if (withoutRx) await this.audit.record({ action: 'invoice.sold_without_prescription', entityType: 'Invoice', entityId: inv.id, summary: withoutRx.slice(0, 500) }, tx);
       await this.retotal(tx, inv.id);
       await this.audit.record({ action: 'invoice.drafted', entityType: 'Invoice', entityId: inv.id, summary: `${input.chargeIds.length} charge(s), ${input.lines.length} line(s)` }, tx);
       if (input.issue) await this.issueTx(tx, inv.id);

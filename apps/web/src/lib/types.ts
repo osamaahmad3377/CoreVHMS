@@ -812,6 +812,8 @@ export interface BillingSettings {
   allowNegativeStock: boolean;
   /** Purchase orders must be approved by someone other than the person who raised them. */
   poRequiresSecondApprover: boolean;
+  /** Prescription-only items may be sold at the counter without a prescription (controlled medicines never). */
+  sellWithoutPrescription: boolean;
 }
 
 export interface Charge {
@@ -992,6 +994,8 @@ export interface PosItem {
   trackStock: boolean;
   available: number | null;
   rxOnly: boolean;
+  /** Controlled medicines always need a prescription. */
+  controlled: boolean;
 }
 
 export interface ProductCategory {
@@ -1007,6 +1011,8 @@ export interface PosCatalog {
   items: PosItem[];
   exact: PosItem | null;
   allowNegativeStock: boolean;
+  /** The clinic lets prescription-only items be sold without a prescription (with a note). */
+  sellWithoutPrescription?: boolean;
 }
 
 // ── Hospital & surgery ──

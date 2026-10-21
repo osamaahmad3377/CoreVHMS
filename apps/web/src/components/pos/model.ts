@@ -11,7 +11,7 @@ export type CartItem = Omit<PosItem, 'type'> & { type: PosItem['type'] | 'CUSTOM
 export function chargeItem(c: Pick<Charge, 'id' | 'description' | 'unitPriceMinor' | 'taxRateBasisPoints'>): CartItem {
   return {
     type: 'CHARGE', id: c.id, name: c.description, code: null, barcode: null, category: 'MEDICINE', categoryId: null, categoryName: null,
-    brand: null, packSize: null, photoAttachmentId: null, unit: 'item', priceMinor: c.unitPriceMinor, taxRateBasisPoints: c.taxRateBasisPoints, trackStock: false, available: null, rxOnly: false,
+    brand: null, packSize: null, photoAttachmentId: null, unit: 'item', priceMinor: c.unitPriceMinor, taxRateBasisPoints: c.taxRateBasisPoints, trackStock: false, available: null, rxOnly: false, controlled: false,
   };
 }
 
@@ -19,7 +19,7 @@ export function chargeItem(c: Pick<Charge, 'id' | 'description' | 'unitPriceMino
 export function customItem(name: string, priceMinor: number, taxRateBasisPoints: number): CartItem {
   return {
     type: 'CUSTOM', id: crypto.randomUUID(), name, code: null, barcode: null, category: 'CUSTOM', categoryId: null, categoryName: null,
-    brand: null, packSize: null, photoAttachmentId: null, unit: 'item', priceMinor, taxRateBasisPoints, trackStock: false, available: null, rxOnly: false,
+    brand: null, packSize: null, photoAttachmentId: null, unit: 'item', priceMinor, taxRateBasisPoints, trackStock: false, available: null, rxOnly: false, controlled: false,
   };
 }
 
@@ -30,6 +30,8 @@ export interface CartLine {
   /** Unit price charged; differs from the catalogue price only after an authorised override. */
   priceMinor: number;
   discountMinor: number;
+  /** Who approved selling a prescription-only item without a prescription. */
+  rxNote?: string;
 }
 
 export interface Tender {
@@ -64,8 +66,9 @@ export function cartTotals(lines: CartLine[], inclusive: boolean) {
 }
 
 /** Why an item cannot be added (or more of it), or null if it can. */
-export function blockReason(item: CartItem, qtyInCart: number, allowNegative: boolean): string | null {
-  if (item.rxOnly) return 'Prescription only — use “Collect a prescription”';
+export function blockReason(item: CartItem, qtyInCart: number, allowNegative: boolean, allowRx = false): string | null {
+  if (item.rxOnly && item.controlled) return 'Controlled medicine — needs a prescription (use “Collect a prescription”)';
+  if (item.rxOnly && !allowRx) return 'Prescription only — use “Collect a prescription”';
   if (item.priceMinor === null) return 'No price set';
   if (item.trackStock && !allowNegative && item.available !== null && qtyInCart >= item.available) return item.available <= 0 ? 'Out of stock' : 'No more in stock';
   return null;
@@ -87,6 +90,7 @@ export function toInvoiceLines(lines: CartLine[]) {
       quantity: l.quantity,
       unitPriceMinor: l.priceMinor !== l.item.priceMinor ? l.priceMinor : undefined,
       discountMinor: l.discountMinor,
+      withoutPrescriptionNote: l.rxNote,
     };
   });
 }

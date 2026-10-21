@@ -34,6 +34,8 @@ interface Props {
   sellableTypes?: string[];
   /** Shows "Add products to sell" in empty sections (inventory.write). */
   canAddProducts: boolean;
+  /** The clinic lets prescription-only items be sold without a prescription (with a note). */
+  allowRx?: boolean;
 }
 
 /** Sections that are often empty at the counter (prescription-only items are not sold here). */
@@ -42,8 +44,8 @@ const HIDE_WHEN_EMPTY = new Set(['MEDICINE', 'VACCINE']);
 export const PosCatalog = React.forwardRef<HTMLInputElement, Props>(function PosCatalog(p, ref) {
   // Prescription-only items are only shown when searching, so staff understand why they cannot be sold here.
   // Items that cannot be sold (out of stock, prescription only, no price) go last, greyed out.
-  const visible = (p.search.trim() ? p.items : p.items.filter((i) => !i.rxOnly))
-    .map((item, i) => ({ item, i, blocked: !!blockReason(item, 0, p.allowNegative) }))
+  const visible = (p.search.trim() ? p.items : p.items.filter((i) => !i.rxOnly || (p.allowRx && !i.controlled)))
+    .map((item, i) => ({ item, i, blocked: !!blockReason(item, 0, p.allowNegative, p.allowRx) }))
     .sort((a, b) => Number(a.blocked) - Number(b.blocked) || a.i - b.i)
     .map((x) => x.item);
   const categories = CATEGORIES.filter((c) => !HIDE_WHEN_EMPTY.has(c.key) || !p.sellableTypes || p.sellableTypes.includes(c.key) || p.category === c.key);
@@ -110,7 +112,7 @@ export const PosCatalog = React.forwardRef<HTMLInputElement, Props>(function Pos
         <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" aria-label="Items">
           {visible.map((item) => {
             const inCart = p.qtyInCart(item);
-            const blocked = blockReason(item, inCart, p.allowNegative);
+            const blocked = blockReason(item, inCart, p.allowNegative, p.allowRx);
             const low = item.trackStock && item.available !== null && item.available > 0 && item.available <= 5;
             return (
               <li key={`${item.type}-${item.id}`}>
