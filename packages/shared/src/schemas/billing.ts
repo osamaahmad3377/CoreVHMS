@@ -154,3 +154,12 @@ export const receiptSettingsSchema = z.object({
   copies: z.coerce.number().int().min(1).max(3),
 });
 export type ReceiptSettingsInput = z.infer<typeof receiptSettingsSchema>;
+
+/** Returning items from a counter sale: which lines and how many, why, and where the money goes. */
+export const posReturnSchema = z.object({
+  invoiceId: z.string().uuid(),
+  lines: z.array(z.object({ lineId: z.string().uuid(), quantity: z.coerce.number().positive().max(1_000_000) })).min(1).max(100),
+  reason: reqText(200),
+  /** ORIGINAL: back the way it was paid · CASH: in cash from the drawer · CREDIT: kept as credit on the client's account. */
+  refundTo: z.enum(['ORIGINAL', 'CASH', 'CREDIT']).default('ORIGINAL'),
+});

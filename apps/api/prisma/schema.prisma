@@ -2761,6 +2761,9 @@ model InvoiceLine {
   sortOrder          Int      @default(0)
   /// POS/direct product sale: stock is issued when the invoice is issued.
   stockIssued        Boolean  @default(false)
+  /// How much of this line has been returned (and credited) so far.
+  returnedQuantity   Decimal  @default(0) @db.Decimal(14, 4)
+  returnedMinor      Int      @default(0)
   createdAt          DateTime @default(now()) @db.Timestamptz(3)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)

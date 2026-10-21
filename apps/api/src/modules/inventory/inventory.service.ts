@@ -103,6 +103,31 @@ export class InventoryService {
     return original.length;
   }
 
+  /**
+   * Puts part of what an event issued back on the shelf (a customer returns some of what was sold), into the same
+   * batches it came from, never more than was issued minus what was already returned. Returns how much went back.
+   */
+  async returnFromEvent(tx: ScopedTx, referenceType: string, referenceId: string, quantity: number, reason: string) {
+    const moves = await tx.stockMovement.findMany({ where: { referenceType, referenceId }, orderBy: { createdAt: 'asc' } });
+    const room = new Map<string, { m: (typeof moves)[number]; left: number }>();
+    for (const m of moves) {
+      const key = `${m.batchId}|${m.locationId}`;
+      const entry = room.get(key) ?? { m, left: 0 };
+      entry.left += m.quantity.lt(0) ? Math.abs(Number(m.quantity)) : -Number(m.quantity);
+      if (m.quantity.lt(0)) entry.m = m;
+      room.set(key, entry);
+    }
+    let todo = Math.round(quantity * 10000) / 10000;
+    for (const { m, left } of room.values()) {
+      if (todo <= 0) break;
+      const take = Math.min(Math.round(left * 10000) / 10000, todo);
+      if (take <= 0 || !m.quantity.lt(0)) continue;
+      await this.engine.move(tx, { productId: m.productId, batchId: m.batchId, locationId: m.locationId, branchId: m.branchId, delta: take, type: 'RETURN_FROM_CLIENT', unitCostMinor: m.unitCostMinor, reason, referenceType, referenceId });
+      todo = Math.round((todo - take) * 10000) / 10000;
+    }
+    return Math.round((quantity - todo) * 10000) / 10000;
+  }
+
   // ── Receiving ──
   /**
    * Records a delivery. Medicines and vaccines need a batch number (copied from the pack); other products may leave

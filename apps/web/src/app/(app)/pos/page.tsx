@@ -1,6 +1,6 @@
 'use client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Clock, History, Landmark, Pill, Printer, ReceiptText } from 'lucide-react';
+import { CheckCircle2, Clock, History, Landmark, Pill, Printer, ReceiptText, Undo2 } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -15,6 +15,7 @@ import { MoneyInput, parseMoney } from '@/components/billing/money';
 import { Field } from '@/components/forms/field';
 import { CloseDrawerDialog, OpenDrawerDialog } from '@/components/billing/cash-dialogs';
 import { CollectPrescriptionDialog } from '@/components/pos/prescription-collect';
+import { ReturnItemsDialog } from '@/components/pos/return-dialog';
 import { RxNoteDialog } from '@/components/pos/rx-note-dialog';
 import { applySaleDiscount, blockReason, cartTotals, chargeItem, customItem, isOutOfStock, toChargeIds, toInvoiceLines, saleDiscountAmount, type CartLine, type SaleDiscount, type Tender } from '@/components/pos/model';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -118,6 +119,7 @@ function Pos() {
   const [otherItem, setOtherItem] = useState(false);
   const [saleDiscount, setSaleDiscount] = useState<SaleDiscount | null>(null);
   const [collectOpen, setCollectOpen] = useState(false);
+  const [returning, setReturning] = useState(false);
   const [openingDrawer, setOpeningDrawer] = useState(false);
   const [closingDrawer, setClosingDrawer] = useState<string | null>(null);
   // A prescription-only item waiting for the note that says who approved selling it without a prescription.
@@ -341,6 +343,7 @@ function Pos() {
             </>
           ) : null}
           {can('pharmacy.dispense') && <Button size="sm" onClick={() => setCollectOpen(true)}><Pill /> Collect a prescription</Button>}
+          {can('billing.refund') && <Button size="sm" variant="outline" onClick={() => setReturning(true)}><Undo2 /> Return items</Button>}
           <Button size="sm" variant="outline" onClick={() => setShowHeld(true)}><Clock /> Paused sales{held.length ? ` (${held.length})` : ''}</Button>
           <Button size="sm" variant="outline" onClick={() => setShowToday(true)}><History /> Today’s sales</Button>
         </>
@@ -357,6 +360,7 @@ function Pos() {
 
   const dialogs = (
     <>
+      <ReturnItemsDialog open={returning} onOpenChange={setReturning} currency={currency} />
       <OpenDrawerDialog open={openingDrawer} onOpenChange={setOpeningDrawer} registers={registers.data ?? []} />
       <CloseDrawerDialog sessionId={closingDrawer} onClose={() => setClosingDrawer(null)} />
       <RxNoteDialog

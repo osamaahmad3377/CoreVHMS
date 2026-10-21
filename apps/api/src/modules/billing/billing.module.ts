@@ -12,13 +12,14 @@ import { ReceiptSettingsService } from './receipt-settings.service';
 import { BillingIntegrations } from './billing-integrations';
 import { ChargeCaptureService } from './charge-capture.service';
 import { InvoicesService } from './invoices.service';
+import { PosReturnsService } from './pos-returns.service';
 import { PosService } from './pos.service';
 import { CashService, EstimatesAndExpensesService, PaymentsService } from './payments.service';
 
 @Module({
   imports: [InventoryModule, PharmacyModule, LabModule, ClinicalModule, PatientsModule, ClientsModule],
   controllers: [BillingController, ReceiptsController],
-  providers: [BillingConfigService, ChargeCaptureService, InvoicesService, PaymentsService, CashService, EstimatesAndExpensesService, PosService, ReceiptSettingsService, BillingIntegrations],
+  providers: [BillingConfigService, ChargeCaptureService, InvoicesService, PaymentsService, CashService, EstimatesAndExpensesService, PosService, PosReturnsService, ReceiptSettingsService, BillingIntegrations],
   exports: [ChargeCaptureService, InvoicesService, PaymentsService],
 })
 export class BillingModule {}

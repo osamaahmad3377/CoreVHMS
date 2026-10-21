@@ -143,35 +143,38 @@ export class PaymentsService {
 
   /** Refunds from unallocated credit first, then releases allocations from the most recent invoices. */
   async refund(paymentId: string, input: { amountMinor: number; method: PaymentMethod; reason: string }) {
+    const r = await this.prisma.db.$transaction((tx) => this.refundTx(tx, paymentId, input));
+    return { refundId: r.id, payment: await this.get(paymentId) };
+  }
+
+  /** The refund itself, inside the caller's transaction (also used by counter returns). */
+  async refundTx(tx: ScopedTx, paymentId: string, input: { amountMinor: number; method: PaymentMethod; reason: string }) {
     const ctx = RequestContext.require();
-    const p = await this.prisma.db.payment.findUnique({ where: { id: paymentId }, include: { allocations: { orderBy: { createdAt: 'desc' } } } });
+    const p = await tx.payment.findUnique({ where: { id: paymentId }, include: { allocations: { orderBy: { createdAt: 'desc' } } } });
     if (!p) throw notFound('Payment');
     const refundable = p.amountMinor - p.refundedMinor;
     if (input.amountMinor > refundable) throw ruleViolation('REFUND_TOO_LARGE', `At most ${refundable} can be refunded from this payment`);
-    const id = await this.prisma.db.$transaction(async (tx) => {
-      const session = await this.cashSession(tx, input.method);
-      const allocated = p.allocations.reduce((n, a) => n + a.amountMinor, 0);
-      let fromAllocations = input.amountMinor - (p.amountMinor - p.refundedMinor - allocated);
-      const touched = new Set<string>();
-      for (const a of p.allocations) {
-        if (fromAllocations <= 0) break;
-        const take = Math.min(fromAllocations, a.amountMinor);
-        if (take === a.amountMinor) await tx.paymentAllocation.delete({ where: { id: a.id } });
-        else await tx.paymentAllocation.update({ where: { id: a.id }, data: { amountMinor: a.amountMinor - take } });
-        touched.add(a.invoiceId);
-        fromAllocations -= take;
-      }
-      for (const invId of touched) await refreshInvoice(tx, invId);
-      const number = await this.counters.next(tx, 'refund');
-      const r = await tx.refund.create({
-        data: { organizationId: ctx.organizationId!, number, paymentId, amountMinor: input.amountMinor, method: input.method, reason: input.reason, cashSessionId: session?.id ?? null, refundedById: ctx.userId!, refundedByName: ctx.userName ?? 'Unknown' },
-      });
-      await tx.payment.update({ where: { id: paymentId }, data: { refundedMinor: { increment: input.amountMinor } } });
-      await recomputeClientBalance(tx, p.clientId);
-      await this.audit.record({ action: 'payment.refunded', entityType: 'Payment', entityId: paymentId, summary: `${formatNumber('RF', number)} ${input.method} ${input.amountMinor}: ${input.reason}` }, tx);
-      return r.id;
+    const session = await this.cashSession(tx, input.method);
+    const allocated = p.allocations.reduce((n, a) => n + a.amountMinor, 0);
+    let fromAllocations = input.amountMinor - (p.amountMinor - p.refundedMinor - allocated);
+    const touched = new Set<string>();
+    for (const a of p.allocations) {
+      if (fromAllocations <= 0) break;
+      const take = Math.min(fromAllocations, a.amountMinor);
+      if (take === a.amountMinor) await tx.paymentAllocation.delete({ where: { id: a.id } });
+      else await tx.paymentAllocation.update({ where: { id: a.id }, data: { amountMinor: a.amountMinor - take } });
+      touched.add(a.invoiceId);
+      fromAllocations -= take;
+    }
+    for (const invId of touched) await refreshInvoice(tx, invId);
+    const number = await this.counters.next(tx, 'refund');
+    const r = await tx.refund.create({
+      data: { organizationId: ctx.organizationId!, number, paymentId, amountMinor: input.amountMinor, method: input.method, reason: input.reason, cashSessionId: session?.id ?? null, refundedById: ctx.userId!, refundedByName: ctx.userName ?? 'Unknown' },
     });
-    return { refundId: id, payment: await this.get(paymentId) };
+    await tx.payment.update({ where: { id: paymentId }, data: { refundedMinor: { increment: input.amountMinor } } });
+    await recomputeClientBalance(tx, p.clientId);
+    await this.audit.record({ action: 'payment.refunded', entityType: 'Payment', entityId: paymentId, summary: `${formatNumber('RF', number)} ${input.method} ${input.amountMinor}: ${input.reason}` }, tx);
+    return r;
   }
 
   async get(id: string) {

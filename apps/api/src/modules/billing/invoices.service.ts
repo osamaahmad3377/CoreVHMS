@@ -28,7 +28,7 @@ export function shapeInvoice(i: Row) {
   return {
     ...i,
     invoiceNo: invoiceNo(i.number),
-    lines: i.lines.map((l) => ({ ...l, quantity: Number(l.quantity) })),
+    lines: i.lines.map((l) => ({ ...l, quantity: Number(l.quantity), returnedQuantity: Number(l.returnedQuantity ?? 0) })),
     allocations: i.allocations.map((a) => ({ ...a, payment: { ...a.payment, receiptNo: formatNumber('RCPT', a.payment.number) } })),
     creditNotes: i.creditNotes.map((c) => ({ ...c, creditNoteNo: formatNumber('CN', c.number) })),
     overdue: !!i.dueAt && i.dueAt < new Date() && i.balanceMinor > 0 && ['ISSUED', 'PARTIALLY_PAID'].includes(i.status),
@@ -339,29 +339,32 @@ export class InvoicesService {
 
   /** Credit note against an issued invoice. If the invoice is already paid, the excess becomes client credit. */
   async creditNote(id: string, amountMinor: number, reason: string) {
+    const cn = await this.prisma.db.$transaction((tx) => this.creditTx(tx, id, amountMinor, reason));
+    return { creditNote: { ...cn, creditNoteNo: formatNumber('CN', cn.number) }, invoice: await this.get(id) };
+  }
+
+  /** The credit note itself, inside the caller's transaction (also used by counter returns). */
+  async creditTx(tx: ScopedTx, id: string, amountMinor: number, reason: string) {
     const ctx = RequestContext.require();
-    const inv = await this.prisma.db.invoice.findUnique({ where: { id }, include: { allocations: { orderBy: { createdAt: 'desc' } } } });
+    const inv = await tx.invoice.findUnique({ where: { id }, include: { allocations: { orderBy: { createdAt: 'desc' } } } });
     if (!inv) throw notFound('Invoice');
     if (!['ISSUED', 'PARTIALLY_PAID', 'PAID'].includes(inv.status)) throw ruleViolation('NOT_ISSUED', 'Credit notes apply to issued invoices');
     if (amountMinor > inv.totalMinor - inv.creditedMinor) throw ruleViolation('CREDIT_TOO_LARGE', `At most ${inv.totalMinor - inv.creditedMinor} can still be credited`);
-    const cn = await this.prisma.db.$transaction(async (tx) => {
-      const number = await this.counters.next(tx, 'credit_note');
-      const note = await tx.creditNote.create({ data: { organizationId: ctx.organizationId!, number, invoiceId: id, amountMinor, reason, createdById: ctx.userId!, createdByName: ctx.userName ?? 'Unknown' } });
-      // Release allocations if the credit would push the balance below zero.
-      let excess = amountMinor - inv.balanceMinor;
-      for (const a of inv.allocations) {
-        if (excess <= 0) break;
-        const take = Math.min(excess, a.amountMinor);
-        if (take === a.amountMinor) await tx.paymentAllocation.delete({ where: { id: a.id } });
-        else await tx.paymentAllocation.update({ where: { id: a.id }, data: { amountMinor: a.amountMinor - take } });
-        excess -= take;
-      }
-      await refreshInvoice(tx, id);
-      await recomputeClientBalance(tx, inv.clientId);
-      await this.audit.record({ action: 'invoice.credited', entityType: 'Invoice', entityId: id, summary: `${formatNumber('CN', number)} ${amountMinor}: ${reason}` }, tx);
-      return note;
-    });
-    return { creditNote: { ...cn, creditNoteNo: formatNumber('CN', cn.number) }, invoice: await this.get(id) };
+    const number = await this.counters.next(tx, 'credit_note');
+    const note = await tx.creditNote.create({ data: { organizationId: ctx.organizationId!, number, invoiceId: id, amountMinor, reason, createdById: ctx.userId!, createdByName: ctx.userName ?? 'Unknown' } });
+    // Release allocations if the credit would push the balance below zero.
+    let excess = amountMinor - inv.balanceMinor;
+    for (const a of inv.allocations) {
+      if (excess <= 0) break;
+      const take = Math.min(excess, a.amountMinor);
+      if (take === a.amountMinor) await tx.paymentAllocation.delete({ where: { id: a.id } });
+      else await tx.paymentAllocation.update({ where: { id: a.id }, data: { amountMinor: a.amountMinor - take } });
+      excess -= take;
+    }
+    await refreshInvoice(tx, id);
+    await recomputeClientBalance(tx, inv.clientId);
+    await this.audit.record({ action: 'invoice.credited', entityType: 'Invoice', entityId: id, summary: `${formatNumber('CN', number)} ${amountMinor}: ${reason}` }, tx);
+    return note;
   }
 
   /** Client statement: invoices, credit notes, payments and refunds in date order with running balance. */

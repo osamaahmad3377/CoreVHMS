@@ -2,6 +2,7 @@ import { csvRow } from '../../common/util/csv';
 import { AuditService } from '../../common/audit/audit.service';
 import { Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Res } from '@nestjs/common';
 import { forbidden } from '../../common/http/errors';
+import { PosReturnsService } from './pos-returns.service';
 import { PosService } from './pos.service';
 import { ApiTags } from '@nestjs/swagger';
 import {
@@ -16,6 +17,7 @@ import {
   invoiceListQuery,
   openSessionSchema,
   paymentSchema,
+  posReturnSchema,
   refundSchema,
   registerSchema,
   serviceSchema,
@@ -75,6 +77,7 @@ export class BillingController {
     private readonly cash: CashService,
     private readonly misc: EstimatesAndExpensesService,
     private readonly pos: PosService,
+    private readonly returns: PosReturnsService,
     private readonly audit: AuditService,
   ) {}
 
@@ -84,6 +87,22 @@ export class BillingController {
   @ApiZodQuery(posCatalogQuery)
   posCatalog(@Query(zp(posCatalogQuery)) q: z.infer<typeof posCatalogQuery>) {
     return this.pos.catalog(q);
+  }
+
+  /** Counter sales from the last 60 days that can have items returned (search by invoice number or client). */
+  @Get('pos/sales')
+  @RequirePermissions('billing.refund')
+  posSales(@Query('q') q?: string) {
+    return this.returns.findSales(q);
+  }
+
+  /** Items brought back: credit note, stock back on the shelf and the refund, in one step. */
+  @Post('pos/returns')
+  @HttpCode(200)
+  @RequirePermissions('billing.refund')
+  @ApiZodBody(posReturnSchema)
+  posReturn(@Body(zp(posReturnSchema)) body: z.infer<typeof posReturnSchema>) {
+    return this.returns.returnItems(body);
   }
 
   @Get('pos/recent')

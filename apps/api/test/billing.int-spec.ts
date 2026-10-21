@@ -149,6 +149,61 @@ describe('Billing, payments & finance', () => {
     r = r; // eslint-friendly
   });
 
+  it('takes items back at the counter: credit note, stock back on the shelf and the money handed back, all or nothing', async () => {
+    const s = await setup();
+    const f = await stockFixture(s.org);
+    const toy = await s.org.owner.post('/products', { name: 'Return toy', type: 'RETAIL', dispensingUnit: 'unit', minDispenseIncrement: 1, sellPriceMinor: 1000, requiresPrescription: false });
+    await s.org.owner.post('/stock/receipts', { supplierId: f.supplierId, locationId: f.locationId, lines: [{ productId: toy.body.id, batchNumber: 'T1', quantity: 10, unitCostMinor: 400 }] });
+    const onHand = async () => (await s.org.owner.get(`/stock/products/${toy.body.id}`)).body.batches[0].onHand as number;
+
+    await s.org.owner.post('/cash/sessions', { registerId: s.registerId, openingFloatMinor: 0 });
+    const sale = await s.org.owner.post('/invoices', { isPos: true, lines: [{ kind: 'PRODUCT', productId: toy.body.id, quantity: 4 }], issue: true });
+    await s.org.owner.post('/payments', { amountMinor: sale.body.totalMinor, method: 'CASH', allocations: [{ invoiceId: sale.body.id, amountMinor: sale.body.totalMinor }] });
+    expect(await onHand()).toBe(6);
+    const line = sale.body.lines[0];
+
+    // Only people allowed to refund can take items back, and the sale shows up in the search.
+    const till = await staff(s.org, 'receptionist');
+    expect((await till.client.post('/pos/returns', { invoiceId: sale.body.id, lines: [{ lineId: line.id, quantity: 1 }], reason: 'x' })).status).toBe(403);
+    expect((await s.org.owner.get(`/pos/sales?q=${sale.body.invoiceNo}`)).body.map((x: { id: string }) => x.id)).toContain(sale.body.id);
+
+    // Take 1 of 4 back: credit for a quarter, 1 back on the shelf, cash handed back.
+    const one = await s.org.owner.post('/pos/returns', { invoiceId: sale.body.id, lines: [{ lineId: line.id, quantity: 1 }], reason: 'Wrong size', refundTo: 'CASH' });
+    expect(one.status).toBe(200);
+    expect(one.body).toMatchObject({ creditedMinor: 1000, refundedMinor: 1000, keptAsCreditMinor: 0, restocked: [{ quantity: 1 }] });
+    expect(await onHand()).toBe(7);
+    const after = (await s.org.owner.get(`/invoices/${sale.body.id}`)).body;
+    expect(after).toMatchObject({ creditedMinor: 1000, paidMinor: 3000, balanceMinor: 0, status: 'PAID' });
+    expect(after.lines[0]).toMatchObject({ returnedQuantity: 1, returnedMinor: 1000 });
+
+    // More than what is left to return is refused, and nothing changes.
+    const tooMany = await s.org.owner.post('/pos/returns', { invoiceId: sale.body.id, lines: [{ lineId: line.id, quantity: 4 }], reason: 'x', refundTo: 'CASH' });
+    expect(tooMany.body.error.code).toBe('RETURN_TOO_MANY');
+    expect(await onHand()).toBe(7);
+
+    // With the cash drawer closed a cash refund fails as a whole: no credit note, no stock back.
+    const drawer = await s.org.owner.get('/cash/registers');
+    const sessionId = drawer.body[0].sessions[0].id;
+    const exp = (await s.org.owner.get(`/cash/sessions/${sessionId}`)).body.expectedCashMinor;
+    await s.org.owner.post(`/cash/sessions/${sessionId}/close`, { countedCashMinor: exp });
+    await s.org.owner.patch('/billing/settings', { requireCashSession: true });
+    const blocked = await s.org.owner.post('/pos/returns', { invoiceId: sale.body.id, lines: [{ lineId: line.id, quantity: 1 }], reason: 'x', refundTo: 'CASH' });
+    expect(blocked.body.error.code).toBe('NO_CASH_SESSION');
+    expect(await onHand()).toBe(7);
+    expect((await s.org.owner.get(`/invoices/${sale.body.id}`)).body.creditedMinor).toBe(1000);
+    await s.org.owner.patch('/billing/settings', { requireCashSession: false });
+
+    // A walk-in customer has no account to hold credit, so credit is refused; the rest goes back in cash.
+    const credit = await s.org.owner.post('/pos/returns', { invoiceId: sale.body.id, lines: [{ lineId: line.id, quantity: 3 }], reason: 'x', refundTo: 'CREDIT' });
+    expect(credit.body.error.code).toBe('CLIENT_REQUIRED');
+    const rest = await s.org.owner.post('/pos/returns', { invoiceId: sale.body.id, lines: [{ lineId: line.id, quantity: 3 }], reason: 'Changed mind', refundTo: 'ORIGINAL' });
+    expect(rest.body).toMatchObject({ creditedMinor: 3000, refundedMinor: 3000 });
+    expect(await onHand()).toBe(10);
+    expect((await s.org.owner.get(`/invoices/${sale.body.id}`)).body).toMatchObject({ creditedMinor: 4000, paidMinor: 0, balanceMinor: 0, status: 'PAID' });
+    // Everything has been returned.
+    expect((await s.org.owner.post('/pos/returns', { invoiceId: sale.body.id, lines: [{ lineId: line.id, quantity: 1 }], reason: 'x' })).body.error.code).toBe('RETURN_TOO_MANY');
+  });
+
   it('lets a cashier open and close the cash drawer they opened, but not someone else\'s', async () => {
     const s = await setup();
     const alice = await staff(s.org, 'pharmacy');
