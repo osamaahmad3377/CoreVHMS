@@ -59,12 +59,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <Dialog.Root open={mobileOpen} onOpenChange={setMobileOpen}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-40 bg-black/50 backdrop-blur-[2px] lg:hidden" />
-          <Dialog.Content className="fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col bg-sidebar shadow-xl lg:hidden">
+          <Dialog.Content className="fixed inset-y-0 left-0 z-50 flex w-[min(300px,86vw)] flex-col rounded-r-3xl bg-sidebar pb-[env(safe-area-inset-bottom)] shadow-pop lg:hidden">
             <Dialog.Title className="sr-only">Navigation</Dialog.Title>
-            <div className="flex h-14 items-center justify-between border-b border-sidebar-border px-3">
+            <div className="flex h-16 items-center justify-between px-4">
               <Logo />
-              <Dialog.Close className="text-sidebar-foreground" aria-label="Close navigation">
-                <X className="h-5 w-5" />
+              <Dialog.Close className="flex h-9 w-9 items-center justify-center rounded-full bg-sidebar-strong/[0.07] text-sidebar-foreground" aria-label="Close navigation">
+                <X className="h-4 w-4" />
               </Dialog.Close>
             </div>
             <div className="flex-1 overflow-y-auto">

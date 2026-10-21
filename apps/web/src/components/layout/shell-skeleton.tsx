@@ -2,7 +2,7 @@
 export function ShellSkeleton() {
   return (
     <div className="flex min-h-screen" aria-busy="true" aria-label="Loading">
-      <aside className="hidden h-screen w-[232px] shrink-0 flex-col gap-4 border-r border-sidebar-border bg-sidebar p-3 lg:flex">
+      <aside className="hidden h-screen w-[256px] shrink-0 flex-col gap-4 border-r border-sidebar-border bg-sidebar p-3 lg:flex">
         <div className="flex items-center gap-2 px-1 py-1">
           {/* The clinic's own logo and name appear once the session has loaded (white label). */}
           <div className="h-7 w-7 rounded-md bg-sidebar-strong/10" />

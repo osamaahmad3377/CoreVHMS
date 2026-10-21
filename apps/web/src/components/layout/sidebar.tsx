@@ -47,7 +47,7 @@ export function SidebarNav({ collapsed, onNavigate }: { collapsed?: boolean; onN
   });
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/');
   return (
-    <nav aria-label="Main" className="flex flex-col gap-3 px-2 py-3">
+    <nav aria-label="Main" className="flex flex-col gap-4 px-3 py-4">
       {sections.map((s) => {
         const hasActive = s.items.some((i) => isActive(i.href));
         const open = collapsed || hasActive || !folded.includes(s.label);
@@ -74,12 +74,14 @@ export function SidebarNav({ collapsed, onNavigate }: { collapsed?: boolean; onN
                       onClick={onNavigate}
                       aria-current={active ? 'page' : undefined}
                       className={cn(
-                        'group/nav relative flex items-center gap-2.5 rounded-md px-2.5 py-[7px] text-[0.8125rem] text-sidebar-foreground transition-all duration-200 ease-apple hover:bg-sidebar-hover hover:text-sidebar-strong',
-                        active && 'bg-sidebar-active font-medium text-white shadow-[0_1px_2px_hsl(var(--sidebar-active)/0.35)] hover:bg-sidebar-active hover:text-white',
-                        collapsed && 'justify-center px-0 py-2',
+                        'group/nav relative flex items-center gap-3 rounded-xl px-2 py-1.5 text-[0.8125rem] font-medium text-sidebar-foreground transition-all duration-200 ease-apple hover:bg-sidebar-hover hover:text-sidebar-strong',
+                        active && 'bg-sidebar-active text-white shadow-[0_4px_12px_-4px_hsl(var(--sidebar-active)/0.55),inset_0_1px_0_hsl(0_0%_100%/0.18)] hover:bg-sidebar-active hover:text-white',
+                        collapsed && 'mx-auto h-10 w-10 justify-center p-0',
                       )}
                     >
-                      <item.icon className="h-4 w-4 shrink-0" aria-hidden />
+                      <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors duration-200', active ? 'bg-white/20' : 'bg-sidebar-strong/[0.06] group-hover/nav:bg-sidebar-strong/10')}>
+                        <item.icon className="h-[15px] w-[15px]" aria-hidden />
+                      </span>
                       {collapsed ? <span className="sr-only">{item.label}</span> : <span className="truncate">{item.label}</span>}
                     </Link>
                   );
@@ -94,27 +96,52 @@ export function SidebarNav({ collapsed, onNavigate }: { collapsed?: boolean; onN
   );
 }
 
+function SidebarFooter({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+  const { session } = useSession();
+  const name = session.user.name;
+  const initials = name.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('');
+  const role = session.roles.map((r) => r.name.replace(/ & procurement officer$/, ' officer')).join(', ');
+  return (
+    <div className={cn('border-t border-sidebar-border/70 p-3', collapsed && 'px-2')}>
+      {!collapsed && (
+        <div className="mb-2 flex items-center gap-2.5 rounded-xl bg-sidebar-strong/[0.05] p-2">
+          <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sidebar-active text-xs font-semibold text-white shadow-sm">{initials}</span>
+          <span className="min-w-0 leading-tight">
+            <span className="block truncate text-[0.8125rem] font-semibold text-sidebar-strong">{name}</span>
+            <span className="block truncate text-2xs text-sidebar-foreground/70" title={role}>{role}</span>
+          </span>
+        </div>
+      )}
+      <button
+        onClick={onToggle}
+        className={cn('flex h-9 w-full items-center justify-center gap-2 rounded-lg text-xs font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-hover hover:text-sidebar-strong')}
+        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+      >
+        {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <><PanelLeftClose className="h-4 w-4" /> Collapse menu</>}
+      </button>
+    </div>
+  );
+}
+
 export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+  const { session } = useSession();
   return (
     <aside
       className={cn(
         'no-print sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border/70 bg-sidebar transition-[width] duration-300 ease-apple lg:flex',
-        collapsed ? 'w-[60px]' : 'w-[232px]',
+        collapsed ? 'w-[68px]' : 'w-[256px]',
       )}
     >
-      <div className={cn('flex h-16 items-center border-b border-sidebar-border px-4', collapsed && 'justify-center px-0')}>
+      <div className={cn('flex h-16 shrink-0 items-center px-4', collapsed && 'justify-center px-0')}>
         <Logo collapsed={collapsed} />
       </div>
-      <div className="flex-1 overflow-y-auto">
+      {!collapsed && session.branch && (
+        <p className="mx-4 mb-1 truncate rounded-lg bg-sidebar-strong/[0.05] px-3 py-1.5 text-xs font-medium text-sidebar-foreground" title={session.branch.name}>{session.branch.name}</p>
+      )}
+      <div className="flex-1 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
         <SidebarNav collapsed={collapsed} />
       </div>
-      <button
-        onClick={onToggle}
-        className="flex h-10 items-center justify-center gap-2 border-t border-sidebar-border text-xs text-sidebar-foreground/70 hover:text-sidebar-strong"
-        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-      >
-        {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <><PanelLeftClose className="h-4 w-4" /> Collapse</>}
-      </button>
+      <SidebarFooter collapsed={collapsed} onToggle={onToggle} />
     </aside>
   );
 }

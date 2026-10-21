@@ -637,3 +637,5 @@ Items from the feature matrix that need no external device, data source or provi
 - **Apple-style UI refresh** — new neutral design tokens, light sidebar by default, SF Pro system font stack, softer shadows/radii, frosted topbar/menus/dialogs, borderless cards, filled inputs, larger page titles. White-label colours, fonts and corner choices still apply on top.
 
 - **Responsive pass (phone / iPad)**: dashboard no longer overflows on phones, page headers stack until large screens, shop-counter category chips scroll sideways on phones, touch screens get 16px inputs (no iOS zoom) and 40px targets, tighter table cells and dialog padding on small screens.
+
+- **Sidebar redesign**: wider 256px menu with the branch shown under the logo, rounded icon chips on every item, a raised active pill, a user card with role and "Collapse menu" at the bottom, a rounded slide-in drawer on phones/iPads. Uses only the clinic colours, so white-label menus still work.
