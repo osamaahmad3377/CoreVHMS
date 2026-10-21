@@ -124,7 +124,6 @@ function SidebarFooter({ collapsed, onToggle }: { collapsed: boolean; onToggle: 
 }
 
 export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
-  const { session } = useSession();
   return (
     <aside
       className={cn(
@@ -135,9 +134,6 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
       <div className={cn('flex h-16 shrink-0 items-center px-4', collapsed && 'justify-center px-0')}>
         <Logo collapsed={collapsed} />
       </div>
-      {!collapsed && session.branch && (
-        <p className="mx-4 mb-1 truncate rounded-lg bg-sidebar-strong/[0.05] px-3 py-1.5 text-xs font-medium text-sidebar-foreground" title={session.branch.name}>{session.branch.name}</p>
-      )}
       <div className="flex-1 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
         <SidebarNav collapsed={collapsed} />
       </div>
