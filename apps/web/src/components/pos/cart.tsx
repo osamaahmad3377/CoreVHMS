@@ -110,13 +110,15 @@ export function PosCart({
             {lines.map((l) => {
               const a = lineAmounts(l, inclusive);
               const atLimit = !!blockReason(l.item, l.quantity, allowNegative) && !l.item.rxOnly;
+              // Medicine already handed out against a prescription: fixed quantity and price, only removable.
+              const fixed = l.item.type === 'CHARGE';
               return (
                 <li key={l.key} className="px-3 py-2.5">
                   <div className="flex items-start gap-2">
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{l.item.name}</p>
                       <p className="text-xs text-muted-foreground tabular">
-                        {fmtMoney(l.priceMinor, currency)}{l.item.type === 'PRODUCT' && ` / ${l.item.unit}`}
+                        {fmtMoney(l.priceMinor, currency)}{l.item.type === 'PRODUCT' && ` / ${l.item.unit}`}{fixed && <span> × {l.quantity} · handed out on a prescription</span>}
                         {l.priceMinor !== l.item.priceMinor && <span className="text-warning"> (price changed)</span>}
                         {!!l.discountMinor && <span className="text-success"> · −{fmtMoney(l.discountMinor, currency)}</span>}
                         <span> · tax {bpToPct(l.item.taxRateBasisPoints)}</span>
@@ -125,6 +127,7 @@ export function PosCart({
                     <p className="text-sm font-semibold tabular">{fmtMoney(a.grossMinor, currency)}</p>
                   </div>
                   <div className="mt-1.5 flex items-center gap-1">
+                    {!fixed && (
                     <div className="flex items-center rounded-md border">
                       <Button variant="ghost" size="icon-sm" aria-label={`Decrease ${l.item.name}`} onClick={() => setQty(l.key, l.quantity - 1)}><Minus /></Button>
                       <input
@@ -136,10 +139,11 @@ export function PosCart({
                       />
                       <Button variant="ghost" size="icon-sm" aria-label={`Increase ${l.item.name}`} disabled={atLimit} onClick={() => setQty(l.key, l.quantity + 1)}><Plus /></Button>
                     </div>
+                    )}
                     {l.item.trackStock && l.item.available !== null && <span className={cn('text-2xs', l.quantity > l.item.available ? 'font-medium text-destructive' : 'text-muted-foreground')}>{qtyUnit(l.item.available - l.quantity, l.item.unit)} left</span>}
                     <span className="ml-auto flex">
-                      {allowOverrides && <LineEditPopover line={l} currency={currency} onSave={(patch) => onChange(lines.map((x) => (x.key === l.key ? { ...x, ...patch } : x)))} />}
-                      <Button variant="ghost" size="icon-sm" aria-label={`Remove ${l.item.name}`} onClick={() => setQty(l.key, 0)}><Trash2 /></Button>
+                      {allowOverrides && !fixed && <LineEditPopover line={l} currency={currency} onSave={(patch) => onChange(lines.map((x) => (x.key === l.key ? { ...x, ...patch } : x)))} />}
+                      <Button variant="ghost" size="icon-sm" aria-label={`Remove ${l.item.name}`} title={fixed ? 'Takes it out of this sale; it stays under Not yet invoiced' : undefined} onClick={() => setQty(l.key, 0)}><Trash2 /></Button>
                     </span>
                   </div>
                 </li>

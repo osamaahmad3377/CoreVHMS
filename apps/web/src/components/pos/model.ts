@@ -1,8 +1,19 @@
 import { calcLine, sumLines } from '@vcms/shared';
-import type { PosItem } from '@/lib/types';
+import type { Charge, PosItem } from '@/lib/types';
 
 /** A catalogue item, or an "other item" typed in at the counter (name and price only). */
-export type CartItem = Omit<PosItem, 'type'> & { type: PosItem['type'] | 'CUSTOM' };
+export type CartItem = Omit<PosItem, 'type'> & { type: PosItem['type'] | 'CUSTOM' | 'CHARGE' };
+
+/**
+ * Medicine already handed out against a prescription: its charge is waiting under "Not yet invoiced" and is
+ * added to this sale as it is (quantity and price are fixed by what was dispensed).
+ */
+export function chargeItem(c: Pick<Charge, 'id' | 'description' | 'unitPriceMinor' | 'taxRateBasisPoints'>): CartItem {
+  return {
+    type: 'CHARGE', id: c.id, name: c.description, code: null, barcode: null, category: 'MEDICINE', categoryId: null, categoryName: null,
+    brand: null, packSize: null, photoAttachmentId: null, unit: 'item', priceMinor: c.unitPriceMinor, taxRateBasisPoints: c.taxRateBasisPoints, trackStock: false, available: null, rxOnly: false,
+  };
+}
 
 /** Builds an "other item" for the basket; it is sold as a CUSTOM invoice line at the price typed in. */
 export function customItem(name: string, priceMinor: number, taxRateBasisPoints: number): CartItem {
@@ -54,7 +65,7 @@ export function cartTotals(lines: CartLine[], inclusive: boolean) {
 
 /** Why an item cannot be added (or more of it), or null if it can. */
 export function blockReason(item: CartItem, qtyInCart: number, allowNegative: boolean): string | null {
-  if (item.rxOnly) return 'Prescription only';
+  if (item.rxOnly) return 'Prescription only — use “Collect a prescription”';
   if (item.priceMinor === null) return 'No price set';
   if (item.trackStock && !allowNegative && item.available !== null && qtyInCart >= item.available) return item.available <= 0 ? 'Out of stock' : 'No more in stock';
   return null;
@@ -63,8 +74,11 @@ export function blockReason(item: CartItem, qtyInCart: number, allowNegative: bo
 /** Out of stock (nothing left at all), as opposed to having reached the last one in the basket. */
 export const isOutOfStock = (item: CartItem, allowNegative: boolean) => item.trackStock && !allowNegative && item.available !== null && item.available <= 0;
 
+/** The waiting charges (medicines handed out against prescriptions) in the basket, invoiced with the sale. */
+export const toChargeIds = (lines: CartLine[]) => lines.filter((l) => l.item.type === 'CHARGE').map((l) => l.item.id);
+
 export function toInvoiceLines(lines: CartLine[]) {
-  return lines.map((l) => {
+  return lines.filter((l) => l.item.type !== 'CHARGE').map((l) => {
     if (l.item.type === 'CUSTOM') return { kind: 'CUSTOM' as const, description: l.item.name, quantity: l.quantity, unitPriceMinor: l.priceMinor, discountMinor: l.discountMinor };
     return {
       kind: l.item.type,

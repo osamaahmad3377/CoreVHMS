@@ -99,10 +99,11 @@ export class PrescriptionsService {
     this.dispenseHooks.push(hook);
   }
 
-  async list(q: { page: number; pageSize: number; q?: string; status?: string; patientId?: string; encounterId?: string }) {
+  async list(q: { page: number; pageSize: number; q?: string; status?: string; clientId?: string; patientId?: string; encounterId?: string }) {
     const statuses = q.status?.split(',').filter(Boolean) as any[] | undefined;
     const where: Prisma.PrescriptionWhereInput = {
       status: statuses?.length ? { in: statuses } : undefined,
+      clientId: q.clientId,
       patientId: q.patientId,
       encounterId: q.encounterId,
       ...(q.q

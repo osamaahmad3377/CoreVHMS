@@ -1,6 +1,6 @@
 'use client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Clock, History, Landmark, Printer, ReceiptText } from 'lucide-react';
+import { CheckCircle2, Clock, History, Landmark, Pill, Printer, ReceiptText } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -13,7 +13,8 @@ import { PosCart } from '@/components/pos/cart';
 import { PosCatalog } from '@/components/pos/catalog';
 import { MoneyInput, parseMoney } from '@/components/billing/money';
 import { Field } from '@/components/forms/field';
-import { blockReason, cartTotals, customItem, isOutOfStock, toInvoiceLines, type CartLine, type Tender } from '@/components/pos/model';
+import { CollectPrescriptionDialog } from '@/components/pos/prescription-collect';
+import { blockReason, cartTotals, chargeItem, customItem, isOutOfStock, toChargeIds, toInvoiceLines, type CartLine, type Tender } from '@/components/pos/model';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useConfirm } from '@/components/confirm';
@@ -30,7 +31,7 @@ import { ApiError, api, qs } from '@/lib/api';
 import { fmtDateTime, fmtMoney, fmtTime } from '@/lib/format';
 import { localDate, todayIn } from '@/lib/time';
 import { useSession } from '@/lib/session';
-import type { BillingSettings, CashRegister, Invoice, Payment, PosCatalog as CatalogBase, PosItem, ProductCategory } from '@/lib/types';
+import type { BillingSettings, CashRegister, Charge, Invoice, Payment, PosCatalog as CatalogBase, PosItem, ProductCategory } from '@/lib/types';
 
 type Catalog = CatalogBase & { sellableTypes?: string[]; defaultTaxRateBasisPoints?: number };
 
@@ -113,6 +114,7 @@ function Pos() {
   const [showHeld, setShowHeld] = useState(false);
   const [payBalance, setPayBalance] = useState(false);
   const [otherItem, setOtherItem] = useState(false);
+  const [collectOpen, setCollectOpen] = useState(false);
   const heldKey = `vcms.pos.held.${session.organization?.id}.${session.branch?.id}`;
   const [held, setHeld] = useState<HeldSale[]>([]);
   useEffect(() => setHeld(readHeld(heldKey)), [heldKey]);
@@ -200,7 +202,7 @@ function Pos() {
     setBusy(true);
     let invoice: Invoice;
     try {
-      invoice = await api.post<Invoice>('/invoices', { isPos: true, clientId: client?.id ?? null, lines: toInvoiceLines(lines), issue: true });
+      invoice = await api.post<Invoice>('/invoices', { isPos: true, clientId: client?.id ?? null, chargeIds: toChargeIds(lines), lines: toInvoiceLines(lines), issue: true });
     } catch (e) {
       setBusy(false);
       toast.error(e instanceof ApiError ? e.message : 'The sale could not be completed');
@@ -299,6 +301,7 @@ function Pos() {
               <Badge variant={cashBlocked ? 'destructive' : 'secondary'} className="gap-1 py-1"><Landmark className="h-3 w-3" /> Cash drawer closed{cashBlocked ? ' — ask your manager to open it to take cash' : ''}</Badge>
             )
           ) : null}
+          {can('pharmacy.dispense') && <Button size="sm" onClick={() => setCollectOpen(true)}><Pill /> Collect a prescription</Button>}
           <Button size="sm" variant="outline" onClick={() => setShowHeld(true)}><Clock /> Paused sales{held.length ? ` (${held.length})` : ''}</Button>
           <Button size="sm" variant="outline" onClick={() => setShowToday(true)}><History /> Today’s sales</Button>
         </>
@@ -306,8 +309,16 @@ function Pos() {
     />
   );
 
+  /** Medicines just handed out against a prescription join the sale as fixed lines. */
+  const addCollected = (charges: Charge[]) =>
+    setLines((ls) => [
+      ...ls,
+      ...charges.filter((c) => !ls.some((l) => l.item.type === 'CHARGE' && l.item.id === c.id)).map((c) => ({ key: crypto.randomUUID(), item: chargeItem(c), quantity: c.quantity, priceMinor: c.unitPriceMinor, discountMinor: 0 })),
+    ]);
+
   const dialogs = (
     <>
+      <CollectPrescriptionDialog open={collectOpen} onOpenChange={setCollectOpen} client={client} onClient={setClient} onCollected={addCollected} />
       <TodaySalesDialog
         open={showToday}
         onOpenChange={setShowToday}

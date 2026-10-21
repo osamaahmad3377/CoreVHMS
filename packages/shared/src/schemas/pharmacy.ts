@@ -105,6 +105,7 @@ export type CreatePrescriptionInput = z.infer<typeof createPrescriptionSchema>;
 
 export const prescriptionListQuery = paginationQuery.extend({
   status: z.string().optional(),
+  clientId: z.string().uuid().optional(),
   patientId: z.string().uuid().optional(),
   encounterId: z.string().uuid().optional(),
 });

@@ -181,9 +181,32 @@ describe('Prescriptions & pharmacy', () => {
     const done = await pharm.client.post(`/prescriptions/${draft.body.id}/dispense`, { lines: [{ itemId, quantity: 7.5 }] });
     expect(done.body.status).toBe('DISPENSED');
     expect(done.body.items[0].dispensations).toHaveLength(2);
+    // Handed out at the shop counter: the waiting charges are invoiced with the sale, once.
+    const waiting = await vet.client.get(`/charges?clientId=${done.body.client.id}&status=PENDING&pageSize=50`);
+    const fromRx = waiting.body.data.filter((c: { sourceType: string }) => c.sourceType === 'Dispensation');
+    expect(fromRx).toHaveLength(2);
+    const sale = await vet.client.post('/invoices', {
+      isPos: true,
+      clientId: done.body.client.id,
+      chargeIds: fromRx.map((c: { id: string }) => c.id),
+      lines: [{ kind: 'CUSTOM', description: 'Carrier box', quantity: 1, unitPriceMinor: 500 }],
+      issue: true,
+    });
+    expect(sale.status).toBe(201);
+    expect(sale.body.lines).toHaveLength(3);
+    expect(sale.body.isPos).toBe(true);
+    const after = await vet.client.get(`/charges?clientId=${done.body.client.id}&status=PENDING&pageSize=50`);
+    expect(after.body.data.filter((c: { sourceType: string }) => c.sourceType === 'Dispensation')).toHaveLength(0);
+    const again = await vet.client.post('/invoices', { isPos: true, clientId: done.body.client.id, chargeIds: [fromRx[0].id], lines: [], issue: true });
+    expect(again.status).toBeGreaterThanOrEqual(400); // the same medicine is never billed twice
     expect((await vet.client.post(`/prescriptions/${draft.body.id}/cancel`, { reason: 'x' })).status).toBe(422);
     const rep = await vet.client.post(`/prescriptions/${draft.body.id}/repeat`);
     expect(rep.body).toMatchObject({ status: 'DRAFT', repeatOfId: draft.body.id });
+    // The shop counter lists one client's prescriptions.
+    const mine = await vet.client.get(`/prescriptions?clientId=${rep.body.client.id}&pageSize=50`);
+    expect(mine.status).toBe(200);
+    expect(mine.body.data.map((x: { id: string }) => x.id)).toContain(rep.body.id);
+    expect((await vet.client.get('/prescriptions?clientId=00000000-0000-4000-8000-000000000000')).body.data).toHaveLength(0);
     // Repeated from inside a consultation: attached to that consultation, and only to this patient's.
     const visit = await vet.client.post('/encounters', { patientId: patient.id });
     expect(visit.status).toBe(201);

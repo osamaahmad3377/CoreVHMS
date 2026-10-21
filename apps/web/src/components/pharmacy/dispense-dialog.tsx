@@ -23,7 +23,7 @@ function remainingText(i: Prescription['items'][number]) {
   return i.remaining > 0 ? `${qtyUnit(i.remaining, unit)} left to dispense · ${prescribed}` : `Fully dispensed · ${prescribed}`;
 }
 
-export function DispenseDialog({ rx, open, onOpenChange }: { rx: Prescription; open: boolean; onOpenChange: (o: boolean) => void }) {
+export function DispenseDialog({ rx, open, onOpenChange, onDispensed }: { rx: Prescription; open: boolean; onOpenChange: (o: boolean) => void; /** Called with the updated prescription after the medicines were handed out. */ onDispensed?: (rx: Prescription) => void }) {
   const qc = useQueryClient();
   const [lines, setLines] = useState<Record<string, Line>>({});
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +50,7 @@ export function DispenseDialog({ rx, open, onOpenChange }: { rx: Prescription; o
       qc.invalidateQueries({ queryKey: ['prescriptions'] });
       qc.invalidateQueries({ queryKey: ['product-batches'] });
       onOpenChange(false);
+      onDispensed?.(r);
     },
     onError: (e: Error) => setError(e.message),
   });

@@ -22,7 +22,7 @@ export function ClientPicker({
   value,
   onChange,
   excludeId,
-  placeholder = 'Search owner by name, phone or number…',
+  placeholder = 'Search client by name, phone or number…',
   id,
   invalid,
   defaultOpen = false,
