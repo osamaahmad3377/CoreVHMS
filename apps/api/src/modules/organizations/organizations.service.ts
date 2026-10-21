@@ -25,6 +25,7 @@ export function brandingOf(org: Organization, base = '/api/v1/organization'): Br
     loginMessage: org.loginMessage,
     brandFont: org.brandFont,
     cornerStyle: org.cornerStyle,
+    menuLogoSize: org.menuLogoSize,
     defaultTheme: org.defaultTheme,
     loginLayout: org.loginLayout,
     loginBackground: org.loginBackground,
@@ -49,7 +50,7 @@ export function brandingOf(org: Organization, base = '/api/v1/organization'): Br
 }
 
 const BRANDING_FIELDS = [
-  'brandName', 'primaryColor', 'sidebarColor', 'loginHeadline', 'loginMessage', 'brandFont', 'cornerStyle', 'defaultTheme',
+  'brandName', 'primaryColor', 'sidebarColor', 'loginHeadline', 'loginMessage', 'brandFont', 'cornerStyle', 'menuLogoSize', 'defaultTheme',
   'loginLayout', 'loginBackground', 'loginFooter', 'printLogoPosition', 'printHeaderText', 'printFooterText',
   'printUseBrandColour', 'printLogoSize', 'printNameSize', 'printRule', 'printShowAddress', 'printShowContact', 'printShowTaxNumber',
   'printFooterAlign', 'printPreprinted', 'printTopSpaceMm', 'emailSenderName', 'emailSignature',

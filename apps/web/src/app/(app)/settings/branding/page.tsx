@@ -46,6 +46,7 @@ const draftOf = (b: Branding, orgName: string) => ({
   loginMessage: b.loginMessage ?? '',
   brandFont: b.brandFont,
   cornerStyle: b.cornerStyle,
+  menuLogoSize: b.menuLogoSize,
   defaultTheme: b.defaultTheme,
   loginLayout: b.loginLayout,
   loginBackground: b.loginBackground,
@@ -463,6 +464,19 @@ function BrandingForm({ branding, orgId, orgName, clinic }: { branding: Branding
                     ]}
                   />
                 </div>
+              </Section>
+
+              <Section title="Menu logo" description="How large your logo is at the top of the side menu. The clinic name sits below it.">
+                <Choice
+                  label="Logo size"
+                  value={draft.menuLogoSize}
+                  onChange={(v) => set('menuLogoSize', v)}
+                  options={[
+                    { value: 'SMALL', title: 'Small', icon: <span className="mt-0.5 h-3 w-3 shrink-0 rounded-sm bg-primary" /> },
+                    { value: 'MEDIUM', title: 'Medium', icon: <span className="mt-0.5 h-4 w-4 shrink-0 rounded-sm bg-primary" /> },
+                    { value: 'LARGE', title: 'Large', icon: <span className="mt-0.5 h-5 w-5 shrink-0 rounded-sm bg-primary" /> },
+                  ]}
+                />
               </Section>
 
               <Section title="Light or dark" description="What staff see until they choose for themselves with the moon button.">

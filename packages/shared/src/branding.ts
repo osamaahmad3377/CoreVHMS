@@ -25,6 +25,9 @@ export const BRAND_FONT_LABELS: Record<BrandFont, string> = {
   NUNITO: 'Nunito',
   MERRIWEATHER: 'Merriweather (serif)',
 };
+export type MenuLogoSize = 'SMALL' | 'MEDIUM' | 'LARGE';
+/** Height in pixels of the logo at the top of the side menu. */
+export const MENU_LOGO_HEIGHT: Record<MenuLogoSize, number> = { SMALL: 36, MEDIUM: 56, LARGE: 80 };
 export type CornerStyle = 'SHARP' | 'STANDARD' | 'ROUNDED';
 export type ThemeMode = 'LIGHT' | 'DARK' | 'SYSTEM';
 export type LoginLayout = 'SPLIT' | 'CENTERED';
@@ -49,6 +52,7 @@ export const brandingUpdateSchema = z.object({
   // Look and feel
   brandFont: z.enum(BRAND_FONTS).optional(),
   cornerStyle: z.enum(['SHARP', 'STANDARD', 'ROUNDED']).optional(),
+  menuLogoSize: z.enum(['SMALL', 'MEDIUM', 'LARGE']).optional(),
   defaultTheme: z.enum(['LIGHT', 'DARK', 'SYSTEM']).optional(),
   // Sign-in page
   loginLayout: z.enum(['SPLIT', 'CENTERED']).optional(),
@@ -88,6 +92,7 @@ export interface Branding {
   loginMessage: string | null;
   brandFont: BrandFont;
   cornerStyle: CornerStyle;
+  menuLogoSize: MenuLogoSize;
   defaultTheme: ThemeMode;
   loginLayout: LoginLayout;
   loginBackground: LoginBackground;

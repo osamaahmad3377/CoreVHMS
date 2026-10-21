@@ -102,6 +102,12 @@ enum BrandFont {
   MERRIWEATHER
 }
 
+enum MenuLogoSize {
+  SMALL
+  MEDIUM
+  LARGE
+}
+
 enum CornerStyle {
   SHARP
   STANDARD
@@ -176,6 +182,7 @@ model Organization {
   // Branding: look and feel
   brandFont                   BrandFont          @default(SYSTEM)
   cornerStyle                 CornerStyle        @default(STANDARD)
+  menuLogoSize                MenuLogoSize       @default(MEDIUM)
   /// Theme staff get until they choose their own (light / dark / follow the device).
   defaultTheme                ThemeMode          @default(LIGHT)
   /// Logo version for dark backgrounds (dark menu, dark sign-in panel, dark mode).

@@ -6,24 +6,23 @@ import { useEffect, useState } from 'react';
 import { visibleNav } from '@/lib/navigation';
 import { useSession } from '@/lib/session';
 import { cn } from '@/lib/utils';
+import { MENU_LOGO_HEIGHT } from '@vcms/shared';
 import { logoFor, menuIsDark } from '../branding/brand-theme';
 import { Tip } from '../ui/tooltip';
 
 /** The clinic's logo and brand name (Settings → Branding), or the NextCore mark when none is set. */
 export function Logo({ collapsed }: { collapsed?: boolean }) {
-  const branding = useSession().session.organization?.branding;
+  const { session } = useSession();
+  const branding = session.organization?.branding;
   const logo = logoFor(branding, menuIsDark(branding));
   const icon = collapsed ? (branding?.iconUrl ?? logo) : (logo ?? branding?.iconUrl);
+  const height = collapsed ? 32 : MENU_LOGO_HEIGHT[branding?.menuLogoSize ?? 'MEDIUM'];
+  const name = branding?.brandName ?? session.organization?.name ?? 'NextCore';
   return (
-    <Link href="/dashboard" className="flex min-w-0 items-center gap-2 px-1 text-sidebar-strong" aria-label={`${branding?.brandName ?? 'NextCore'} — home`}>
+    <Link href="/dashboard" className={cn('flex min-w-0 flex-col items-center text-center text-sidebar-strong', !collapsed && 'w-full gap-2')} aria-label={`${name} — home`}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={icon ?? '/favicon.svg'} alt="" className={cn('h-8 shrink-0 object-contain', icon && !collapsed ? 'max-w-[56px]' : 'w-8')} />
-      {!collapsed && (
-        <span className="min-w-0 leading-tight">
-          <span className="block truncate text-sm font-semibold tracking-tight">{branding?.brandName ?? 'NextCore'}</span>
-          {!branding && <span className="block text-2xs uppercase tracking-wider text-sidebar-foreground/60">Veterinary</span>}
-        </span>
-      )}
+      <img src={icon ?? '/favicon.svg'} alt="" style={{ height }} className={cn('max-w-full shrink-0 object-contain', !icon && 'aspect-square')} />
+      {!collapsed && <span className="line-clamp-2 block w-full text-balance text-[0.9375rem] font-semibold leading-tight tracking-tight">{name}</span>}
     </Link>
   );
 }
@@ -131,7 +130,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
         collapsed ? 'w-[68px]' : 'w-[256px]',
       )}
     >
-      <div className={cn('flex h-16 shrink-0 items-center px-4', collapsed && 'justify-center px-0')}>
+      <div className={cn('flex shrink-0 items-center justify-center px-5 pb-3 pt-6', collapsed && 'px-0 pb-2 pt-4')}>
         <Logo collapsed={collapsed} />
       </div>
       <div className="flex-1 overflow-y-auto overscroll-contain [scrollbar-width:thin]">

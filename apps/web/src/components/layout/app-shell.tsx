@@ -61,9 +61,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Dialog.Overlay className="fixed inset-0 z-40 bg-black/50 backdrop-blur-[2px] lg:hidden" />
           <Dialog.Content className="fixed inset-y-0 left-0 z-50 flex w-[min(300px,86vw)] flex-col rounded-r-3xl bg-sidebar pb-[env(safe-area-inset-bottom)] shadow-pop lg:hidden">
             <Dialog.Title className="sr-only">Navigation</Dialog.Title>
-            <div className="flex h-16 items-center justify-between px-4">
+            <div className="relative flex items-center justify-center px-5 pb-3 pt-6">
               <Logo />
-              <Dialog.Close className="flex h-9 w-9 items-center justify-center rounded-full bg-sidebar-strong/[0.07] text-sidebar-foreground" aria-label="Close navigation">
+              <Dialog.Close className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-sidebar-strong/[0.07] text-sidebar-foreground" aria-label="Close navigation">
                 <X className="h-4 w-4" />
               </Dialog.Close>
             </div>
