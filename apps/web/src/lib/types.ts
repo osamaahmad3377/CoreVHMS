@@ -1240,6 +1240,11 @@ export interface CareItem {
   notes: string | null;
   remindedAt: string | null;
   overdueRemindedAt: string | null;
+  /** Own repeat (null = follow the protocol; 0 = never). */
+  repeatEvery: number | null;
+  repeatUnit: 'DAY' | 'WEEK' | 'MONTH' | 'YEAR' | null;
+  repeatTimes: number | null;
+  repeatUntil: string | null;
   patient?: { id: string; name: string; number: number; species: { name: string } };
   owner?: { id: string; displayName: string; mobilePhone: string | null; email: string | null; remindersConsent: boolean } | null;
 }

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CARE_REPEAT_UNITS } from '../care-repeat';
 import { CARE_KINDS, MESSAGE_CHANNELS, MESSAGE_PURPOSES, PREFERRED_TIMES } from '../enums';
 import { passwordPolicy } from './auth';
 import { optDate, optInt, optText, optUuid, reqText } from './common';
@@ -20,14 +21,33 @@ export const careProtocolSchema = z
   })
   .refine((p) => p.intervalDays || p.firstDueAgeWeeks != null, { path: ['intervalDays'], message: 'Give a repeat interval, a first-dose age, or both' });
 
-export const careItemSchema = z.object({
-  patientId: z.string().uuid(),
-  protocolId: optUuid(),
-  kind: z.enum(CARE_KINDS),
-  title: reqText(160),
-  dueDate: z.coerce.date(),
-  notes: optText(1000),
-});
+export const careItemSchema = z
+  .object({
+    patientId: z.string().uuid(),
+    protocolId: optUuid(),
+    kind: z.enum(CARE_KINDS),
+    title: reqText(160),
+    dueDate: z.coerce.date(),
+    notes: optText(1000),
+    /**
+     * Repeat after each dose: every N units. Left out = follow the protocol's schedule (none without a protocol);
+     * 0 = do not repeat, even when the protocol would.
+     */
+    repeatEvery: optInt(0, 999),
+    repeatUnit: z.enum(CARE_REPEAT_UNITS).nullish(),
+    /** End of the repeats: this many more doses after this one, or no dose due after this date (or neither). */
+    repeatTimes: optInt(1, 100),
+    repeatUntil: optDate(),
+  })
+  .refine((i) => !i.repeatEvery || !!i.repeatUnit, { path: ['repeatUnit'], message: 'Choose days, weeks, months or years' })
+  .refine((i) => !(i.repeatTimes && i.repeatUntil), { path: ['repeatUntil'], message: 'Choose a number of doses or an end date, not both' })
+  .refine((i) => !i.repeatUntil || !i.dueDate || i.repeatUntil >= i.dueDate, { path: ['repeatUntil'], message: 'The end date must be on or after the first due date' });
+
+/** Changing how an open care item repeats (same rules as when adding it). */
+export const careRepeatSchema = z
+  .object({ repeatEvery: optInt(0, 999), repeatUnit: z.enum(CARE_REPEAT_UNITS).nullish(), repeatTimes: optInt(1, 100), repeatUntil: optDate() })
+  .refine((i) => !i.repeatEvery || !!i.repeatUnit, { path: ['repeatUnit'], message: 'Choose days, weeks, months or years' })
+  .refine((i) => !(i.repeatTimes && i.repeatUntil), { path: ['repeatUntil'], message: 'Choose a number of doses or an end date, not both' });
 
 export const completeCareSchema = z
   .object({

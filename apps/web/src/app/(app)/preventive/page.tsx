@@ -11,7 +11,7 @@ import { FormError } from '@/components/forms/form-error';
 import { EmptyState, PageHeader } from '@/components/page';
 import { ProductPicker } from '@/components/pharmacy/product-picker';
 import { AddVaccinationDialog } from '@/components/preventive/add-vaccination-dialog';
-import { CareStatusBadge } from '@/components/preventive/care-plan';
+import { CareStatusBadge, RepeatNote } from '@/components/preventive/care-plan';
 import { RequirePermission } from '@/components/require';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -155,7 +155,7 @@ function Worklist() {
         columns={[
           { key: 'due', header: 'Due', cell: (i) => <span className={cn('whitespace-nowrap text-sm', i.overdue && 'font-semibold text-destructive')}>{fmtDate(i.effectiveDueDate)}</span> },
           { key: 'pet', header: 'Patient', cell: (i) => <Link className="text-sm font-medium hover:underline" href={`/patients/${i.patient?.id}?tab=care`}>{i.patient?.name} <span className="font-normal text-muted-foreground">· {i.patient?.species.name}</span></Link> },
-          { key: 'what', header: 'Care', cell: (i) => <span className="text-sm">{i.title}</span> },
+          { key: 'what', header: 'Care', cell: (i) => <div><span className="text-sm">{i.title}</span><RepeatNote item={i} /></div> },
           { key: 'owner', header: 'Owner', cell: (i) => (i.owner ? <span className="text-sm"><Link className="hover:underline" href={`/clients/${i.owner.id}`}>{i.owner.displayName}</Link><span className="block text-xs text-muted-foreground">{i.owner.mobilePhone ?? i.owner.email ?? 'no contact'}{!i.owner.remindersConsent && ' · opted out'}</span></span> : '—') },
           { key: 'rem', header: 'Reminded', cell: (i) => <span className="text-xs text-muted-foreground">{i.overdueRemindedAt ? `Overdue notice ${fmtDate(i.overdueRemindedAt)}` : i.remindedAt ? fmtDate(i.remindedAt) : '—'}</span> },
           { key: 'st', header: 'Status', cell: (i) => <CareStatusBadge item={i} /> },

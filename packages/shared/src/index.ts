@@ -24,3 +24,4 @@ export * from './schemas/platform';
 export * from './branding';
 export * from './plans';
 export * from './note-phrases';
+export * from './care-repeat';

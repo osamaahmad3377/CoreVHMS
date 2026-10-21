@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { CareKind, CareProtocol, Prisma } from '@prisma/client';
+import { CareKind, CareProtocol, CareRepeatUnit, Prisma } from '@prisma/client';
+import { addRepeat, repeatSummary } from '@vcms/shared';
 import { AuditService, diff } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { conflict, notFound, ruleViolation } from '../../common/http/errors';
@@ -20,6 +21,21 @@ const itemInclude = {
 } satisfies Prisma.CareItemInclude;
 
 /** `today` is the branch-local calendar date (see `branchToday`), so items are not overdue a day early or late. */
+/** How an item repeats, as entered: left out = follow the protocol; repeatEvery 0 = never. */
+export interface RepeatInput {
+  repeatEvery?: number | null;
+  repeatUnit?: CareRepeatUnit | null;
+  repeatTimes?: number | null;
+  repeatUntil?: Date | null;
+}
+
+/** The stored repeat columns for an input (a 0 interval clears the unit and the end). */
+function repeatData(r: RepeatInput) {
+  if (r.repeatEvery == null) return { repeatEvery: null, repeatUnit: null, repeatTimes: null, repeatUntil: null };
+  if (r.repeatEvery === 0) return { repeatEvery: 0, repeatUnit: null, repeatTimes: null, repeatUntil: null };
+  return { repeatEvery: r.repeatEvery, repeatUnit: r.repeatUnit ?? null, repeatTimes: r.repeatTimes ?? null, repeatUntil: r.repeatUntil ? dateOnlyInput(r.repeatUntil) : null };
+}
+
 export function shapeItem<T extends { status: string; dueDate: Date; deferredUntil: Date | null }>(i: T, today: Date) {
   const due = effectiveDue(i);
   return { ...i, effectiveDueDate: due, overdue: (i.status === 'DUE' || i.status === 'DEFERRED') && due < today };
@@ -148,15 +164,17 @@ export class CareService {
     return { items: withBatch, availableProtocols: protocols.filter((p) => !open.has(p.id)) };
   }
 
-  async addItem(input: { patientId: string; protocolId?: string | null; kind: CareKind; title: string; dueDate: Date; notes?: string | null }) {
+  async addItem(input: { patientId: string; protocolId?: string | null; kind: CareKind; title: string; dueDate: Date; notes?: string | null } & RepeatInput) {
     const patient = await this.prisma.db.patient.findUnique({ where: { id: input.patientId } });
     if (!patient) throw notFound('Patient');
     if (input.protocolId && !(await this.prisma.db.careProtocol.findUnique({ where: { id: input.protocolId } }))) throw notFound('Protocol');
     const today = await branchToday(this.prisma);
     try {
       return await this.prisma.db.$transaction(async (tx) => {
-        const i = await tx.careItem.create({ data: { ...input, protocolId: input.protocolId ?? null, dueDate: dateOnlyInput(input.dueDate), organizationId: patient.organizationId, createdByName: RequestContext.require().userName } });
-        await this.audit.record({ action: 'care_item.added', entityType: 'Patient', entityId: input.patientId, summary: `${i.title} due ${i.dueDate.toISOString().slice(0, 10)}` }, tx);
+        const { repeatEvery, repeatUnit, repeatTimes, repeatUntil, ...rest } = input;
+        const i = await tx.careItem.create({ data: { ...rest, ...repeatData({ repeatEvery, repeatUnit, repeatTimes, repeatUntil }), protocolId: input.protocolId ?? null, dueDate: dateOnlyInput(input.dueDate), organizationId: patient.organizationId, createdByName: RequestContext.require().userName } });
+        const repeats = repeatSummary({ every: i.repeatEvery, unit: i.repeatUnit, times: i.repeatTimes, until: i.repeatUntil?.toISOString().slice(0, 10) });
+        await this.audit.record({ action: 'care_item.added', entityType: 'Patient', entityId: input.patientId, summary: `${i.title} due ${i.dueDate.toISOString().slice(0, 10)}${repeats ? ` · ${repeats}` : ''}` }, tx);
         return shapeItem(i, today);
       });
     } catch (e) {
@@ -172,8 +190,53 @@ export class CareService {
     return i;
   }
 
-  /** Schedules the next occurrence after a completion when the protocol repeats. */
-  async scheduleNext(tx: ScopedTx, item: { id: string; organizationId: string; patientId: string; protocolId: string | null; kind: CareKind; title: string }, completedAt: Date) {
+  /** Changes (or stops) how an open item repeats after it is given. */
+  async setRepeat(id: string, input: RepeatInput) {
+    const item = await this.openItem(id);
+    if (input.repeatUntil && dateOnlyInput(input.repeatUntil) < (item.deferredUntil ?? item.dueDate)) throw ruleViolation('REPEAT_UNTIL_BEFORE_DUE', 'The end date must be on or after the due date');
+    const data = repeatData(input);
+    const today = await branchToday(this.prisma);
+    return this.prisma.db.$transaction(async (tx) => {
+      const i = await tx.careItem.update({ where: { id }, data });
+      const summary = data.repeatEvery === 0 ? 'does not repeat' : (repeatSummary({ every: i.repeatEvery, unit: i.repeatUnit, times: i.repeatTimes, until: i.repeatUntil?.toISOString().slice(0, 10) }) ?? 'follows the protocol');
+      await this.audit.record({ action: 'care_item.repeat_changed', entityType: 'Patient', entityId: i.patientId, summary: `${i.title}: ${summary}` }, tx);
+      return shapeItem(i, today);
+    });
+  }
+
+  /**
+   * Schedules the next occurrence after a completion: the item's own repeat when it has one (every N days,
+   * weeks, months or years, until its end), otherwise the protocol's interval.
+   */
+  async scheduleNext(
+    tx: ScopedTx,
+    item: { id: string; organizationId: string; patientId: string; protocolId: string | null; kind: CareKind; title: string; repeatEvery?: number | null; repeatUnit?: CareRepeatUnit | null; repeatTimes?: number | null; repeatUntil?: Date | null },
+    completedAt: Date,
+  ) {
+    if (item.repeatEvery === 0) return null;
+    if (item.repeatEvery && item.repeatUnit) {
+      if (item.repeatTimes === 0) return null;
+      // Count from the calendar day it was given in the branch, not the UTC day.
+      const due = addRepeat(localDateOnly(completedAt, await resolveTimezone(this.prisma)), item.repeatEvery, item.repeatUnit);
+      if (item.repeatUntil && due > item.repeatUntil) return null;
+      if (item.protocolId && (await tx.careItem.findFirst({ where: { patientId: item.patientId, protocolId: item.protocolId, status: { in: ['DUE', 'DEFERRED'] } } }))) return null;
+      return tx.careItem.create({
+        data: {
+          organizationId: item.organizationId,
+          patientId: item.patientId,
+          protocolId: item.protocolId,
+          kind: item.kind,
+          title: item.title,
+          dueDate: due,
+          repeatEvery: item.repeatEvery,
+          repeatUnit: item.repeatUnit,
+          repeatTimes: item.repeatTimes == null ? null : item.repeatTimes - 1,
+          repeatUntil: item.repeatUntil ?? null,
+          previousItemId: item.id,
+          createdByName: 'System (recurring)',
+        },
+      });
+    }
     if (!item.protocolId) return null;
     const p = await tx.careProtocol.findUnique({ where: { id: item.protocolId } });
     if (!p || p.status !== 'APPROVED' || !p.intervalDays) return null;

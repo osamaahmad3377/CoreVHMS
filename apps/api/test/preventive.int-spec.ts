@@ -105,4 +105,36 @@ describe('Preventive care', () => {
     const other = await registerOrg();
     expect((await other.owner.get(`/patients/${s.patient.id}/care-plan`)).status).toBe(404);
   });
+
+  it('repeats an item on its own schedule until its end, and can stop a protocol from repeating', async () => {
+    const s = await setup();
+    // Every 2 weeks, 1 more dose after this one.
+    const first = await s.vet.client.post('/care-items', { patientId: s.patient.id, kind: 'VACCINATION', title: 'Puppy booster', dueDate: daysFrom(0), repeatEvery: 2, repeatUnit: 'WEEK', repeatTimes: 1 });
+    expect(first.status).toBe(201);
+    expect(first.body).toMatchObject({ repeatEvery: 2, repeatUnit: 'WEEK', repeatTimes: 1 });
+    expect((await s.vet.client.post(`/care-items/${first.body.id}/complete`, { mode: 'DONE' })).status).toBe(200);
+    let plan = (await s.vet.client.get(`/patients/${s.patient.id}/care-plan`)).body;
+    const second = plan.items.find((i: any) => i.status === 'DUE' && i.title === 'Puppy booster');
+    expect(second).toMatchObject({ dueDate: expect.stringContaining(daysFrom(14)), repeatEvery: 2, repeatUnit: 'WEEK', repeatTimes: 0 });
+    // The last dose: nothing more is scheduled.
+    await s.vet.client.post(`/care-items/${second.id}/complete`, { mode: 'DONE' });
+    plan = (await s.vet.client.get(`/patients/${s.patient.id}/care-plan`)).body;
+    expect(plan.items.filter((i: any) => i.title === 'Puppy booster' && i.status === 'DUE')).toHaveLength(0);
+
+    // A protocol item told not to repeat stops after this dose.
+    await s.vet.client.post(`/care-protocols/${s.protocol.id}/status`, { status: 'APPROVED' });
+    const once = await s.vet.client.post('/care-items', { patientId: s.patient.id, protocolId: s.protocol.id, kind: 'VACCINATION', title: 'Core vaccine', dueDate: daysFrom(0) });
+    const stop = await s.vet.client.post(`/care-items/${once.body.id}/repeat`, { repeatEvery: 0 });
+    expect(stop.body.repeatEvery).toBe(0);
+    await s.vet.client.post(`/care-items/${once.body.id}/complete`, { mode: 'DONE' });
+    plan = (await s.vet.client.get(`/patients/${s.patient.id}/care-plan`)).body;
+    expect(plan.items.filter((i: any) => i.protocolId === s.protocol.id && i.status === 'DUE')).toHaveLength(0);
+
+    // An end date before the next dose ends the series; a bad repeat is refused.
+    const monthly = await s.vet.client.post('/care-items', { patientId: s.patient.id, kind: 'DEWORMING', title: 'Monthly worming', dueDate: daysFrom(0), repeatEvery: 1, repeatUnit: 'MONTH', repeatUntil: daysFrom(10) });
+    await s.vet.client.post(`/care-items/${monthly.body.id}/complete`, { mode: 'DONE' });
+    plan = (await s.vet.client.get(`/patients/${s.patient.id}/care-plan`)).body;
+    expect(plan.items.filter((i: any) => i.title === 'Monthly worming' && i.status === 'DUE')).toHaveLength(0);
+    expect((await s.vet.client.post('/care-items', { patientId: s.patient.id, kind: 'VACCINATION', title: 'x', dueDate: daysFrom(0), repeatEvery: 3 })).status).toBe(400);
+  });
 });

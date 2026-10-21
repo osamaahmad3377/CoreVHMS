@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CARE_KINDS, enumLabel } from '@vcms/shared';
-import { Ban, CalendarClock, CheckCircle2, ClipboardPlus, Plus, Printer, ShieldCheck } from 'lucide-react';
+import { CARE_KINDS, enumLabel, intervalFromDays, repeatSummary } from '@vcms/shared';
+import { Ban, CalendarClock, CheckCircle2, ClipboardPlus, Plus, Printer, Repeat, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -16,6 +16,7 @@ import { Button } from '../ui/button';
 import { Card, CardHeader, CardTitle } from '../ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Input, NativeSelect, Textarea } from '../ui/input';
+import { emptyRepeat, RepeatField, repeatErrors, repeatFromItem, repeatPayload, type RepeatValue } from './repeat-field';
 import { ApiError, api } from '@/lib/api';
 import { fmtDate } from '@/lib/format';
 import { useSession } from '@/lib/session';
@@ -169,25 +170,71 @@ function DeferDialog({ item, onClose }: { item: CareItem | null; onClose: () => 
 function AddItemDialog({ patientId, open, onOpenChange }: { patientId: string; open: boolean; onOpenChange: (o: boolean) => void }) {
   const qc = useQueryClient();
   const [f, setF] = useState({ kind: 'HEALTH_CHECK', title: '', dueDate: '', notes: '' });
+  const [repeat, setRepeat] = useState<RepeatValue>(emptyRepeat());
+  const [tried, setTried] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { if (open) { setF({ kind: 'HEALTH_CHECK', title: '', dueDate: '', notes: '' }); setError(null); } }, [open]);
+  useEffect(() => { if (open) { setF({ kind: 'HEALTH_CHECK', title: '', dueDate: '', notes: '' }); setRepeat(emptyRepeat()); setTried(false); setError(null); } }, [open]);
+  const repeatInvalid = Object.keys(repeatErrors(repeat, f.dueDate)).length > 0;
   const m = useMutation({
-    mutationFn: () => api.post('/care-items', { patientId, ...f, notes: f.notes || null }),
+    mutationFn: () => api.post('/care-items', { patientId, ...f, notes: f.notes || null, ...repeatPayload(repeat, false) }),
     onSuccess: () => { toast.success('Added to the care plan'); qc.invalidateQueries({ queryKey: ['care-plan'] }); onOpenChange(false); },
     onError: (e: Error) => setError(e.message),
   });
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="sm">
-        <DialogHeader><DialogTitle>Add to care plan</DialogTitle><DialogDescription>A one-off item, such as a weight check or a dental recheck.</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>Add to care plan</DialogTitle><DialogDescription>A vaccination, a weight check, a dental recheck — once, or repeating.</DialogDescription></DialogHeader>
         {error && <FormError message={error} />}
         <Field label="Type" htmlFor="ai-kind"><NativeSelect id="ai-kind" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}>{CARE_KINDS.map((k) => <option key={k} value={k}>{enumLabel(k)}</option>)}</NativeSelect></Field>
         <Field label="What" htmlFor="ai-title" required><Input id="ai-title" value={f.title} maxLength={160} onChange={(e) => setF({ ...f, title: e.target.value })} /></Field>
         <Field label="Due" htmlFor="ai-due" required><Input id="ai-due" type="date" value={f.dueDate} onChange={(e) => setF({ ...f, dueDate: e.target.value })} /></Field>
+        <RepeatField value={repeat} onChange={setRepeat} dueDate={f.dueDate} showErrors={tried} idPrefix="ai-rp" />
         <Field label="Notes" htmlFor="ai-notes"><Textarea id="ai-notes" value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></Field>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button disabled={!f.title.trim() || !f.dueDate} loading={m.isPending} onClick={() => { setError(null); m.mutate(); }}>Add</Button>
+          <Button disabled={!f.title.trim() || !f.dueDate} loading={m.isPending} onClick={() => { setTried(true); setError(null); if (!repeatInvalid) m.mutate(); }}>Add</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** "Repeats every 2 weeks, 3 more times" under an open item (its own repeat, or its protocol's). */
+export function RepeatNote({ item: i, className }: { item: CareItem; className?: string }) {
+  const own = repeatSummary({ every: i.repeatEvery, unit: i.repeatUnit, times: i.repeatTimes, until: i.repeatUntil?.slice(0, 10) }, fmtDate);
+  const fromProtocol = i.repeatEvery == null && i.protocol?.intervalDays ? repeatSummary(intervalFromDays(i.protocol.intervalDays)) : null;
+  const text = i.repeatEvery === 0 ? 'Does not repeat' : own ?? (fromProtocol ? `${fromProtocol} (protocol)` : null);
+  if (!text) return null;
+  return (
+    <p className={cn('mt-0.5 flex items-center gap-1 text-xs text-muted-foreground', className)}>
+      <Repeat className="h-3 w-3" aria-hidden /> {text}
+    </p>
+  );
+}
+
+/** Change or stop how an open item repeats after it is given. */
+function RepeatDialog({ item, onClose }: { item: CareItem | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [value, setValue] = useState<RepeatValue>(emptyRepeat());
+  const [tried, setTried] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { if (item) { setValue(repeatFromItem(item)); setTried(false); setError(null); } }, [item]);
+  const due = item?.effectiveDueDate.slice(0, 10) ?? '';
+  const invalid = Object.keys(repeatErrors(value, due)).length > 0;
+  const m = useMutation({
+    mutationFn: () => api.post(`/care-items/${item!.id}/repeat`, value.mode === 'protocol' ? { repeatEvery: null } : repeatPayload(value, !!item!.protocolId)),
+    onSuccess: () => { toast.success('Repeat saved'); qc.invalidateQueries({ queryKey: ['care-plan'] }); qc.invalidateQueries({ queryKey: ['care-items'] }); onClose(); },
+    onError: (e: Error) => setError(e.message),
+  });
+  return (
+    <Dialog open={!!item} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent size="sm">
+        <DialogHeader><DialogTitle>Repeat — {item?.title}</DialogTitle><DialogDescription>When this is given, the next one is put on the list by itself.</DialogDescription></DialogHeader>
+        {error && <FormError message={error} />}
+        {item && <RepeatField value={value} onChange={setValue} dueDate={due} hasProtocol={!!item.protocolId} protocolIntervalDays={item.protocol?.intervalDays} showErrors={tried} idPrefix="rd" />}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button loading={m.isPending} onClick={() => { setTried(true); setError(null); if (!invalid) m.mutate(); }}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -202,6 +249,7 @@ export function CarePlan({ patientId, active }: { patientId: string; active: boo
   const [completing, setCompleting] = useState<CareItem | null>(null);
   const [deferring, setDeferring] = useState<CareItem | null>(null);
   const [adding, setAdding] = useState(false);
+  const [repeating, setRepeating] = useState<CareItem | null>(null);
   const q = useQuery({ queryKey: ['care-plan', patientId], queryFn: () => api.get<{ items: CareItem[]; availableProtocols: { id: string; name: string; kind: string }[] }>(`/patients/${patientId}/care-plan`) });
   const apply = useMutation({
     mutationFn: () => api.post<{ created: number }>(`/patients/${patientId}/care-plan/apply`, {}),
@@ -242,12 +290,14 @@ export function CarePlan({ patientId, active }: { patientId: string; active: boo
                   <p className={cn('text-xs', i.overdue ? 'font-medium text-destructive' : 'text-muted-foreground')}>
                     Due {fmtDate(i.effectiveDueDate)}{i.status === 'DEFERRED' && ` (deferred: ${i.deferReason})`}{i.remindedAt && ` · reminder sent ${fmtDate(i.remindedAt)}`}
                   </p>
+                  <RepeatNote item={i} />
                 </div>
                 <CareStatusBadge item={i} />
                 {writable && (
                   <div className="flex gap-1">
                     <Button size="sm" onClick={() => setCompleting(i)}><CheckCircle2 /> Record</Button>
                     <Button size="sm" variant="ghost" onClick={() => setDeferring(i)}><CalendarClock /> Defer</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setRepeating(i)} title="Change how often it repeats"><Repeat /> Repeat</Button>
                     {can('communications.send') && <Button size="sm" variant="ghost" loading={remind.isPending && remind.variables === i.id} onClick={() => remind.mutate(i.id)}>Remind</Button>}
                     <Button size="sm" variant="ghost" aria-label={`Cancel ${i.title}`} onClick={async () => { const r = await confirm({ title: `Cancel ${i.title}?`, requireReason: true, confirmLabel: 'Cancel item' }); if (r.confirmed) cancel.mutate({ id: i.id, reason: r.reason! }); }}><Ban /></Button>
                   </div>
@@ -291,6 +341,7 @@ export function CarePlan({ patientId, active }: { patientId: string; active: boo
       <CompleteDialog item={completing} onClose={() => setCompleting(null)} />
       <DeferDialog item={deferring} onClose={() => setDeferring(null)} />
       <AddItemDialog patientId={patientId} open={adding} onOpenChange={setAdding} />
+      <RepeatDialog item={repeating} onClose={() => setRepeating(null)} />
     </div>
   );
 }

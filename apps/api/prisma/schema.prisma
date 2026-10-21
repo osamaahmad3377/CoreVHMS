@@ -3496,31 +3496,45 @@ enum CareItemStatus {
 
 /// One entry in a patient's care plan (e.g. "Rabies booster due 1 Mar"). Completing a recurring item
 /// schedules the next one.
+enum CareRepeatUnit {
+  DAY
+  WEEK
+  MONTH
+  YEAR
+}
+
 model CareItem {
-  id                String         @id @default(uuid()) @db.Uuid
-  organizationId    String         @db.Uuid
-  patientId         String         @db.Uuid
-  protocolId        String?        @db.Uuid
+  id                String          @id @default(uuid()) @db.Uuid
+  organizationId    String          @db.Uuid
+  patientId         String          @db.Uuid
+  protocolId        String?         @db.Uuid
   kind              CareKind
   title             String
-  dueDate           DateTime       @db.Date
-  status            CareItemStatus @default(DUE)
-  deferredUntil     DateTime?      @db.Date
+  dueDate           DateTime        @db.Date
+  status            CareItemStatus  @default(DUE)
+  deferredUntil     DateTime?       @db.Date
   deferReason       String?
   cancelReason      String?
-  completedAt       DateTime?      @db.Timestamptz(3)
+  completedAt       DateTime?       @db.Timestamptz(3)
   completedByName   String?
-  administrationId  String?        @unique @db.Uuid
-  givenElsewhere    Boolean        @default(false)
+  administrationId  String?         @unique @db.Uuid
+  givenElsewhere    Boolean         @default(false)
   productName       String?
   batchNumber       String?
   notes             String?
-  previousItemId    String?        @db.Uuid
-  remindedAt        DateTime?      @db.Timestamptz(3)
-  overdueRemindedAt DateTime?      @db.Timestamptz(3)
+  /// Repeat after each dose: every N units (null = follow the protocol; 0 = never repeat).
+  repeatEvery       Int?
+  repeatUnit        CareRepeatUnit?
+  /// Further doses still to schedule after this one (null = no limit).
+  repeatTimes       Int?
+  /// No dose is scheduled after this date (null = no end date).
+  repeatUntil       DateTime?       @db.Date
+  previousItemId    String?         @db.Uuid
+  remindedAt        DateTime?       @db.Timestamptz(3)
+  overdueRemindedAt DateTime?       @db.Timestamptz(3)
   createdByName     String?
-  createdAt         DateTime       @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime       @updatedAt @db.Timestamptz(3)
+  createdAt         DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime        @updatedAt @db.Timestamptz(3)
 
   organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   patient      Patient       @relation(fields: [patientId], references: [id], onDelete: Restrict)

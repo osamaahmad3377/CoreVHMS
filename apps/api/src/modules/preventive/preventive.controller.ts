@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { CARE_KINDS, cancelCareSchema, careItemSchema, careProtocolSchema, completeCareSchema, deferCareSchema } from '@vcms/shared';
+import { CARE_KINDS, cancelCareSchema, careItemSchema, careRepeatSchema, careProtocolSchema, completeCareSchema, deferCareSchema } from '@vcms/shared';
 import { z } from 'zod';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequireAnyPermission, RequirePermissions } from '../../common/auth/decorators';
@@ -104,6 +104,14 @@ export class PreventiveController {
     // Giving a vaccine or medicine here is a clinical administration.
     if (body.mode === 'ADMINISTER' && !RequestContext.require().permissions.has('clinical.write')) throw forbidden('Recording an administration needs clinical permission');
     return this.care.complete(id, body);
+  }
+
+  @Post('care-items/:id/repeat')
+  @HttpCode(200)
+  @RequirePermissions('preventive.write')
+  @ApiZodBody(careRepeatSchema)
+  setRepeat(@Param('id', UUID) id: string, @Body(zp(careRepeatSchema)) body: z.infer<typeof careRepeatSchema>) {
+    return this.care.setRepeat(id, body);
   }
 
   @Post('care-items/:id/defer')

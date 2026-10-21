@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Field } from '../forms/field';
 import { FormError } from '../forms/form-error';
 import { PatientPicker, type PickedPatient } from '../patients/patient-picker';
+import { emptyRepeat, RepeatField, repeatErrors, repeatPayload, type RepeatValue } from './repeat-field';
 import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Input, NativeSelect, Textarea } from '../ui/input';
@@ -31,6 +32,7 @@ export function AddVaccinationDialog({ open, onOpenChange }: { open: boolean; on
   const [title, setTitle] = useState('');
   const [dueDate, setDueDate] = useState(today);
   const [notes, setNotes] = useState('');
+  const [repeat, setRepeat] = useState<RepeatValue>(emptyRepeat());
   const [error, setError] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
 
@@ -41,6 +43,7 @@ export function AddVaccinationDialog({ open, onOpenChange }: { open: boolean; on
       setTitle('');
       setDueDate(today);
       setNotes('');
+      setRepeat(emptyRepeat());
       setError(null);
       setTried(false);
     }
@@ -80,6 +83,9 @@ export function AddVaccinationDialog({ open, onOpenChange }: { open: boolean; on
   }, [options, choice]);
 
   const protocol = choice && choice !== OTHER ? [...options.values()].flat().find((p) => p.id === choice) : undefined;
+  // A new vaccine starts from its protocol's schedule (or once only); the user can change it.
+  useEffect(() => setRepeat(emptyRepeat(!!protocol)), [protocol?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const repeatInvalid = Object.keys(repeatErrors(repeat, dueDate)).length > 0;
   const name = protocol ? protocol.name : title.trim();
   const missing = { patient: !patient, vaccine: !name, due: !dueDate };
 
@@ -92,6 +98,7 @@ export function AddVaccinationDialog({ open, onOpenChange }: { open: boolean; on
         title: name,
         dueDate,
         notes: notes.trim() || null,
+        ...repeatPayload(repeat, !!protocol),
       }),
     onSuccess: () => {
       toast.success(`${patient!.name} added: ${name}, due ${fmtDate(dueDate)}`, {
@@ -108,7 +115,7 @@ export function AddVaccinationDialog({ open, onOpenChange }: { open: boolean; on
   const submit = () => {
     setTried(true);
     setError(null);
-    if (missing.patient || missing.vaccine || missing.due) return;
+    if (missing.patient || missing.vaccine || missing.due || repeatInvalid) return;
     m.mutate();
   };
 
@@ -129,7 +136,7 @@ export function AddVaccinationDialog({ open, onOpenChange }: { open: boolean; on
             htmlFor="av-vaccine"
             required
             error={tried && missing.vaccine ? (choice === OTHER ? 'Type the vaccine name' : 'Choose the vaccine') : undefined}
-            hint={protocol?.intervalDays ? `Repeats by itself every ${protocol.intervalDays} days after it is given.` : protocols.data && !options.size ? 'No approved protocols yet for this species — type the vaccine name under “Other”.' : undefined}
+            hint={protocols.data && !options.size ? 'No approved protocols yet for this species — type the vaccine name under “Other”.' : undefined}
           >
             <NativeSelect id="av-vaccine" value={choice} onChange={(e) => setChoice(e.target.value)} aria-invalid={tried && missing.vaccine && choice !== OTHER}>
               <option value="">{protocols.isLoading ? 'Loading…' : 'Choose…'}</option>
@@ -158,6 +165,7 @@ export function AddVaccinationDialog({ open, onOpenChange }: { open: boolean; on
           <Field label="Due" htmlFor="av-due" required hint="Today if it is being given now." error={tried && missing.due ? 'Choose the due date' : undefined}>
             <Input id="av-due" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} aria-invalid={tried && missing.due} />
           </Field>
+          <RepeatField value={repeat} onChange={setRepeat} dueDate={dueDate} hasProtocol={!!protocol} protocolIntervalDays={protocol?.intervalDays} showErrors={tried} idPrefix="av-rp" />
           <Field label="Notes (optional)" htmlFor="av-notes">
             <Textarea id="av-notes" rows={2} value={notes} maxLength={1000} onChange={(e) => setNotes(e.target.value)} />
           </Field>
