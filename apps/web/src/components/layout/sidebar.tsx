@@ -58,7 +58,7 @@ export function SidebarNav({ collapsed, onNavigate }: { collapsed?: boolean; onN
                 type="button"
                 onClick={() => toggle(s.label)}
                 aria-expanded={open}
-                className="group mb-1 flex w-full items-center justify-between rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-sidebar-foreground/45 hover:text-sidebar-foreground"
+                className="group mb-1 flex w-full items-center justify-between rounded px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-sidebar-foreground/50 hover:text-sidebar-foreground"
               >
                 {s.label}
                 <ChevronDown className={cn('h-3 w-3 opacity-0 transition-transform group-hover:opacity-100', !open && '-rotate-90 opacity-100')} aria-hidden />
@@ -74,8 +74,8 @@ export function SidebarNav({ collapsed, onNavigate }: { collapsed?: boolean; onN
                       onClick={onNavigate}
                       aria-current={active ? 'page' : undefined}
                       className={cn(
-                        'group/nav relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-sidebar-foreground transition-all duration-150 hover:bg-sidebar-hover hover:text-sidebar-strong',
-                        active && 'bg-sidebar-active font-medium text-white shadow-[inset_0_1px_0_hsl(0_0%_100%/0.14),0_6px_16px_-6px_hsl(var(--sidebar-active)/0.9)] hover:bg-sidebar-active hover:text-white',
+                        'group/nav relative flex items-center gap-2.5 rounded-md px-2.5 py-[7px] text-[0.8125rem] text-sidebar-foreground transition-all duration-200 ease-apple hover:bg-sidebar-hover hover:text-sidebar-strong',
+                        active && 'bg-sidebar-active font-medium text-white shadow-[0_1px_2px_hsl(var(--sidebar-active)/0.35)] hover:bg-sidebar-active hover:text-white',
                         collapsed && 'justify-center px-0 py-2',
                       )}
                     >
@@ -98,7 +98,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
   return (
     <aside
       className={cn(
-        'no-print sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar bg-[linear-gradient(180deg,hsl(var(--sidebar-strong)/0.05),transparent_220px)] transition-[width] duration-200 lg:flex',
+        'no-print sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border/70 bg-sidebar transition-[width] duration-300 ease-apple lg:flex',
         collapsed ? 'w-[60px]' : 'w-[232px]',
       )}
     >

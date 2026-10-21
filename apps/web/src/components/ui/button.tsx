@@ -5,21 +5,21 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all duration-200 ease-apple focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/35 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-45 [&_svg]:size-4 [&_svg]:shrink-0',
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground shadow-[0_1px_2px_hsl(var(--shadow)/0.22),inset_0_1px_0_hsl(0_0%_100%/0.16)] hover:brightness-110 hover:shadow-[0_4px_14px_-4px_hsl(var(--primary)/0.6),inset_0_1px_0_hsl(0_0%_100%/0.16)]',
-        destructive: 'bg-destructive text-destructive-foreground shadow-[0_1px_2px_hsl(var(--shadow)/0.22),inset_0_1px_0_hsl(0_0%_100%/0.14)] hover:brightness-110',
-        outline: 'border border-input bg-card shadow-card hover:border-ring/40 hover:bg-muted/70',
-        secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/70',
-        ghost: 'hover:bg-muted/80',
+        default: 'bg-primary text-primary-foreground shadow-[0_1px_2px_hsl(var(--shadow)/0.18)] hover:brightness-110 active:brightness-95',
+        destructive: 'bg-destructive text-destructive-foreground shadow-[0_1px_2px_hsl(var(--shadow)/0.18)] hover:brightness-110 active:brightness-95',
+        outline: 'border border-border bg-card text-foreground shadow-[0_1px_1px_hsl(var(--shadow)/0.04)] hover:bg-muted/70 active:bg-muted',
+        secondary: 'bg-primary/10 text-primary hover:bg-primary/15 active:bg-primary/20',
+        ghost: 'text-foreground/85 hover:bg-foreground/[0.06] active:bg-foreground/10',
         link: 'text-primary underline-offset-4 hover:underline',
       },
       size: {
         default: 'h-9 px-4 py-2',
-        sm: 'h-8 rounded-md px-3 text-xs',
-        lg: 'h-11 px-6 text-[0.95rem]',
+        sm: 'h-8 rounded-md px-3 text-[0.8125rem]',
+        lg: 'h-12 rounded-lg px-7 text-base',
         icon: 'h-9 w-9',
         'icon-sm': 'h-7 w-7',
       },

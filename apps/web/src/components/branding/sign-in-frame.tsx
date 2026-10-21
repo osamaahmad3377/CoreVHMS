@@ -2,7 +2,7 @@ import { isDarkColour, type Branding } from '@vcms/shared';
 import { PawPrint } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const DEFAULT_MENU = '#131c26';
+const DEFAULT_MENU = '#f4f4f7';
 const GLOW = 'radial-gradient(760px 460px at 92% -8%, hsl(var(--primary) / 0.55), transparent 62%), radial-gradient(640px 420px at -8% 112%, hsl(var(--info) / 0.32), transparent 62%)';
 
 /** A logo for light surfaces that switches to the dark-background version in dark mode (when there is one). */
@@ -83,7 +83,7 @@ export function SignInFrame({ branding: b, children, className }: { branding: Br
         </div>
         <div className="relative max-w-lg">{welcome}</div>
         <p className={cn('relative text-xs', bg.dark ? 'text-white/60' : 'text-sidebar-foreground/60')}>{footer}</p>
-        <PawPrint aria-hidden className="pointer-events-none absolute -bottom-16 -right-12 h-80 w-80 -rotate-12 opacity-[0.05]" />
+        <PawPrint aria-hidden className="pointer-events-none absolute -bottom-16 -right-12 h-80 w-80 -rotate-12 opacity-[0.025]" />
         {!bg.overlay && <div className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-primary/20 blur-3xl" />}
       </div>
       <div className="app-canvas flex items-center justify-center bg-background p-6 sm:p-10">

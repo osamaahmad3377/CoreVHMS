@@ -16,7 +16,7 @@ export const BRAND_FONTS = ['SYSTEM', 'INTER', 'ROBOTO', 'OPEN_SANS', 'LATO', 'P
 export type BrandFont = (typeof BRAND_FONTS)[number];
 /** Font names as shown to the owner; SYSTEM is the device's own interface font. */
 export const BRAND_FONT_LABELS: Record<BrandFont, string> = {
-  SYSTEM: 'Inter (standard)',
+  SYSTEM: 'System font (SF Pro on Apple devices)',
   INTER: 'Inter',
   ROBOTO: 'Roboto',
   OPEN_SANS: 'Open Sans',
@@ -34,7 +34,7 @@ export type PrintSize = 'SMALL' | 'MEDIUM' | 'LARGE';
 export type PrintRule = 'BAND' | 'LINE' | 'DOUBLE' | 'NONE';
 
 /** Corner roundness of buttons, fields and cards (the theme's --radius). */
-export const CORNER_RADIUS: Record<CornerStyle, string> = { SHARP: '0.25rem', STANDARD: '0.75rem', ROUNDED: '1.25rem' };
+export const CORNER_RADIUS: Record<CornerStyle, string> = { SHARP: '0.25rem', STANDARD: '0.875rem', ROUNDED: '1.375rem' };
 
 export const brandingUpdateSchema = z.object({
   /** Name shown in the menu, on the sign-in page and in the browser tab; empty = the clinic name. */

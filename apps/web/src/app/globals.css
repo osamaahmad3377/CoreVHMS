@@ -4,79 +4,82 @@
 
 @layer base {
   :root {
-    --background: 214 30% 97%;
-    --foreground: 215 32% 11%;
+    /* Calm, neutral surfaces: warm-grey canvas, pure-white cards, near-black text. */
+    --background: 240 11% 96.5%;
+    --foreground: 240 3% 11.5%;
     --card: 0 0% 100%;
-    --card-foreground: 215 32% 11%;
+    --card-foreground: 240 3% 11.5%;
     --popover: 0 0% 100%;
-    --popover-foreground: 215 32% 11%;
+    --popover-foreground: 240 3% 11.5%;
     --primary: 172 78% 27%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 214 24% 94%;
-    --secondary-foreground: 215 30% 16%;
-    --muted: 214 24% 95%;
-    --muted-foreground: 215 12% 40%;
+    --secondary: 240 9% 94%;
+    --secondary-foreground: 240 3% 16%;
+    --muted: 240 9% 95%;
+    --muted-foreground: 240 2% 42%;
     --accent: 172 42% 94%;
     --accent-foreground: 172 80% 17%;
-    --destructive: 0 72% 46%;
+    --destructive: 3 78% 47%;
     --destructive-foreground: 0 0% 100%;
     --warning: 35 92% 42%;
     --warning-foreground: 0 0% 100%;
-    --success: 152 62% 32%;
+    --success: 142 62% 32%;
     --success-foreground: 0 0% 100%;
-    --info: 211 80% 44%;
+    --info: 211 100% 44%;
     --info-foreground: 0 0% 100%;
-    --border: 214 20% 89%;
-    --input: 214 18% 82%;
+    /* Hairlines: barely there. */
+    --border: 240 6% 89%;
+    --input: 240 6% 84%;
     --ring: 172 78% 30%;
-    --radius: 0.75rem;
-    /* Shadow colour: a cool dark tone, so shadows feel soft rather than grey. */
-    --shadow: 215 45% 14%;
-    --sidebar: 210 34% 11%;
-    --sidebar-foreground: 210 16% 80%;
-    --sidebar-border: 210 24% 19%;
-    --sidebar-active: 172 60% 32%;
-    /* Brightest text in the side menu and its hover tint; clinics with a light menu colour get dark values (Branding). */
-    --sidebar-strong: 0 0% 100%;
-    --sidebar-hover: 0 0% 100% / 0.06;
-    /* The clinic's font (Branding); Inter unless the clinic chose another. */
-    --font-brand: var(--font-inter), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --radius: 0.875rem;
+    /* Shadows are neutral and very soft. */
+    --shadow: 240 12% 12%;
+    /* The default side menu is light and quiet; clinics that choose a menu colour (Branding) replace these. */
+    --sidebar: 240 12% 96%;
+    --sidebar-foreground: 240 3% 28%;
+    --sidebar-border: 240 6% 89%;
+    --sidebar-active: 172 70% 29%;
+    /* Brightest text in the side menu and its hover tint; clinics with a dark menu colour get light values (Branding). */
+    --sidebar-strong: 240 3% 10%;
+    --sidebar-hover: 240 10% 10% / 0.06;
+    /* The clinic's font (Branding). By default the system font: SF Pro on Apple devices, Inter elsewhere. */
+    --font-brand: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', var(--font-inter), ui-sans-serif, system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   }
 
   .dark {
     color-scheme: dark;
-    --background: 222 32% 6.5%;
-    --foreground: 214 18% 93%;
-    --card: 222 28% 9.5%;
-    --card-foreground: 214 18% 93%;
-    --popover: 222 28% 10.5%;
-    --popover-foreground: 214 18% 93%;
+    --background: 240 6% 4.5%;
+    --foreground: 240 5% 95%;
+    --card: 240 5% 10%;
+    --card-foreground: 240 5% 95%;
+    --popover: 240 5% 12%;
+    --popover-foreground: 240 5% 95%;
     --primary: 172 62% 42%;
-    --primary-foreground: 222 32% 6%;
-    --secondary: 222 20% 15%;
-    --secondary-foreground: 214 18% 90%;
-    --muted: 222 20% 13%;
-    --muted-foreground: 214 10% 63%;
+    --primary-foreground: 240 6% 5%;
+    --secondary: 240 4% 17%;
+    --secondary-foreground: 240 5% 92%;
+    --muted: 240 4% 14%;
+    --muted-foreground: 240 3% 62%;
     --accent: 172 40% 16%;
     --accent-foreground: 172 50% 80%;
-    --destructive: 0 70% 56%;
+    --destructive: 3 80% 60%;
     --destructive-foreground: 0 0% 100%;
     --warning: 38 92% 52%;
-    --warning-foreground: 222 32% 6%;
-    --success: 152 55% 46%;
-    --success-foreground: 222 32% 6%;
-    --info: 211 80% 62%;
-    --info-foreground: 222 32% 6%;
-    --border: 222 18% 18%;
-    --input: 222 18% 23%;
+    --warning-foreground: 240 6% 5%;
+    --success: 142 55% 48%;
+    --success-foreground: 240 6% 5%;
+    --info: 211 100% 64%;
+    --info-foreground: 240 6% 5%;
+    --border: 240 4% 20%;
+    --input: 240 4% 26%;
     --ring: 172 62% 42%;
     --shadow: 0 0% 0%;
-    --sidebar: 222 34% 5%;
-    --sidebar-foreground: 214 12% 76%;
-    --sidebar-border: 222 22% 13%;
+    --sidebar: 240 6% 8%;
+    --sidebar-foreground: 240 4% 76%;
+    --sidebar-border: 240 4% 15%;
     --sidebar-active: 172 55% 30%;
     --sidebar-strong: 0 0% 100%;
-    --sidebar-hover: 0 0% 100% / 0.06;
+    --sidebar-hover: 0 0% 100% / 0.07;
   }
 
   * {
@@ -88,10 +91,17 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: 'cv11', 'ss01', 'cv05';
-    letter-spacing: -0.003em;
+    letter-spacing: -0.011em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
   h1, h2, h3 {
-    letter-spacing: -0.02em;
+    letter-spacing: -0.022em;
+  }
+  /* Lighter, finer icon strokes, like SF Symbols. */
+  svg.lucide {
+    stroke-width: 1.75;
   }
   ::selection {
     background: hsl(var(--primary) / 0.22);
@@ -107,20 +117,17 @@
   }
   /* A soft glow of the clinic's own colour at the top of the page, so every screen has depth. */
   .app-canvas {
-    background-image:
-      radial-gradient(900px 320px at 20% -120px, hsl(var(--primary) / 0.09), transparent 70%),
-      radial-gradient(700px 280px at 95% -140px, hsl(var(--info) / 0.06), transparent 70%);
+    background-image: radial-gradient(1100px 380px at 50% -200px, hsl(var(--primary) / 0.05), transparent 72%);
     background-repeat: no-repeat;
   }
   .dark .app-canvas {
-    background-image:
-      radial-gradient(900px 320px at 20% -120px, hsl(var(--primary) / 0.16), transparent 70%),
-      radial-gradient(700px 280px at 95% -140px, hsl(var(--info) / 0.08), transparent 70%);
+    background-image: radial-gradient(1100px 380px at 50% -200px, hsl(var(--primary) / 0.12), transparent 72%);
   }
+  /* Frosted glass: the page shows through, softened. */
   .glass {
-    background-color: hsl(var(--card) / 0.78);
-    -webkit-backdrop-filter: saturate(1.6) blur(14px);
-    backdrop-filter: saturate(1.6) blur(14px);
+    background-color: hsl(var(--background) / 0.72);
+    -webkit-backdrop-filter: saturate(1.8) blur(22px);
+    backdrop-filter: saturate(1.8) blur(22px);
   }
   .text-gradient {
     background-image: linear-gradient(120deg, hsl(var(--primary)), hsl(var(--info)));
@@ -134,7 +141,7 @@
     animation: shimmer 1.6s linear infinite;
   }
   .page-enter {
-    animation: fade-up 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: fade-up 0.42s cubic-bezier(0.32, 0.72, 0, 1) both;
   }
 }
 

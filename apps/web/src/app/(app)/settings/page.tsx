@@ -19,7 +19,7 @@ export default function SettingsIndex() {
             <h2 id={`sg-${g}`} className="mb-2 text-sm font-semibold">{g}</h2>
             <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">
               {inGroup.map((i) => (
-                <Link key={i.href} href={i.href} className="group flex items-center gap-3 rounded-lg border bg-card p-3 shadow-sm transition-colors hover:border-primary/50 hover:bg-primary/5">
+                <Link key={i.href} href={i.href} className="group flex items-center gap-3 rounded-xl bg-card p-3.5 shadow-card transition-all duration-300 ease-apple hover:-translate-y-px hover:shadow-card-hover">
                   <span className="rounded-md bg-primary/10 p-2 text-primary"><i.icon className="h-4 w-4" /></span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium">{i.label}</span>
