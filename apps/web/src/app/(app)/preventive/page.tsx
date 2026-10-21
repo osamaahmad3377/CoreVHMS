@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CARE_KINDS, enumLabel, type Paginated } from '@vcms/shared';
-import { BellRing, CalendarPlus, CheckCircle2, Edit, Plus, ShieldCheck, Users } from 'lucide-react';
+import { BellRing, CalendarPlus, CheckCircle2, Edit, Plus, ShieldCheck, Syringe, Users } from 'lucide-react';
 import Link from 'next/link';
 import { Suspense, useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -10,6 +10,7 @@ import { Field } from '@/components/forms/field';
 import { FormError } from '@/components/forms/form-error';
 import { EmptyState, PageHeader } from '@/components/page';
 import { ProductPicker } from '@/components/pharmacy/product-picker';
+import { AddVaccinationDialog } from '@/components/preventive/add-vaccination-dialog';
 import { CareStatusBadge } from '@/components/preventive/care-plan';
 import { RequirePermission } from '@/components/require';
 import { Badge } from '@/components/ui/badge';
@@ -209,10 +210,24 @@ function Compliance() {
 
 function Preventive() {
   const url = useUrlState();
+  const { can } = useSession();
   const tab = url.get('tab', 'due');
+  const [adding, setAdding] = useState(false);
   return (
     <>
-      <PageHeader title="Vaccines & reminders" help="preventive" description="Vaccinations, parasite control and health checks — what is due, who to remind, and how well patients are covered." />
+      <PageHeader
+        title="Vaccines & reminders"
+        help="preventive"
+        description="Vaccinations, parasite control and health checks — what is due, who to remind, and how well patients are covered."
+        actions={
+          can('preventive.write') && (
+            <Button onClick={() => setAdding(true)}>
+              <Syringe /> Add patient for vaccination
+            </Button>
+          )
+        }
+      />
+      <AddVaccinationDialog open={adding} onOpenChange={setAdding} />
       <div className={cn(tabListClass, 'mb-6')} role="tablist">
         {[['due', 'Due & overdue'], ['protocols', 'Protocols'], ['compliance', 'Compliance']].map(([k, l]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => url.set({ tab: k })} className={tabTriggerClass()}>{l}</button>
