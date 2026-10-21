@@ -1,4 +1,6 @@
 'use client';
+import { ChoiceOrOther } from '../forms/choice-or-other';
+import { COAT_COLOURS, bloodTypeOptions } from '@/lib/patient-options';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery } from '@tanstack/react-query';
 import { IDENTIFIER_TYPES, PATIENT_SEXES, createPatientSchema, enumLabel, updatePatientSchema } from '@vcms/shared';
@@ -76,6 +78,9 @@ export function PatientForm({
   const e = formState.errors;
   const ids = useFieldArray({ control, name: 'identifiers' });
   const speciesId = useWatch({ control, name: 'speciesId' });
+  const colour = useWatch({ control, name: 'colour' }) as string | undefined;
+  const bloodType = useWatch({ control, name: 'bloodType' }) as string | undefined;
+  const speciesName = species.data?.find((s) => s.id === speciesId)?.name;
   const name = useWatch({ control, name: 'name' });
   const identifierValues = useWatch({ control, name: 'identifiers' });
   const discard = useDiscardConfirm();
@@ -196,7 +201,7 @@ export function PatientForm({
           <Field label="Species" htmlFor="speciesId" error={e.speciesId} required>
             <NativeSelect
               id="speciesId"
-              {...register('speciesId', { onChange: () => setValue('breedId', '') })}
+              {...register('speciesId', { onChange: () => { setValue('breedId', ''); if (bloodType && [...bloodTypeOptions('dog'), ...bloodTypeOptions('cat')].includes(bloodType)) setValue('bloodType', ''); } })}
             >
               <option value="">Select species…</option>
               {Object.entries(grouped).map(([cat, list]) => (
@@ -277,10 +282,10 @@ export function PatientForm({
             <Input id="breedText" placeholder="e.g. Labrador × Pointer" {...register('breedText')} />
           </Field>
           <Field label="Colour" htmlFor="colour" error={e.colour}>
-            <Input id="colour" {...register('colour')} />
+            <ChoiceOrOther id="colour" value={colour ?? ''} onChange={(v) => setValue('colour', v, { shouldDirty: true })} options={COAT_COLOURS} emptyLabel="Not recorded" specifyLabel="Specify colour" placeholder="e.g. Silver with white socks" invalid={!!e.colour} />
           </Field>
           <Field label="Blood type" htmlFor="bloodType" error={e.bloodType}>
-            <Input id="bloodType" placeholder="e.g. DEA 1.1+ / A" {...register('bloodType')} />
+            <ChoiceOrOther id="bloodType" value={bloodType ?? ''} onChange={(v) => setValue('bloodType', v, { shouldDirty: true })} options={bloodTypeOptions(speciesName)} emptyLabel="Not tested / unknown" specifyLabel="Specify blood type" placeholder="e.g. DEA 4 positive" invalid={!!e.bloodType} />
           </Field>
         </div>
         <Field label="Markings / distinguishing features" htmlFor="markings" error={e.markings}>
