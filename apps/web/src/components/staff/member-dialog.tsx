@@ -47,7 +47,7 @@ export function TemporaryPasswordDialog({ result, onClose }: { result: Temporary
         </DialogHeader>
         {result && (
           <div className="grid gap-3">
-            <div className="flex items-center gap-2 rounded-md border bg-muted/40 p-3">
+            <div className="flex items-center gap-2 rounded-lg surface-flat p-3">
               <code data-testid="temporary-password" className="flex-1 select-all font-mono text-lg tracking-wide">{result.temporaryPassword}</code>
               <Button size="sm" variant="outline" onClick={copy}>{copied ? <><Check /> Copied</> : <><Copy /> Copy</>}</Button>
             </div>
@@ -150,7 +150,7 @@ export function MemberDialog({ member, open, onOpenChange, onTemporaryPassword }
                   role="radio"
                   aria-checked={method === value}
                   onClick={() => setMethod(value)}
-                  className={cn('flex items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors', method === value ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:bg-muted')}
+                  className={cn('flex items-start gap-3 rounded-lg surface-flat p-3 text-left text-sm transition-colors', method === value ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:bg-muted')}
                 >
                   <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                   <span><span className="block font-medium">{title}</span><span className="text-xs text-muted-foreground">{text}</span></span>
@@ -183,7 +183,7 @@ export function MemberDialog({ member, open, onOpenChange, onTemporaryPassword }
           </label>
           <fieldset className="grid gap-2">
             <legend className="mb-1 text-sm font-medium">Roles *</legend>
-            <div className="grid gap-1 rounded-md border p-2 sm:grid-cols-2">
+            <div className="grid gap-1 rounded-lg surface-flat p-2 sm:grid-cols-2">
               {common.map(roleBox)}
               {others.length > 0 && (
                 <div className="sm:col-span-2">

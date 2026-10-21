@@ -165,7 +165,7 @@ export function ProductDialog({ product, open, onOpenChange, onSaved, defaultTyp
                 role="radio"
                 aria-checked={f.type === type}
                 onClick={() => choose(type)}
-                className="flex items-start gap-3 rounded-lg border p-3 text-left text-sm transition-colors hover:border-primary hover:bg-primary/5"
+                className="flex items-start gap-3 rounded-xl surface-flat p-3 text-left text-sm transition-colors hover:border-primary hover:bg-primary/5"
               >
                 <Icon className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                 <span><span className="block font-medium">{PRODUCT_TYPE_LABELS[type]}</span><span className="text-xs text-muted-foreground">{hint}</span></span>
@@ -204,7 +204,7 @@ export function ProductDialog({ product, open, onOpenChange, onSaved, defaultTyp
             </div>
 
             {clinical ? (
-              <fieldset className="grid gap-3 rounded-md border p-3 sm:grid-cols-4">
+              <fieldset className="grid gap-3 rounded-lg surface-flat p-3 sm:grid-cols-4">
                 <legend className="px-1 text-sm font-medium">Strength & what it is given out per (used to work out doses)</legend>
                 <Field label="Strength" htmlFor="p-sv" hint="in ONE tablet, mL or pack" help="How much medicine is in a single tablet, capsule or mL. For a 250 mg tablet, type 250 and choose mg. The system uses this to work out each patient’s dose from their weight."><Input id="p-sv" inputMode="decimal" value={f.strengthValue} onChange={set('strengthValue')} /></Field>
                 <Field label="Strength unit" htmlFor="p-su"><NativeSelect id="p-su" value={f.strengthUnit} onChange={set('strengthUnit')}>{['mg', 'mcg', 'g', 'IU', 'mL'].map((u) => <option key={u}>{u}</option>)}</NativeSelect></Field>
@@ -310,7 +310,7 @@ function ProductPhoto({ product }: { product: Product }) {
     onError: (e: Error) => toast.error(e.message),
   });
   return (
-    <div className="flex items-center gap-3 rounded-md border p-3">
+    <div className="flex items-center gap-3 rounded-lg surface-flat p-3">
       <div className={cn('flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted', !photoId && 'text-muted-foreground')}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         {photoId ? <img src={`/api/v1/attachments/${photoId}/download?inline=1`} alt={`Photo of ${product.name}`} className="h-full w-full object-cover" /> : <Package className="h-6 w-6" />}

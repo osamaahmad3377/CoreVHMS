@@ -118,8 +118,9 @@
     --sidebar-hover: 0 0% 100% / 0.07;
   }
 
+  /* Default hairlines are translucent so they sit well on glass. */
   * {
-    @apply border-border;
+    border-color: hsl(var(--foreground) / 0.09);
   }
   html {
     -webkit-text-size-adjust: 100%;
@@ -244,6 +245,16 @@
       0 2px 4px hsl(var(--shadow) / 0.06),
       0 18px 40px -10px hsl(var(--shadow) / 0.2);
   }
+  /* The Save/Cancel bar that stays at the bottom of long forms: strong glass so content scrolls under it legibly. */
+  .action-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    border-top: 1px solid hsl(var(--foreground) / 0.07);
+    background-color: hsl(var(--glass) / var(--glass-strong-alpha));
+    -webkit-backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
+    backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
+  }
   /* Side menu glass, tinted with the clinic's menu colour. */
   .surface-menu {
     background-color: hsl(var(--sidebar) / var(--sidebar-alpha));
@@ -256,7 +267,7 @@
 
 /* Browsers without backdrop-filter: solid surfaces, so text keeps its contrast. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .surface, .surface-strong, .glass { background-color: hsl(var(--card)); }
+  .surface, .surface-strong, .glass, .action-bar { background-color: hsl(var(--card)); }
   .surface-flat { background-color: hsl(var(--card)); }
   .surface-menu { background-color: hsl(var(--sidebar)); }
 }

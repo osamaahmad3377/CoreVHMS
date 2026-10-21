@@ -21,7 +21,7 @@ function Record() {
   const record = q.data!;
   return (
     <>
-      <div className="no-print mb-4 flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3 shadow-card">
+      <div className="no-print mb-4 flex flex-wrap items-center gap-2 rounded-xl surface p-3 shadow-card">
         <div className="mr-auto">
           <p className="text-sm font-semibold">Complete record — {record.patient.name}</p>
           <p className="text-xs text-muted-foreground">Everything the clinic holds about this patient. Use Print to save it as a PDF.</p>

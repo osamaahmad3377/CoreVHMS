@@ -34,7 +34,7 @@ export function MethodTiles({ value, onChange, cashBlocked }: { value: string; o
             aria-checked={value === key}
             disabled={disabled}
             onClick={() => onChange(key)}
-            className={cn('flex flex-col items-center gap-1 rounded-lg border p-2.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40', value === key ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-muted')}
+            className={cn('flex flex-col items-center gap-1 rounded-xl surface-flat p-2.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40', value === key ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-muted')}
           >
             <Icon className="h-5 w-5" /> {enumLabel(key)}
           </button>

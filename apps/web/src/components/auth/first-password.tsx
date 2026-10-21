@@ -30,7 +30,7 @@ export function FirstPasswordChange({ name, onDone }: { name: string; onDone: ()
     window.location.href = '/login';
   };
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-6">
+    <div className="app-canvas flex min-h-screen items-center justify-center p-6">
       <Card className="w-full max-w-md">
         <CardHeader>
           <div>

@@ -179,8 +179,8 @@ export default function PlansPage() {
               <CardContent className="grid gap-3">
                 <p className="text-2xl font-semibold">{planPrice(p)}<span className="text-sm font-normal text-muted-foreground"> / month</span></p>
                 <dl className="grid grid-cols-2 gap-2 text-sm">
-                  <div className="rounded-md border p-2"><dt className="text-xs text-muted-foreground">Staff accounts</dt><dd className="font-semibold">{limitText(p.maxStaff)}</dd></div>
-                  <div className="rounded-md border p-2"><dt className="text-xs text-muted-foreground">Branches</dt><dd className="font-semibold">{limitText(p.maxBranches)}</dd></div>
+                  <div className="rounded-lg surface-flat p-2"><dt className="text-xs text-muted-foreground">Staff accounts</dt><dd className="font-semibold">{limitText(p.maxStaff)}</dd></div>
+                  <div className="rounded-lg surface-flat p-2"><dt className="text-xs text-muted-foreground">Branches</dt><dd className="font-semibold">{limitText(p.maxBranches)}</dd></div>
                 </dl>
                 <FeatureList features={p.features} />
                 <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Building2 className="h-3.5 w-3.5" /> {p.clinicCount} clinic{p.clinicCount === 1 ? '' : 's'} on this plan</p>

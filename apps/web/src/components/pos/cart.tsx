@@ -121,7 +121,7 @@ export function PosCart({
   const items = lines.reduce((n, l) => n + l.quantity, 0);
   const stockProblem = lines.find((l) => l.item.trackStock && !allowNegative && l.item.available !== null && l.quantity > l.item.available);
   return (
-    <div className="flex h-full min-h-[480px] flex-col rounded-lg border bg-card shadow-sm">
+    <div className="flex h-full min-h-[480px] flex-col rounded-xl surface shadow-card">
       <div className="border-b p-3">
         {client && !pickingClient ? (
           <div className="flex items-center gap-2 rounded-md bg-primary/5 px-3 py-2">

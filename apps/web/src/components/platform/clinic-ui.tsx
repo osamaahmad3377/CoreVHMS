@@ -99,7 +99,7 @@ export function OwnerAccessDialog({ result: current, onClose }: { result: OwnerA
         </DialogHeader>
         {result && (
           <div className="grid gap-3">
-            <pre data-testid="welcome-message" className="max-h-60 select-all overflow-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-3 font-sans text-sm">{welcomeMessage(result)}</pre>
+            <pre data-testid="welcome-message" className="max-h-60 select-all overflow-auto whitespace-pre-wrap rounded-lg surface-flat p-3 font-sans text-sm">{welcomeMessage(result)}</pre>
             <div className="flex flex-wrap gap-2">
               <CopyButton text={welcomeMessage(result)} what="Message" label="Copy message" variant="outline" />
               <Button asChild size="sm" variant="outline">

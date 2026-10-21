@@ -25,7 +25,7 @@ const EVENT_LABELS: Record<string, string> = {
 
 function Stat({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: React.ReactNode; sub?: string }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border bg-card p-3">
+    <div className="flex items-center gap-3 rounded-xl surface-flat p-3">
       <span className="rounded-md bg-primary/10 p-2 text-primary">{icon}</span>
       <span className="min-w-0">
         <span className="block text-lg font-semibold leading-tight">{value}</span>

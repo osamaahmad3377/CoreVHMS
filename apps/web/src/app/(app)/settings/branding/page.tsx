@@ -26,7 +26,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input, NativeSelect, Textarea } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger, tabListClass, tabTriggerClass } from '@/components/ui/tabs';
 import { ApiError, api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { cn } from '@/lib/utils';
@@ -496,7 +496,7 @@ function BrandingForm({ branding, orgId, orgName, clinic }: { branding: Branding
               'Preview',
               <AppPreview b={b} dark={dark} />,
               'Colours, font and name update here as you type; staff see them after you save.',
-              <div className="flex rounded-md border p-0.5" role="group" aria-label="Preview theme">
+              <div className={cn(tabListClass)} role="group" aria-label="Preview theme">
                 <Button type="button" size="sm" variant={dark ? 'ghost' : 'secondary'} aria-pressed={!dark} onClick={() => setDark(false)}><Sun /> Light</Button>
                 <Button type="button" size="sm" variant={dark ? 'secondary' : 'ghost'} aria-pressed={dark} onClick={() => setDark(true)}><Moon /> Dark</Button>
               </div>,
@@ -679,7 +679,7 @@ function BrandingForm({ branding, orgId, orgName, clinic }: { branding: Branding
         </TabsContent>
       </Tabs>
 
-      <div className="sticky bottom-0 z-10 mt-6 flex flex-wrap items-center justify-end gap-2 border-t bg-card/95 py-3 backdrop-blur">
+      <div className="action-bar mt-6 flex flex-wrap items-center justify-end gap-2 py-3">
         {dirty && <span className="mr-auto text-xs text-muted-foreground">You have unsaved changes.</span>}
         <Button type="button" variant="outline" disabled={!dirty || save.isPending} onClick={() => { setDraft(draftOf(branding, orgName)); setErrors({}); setError(null); }}>Undo changes</Button>
         <Button type="submit" loading={save.isPending} disabled={!dirty}>Save</Button>

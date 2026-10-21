@@ -73,7 +73,7 @@ function Guide({ g, open, onToggle }: { g: HelpGuide; open: boolean; onToggle: (
           ))}
           {links.length > 0 && <div className="flex flex-wrap gap-2">
             {links.map((l) => (
-              <Link key={l.href} href={l.href} className="inline-flex items-center gap-1 rounded-md border bg-card px-3 py-1.5 text-sm font-medium text-primary hover:bg-muted">
+              <Link key={l.href} href={l.href} className="inline-flex items-center gap-1 rounded-lg surface-flat px-3 py-1.5 text-sm font-medium text-primary hover:bg-muted">
                 Go to {l.label} <ChevronRight className="h-3.5 w-3.5" />
               </Link>
             ))}
@@ -150,7 +150,7 @@ export default function HelpPage() {
                 className="h-11 w-full rounded-lg border border-input bg-card pl-9 pr-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </div>
-            <div className="flex rounded-lg border bg-card p-1" role="tablist">
+            <div className="flex rounded-xl surface-flat p-1" role="tablist">
               {(['mine', 'all'] as const).map((s) => (
                 <button key={s} role="tab" aria-selected={scope === s} onClick={() => setScope(s)} className={cn('rounded-md px-3 py-1.5 text-sm', scope === s ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>
                   {s === 'mine' ? 'For my role' : 'All guides'}

@@ -122,7 +122,7 @@ export const PosCatalog = React.forwardRef<HTMLInputElement, Props>(function Pos
                   onClick={() => p.onAdd(item)}
                   aria-label={`Add ${item.name}`}
                   className={cn(
-                    'group relative flex h-full min-h-[118px] w-full flex-col rounded-lg border bg-card p-3 text-left shadow-sm transition-all',
+                    'group relative flex h-full min-h-[118px] w-full flex-col rounded-xl surface-flat p-3 text-left shadow-card transition-all',
                     blocked ? 'cursor-not-allowed bg-muted/40 opacity-50 grayscale' : 'hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md active:translate-y-0',
                     inCart > 0 && 'border-primary ring-1 ring-primary/40',
                   )}

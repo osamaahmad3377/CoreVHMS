@@ -20,6 +20,7 @@ import { ApiError, api, qs } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { branchTime, dayLabel, dowOf, hhmm, localDate, minuteOfDay, monthGrid, shiftDate, shiftMonth, todayIn, weekStart, zonedInstant } from '@/lib/time';
 import type { Appointment, PatientRow, RosterEntry } from '@/lib/types';
+import { tabListClass, tabTriggerClass } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 
 const PX_PER_MIN = 1.6;
@@ -290,14 +291,14 @@ function CalendarView() {
                 </option>
               ))}
             </NativeSelect>
-            <div className="flex rounded-md border p-0.5" role="tablist" aria-label="View">
+            <div className={tabListClass} role="tablist" aria-label="View">
               {(['day', 'week', 'month'] as const).map((v) => (
                 <button
                   key={v}
                   role="tab"
                   aria-selected={view === v}
                   onClick={() => url.set({ view: v })}
-                  className={cn('rounded px-3 py-1 text-xs font-medium capitalize', view === v ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}
+                  className={cn(tabTriggerClass(), 'h-8 capitalize')}
                 >
                   {v}
                 </button>

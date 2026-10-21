@@ -30,7 +30,7 @@ export function NoteSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className={cn('overflow-hidden rounded-xl border bg-card transition-shadow', open ? 'border-primary/40 shadow-card' : 'hover:border-primary/30')}>
+    <section className={cn('overflow-hidden rounded-xl surface-flat transition-shadow', open ? 'border-primary/40 shadow-card' : 'hover:border-primary/30')}>
       <h3>
         <button type="button" aria-expanded={open} onClick={onToggle} className="flex w-full items-center gap-3 px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
           <span className={cn('grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-semibold', filled ? 'bg-success text-white' : open ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>

@@ -5,9 +5,22 @@ import { cn } from '@/lib/utils';
 
 export const Tabs = TabsPrimitive.Root;
 
+/** The glass segmented bar, shared by Radix tabs and by link/button tab bars (role="tablist" or a nav). */
+export const tabListClass = 'surface-flat inline-flex h-auto max-w-full items-center gap-1 overflow-x-auto rounded-2xl p-1 [scrollbar-width:none]';
+const ACTIVE = 'bg-card text-foreground shadow-[0_1px_3px_hsl(var(--shadow)/0.12)] dark:bg-white/10';
+/** One tab. Active when data-state="active", aria-selected="true" or aria-current="page" (or `active`). */
+export const tabTriggerClass = (active?: boolean) =>
+  cn(
+    'inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-pill px-4 text-sm font-medium text-muted-foreground transition-all duration-200 ease-apple hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50',
+    'data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_3px_hsl(var(--shadow)/0.12)] dark:data-[state=active]:bg-white/10',
+    'aria-selected:bg-card aria-selected:text-foreground aria-selected:shadow-[0_1px_3px_hsl(var(--shadow)/0.12)] dark:aria-selected:bg-white/10',
+    'aria-[current=page]:bg-card aria-[current=page]:text-foreground aria-[current=page]:shadow-[0_1px_3px_hsl(var(--shadow)/0.12)] dark:aria-[current=page]:bg-white/10',
+    active && ACTIVE,
+  );
+
 export const TabsList = React.forwardRef<React.ElementRef<typeof TabsPrimitive.List>, React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>>(
   ({ className, ...props }, ref) => (
-    <TabsPrimitive.List ref={ref} className={cn('surface-flat inline-flex h-auto max-w-full items-center gap-1 overflow-x-auto rounded-pill p-1 [scrollbar-width:none]', className)} {...props} />
+    <TabsPrimitive.List ref={ref} className={cn(tabListClass, className)} {...props} />
   ),
 );
 TabsList.displayName = 'TabsList';
@@ -16,10 +29,7 @@ export const TabsTrigger = React.forwardRef<React.ElementRef<typeof TabsPrimitiv
   ({ className, ...props }, ref) => (
     <TabsPrimitive.Trigger
       ref={ref}
-      className={cn(
-        'inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-pill px-4 text-sm font-medium text-muted-foreground transition-all duration-200 ease-apple hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_3px_hsl(var(--shadow)/0.12)] dark:data-[state=active]:bg-white/10',
-        className,
-      )}
+      className={cn(tabTriggerClass(), className)}
       {...props}
     />
   ),

@@ -107,7 +107,7 @@ function Readings({ s, phase, locked }: { s: Surgery; phase: 'INTRA_OP' | 'RECOV
   return (
     <div className="grid gap-3">
       {canRecord && (
-        <div className="grid gap-2 rounded-md border bg-muted/30 p-3">
+        <div className="grid gap-2 rounded-lg surface-flat p-3">
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 xl:grid-cols-11">
             {fields.map((f) => (
               <label key={f.key} className="grid gap-1 text-2xs text-muted-foreground">{f.label}<Input inputMode="decimal" className="h-8" value={v[f.key] ?? ''} onChange={(e) => setV((s2) => ({ ...s2, [f.key]: e.target.value }))} /></label>
@@ -419,7 +419,7 @@ function SurgeryView() {
               <Card>
                 <CardHeader><CardTitle>Addenda</CardTitle></CardHeader>
                 <CardContent className="grid gap-3">
-                  {(s.addenda ?? []).map((a) => <p key={a.id} className="rounded-md border p-3 text-sm"><span className="block text-xs text-muted-foreground">{fmtDateTime(a.createdAt)} · {a.authorName}</span>{a.text}</p>)}
+                  {(s.addenda ?? []).map((a) => <p key={a.id} className="rounded-lg surface-flat p-3 text-sm"><span className="block text-xs text-muted-foreground">{fmtDateTime(a.createdAt)} · {a.authorName}</span>{a.text}</p>)}
                   {writable && (
                     <div className="grid gap-2">
                       <Textarea aria-label="Addendum" value={addendum} onChange={(e) => setAddendum(e.target.value)} placeholder="Add a correction or later information. The signed report is not changed." />

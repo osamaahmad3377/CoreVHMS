@@ -107,7 +107,7 @@ function PreviousVisits({ patientId, currentId, initialVisitId }: { patientId: s
   return (
     <ul className="grid gap-2">
       {q.data.map((e) => (
-        <li key={e.id} className="rounded-lg border bg-card">
+        <li key={e.id} className="rounded-xl surface-flat">
           <button type="button" onClick={() => setSelected(e.id)} className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none" title="Open this consultation in full">
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-medium">
@@ -187,7 +187,7 @@ export function LastVisitStrip({ patientId, currentId, onOpenHistory }: { patien
   if (!can('clinical.read') || q.isLoading || q.error) return null;
   const last = q.data?.[0];
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border bg-card px-3 py-2 text-sm">
+    <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl surface-flat px-3 py-2 text-sm">
       <History className="h-4 w-4 text-muted-foreground" />
       {last ? (
         <span className="min-w-0 flex-1">

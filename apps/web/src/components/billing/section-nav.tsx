@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useSession } from '@/lib/session';
 import { cn } from '@/lib/utils';
+import { tabListClass, tabTriggerClass } from '../ui/tabs';
 
 export interface SectionLink {
   href: string;
@@ -47,9 +48,9 @@ export function SectionNav({ links }: { links: SectionLink[] }) {
   const main = visible.filter((l) => !l.more);
   const more = visible.filter((l) => l.more);
   const activeMore = more.find(isActive);
-  const tab = (active: boolean) => cn('-mb-px whitespace-nowrap border-b-2 px-3 pb-2 pt-1 text-sm font-medium', active ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground');
+  const tab = (active: boolean) => tabTriggerClass(active);
   return (
-    <nav aria-label="Section" className="-mt-2 mb-4 flex gap-1 overflow-x-auto border-b">
+    <nav aria-label="Section" className={cn(tabListClass, 'mb-6')}>
       {main.map((l) => {
         const active = isActive(l);
         return (

@@ -100,7 +100,7 @@ function CompleteDialog({ item, onClose }: { item: CareItem | null; onClose: () 
         {error && <FormError message={error} />}
         <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="How was it done">
           {([['ADMINISTER', 'Given here'], ['ELSEWHERE', 'Given elsewhere'], ['DONE', 'Done (no product)']] as const).map(([k, label]) => (
-            <button key={k} type="button" role="radio" aria-checked={mode === k} disabled={k === 'ADMINISTER' && !can('clinical.write')} onClick={() => setMode(k)} className={cn('rounded-md border p-2 text-sm disabled:opacity-40', mode === k ? 'border-primary bg-primary/10 font-medium text-primary' : 'hover:bg-muted')}>
+            <button key={k} type="button" role="radio" aria-checked={mode === k} disabled={k === 'ADMINISTER' && !can('clinical.write')} onClick={() => setMode(k)} className={cn('rounded-lg surface-flat p-2 text-sm disabled:opacity-40', mode === k ? 'border-primary bg-primary/10 font-medium text-primary' : 'hover:bg-muted')}>
               {label}
             </button>
           ))}

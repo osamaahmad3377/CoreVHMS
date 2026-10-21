@@ -28,7 +28,7 @@ function NoteCounter({ currency, onTotal }: { currency: string; onTotal: (minor:
   const total = notes.reduce((n, v) => n + v * (Number(counts[v]) || 0), 0) + (parseMoney(coins, currency) ?? 0);
   useEffect(() => onTotal(total), [total, onTotal]);
   return (
-    <div className="grid gap-1.5 rounded-md border p-3">
+    <div className="grid gap-1.5 rounded-lg surface-flat p-3">
       {notes.map((v) => (
         <div key={v} className="grid grid-cols-[1fr_80px_1fr] items-center gap-2 text-sm">
           <label htmlFor={`note-${v}`} className="tabular">{fmtMoney(v, currency).replace(/\.00$/, '')} notes ×</label>

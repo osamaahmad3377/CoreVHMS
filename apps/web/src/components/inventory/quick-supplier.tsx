@@ -38,7 +38,7 @@ export function QuickAddSupplier({ onCreated }: { onCreated: (s: Supplier) => vo
     );
   }
   return (
-    <div className="grid gap-2 rounded-md border bg-muted/30 p-2">
+    <div className="grid gap-2 rounded-lg surface-flat p-2">
       <Input aria-label="New supplier name" placeholder="Supplier name" value={name} maxLength={160} autoFocus onChange={(e) => setName(e.target.value)} />
       <Input aria-label="New supplier phone" placeholder="Phone (optional)" value={phone} maxLength={40} onChange={(e) => setPhone(e.target.value)} />
       <div className="flex gap-2">

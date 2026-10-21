@@ -131,7 +131,7 @@ export function PastButton({ tab, field, label, className }: { tab: PastTab; fie
       type="button"
       onClick={() => past.open(tab, field)}
       title="Show earlier records beside this visit"
-      className={cn('inline-flex h-7 items-center gap-1 rounded-md border border-border bg-card px-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', className)}
+      className={cn('inline-flex h-7 items-center gap-1 rounded-lg surface-flat px-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', className)}
     >
       <Clock className="h-3 w-3" /> {label ?? 'Past'}
     </button>
@@ -208,7 +208,7 @@ const Empty = ({ children }: { children: React.ReactNode }) => <p className="rou
 
 function Visit({ at, children, meta }: { at: string; meta?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border bg-card">
+    <section className="rounded-xl surface-flat">
       <header className="flex flex-wrap items-baseline gap-x-2 border-b px-3 py-2">
         <h3 className="text-sm font-semibold">{fmtDate(at)}</h3>
         {meta && <span className="text-xs text-muted-foreground">{meta}</span>}
@@ -300,7 +300,7 @@ function ProblemsTab({ data, patientId }: { data: PastData; patientId: string })
   return (
     <ul className="grid gap-2">
       {rows.map((p) => (
-        <li key={p.id} className="flex items-start gap-3 rounded-xl border bg-card p-3">
+        <li key={p.id} className="flex items-start gap-3 rounded-xl surface-flat p-3">
           <div className="min-w-0 flex-1">
             <p className={cn('text-sm font-medium', p.status === 'RESOLVED' && 'text-muted-foreground')}>{p.term}{p.isChronic && <Badge variant="outline" className="ml-2">Long-term</Badge>}</p>
             <p className="text-xs text-muted-foreground">{p.onsetDate ? `Since ${fmtDate(p.onsetDate)}` : `Added ${fmtDate(p.createdAt)}`}{p.resolvedDate ? ` · resolved ${fmtDate(p.resolvedDate)}` : ''}</p>
@@ -356,7 +356,7 @@ function MedicinesTab({ data, encounterId }: { data: PastData; encounterId: stri
   return (
     <ul className="grid gap-2">
       {rows.map((a) => (
-        <li key={a.id} className="rounded-xl border bg-card p-3">
+        <li key={a.id} className="rounded-xl surface-flat p-3">
           <p className="text-sm font-medium">{a.product?.name}</p>
           <p className="text-xs text-muted-foreground">{a.dose} {a.doseUnit} · {enumLabel(a.route)}{a.site ? ` (${a.site})` : ''} · {fmtDateTime(a.administeredAt)} · {a.administeredByName}</p>
           {a.notes && <p className="mt-1 text-xs">{a.notes}</p>}
@@ -449,7 +449,7 @@ function DocumentsTab({ data }: { data: PastData }) {
         const image = String(d.mimeType).startsWith('image/');
         return (
           <li key={d.id}>
-            <a href={`${d.downloadPath}?inline=1`} target="_blank" rel="noopener noreferrer" className="group block overflow-hidden rounded-xl border bg-card transition-shadow hover:shadow-card-hover" title={d.fileName}>
+            <a href={`${d.downloadPath}?inline=1`} target="_blank" rel="noopener noreferrer" className="group block overflow-hidden rounded-xl surface-flat transition-shadow hover:shadow-card-hover" title={d.fileName}>
               <span className="grid aspect-[4/3] place-items-center overflow-hidden bg-muted">
                 {image ? (
                   // eslint-disable-next-line @next/next/no-img-element

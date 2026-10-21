@@ -103,7 +103,7 @@ export function ClinicPlanCard({ overview }: { overview: ClinicOverview }) {
           </NativeSelect>
         </Field>
 
-        <div className="grid gap-3 rounded-md border p-3">
+        <div className="grid gap-3 rounded-lg surface-flat p-3">
           <UsageBar label="Staff accounts" used={staffUsed} limit={staffLimit} />
           <UsageBar label="Branches" used={branchesUsed} limit={branchLimit} />
           {(overStaff || overBranches) && (

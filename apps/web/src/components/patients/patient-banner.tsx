@@ -36,7 +36,7 @@ export function PatientBanner({ patient, className, compact, hideRecordLink }: {
   return (
     <div
       className={cn(
-        'flex flex-col gap-3 rounded-lg border bg-card p-3 shadow-sm sm:flex-row sm:items-center',
+        'flex flex-col gap-3 rounded-xl surface p-3 shadow-card sm:flex-row sm:items-center',
         critical && 'border-destructive/40 ring-1 ring-destructive/20',
         className,
       )}

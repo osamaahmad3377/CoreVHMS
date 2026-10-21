@@ -397,7 +397,7 @@ function Pos() {
           {header}
           {result.error && <div className="mb-4"><FormError message={result.error} /></div>}
           <div className="mx-auto grid max-w-4xl gap-6 md:grid-cols-[1fr_320px]">
-            <div className="rounded-lg border bg-muted/40 p-4">
+            <div className="rounded-xl surface-flat p-4">
               <ReceiptPreview data={receiptFromInvoice(inv, result.payments, { tenderedMinor: result.tenderedCashMinor, changeMinor: result.changeMinor, servedBy: session.user.name })} />
             </div>
             <div className="grid content-start gap-4 text-center">

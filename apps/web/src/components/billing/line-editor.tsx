@@ -93,7 +93,7 @@ export function LineEditor({
       {lines.map((l, idx) => {
         const amounts = lineAmounts(l, currency, cat.pricesIncludeTax);
         return (
-          <div key={l.key} className="grid gap-2 rounded-md border p-3">
+          <div key={l.key} className="grid gap-2 rounded-lg surface-flat p-3">
             <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-2">
               <NativeSelect aria-label={`Line ${idx + 1} type`} value={l.kind} onChange={(e) => update(l.key, { ...newLine(e.target.value as DraftLine['kind'], cat.defaultBp), key: l.key, quantity: l.quantity })}>
                 {kinds.map((k) => <option key={k} value={k}>{k === 'SERVICE' ? 'Service' : k === 'PRODUCT' ? 'Product' : 'Custom'}</option>)}

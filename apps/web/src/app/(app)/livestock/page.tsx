@@ -20,6 +20,7 @@ import { fmtDate, fmtDateTime, fmtNumber } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import { shiftDate, todayIn, zonedInstant } from '@/lib/time';
 import type { BirthDueRow, FarmRow, FieldVisitRow, OutbreakRow, WithdrawalBoardRow } from '@/lib/types';
+import { tabListClass, tabTriggerClass } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 
 const TABS = [
@@ -182,9 +183,9 @@ function Livestock() {
         <Stat label="Births due (30 days)" value={o ? fmtNumber(o.birthsDue30Days) : '—'} icon={Baby} href="/livestock?tab=births" />
         <Stat label="Open outbreaks" value={o ? fmtNumber(o.openOutbreaks) : '—'} icon={AlertTriangle} tone={o?.openOutbreaks ? 'danger' : 'default'} href="/livestock?tab=outbreaks" />
       </div>
-      <div className="mb-4 flex gap-1 overflow-x-auto border-b" role="tablist">
+      <div className={cn(tabListClass, 'mb-6')} role="tablist">
         {TABS.map((t) => (
-          <button key={t.key} role="tab" aria-selected={tab === t.key} onClick={() => url.set({ tab: t.key, q: null, range: null })} className={cn('-mb-px whitespace-nowrap border-b-2 px-3 pb-2 pt-1 text-sm font-medium', tab === t.key ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}>{t.label}</button>
+          <button key={t.key} role="tab" aria-selected={tab === t.key} onClick={() => url.set({ tab: t.key, q: null, range: null })} className={tabTriggerClass()}>{t.label}</button>
         ))}
       </div>
       {tab === 'visits' ? <Visits /> : tab === 'withdrawals' ? <Withdrawals /> : tab === 'births' ? <Births /> : tab === 'outbreaks' ? <Outbreaks /> : <Farms />}

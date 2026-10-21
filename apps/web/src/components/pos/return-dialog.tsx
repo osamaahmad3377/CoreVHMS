@@ -117,7 +117,7 @@ export function ReturnItemsDialog({ open, onOpenChange, currency }: { open: bool
               <ul className="grid gap-1.5">
                 {(sales.data ?? []).map((s) => (
                   <li key={s.id}>
-                    <button type="button" onClick={() => setSale(s)} className="flex w-full items-center gap-3 rounded-lg border bg-card px-3 py-2.5 text-left hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <button type="button" onClick={() => setSale(s)} className="flex w-full items-center gap-3 rounded-xl surface-flat px-3 py-2.5 text-left hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                       <span className="min-w-0 flex-1">
                         <span className="block text-sm font-medium">{s.invoiceNo} · {fmtMoney(s.totalMinor, currency)}</span>
                         <span className="block truncate text-xs text-muted-foreground">{fmtDateTime(s.issuedAt)} · {s.client?.displayName ?? 'Walk-in customer'} · {s.lines.map((l) => l.description).join(', ')}</span>

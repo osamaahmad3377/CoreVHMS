@@ -115,7 +115,7 @@ function RoleEditor({ role, groups, onDone }: { role: Role | null; groups: Group
         </label>
         <div className="grid gap-4 md:grid-cols-2">
           {groups.map((g) => (
-            <fieldset key={g.key} className="rounded-md border p-3">
+            <fieldset key={g.key} className="rounded-lg surface-flat p-3">
               <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{g.label}</legend>
               <div className="grid gap-1.5">
                 {g.permissions.map((p) => {

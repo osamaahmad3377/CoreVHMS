@@ -113,7 +113,7 @@ function PoDialog({ open, onOpenChange, seed }: { open: boolean; onOpenChange: (
             <span>Product</span><span>Quantity</span><span>Cost price (each)</span><span />
           </div>
           {lines.map((l, idx) => (
-            <div key={l.key} className="grid gap-2 rounded-md border p-2 sm:grid-cols-[minmax(0,1fr)_110px_140px_auto] sm:items-center">
+            <div key={l.key} className="grid gap-2 rounded-lg surface-flat p-2 sm:grid-cols-[minmax(0,1fr)_110px_140px_auto] sm:items-center">
               <ProductPicker value={l.product as Product | null} onChange={(p) => update(l.key, { product: p })} placeholder="Product…" />
               <Input aria-label={`Line ${idx + 1} quantity`} placeholder={`Qty${l.product ? ` (${l.product.dispensingUnit})` : ''}`} inputMode="decimal" value={l.quantity} onChange={(e) => update(l.key, { quantity: e.target.value })} />
               <MoneyInput aria-label={`Line ${idx + 1} unit cost`} placeholder="Unit cost" currency={currency} value={l.cost} onChange={(e) => update(l.key, { cost: e.target.value })} />

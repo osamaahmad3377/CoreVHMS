@@ -145,7 +145,7 @@ function QueueCard({
   const pr = a.effectivePriority ?? a.triage?.priority ?? a.priority;
   const urgent = pr === 'RESUSCITATION' || pr === 'EMERGENT';
   return (
-    <li className={cn('rounded-md border bg-card p-3 shadow-sm', urgent && 'border-destructive/50 ring-1 ring-destructive/30')}>
+    <li className={cn('rounded-lg surface-flat p-3 shadow-card', urgent && 'border-destructive/50 ring-1 ring-destructive/30')}>
       <button onClick={onOpen} className="block w-full text-left" aria-label={`Details: ${a.patient?.name ?? a.client.displayName}`}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">

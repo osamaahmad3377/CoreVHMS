@@ -92,7 +92,7 @@ function NotesPanel({ a, active }: { a: Admission; active: boolean }) {
         )}
         <ul className="grid gap-2">
           {(a.notes ?? []).map((n) => (
-            <li key={n.id} className={cn('rounded-md border p-3 text-sm', n.type === 'ALERT' && 'border-destructive/40 bg-destructive/5', n.type === 'HANDOVER' && 'border-info/40 bg-info/5')}>
+            <li key={n.id} className={cn('rounded-lg surface-flat p-3 text-sm', n.type === 'ALERT' && 'border-destructive/40 bg-destructive/5', n.type === 'HANDOVER' && 'border-info/40 bg-info/5')}>
               <p className="mb-1 flex items-center gap-2 text-xs text-muted-foreground"><Badge variant={n.type === 'ALERT' ? 'destructive' : n.type === 'HANDOVER' ? 'info' : 'secondary'}>{n.type === 'ALERT' ? 'Alert' : n.type === 'HANDOVER' ? 'Handover' : 'Progress'}</Badge>{fmtDateTime(n.createdAt)} · {n.authorName}</p>
               <p className="whitespace-pre-wrap">{n.text}</p>
             </li>
@@ -180,14 +180,14 @@ function AdmissionView() {
             <p className="mb-2 flex items-center gap-2 text-sm font-medium"><CheckCircle2 className="h-4 w-4 text-success" /> {a.patient.name} was discharged — next steps</p>
             <div className="grid gap-2 sm:grid-cols-2">
               {can('billing.write') && (
-                <Link href={`/billing/invoices/new?clientId=${a.client.id}`} className="flex items-center gap-3 rounded-md border bg-card px-3 py-2.5 shadow-sm transition-colors hover:border-primary/50 hover:bg-primary/5">
+                <Link href={`/billing/invoices/new?clientId=${a.client.id}`} className="flex items-center gap-3 rounded-lg surface-flat px-3 py-2.5 shadow-card transition-colors hover:border-primary/50 hover:bg-primary/5">
                   <span className="rounded-md bg-primary p-1.5 text-primary-foreground"><Receipt className="h-4 w-4" /></span>
                   <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">Bill this stay</span><span className="block text-xs text-muted-foreground">Hospital days, treatments and medicines are waiting to be invoiced for {a.client.displayName}</span></span>
                   <ArrowRight className="h-4 w-4 text-muted-foreground" />
                 </Link>
               )}
               {can('appointments.write') && a.outcome !== 'DECEASED' && a.outcome !== 'EUTHANASED' && (
-                <button type="button" onClick={() => setBooking(true)} className="flex items-center gap-3 rounded-md border bg-card px-3 py-2.5 text-left shadow-sm transition-colors hover:border-primary/50 hover:bg-primary/5">
+                <button type="button" onClick={() => setBooking(true)} className="flex items-center gap-3 rounded-lg surface-flat px-3 py-2.5 text-left shadow-card transition-colors hover:border-primary/50 hover:bg-primary/5">
                   <span className="rounded-md bg-primary/10 p-1.5 text-primary"><CalendarPlus className="h-4 w-4" /></span>
                   <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">Book a recheck</span><span className="block text-xs text-muted-foreground">{a.followUpAt ? `Follow-up planned for ${fmtDate(a.followUpAt)}` : 'Find a free slot for the post-discharge check'}</span></span>
                   <ArrowRight className="h-4 w-4 text-muted-foreground" />

@@ -116,7 +116,7 @@ export function VisitOutcome({
         {surgery && (
           <Option icon={Scissors} title="Surgery" text="Book the theatre and the surgeon for an operation." done={upcoming.length > 0}>
             {upcoming.map((s) => (
-              <Link key={s.id} href={`/surgery/${s.id}`} className="w-full rounded-md border bg-card px-2.5 py-1.5 text-xs hover:border-primary/50">
+              <Link key={s.id} href={`/surgery/${s.id}`} className="w-full rounded-lg surface-flat px-2.5 py-1.5 text-xs hover:border-primary/50">
                 <span className="font-medium">{s.procedure}</span> · {fmtDateTime(s.scheduledAt)} · {enumLabel(s.status)}
               </Link>
             ))}

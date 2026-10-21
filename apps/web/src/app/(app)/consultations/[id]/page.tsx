@@ -162,7 +162,7 @@ function Workspace() {
           });
 
   const supersededBlock = superseded.length > 0 && (
-            <details className="rounded-lg border bg-card p-4">
+            <details className="rounded-xl surface-flat p-4">
               <summary className="cursor-pointer text-sm font-medium">Previous versions ({superseded.length})</summary>
               <div className="mt-4 grid gap-6">
                 {superseded.map((n) => (
@@ -342,7 +342,7 @@ function Workspace() {
       </div>
 
       {actions.length > 0 && (
-        <div role="toolbar" aria-label="Consultation actions" className="mb-4 flex flex-wrap gap-1.5 rounded-lg border bg-card p-1.5">
+        <div role="toolbar" aria-label="Consultation actions" className="surface mb-6 flex flex-wrap gap-1 rounded-2xl p-1.5">
           {actions.map((a) => (
             <Button key={a.label} size="sm" variant="ghost" onClick={a.onClick}>
               <a.icon /> {a.label}
@@ -576,7 +576,7 @@ function NextSteps({ steps }: { steps: (Step | false)[] }) {
               <ArrowRight className="h-4 w-4 text-muted-foreground" />
             </>
           );
-          const cls = 'flex items-center gap-3 rounded-md border bg-card px-3 py-2.5 text-left shadow-sm transition-colors hover:border-primary/50 hover:bg-primary/5';
+          const cls = 'flex items-center gap-3 rounded-lg surface-flat px-3 py-2.5 text-left shadow-card transition-colors hover:border-primary/50 hover:bg-primary/5';
           return st.href ? <Link key={st.title} href={st.href} className={cls}>{inner}</Link> : <button key={st.title} type="button" onClick={st.onClick} className={cls}>{inner}</button>;
         })}
       </div>

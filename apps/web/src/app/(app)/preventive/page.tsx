@@ -23,6 +23,7 @@ import { api, qs } from '@/lib/api';
 import { fmtDate } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { CareItem, CareProtocol, Product } from '@/lib/types';
+import { tabListClass, tabTriggerClass } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 
 interface Species { id: string; name: string }
@@ -212,9 +213,9 @@ function Preventive() {
   return (
     <>
       <PageHeader title="Vaccines & reminders" help="preventive" description="Vaccinations, parasite control and health checks — what is due, who to remind, and how well patients are covered." />
-      <div className="mb-4 flex gap-1 border-b" role="tablist">
+      <div className={cn(tabListClass, 'mb-6')} role="tablist">
         {[['due', 'Due & overdue'], ['protocols', 'Protocols'], ['compliance', 'Compliance']].map(([k, l]) => (
-          <button key={k} role="tab" aria-selected={tab === k} onClick={() => url.set({ tab: k })} className={cn('-mb-px border-b-2 px-3 pb-2 pt-1 text-sm font-medium', tab === k ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}>{l}</button>
+          <button key={k} role="tab" aria-selected={tab === k} onClick={() => url.set({ tab: k })} className={tabTriggerClass()}>{l}</button>
         ))}
       </div>
       {tab === 'protocols' ? <Protocols /> : tab === 'compliance' ? <Compliance /> : <Worklist />}

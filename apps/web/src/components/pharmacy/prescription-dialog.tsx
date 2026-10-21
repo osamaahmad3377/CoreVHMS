@@ -105,7 +105,7 @@ function LineEditor({ line, patientId, weightKg, alerts, onChange, onRemove, onE
   const auto = autoInstructions(line, e);
 
   return (
-    <div className="grid gap-3 rounded-md border p-3">
+    <div className="grid gap-3 rounded-lg surface-flat p-3">
       <div className="flex items-start gap-2">
         <div className="flex-1">
           <ProductPicker value={line.product} prescribable alerts={alerts} onChange={(p) => set({ product: p, doseUnit: p?.strengthUnit ? `${p.strengthUnit}/kg` : p?.dispensingUnit ?? 'mg/kg', route: p?.form === 'INJECTION' ? 'SC' : p?.form === 'TOPICAL' ? 'TOPICAL' : 'PO' })} />

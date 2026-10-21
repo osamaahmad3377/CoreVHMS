@@ -13,7 +13,7 @@ function Meter({ label, used, limit }: { label: string; used: number; limit: num
   const pct = limit ? Math.min(100, Math.round((used / limit) * 100)) : 0;
   const full = limit !== null && used >= limit;
   return (
-    <div className="rounded-lg border p-4">
+    <div className="rounded-xl surface-flat p-4">
       <p className="text-sm text-muted-foreground">{label}</p>
       <p className="mt-1 text-2xl font-semibold">
         {used} <span className="text-base font-normal text-muted-foreground">{limit === null ? 'in use · no limit' : `of ${limit}`}</span>
@@ -58,7 +58,7 @@ function PlanView() {
             {PLAN_FEATURES.map((f) => {
               const on = e.features.includes(f);
               return (
-                <li key={f} className={cn('flex items-start gap-2 rounded-md border p-3 text-sm', !on && 'bg-muted/40 text-muted-foreground')}>
+                <li key={f} className={cn('flex items-start gap-2 rounded-lg surface-flat p-3 text-sm', !on && 'bg-muted/40 text-muted-foreground')}>
                   {on ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-label="Included" /> : <Lock className="mt-0.5 h-4 w-4 shrink-0" aria-label="Not in your plan" />}
                   <span>
                     <span className="block font-medium">{PLAN_FEATURE_INFO[f].label}</span>

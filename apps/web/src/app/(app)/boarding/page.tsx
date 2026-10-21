@@ -19,6 +19,7 @@ import { fmtDate, fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import { branchTime, dayLabel, shiftDate, todayIn } from '@/lib/time';
 import type { BoardingBoard, BoardingStay, GroomingBoard, UnitAvailability } from '@/lib/types';
+import { tabListClass, tabTriggerClass } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 
 const TABS = [
@@ -165,7 +166,7 @@ function Grooming() {
               <ul className="grid gap-2 px-3 pb-3">
                 {jobs.map((j) => (
                   <li key={j.id}>
-                    <Link href={`/boarding/grooming/${j.id}`} className="block rounded-md border p-2 hover:bg-muted/40">
+                    <Link href={`/boarding/grooming/${j.id}`} className="block rounded-lg surface-flat p-2 hover:bg-muted/40">
                       <p className="text-sm font-medium">{j.patient.name} <span className="text-xs font-normal text-muted-foreground">{j.patient.breed?.name ?? j.patient.breedText ?? j.patient.species.name}</span></p>
                       <p className="text-xs text-muted-foreground">{j.client.displayName}{j.groomer ? ` · ${j.groomer.name}` : ''}</p>
                       <p className="mt-1 text-xs">{j.services.map((s) => s.description).join(', ') || 'No services yet'}{j.totalMinor ? ` · ${fmtMoney(j.totalMinor, currency)}` : ''}</p>
@@ -224,8 +225,8 @@ function Boarding() {
         description="Kennel bookings, check-in and check-out with nightly billing, daily care log, and the grooming board."
         actions={can('boarding.write') && <Button size="sm" onClick={() => setReserving(true)}><Plus /> New booking</Button>}
       />
-      <div className="mb-4 flex gap-1 overflow-x-auto border-b" role="tablist">
-        {TABS.map((t) => <button key={t.key} role="tab" aria-selected={tab === t.key} onClick={() => url.set({ tab: t.key, status: null, date: null })} className={cn('-mb-px flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 pb-2 pt-1 text-sm font-medium', tab === t.key ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}>{t.key === 'grooming' && <Scissors className="h-3.5 w-3.5" />}{t.label}</button>)}
+      <div className={cn(tabListClass, 'mb-6')} role="tablist">
+        {TABS.map((t) => <button key={t.key} role="tab" aria-selected={tab === t.key} onClick={() => url.set({ tab: t.key, status: null, date: null })} className={tabTriggerClass()}>{t.key === 'grooming' && <Scissors className="h-3.5 w-3.5" />}{t.label}</button>)}
       </div>
       {tab === 'chart' ? <Chart /> : tab === 'grooming' ? <Grooming /> : tab === 'bookings' ? <Bookings /> : <Today />}
       <ReserveDialog open={reserving} onOpenChange={setReserving} />

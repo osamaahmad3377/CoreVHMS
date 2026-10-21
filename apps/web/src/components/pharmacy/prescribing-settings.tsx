@@ -28,7 +28,7 @@ export function PrescribingPromptSetting() {
   });
   const valid = /^\d+$/.test(value) && Number(value) >= 1;
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm">
+    <div className="flex flex-wrap items-center gap-2 rounded-lg surface-flat px-3 py-2 text-sm">
       <ShieldQuestion className="h-4 w-4 text-muted-foreground" />
       <label htmlFor="rx-confirm-above">Ask the vet to confirm when a dose is more than</label>
       <Input id="rx-confirm-above" inputMode="numeric" className="h-8 w-16" value={value} onChange={(e) => setValue(e.target.value)} />

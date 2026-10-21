@@ -27,6 +27,7 @@ import { fmtDate } from '@/lib/format';
 import { defaultLocation, locationLabel, sortedLocations } from '@/lib/locations';
 import { useSession } from '@/lib/session';
 import type { Product, StockLocation, Supplier } from '@/lib/types';
+import { tabListClass, tabTriggerClass } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 
 interface PurchaseRequest {
@@ -211,9 +212,9 @@ function Requests() {
         }
       />
       <SectionNav links={INVENTORY_LINKS} />
-      <div className="mb-3 flex rounded-md border p-0.5 text-xs w-fit" role="tablist" aria-label="Show">
+      <div className={cn(tabListClass, 'mb-4')} role="tablist" aria-label="Show">
         {[['open', 'Open'], ['all', 'All']].map(([k, label]) => (
-          <button key={k} role="tab" aria-selected={show === k} onClick={() => { url.set({ show: k }); setSelected(new Set()); }} className={cn('rounded px-3 py-1 font-medium', show === k ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}>{label}</button>
+          <button key={k} role="tab" aria-selected={show === k} onClick={() => { url.set({ show: k }); setSelected(new Set()); }} className={cn(tabTriggerClass(), 'h-8')}>{label}</button>
         ))}
       </div>
       <Card>

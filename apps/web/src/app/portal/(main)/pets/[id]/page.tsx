@@ -63,14 +63,14 @@ export default function PortalPet() {
           <CardHeader><CardTitle className="flex items-center gap-2"><Stethoscope className="h-4 w-4 text-primary" /> Hospital stays & surgery aftercare</CardTitle></CardHeader>
           <CardContent className="grid gap-3">
             {surgeries.map((s) => (
-              <div key={s.id} className="rounded-md border p-3 text-sm">
+              <div key={s.id} className="rounded-lg surface-flat p-3 text-sm">
                 <p className="font-medium">{s.procedure} · {fmtDate(s.completedAt)}</p>
                 {s.postOpInstructions && <p className="mt-1 whitespace-pre-wrap">{s.postOpInstructions}</p>}
                 {s.followUpAt && <p className="mt-1 font-medium">Check-up due {fmtDate(s.followUpAt)}</p>}
               </div>
             ))}
             {discharges.map((d) => (
-              <div key={d.id} className="rounded-md border p-3 text-sm">
+              <div key={d.id} className="rounded-lg surface-flat p-3 text-sm">
                 <p className="font-medium">Hospital stay {fmtDate(d.admittedAt)} – {fmtDate(d.dischargedAt)}</p>
                 <p className="text-muted-foreground">{d.reason}</p>
                 {d.dischargeSummary && <p className="mt-1 whitespace-pre-wrap">{d.dischargeSummary}</p>}

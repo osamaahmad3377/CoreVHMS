@@ -57,7 +57,7 @@ function TemplateEditor({ t }: { t: MessageTemplate }) {
     onError: (e: Error) => toast.error(e.message),
   });
   return (
-    <div className="grid gap-2 rounded-md border p-3">
+    <div className="grid gap-2 rounded-lg surface-flat p-3">
       <div className="flex items-center justify-between">
         <Badge variant="outline">{enumLabel(t.channel)}</Badge>
         <label className="flex items-center gap-2 text-xs text-muted-foreground">Active <Switch checked={active} onCheckedChange={setActive} aria-label={`${t.purpose} ${t.channel} active`} /></label>

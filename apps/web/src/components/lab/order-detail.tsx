@@ -203,7 +203,7 @@ export function LabOrderDetail({ id, embedded = false }: { id: string; embedded?
         </div>
         {error && <FormError message={error} />}
         {order.cancelReason && <p className="mb-3 rounded-md bg-muted px-3 py-2 text-sm">Cancelled: {order.cancelReason}</p>}
-        {order.clinicalNotes && <p className="mb-3 rounded-md border bg-card px-3 py-2 text-sm"><span className="font-medium">Clinical notes:</span> {order.clinicalNotes}</p>}
+        {order.clinicalNotes && <p className="mb-3 rounded-lg surface-flat px-3 py-2 text-sm"><span className="font-medium">Clinical notes:</span> {order.clinicalNotes}</p>}
 
         <div className={cn('grid gap-4', !embedded && 'xl:grid-cols-[minmax(0,1fr)_360px]')}>
           <div className="grid content-start gap-4">

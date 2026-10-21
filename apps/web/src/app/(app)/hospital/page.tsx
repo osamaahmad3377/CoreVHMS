@@ -21,7 +21,7 @@ function PatientCard({ a }: { a: Admission }) {
   return (
     <Link
       href={`/hospital/admissions/${a.id}`}
-      className={cn('group flex h-full flex-col gap-2 rounded-lg border bg-card p-3 shadow-sm transition-colors hover:border-primary/50', a.condition === 'CRITICAL' && 'border-destructive/50 ring-1 ring-destructive/30', (a.overdueTasks ?? 0) > 0 && 'border-destructive/40')}
+      className={cn('group flex h-full flex-col gap-2 rounded-xl surface-flat p-3 shadow-card transition-colors hover:border-primary/50', a.condition === 'CRITICAL' && 'border-destructive/50 ring-1 ring-destructive/30', (a.overdueTasks ?? 0) > 0 && 'border-destructive/40')}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">

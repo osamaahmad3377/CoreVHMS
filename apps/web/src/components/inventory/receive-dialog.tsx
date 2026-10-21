@@ -135,7 +135,7 @@ export function ReceiveStockDialog({ open, onOpenChange, order, initialProduct }
             <span>Product</span><span>Batch / lot</span><span>Expiry</span><span>Quantity</span><span>Cost price (each)</span><span />
           </div>
           {lines.map((l, idx) => (
-            <div key={l.key} className="grid gap-2 rounded-md border p-2 lg:grid-cols-[minmax(0,1fr)_130px_140px_90px_130px_auto] lg:items-center">
+            <div key={l.key} className="grid gap-2 rounded-lg surface-flat p-2 lg:grid-cols-[minmax(0,1fr)_130px_140px_90px_130px_auto] lg:items-center">
               {order ? <p className="text-sm font-medium">{l.product?.name}</p> : <ProductPicker value={l.product as Product | null} onChange={(p) => update(l.key, { product: p })} placeholder="Product…" />}
               <Input aria-label={`Line ${idx + 1} batch number`} placeholder={needsBatch(l.product?.type) ? 'Batch / lot' : 'Batch (optional)'} value={l.batchNumber} onChange={(e) => update(l.key, { batchNumber: e.target.value })} maxLength={60} />
               <Input aria-label={`Line ${idx + 1} expiry`} type="date" value={l.expiryDate} onChange={(e) => update(l.key, { expiryDate: e.target.value })} />

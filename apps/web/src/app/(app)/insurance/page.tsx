@@ -18,6 +18,7 @@ import { api, qs } from '@/lib/api';
 import { fmtDate, fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { InsuranceClaim, InsurancePolicy, InsuranceProvider, PreAuthRow, Referral, ReferralContact } from '@/lib/types';
+import { tabListClass, tabTriggerClass } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 
 const TABS = [
@@ -213,8 +214,8 @@ function Insurance() {
         <Stat label="Owed by insurers" value={w ? fmtMoney(w.insurerOwedMinor, currency) : '—'} icon={ShieldCheck} />
         <Stat label="Open referrals" value={w?.openReferrals ?? '—'} icon={Send} href="/insurance?tab=referrals" />
       </div>
-      <div className="mb-4 flex gap-1 overflow-x-auto border-b" role="tablist">
-        {TABS.map((t) => <button key={t.key} role="tab" aria-selected={tab === t.key} onClick={() => url.set({ tab: t.key, status: null })} className={cn('-mb-px whitespace-nowrap border-b-2 px-3 pb-2 pt-1 text-sm font-medium', tab === t.key ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}>{t.label}</button>)}
+      <div className={cn(tabListClass, 'mb-6')} role="tablist">
+        {TABS.map((t) => <button key={t.key} role="tab" aria-selected={tab === t.key} onClick={() => url.set({ tab: t.key, status: null })} className={tabTriggerClass()}>{t.label}</button>)}
       </div>
       {tab === 'preauth' ? <PreAuths /> : tab === 'policies' ? <Policies /> : tab === 'referrals' ? <Referrals /> : tab === 'insurers' ? <Insurers /> : tab === 'specialists' ? <Specialists /> : <Claims />}
       <ClaimDialog open={dlg === 'claim'} onOpenChange={(o) => !o && setDlg(null)} policies={policies.data ?? []} />

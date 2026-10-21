@@ -127,7 +127,7 @@ function AddClinicDialog({ open, onOpenChange, onOwnerAccess }: { open: boolean;
               <option value="">No plan (no limits)</option>
             </NativeSelect>
           </Field>
-          <fieldset className="grid gap-3 rounded-md border p-3">
+          <fieldset className="grid gap-3 rounded-lg surface-flat p-3">
             <legend className="px-1 text-sm font-medium">Clinic owner</legend>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Full name" htmlFor="c-owner" required error={errors.ownerName}>
@@ -148,7 +148,7 @@ function AddClinicDialog({ open, onOpenChange, onOwnerAccess }: { open: boolean;
                   role="radio"
                   aria-checked={v.ownerAccess === value}
                   onClick={() => set('ownerAccess', value)}
-                  className={cn('flex items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors', v.ownerAccess === value ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:bg-muted')}
+                  className={cn('flex items-start gap-3 rounded-lg surface-flat p-3 text-left text-sm transition-colors', v.ownerAccess === value ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:bg-muted')}
                 >
                   <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                   <span><span className="block font-medium">{title}</span><span className="text-xs text-muted-foreground">{text}</span></span>
@@ -212,7 +212,7 @@ export default function PlatformClinicsPage() {
                 type="button"
                 aria-pressed={active}
                 onClick={() => setFilter(active && t.key !== 'ALL' ? 'ALL' : t.key)}
-                className={cn('flex items-center gap-3 rounded-lg border bg-card p-3 text-left shadow-sm transition-colors hover:border-primary/50', active && 'border-primary ring-1 ring-primary')}
+                className={cn('flex items-center gap-3 rounded-xl surface-flat p-3 text-left shadow-card transition-colors hover:border-primary/50', active && 'border-primary ring-1 ring-primary')}
               >
                 <span className={cn('rounded-md p-2', t.tone)}>{t.icon}</span>
                 <span><span className="block text-xl font-semibold leading-tight">{t.value}</span><span className="text-xs text-muted-foreground">{t.label}</span></span>

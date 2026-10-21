@@ -9,8 +9,10 @@ import { ConfirmProvider } from '@/components/confirm';
 import { ShellSkeleton } from '@/components/layout/shell-skeleton';
 import { ErrorState } from '@/components/page';
 import { Button } from '@/components/ui/button';
+import { tabListClass, tabTriggerClass } from '@/components/ui/tabs';
 import { ApiError, api } from '@/lib/api';
 import { useSessionQuery } from '@/lib/session';
+import { cn } from '@/lib/utils';
 
 /** Super admin area (multi-clinic hosting): only platform administrators signed in at the admin address. */
 export default function PlatformLayout({ children }: { children: React.ReactNode }) {
@@ -35,7 +37,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
   if (session.data.user.mustChangePassword) return <FirstPasswordChange name={session.data.user.name} onDone={() => session.refetch()} />;
   if (!session.data.platform || !session.data.permissions.includes('platform.clinics.manage')) {
     return (
-      <div className="grid min-h-screen place-items-center p-4">
+      <div className="app-canvas grid min-h-screen place-items-center p-4">
         <div className="grid justify-items-center gap-3">
           <ErrorState error={new Error('This area is for NextCore super admins only.')} />
           <Button variant="outline" onClick={logout}><LogOut /> Sign out</Button>
@@ -46,20 +48,21 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
 
   return (
     <ConfirmProvider>
-      <div className="min-h-screen bg-background">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-card/95 px-4 backdrop-blur">
+      <div className="app-canvas min-h-screen">
+        <div className="sticky top-0 z-30 px-3 pt-3 sm:px-4">
+        <header className="glass mx-auto flex h-14 max-w-6xl items-center gap-3 rounded-2xl border border-[hsl(var(--glass-edge))] px-4 shadow-card">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/favicon.svg" alt="" className="h-7 w-7" />
           <span className="font-semibold tracking-tight">NextCore</span>
-          <span className="flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+          <span className="flex items-center gap-1 rounded-pill bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary ring-1 ring-inset ring-primary/20">
             <ShieldCheck className="h-3.5 w-3.5" /> Super admin
           </span>
-          <nav aria-label="Super admin" className="ml-4 flex gap-1">
+          <nav aria-label="Super admin" className={cn(tabListClass, 'ml-4')}>
             {[
               { href: '/platform', label: 'Clinics', icon: Building2, active: pathname === '/platform' || pathname.startsWith('/platform/clinics') },
               ...(session.data.permissions.includes('platform.plans.manage') ? [{ href: '/platform/plans', label: 'Plans', icon: LayoutList, active: pathname.startsWith('/platform/plans') }] : []),
             ].map((i) => (
-              <Link key={i.href} href={i.href} aria-current={i.active ? 'page' : undefined} className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${i.active ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
+              <Link key={i.href} href={i.href} aria-current={i.active ? 'page' : undefined} className={tabTriggerClass()}>
                 <i.icon className="h-4 w-4" /> {i.label}
               </Link>
             ))}
@@ -69,7 +72,8 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
             <Button variant="ghost" size="sm" onClick={logout}><LogOut /> Sign out</Button>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-6xl p-4 sm:p-6">{children}</main>
+        </div>
+        <main className="page-enter mx-auto w-full max-w-6xl px-4 pb-8 pt-6 sm:px-6 lg:pt-8">{children}</main>
       </div>
     </ConfirmProvider>
   );

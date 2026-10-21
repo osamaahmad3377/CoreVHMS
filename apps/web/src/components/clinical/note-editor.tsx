@@ -405,7 +405,7 @@ export function NoteEditor({
   };
 
   const examBlock = (
-      <fieldset className="rounded-lg border p-3">
+      <fieldset className="rounded-xl surface-flat p-3">
         <legend className="px-1 text-sm font-medium">Physical examination</legend>
         {findings.length === 0 ? (
           <div className="flex flex-wrap items-center gap-2">
@@ -510,7 +510,7 @@ export function NoteEditor({
           <button type="button" onClick={toggleShowAll} className="font-medium text-primary hover:underline">{showAll ? 'Show one step at a time' : 'Show all steps'}</button>
         </div>
         {steps.map((st, n) => (
-          <div key={st.id} id={`step-${st.id}`} hidden={!showAll && st.id !== activeStep} className={cn(showAll && 'mb-6 rounded-xl border bg-card p-4')}>
+          <div key={st.id} id={`step-${st.id}`} hidden={!showAll && st.id !== activeStep} className={cn(showAll && 'mb-6 rounded-xl surface-flat p-4')}>
             {stepBody(st, n)}
           </div>
         ))}
@@ -597,7 +597,7 @@ export function NoteEditor({
         </>
       )}
 
-      <div className="sticky bottom-0 z-10 -mb-2 flex flex-wrap items-center justify-end gap-2 border-t bg-card/95 pb-3 pt-3 backdrop-blur">
+      <div className="action-bar -mb-2 flex flex-wrap items-center justify-end gap-2 pb-3 pt-3">
         {noteId && !amending && (
           <Button
             variant="ghost"

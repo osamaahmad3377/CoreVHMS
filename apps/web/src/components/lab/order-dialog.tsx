@@ -60,7 +60,7 @@ export function LabOrderDialog({ open, onOpenChange, patient, encounterId, onCre
         <div className="grid gap-3">
           {error && <FormError message={error} />}
           <Input placeholder="Filter tests…" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filter tests" />
-          <div className="max-h-72 overflow-y-auto rounded-md border p-2">
+          <div className="max-h-72 overflow-y-auto rounded-lg surface-flat p-2">
             {tests.isLoading && <p className="p-2 text-sm text-muted-foreground">Loading catalogue…</p>}
             {!tests.isLoading && !Object.keys(grouped).length && <p className="p-2 text-sm text-muted-foreground">No tests in the catalogue. Add them under Laboratory → Catalogue.</p>}
             {Object.entries(grouped).map(([cat, list]) => (

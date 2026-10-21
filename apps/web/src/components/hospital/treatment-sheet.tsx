@@ -71,7 +71,7 @@ function TaskDialog({ task, order, onClose }: { task: TreatmentTask | null; orde
         {error && <FormError message={error} />}
         <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Outcome">
           {(['DONE', 'SKIPPED'] as const).map((s) => (
-            <button key={s} type="button" role="radio" aria-checked={status === s} onClick={() => setStatus(s)} className={cn('flex items-center justify-center gap-2 rounded-md border p-3 text-sm font-medium', status === s ? (s === 'DONE' ? 'border-success bg-success/10 text-success' : 'border-warning bg-warning/10 text-warning') : 'hover:bg-muted')}>
+            <button key={s} type="button" role="radio" aria-checked={status === s} onClick={() => setStatus(s)} className={cn('flex items-center justify-center gap-2 rounded-lg surface-flat p-3 text-sm font-medium', status === s ? (s === 'DONE' ? 'border-success bg-success/10 text-success' : 'border-warning bg-warning/10 text-warning') : 'hover:bg-muted')}>
               {s === 'DONE' ? <><Check className="h-4 w-4" /> {o.kind === 'MEDICATION' ? 'Given' : 'Done'}</> : <><X className="h-4 w-4" /> Not done</>}
             </button>
           ))}

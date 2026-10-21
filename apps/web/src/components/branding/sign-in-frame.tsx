@@ -57,7 +57,7 @@ export function SignInFrame({ branding: b, children, className }: { branding: Br
     return (
       <div className={cn('relative flex min-h-screen flex-col items-center justify-center gap-6 p-4 sm:p-8', bg.className, className)} style={bg.style}>
         {bg.overlay && <div className={cn('pointer-events-none absolute inset-0', bg.overlay)} />}
-        <div className="page-enter relative w-full max-w-md rounded-2xl border border-white/10 bg-card p-7 text-card-foreground shadow-pop sm:p-9">
+        <div className="surface-strong page-enter relative w-full max-w-md rounded-2xl p-8 text-card-foreground sm:p-10">
           <div className="mb-6 flex items-center gap-3">
             <ThemedLogo branding={b} className="h-12 max-w-[180px] object-contain" />
             {!b.logoUrl && !b.logoDarkUrl && <span className="text-lg font-semibold tracking-tight">{b.brandName}</span>}
@@ -73,8 +73,8 @@ export function SignInFrame({ branding: b, children, className }: { branding: Br
   }
 
   return (
-    <div className={cn('grid min-h-screen lg:grid-cols-[1fr_minmax(480px,560px)]', className)}>
-      <div className={cn('relative hidden flex-col justify-between overflow-hidden p-10 lg:flex', bg.className)} style={bg.style}>
+    <div className={cn('app-canvas grid min-h-screen lg:grid-cols-[1fr_minmax(480px,560px)] lg:p-4', className)}>
+      <div className={cn('relative hidden flex-col justify-between overflow-hidden rounded-2xl p-12 shadow-pop lg:flex', bg.className)} style={bg.style}>
         {bg.overlay && <div className={cn('pointer-events-none absolute inset-0', bg.overlay)} />}
         <div className="relative flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -86,8 +86,8 @@ export function SignInFrame({ branding: b, children, className }: { branding: Br
         <PawPrint aria-hidden className="pointer-events-none absolute -bottom-16 -right-12 h-80 w-80 -rotate-12 opacity-[0.025]" />
         {!bg.overlay && <div className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-primary/20 blur-3xl" />}
       </div>
-      <div className="app-canvas flex items-center justify-center bg-background p-6 sm:p-10">
-        <div className="page-enter w-full max-w-md rounded-2xl border border-border/60 bg-card/85 p-8 shadow-card backdrop-blur sm:p-10">
+      <div className="flex items-center justify-center p-4 sm:p-10">
+        <div className="surface-strong page-enter w-full max-w-md rounded-2xl p-8 sm:p-10">
           {/* Small screens have no side panel: the clinic's logo sits above the form. */}
           <div className="mb-6 lg:hidden">
             <ThemedLogo branding={b} className="h-12 max-w-[200px] object-contain" />

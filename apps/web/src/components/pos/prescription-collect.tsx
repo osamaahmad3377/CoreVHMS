@@ -96,7 +96,7 @@ export function CollectPrescriptionDialog({
             ) : (
               <ul className="grid gap-2">
                 {rows.map((p) => (
-                  <li key={p.id} className="rounded-xl border bg-card p-3">
+                  <li key={p.id} className="rounded-xl surface-flat p-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <Pill className="h-4 w-4 text-primary" />
                       <span className="text-sm font-semibold">{p.prescriptionNo}</span>

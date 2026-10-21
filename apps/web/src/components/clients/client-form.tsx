@@ -329,7 +329,7 @@ export function ClientForm({ client, onSaved, onCancel }: Props) {
       </FormSection>
       </div>
 
-      <div className="sticky bottom-0 -mx-4 flex justify-end gap-2 border-t bg-card/95 px-4 py-3 backdrop-blur">
+      <div className="action-bar -mx-6 flex justify-end gap-2 rounded-b-xl px-6 py-4">
         {onCancel && (
           <Button type="button" variant="outline" onClick={() => void cancel()}>
             Cancel

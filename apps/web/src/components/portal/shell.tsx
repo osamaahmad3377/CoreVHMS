@@ -8,6 +8,7 @@ import { LoadingRows } from '../page';
 import { Button } from '../ui/button';
 import { portalApi, type PortalSession } from '@/lib/portal-api';
 import { cn } from '@/lib/utils';
+import { tabListClass, tabTriggerClass } from '../ui/tabs';
 
 const Ctx = createContext<PortalSession | null>(null);
 export const usePortal = () => {
@@ -40,19 +41,19 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
   const active = (href: string, exact?: boolean) => (exact ? pathname === href : pathname.startsWith(href));
   return (
     <Ctx.Provider value={s}>
-      <div className="min-h-screen bg-muted/30 pb-20 md:pb-0">
-        <header className="no-print sticky top-0 z-30 border-b bg-card/95 backdrop-blur">
+      <div className="app-canvas min-h-screen pb-20 md:pb-0">
+        <header className="no-print glass sticky top-0 z-30 border-b border-[hsl(var(--glass-edge))]">
           <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4">
-            <span className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground"><PawPrint className="h-4 w-4" /></span>
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-primary to-brand-2 text-white shadow-glow"><PawPrint className="h-4 w-4" /></span>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold">{s.clinic.name}</p>
               <p className="truncate text-xs text-muted-foreground">Client portal · {s.client.displayName}</p>
             </div>
             <Button variant="ghost" size="sm" onClick={logout}><LogOut /> <span className="hidden sm:inline">Sign out</span></Button>
           </div>
-          <nav aria-label="Portal" className="mx-auto hidden max-w-5xl gap-1 px-4 md:flex">
+          <nav aria-label="Portal" className={cn(tabListClass, 'mx-auto mb-3 hidden md:flex md:w-fit')}>
             {NAV.map((n) => (
-              <Link key={n.href} href={n.href} aria-current={active(n.href, n.exact) ? 'page' : undefined} className={cn('-mb-px flex items-center gap-1.5 border-b-2 px-3 pb-2 pt-1 text-sm font-medium', active(n.href, n.exact) ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}>
+              <Link key={n.href} href={n.href} aria-current={active(n.href, n.exact) ? 'page' : undefined} className={tabTriggerClass()}>
                 <n.icon className="h-4 w-4" /> {n.label}
               </Link>
             ))}

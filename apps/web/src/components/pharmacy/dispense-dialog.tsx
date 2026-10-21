@@ -74,7 +74,7 @@ export function DispenseDialog({ rx, open, onOpenChange, onDispensed }: { rx: Pr
             const matches = allergyMatches(allergies, i.product);
             const l = lines[i.id];
             return (
-              <div key={i.id} className="grid gap-2 rounded-md border p-3">
+              <div key={i.id} className="grid gap-2 rounded-lg surface-flat p-3">
                 <div>
                   <p className="text-sm font-medium">{i.product.name}</p>
                   <p className="text-xs text-muted-foreground">{remainingText(i)}</p>

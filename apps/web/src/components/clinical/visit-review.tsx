@@ -37,7 +37,7 @@ export function VisitReview({ encounter: e, hasPrescriptions, outcome, ctx, onFi
           <p className="text-xs text-muted-foreground">{open.length ? 'Fine if they do not apply to this visit. Tap one to go back to it.' : 'You can finish the consultation now.'}</p>
         </div>
       </div>
-      <ul className="divide-y overflow-hidden rounded-xl border bg-card">
+      <ul className="divide-y overflow-hidden rounded-xl surface-flat">
         {items.map((i) => (
           <li key={i.step}>
             <button type="button" onClick={() => ctx.goStep(i.step)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none">

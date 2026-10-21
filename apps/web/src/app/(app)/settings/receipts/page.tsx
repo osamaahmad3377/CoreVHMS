@@ -17,6 +17,7 @@ import { Input, NativeSelect, Textarea } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import type { ReceiptContext, ReceiptSettings } from '@/lib/types';
+import { tabListClass, tabTriggerClass } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 
 /** A sample sale for the preview and test print (not a real invoice). */
@@ -58,7 +59,7 @@ function Toggle({ label, hint, checked, onChange }: { label: string; hint?: stri
 
 function Segmented<T extends string | number>({ label, value, options, onChange }: { label: string; value: T; options: { value: T; label: React.ReactNode; title?: string }[]; onChange: (v: T) => void }) {
   return (
-    <div role="radiogroup" aria-label={label} className="inline-flex rounded-md border p-0.5">
+    <div role="radiogroup" aria-label={label} className={tabListClass}>
       {options.map((o) => (
         <button
           key={String(o.value)}
@@ -67,7 +68,7 @@ function Segmented<T extends string | number>({ label, value, options, onChange 
           aria-checked={value === o.value}
           title={o.title}
           onClick={() => onChange(o.value)}
-          className={cn('flex items-center gap-1 rounded px-3 py-1 text-sm', value === o.value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}
+          className={tabTriggerClass(value === o.value)}
         >
           {o.label}
         </button>

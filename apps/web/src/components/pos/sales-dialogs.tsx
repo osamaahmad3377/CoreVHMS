@@ -61,7 +61,7 @@ export function TodaySalesDialog({ open, onOpenChange, clinic, currency, onRepri
               </ul>
             )}
           </div>
-          <div className="rounded-md border bg-muted/40 p-3">
+          <div className="rounded-lg surface-flat p-3">
             {selected ? (
               <div className="grid gap-3">
                 <div className="max-h-[48vh] overflow-y-auto rounded border bg-muted/40 p-2">

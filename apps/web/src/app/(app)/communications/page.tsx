@@ -19,6 +19,7 @@ import { api, qs } from '@/lib/api';
 import { fmtDate, fmtDateTime, fmtRelative } from '@/lib/format';
 import { usePortalEnabled, useSession } from '@/lib/session';
 import type { AppointmentRequestRow, ClientMessage, OutboundMessage } from '@/lib/types';
+import { tabListClass, tabTriggerClass } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 
 type Log = Paginated<OutboundMessage> & { last30Days: Record<string, number>; channels: { channel: string; configured: boolean; provider: string }[] };
@@ -51,7 +52,7 @@ function MessageLog() {
       )}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {(['SENT', 'QUEUED', 'SKIPPED', 'FAILED'] as const).map((s) => (
-          <button key={s} type="button" onClick={() => url.set({ status: params.status === s ? null : s, page: 1 })} className={cn('rounded-lg border bg-card p-3 text-left shadow-sm hover:border-primary/50', params.status === s && 'border-primary ring-1 ring-primary/30')}>
+          <button key={s} type="button" onClick={() => url.set({ status: params.status === s ? null : s, page: 1 })} className={cn('rounded-xl surface-flat p-3 text-left shadow-card hover:border-primary/50', params.status === s && 'border-primary ring-1 ring-primary/30')}>
             <p className="text-xs text-muted-foreground">{enumLabel(s)} · last 30 days</p>
             <p className={cn('text-2xl font-semibold tabular', s === 'FAILED' && (q.data?.last30Days.FAILED ?? 0) > 0 && 'text-destructive')}>{q.data?.last30Days[s] ?? 0}</p>
           </button>
@@ -214,9 +215,9 @@ function Messages() {
   return (
     <>
       <PageHeader title="Messages" help="communications" description="Reminders and messages to clients, secure messages from the client portal, and online appointment requests." />
-      <div className="mb-4 flex gap-1 border-b" role="tablist">
+      <div className={cn(tabListClass, 'mb-6')} role="tablist">
         {[['log', 'Message log', 0], ['inbox', 'Client messages', unread.data?.unread ?? 0], ['requests', 'Appointment requests', requests.data?.length ?? 0]].map(([k, l, n]) => (
-          <button key={k as string} role="tab" aria-selected={tab === k} onClick={() => url.set({ tab: k as string, client: null })} className={cn('-mb-px flex items-center gap-1.5 border-b-2 px-3 pb-2 pt-1 text-sm font-medium', tab === k ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}>
+          <button key={k as string} role="tab" aria-selected={tab === k} onClick={() => url.set({ tab: k as string, client: null })} className={tabTriggerClass()}>
             {l}{(n as number) > 0 && <Badge variant="destructive" className="px-1.5 py-0">{n}</Badge>}
           </button>
         ))}
