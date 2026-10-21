@@ -59,8 +59,8 @@ export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () 
         className="flex h-9 min-w-0 shrink items-center gap-2 rounded-lg bg-foreground/[0.05] px-3 text-sm text-muted-foreground transition-all duration-200 ease-apple hover:bg-foreground/[0.08] sm:w-full sm:max-w-md sm:px-3.5"
       >
         <Search className="h-4 w-4 shrink-0" />
-        <span className="hidden flex-1 truncate text-left sm:block">Search a name or phone — or type what you want to do</span>
-        <span className="hidden items-center gap-0.5 sm:flex">
+        <span className="hidden flex-1 truncate text-left sm:block">Search a name or phone<span className="hidden lg:inline"> — or type what you want to do</span></span>
+        <span className="hidden items-center gap-0.5 xl:flex">
           <Kbd>{mod}</Kbd>
           <Kbd>K</Kbd>
         </span>

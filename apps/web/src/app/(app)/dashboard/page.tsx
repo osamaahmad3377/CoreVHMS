@@ -139,7 +139,7 @@ export default function DashboardPage() {
           <SetupChecklist />
 
           {frontline && w?.frontDesk && (
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
               <WaitingNow data={w.frontDesk} />
               <ArrivingNext data={w.frontDesk} emptyText={noMoreBookings} />
             </div>
@@ -154,10 +154,10 @@ export default function DashboardPage() {
             </section>
           )}
 
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
             <AttentionList items={attention} title={frontline ? 'Still to do' : 'Needs your attention'} />
             {glance.length > 0 && (
-              <section aria-label="Today at a glance" className="grid content-start gap-3 rounded-xl border border-border/70 bg-card p-4 shadow-card">
+              <section aria-label="Today at a glance" className="grid content-start gap-3 rounded-xl bg-card p-4 shadow-card">
                 <h2 className="px-1 text-sm font-semibold tracking-tight">Today at a glance</h2>
                 <ul className="grid grid-cols-2 gap-2">
                   {glance.map((g) => (
@@ -177,7 +177,7 @@ export default function DashboardPage() {
           </div>
 
           {((w?.appointmentsToday && !(frontline && w.frontDesk)) || w?.clinicalWork || w?.tasks || (w?.surgery && w.surgery.today.length > 0)) && (
-            <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2 2xl:grid-cols-3">
               {w.appointmentsToday && !(frontline && w.frontDesk) && (
                 <Card>
                   <CardHeader>

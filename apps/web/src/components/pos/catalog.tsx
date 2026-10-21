@@ -73,7 +73,7 @@ export const PosCatalog = React.forwardRef<HTMLInputElement, Props>(function Pos
           <span className="hidden xl:inline"><Kbd>F2</Kbd></span>
         </span>
       </div>
-      <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Categories">
+      <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0 [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Categories">
         {categories.map((c) => (
           <button
             key={c.key}
@@ -87,7 +87,7 @@ export const PosCatalog = React.forwardRef<HTMLInputElement, Props>(function Pos
         ))}
       </div>
       {p.shelves.length > 0 && (
-        <div className="-mt-1 flex flex-wrap gap-1.5" role="tablist" aria-label="Shelves">
+        <div className="-mx-4 -mt-1 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0 [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Shelves">
           {[{ id: '', name: 'All' }, ...p.shelves].map((s) => (
             <button
               key={s.id || 'all'}
