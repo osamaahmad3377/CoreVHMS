@@ -8,7 +8,7 @@
  *   platform list                                      list hosted clinics
  *
  * Development: npm run platform -w @vcms/api -- <command>.  Docker image: node dist/cli/platform.js <command>.
- */
+ *sdsdsdsds/
 /* eslint-disable no-console -- command-line output */
 import { PrismaClient } from '@prisma/client';
 import { env } from '../config/env';
