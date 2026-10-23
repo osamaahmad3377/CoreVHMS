@@ -7,7 +7,7 @@ import type { ScopedTx } from '../../common/prisma/tenant-extension';
 import { allergyMatches } from './prescriptions.service';
 import { WithdrawalService } from './withdrawal.service';
 
-export type AdministrationHook = (tx: ScopedTx, e: { administrationId: string; productId: string; dose: number; doseUnit: string; batchNumber?: string | null; branchId: string }) => Promise<void>;
+export type AdministrationHook = (tx: ScopedTx, e: { administrationId: string; productId: string; dose: number; doseUnit: string; batchNumber?: string | null; branchId: string; billQuantity?: number | null }) => Promise<void>;
 
 /** Medication given in the clinic (injections, in-clinic doses, vaccines). */
 @Injectable()
@@ -44,6 +44,8 @@ export class AdministrationsService {
     notes?: string | null;
     administeredAt?: Date | null;
     overrideReason?: string | null;
+    /** Billed amount in selling units (see administrationSchema). */
+    billQuantity?: number | null;
   }, within?: (tx: ScopedTx, administration: { id: string }) => Promise<void>) {
     const ctx = RequestContext.require();
     const patient = await this.prisma.db.patient.findUnique({ where: { id: input.patientId }, include: { alerts: { where: { isActive: true } } } });
@@ -70,7 +72,7 @@ export class AdministrationsService {
     }
     const at = input.administeredAt ?? new Date();
     if (at.getTime() > Date.now() + 5 * 60_000) throw ruleViolation('FUTURE_TIME', 'Administration time cannot be in the future');
-    const { overrideReason, ...data } = input;
+    const { overrideReason, billQuantity: _billQuantity, ...data } = input;
     return this.prisma.db.$transaction(async (tx) => {
       const a = await tx.medicationAdministration.create({
         data: {
@@ -83,7 +85,7 @@ export class AdministrationsService {
         },
       });
       if (input.status === 'GIVEN') {
-        for (const { hook } of [...this.hooks.filter((h) => !h.late), ...this.hooks.filter((h) => h.late)]) await hook(tx, { administrationId: a.id, productId: product.id, dose: input.dose, doseUnit: input.doseUnit, batchNumber: input.batchNumber, branchId: ctx.branchId! });
+        for (const { hook } of [...this.hooks.filter((h) => !h.late), ...this.hooks.filter((h) => h.late)]) await hook(tx, { administrationId: a.id, productId: product.id, dose: input.dose, doseUnit: input.doseUnit, batchNumber: input.batchNumber, branchId: ctx.branchId!, billQuantity: input.billQuantity ?? null });
         await this.withdrawals.record(tx, { patientId: patient.id, speciesId: patient.speciesId, productId: product.id, sourceType: 'ADMINISTRATION', sourceId: a.id, treatedAt: at });
       }
       // Callers (e.g. the hospital treatment sheet) can record their own changes in the same transaction.

@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ROUTES } from '@vcms/shared';
+import { calculateDose, ROUTES } from '@vcms/shared';
 import { ShieldAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -12,7 +12,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input, NativeSelect } from '../ui/input';
 import { ProductPicker } from './product-picker';
 import { ApiError, api } from '@/lib/api';
+import { fmtMoney } from '@/lib/format';
 import { routeLabel } from '@/lib/labels';
+import { useSession } from '@/lib/session';
 import type { Product } from '@/lib/types';
 
 /** Records medication given in clinic (injection, in-clinic dose, vaccine). */
@@ -23,6 +25,10 @@ export function AdministerDialog({ open, onOpenChange, patientId, encounterId }:
   const [notGiven, setNotGiven] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsOverride, setNeedsOverride] = useState<string | null>(null);
+  const { currency } = useSession();
+  /** Amount to bill in the product's selling unit; follows the dose until the user changes it. */
+  const [bill, setBill] = useState('');
+  const [billTouched, setBillTouched] = useState(false);
   useEffect(() => {
     if (open) {
       setProduct(null);
@@ -30,8 +36,23 @@ export function AdministerDialog({ open, onOpenChange, patientId, encounterId }:
       setNotGiven(false);
       setError(null);
       setNeedsOverride(null);
+      setBill('');
+      setBillTouched(false);
     }
   }, [open]);
+  // The dose in selling units (e.g. 100 mg of a 50 mg tablet = 2 tablets); 1 when it cannot be worked out.
+  const suggested = (() => {
+    const dose = Number(f.dose);
+    if (!product || !(dose > 0)) return null;
+    if (f.doseUnit.trim().toLowerCase() === product.dispensingUnit.toLowerCase()) return dose;
+    const r = calculateDose({ doseValue: dose, doseUnit: f.doseUnit, strengthValue: product.strengthValue, strengthUnit: product.strengthUnit, dispensingUnit: product.dispensingUnit, increment: Number(product.minDispenseIncrement) || 1, rounding: 'up' });
+    return r.ok ? r.amount : 1;
+  })();
+  useEffect(() => {
+    if (!billTouched) setBill(suggested === null ? '' : String(suggested));
+  }, [suggested, billTouched]);
+  const billQty = bill === '' ? null : Number(bill);
+  const price = product?.sellPriceMinor ?? null;
   const m = useMutation({
     mutationFn: () =>
       api.post('/administrations', {
@@ -41,6 +62,7 @@ export function AdministerDialog({ open, onOpenChange, patientId, encounterId }:
         status: notGiven ? 'NOT_GIVEN' : 'GIVEN',
         ...f,
         overrideReason: f.overrideReason || null,
+        billQuantity: billQty ?? undefined,
       }),
     onSuccess: () => {
       toast.success(notGiven ? 'Recorded as not given' : 'Administration recorded');
@@ -80,6 +102,19 @@ export function AdministerDialog({ open, onOpenChange, patientId, encounterId }:
             </Field>
             <Field label="Site" htmlFor="ad-s"><Input id="ad-s" placeholder="e.g. L flank" value={f.site} onChange={set('site')} /></Field>
           </div>
+          {product && !notGiven && (
+            <Field
+              label="Bill"
+              htmlFor="ad-bill"
+              help="Added to the client’s bill for this visit. Filled in from the dose; change it if needed, or enter 0 to give it free of charge."
+              hint={billQty === 0 ? 'Free of charge — not added to the bill.' : price !== null && billQty ? `${billQty} × ${fmtMoney(price, currency)} = ${fmtMoney(Math.round(price * billQty), currency)}` : price === null ? 'This product has no selling price yet — it is added to the bill at 0.' : undefined}
+            >
+              <div className="flex items-center gap-2">
+                <Input id="ad-bill" className="w-32" inputMode="decimal" value={bill} onChange={(e) => { setBill(e.target.value); setBillTouched(true); }} />
+                <span className="text-sm text-muted-foreground">{product.dispensingUnit}</span>
+              </div>
+            </Field>
+          )}
           <label className="flex items-center gap-2 text-sm"><Checkbox checked={notGiven} onCheckedChange={(v) => setNotGiven(v === true)} /> Dose was NOT given</label>
           {notGiven && <Field label="Reason not given" htmlFor="ad-ng" required><Input id="ad-ng" value={f.reasonNotGiven} onChange={set('reasonNotGiven')} /></Field>}
           <Field label="Notes" htmlFor="ad-n"><Input id="ad-n" value={f.notes} onChange={set('notes')} /></Field>

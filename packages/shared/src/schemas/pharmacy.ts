@@ -141,6 +141,11 @@ export const administrationSchema = z.object({
   notes: optText(1000),
   administeredAt: optDate(),
   overrideReason: optText(500),
+  /**
+   * How much to bill, in the product's selling unit (e.g. 1 dose, 2 tablets). Left out = worked out from the
+   * dose (1 when it cannot be); 0 = given free of charge.
+   */
+  billQuantity: z.preprocess((v) => (v === '' ? undefined : v), z.coerce.number().min(0).max(100000).optional()),
 });
 
 export const productCategorySchema = z.object({

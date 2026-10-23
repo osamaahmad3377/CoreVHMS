@@ -97,14 +97,20 @@ export class BillingIntegrations implements OnModuleInit {
       const a = await tx.medicationAdministration.findUniqueOrThrow({ where: { id: e.administrationId } });
       // Stock and charge need the amount in dispensing units: the dose as recorded, or a mass dose converted
       // with the product's strength. A dose that cannot be converted (e.g. mL of a per-dose vaccine) is neither.
-      const quantity = dispensingQuantity(product, e.dose, e.doseUnit);
-      if (quantity !== null && !a.prescriptionItemId) {
-        const issued = await this.inventory.issueForEvent(tx, { productId: product.id, quantity, branchId: e.branchId, type: 'ADMINISTER', referenceType: 'Administration', referenceId: a.id, preferredBatchNumber: e.batchNumber });
+      const converted = dispensingQuantity(product, e.dose, e.doseUnit);
+      // What was used and what is billed, in selling units: the vet's own figure when given, otherwise the dose
+      // converted to selling units, otherwise one (e.g. "1 mL" of a vaccine sold per dose). Billed 0 = free.
+      const used = converted ?? (e.billQuantity && e.billQuantity > 0 ? e.billQuantity : 1);
+      const billed = e.billQuantity ?? used;
+      // Stock is only taken when the amount is known (converted, or confirmed by the vet), so a guess never blocks recording.
+      if (!a.prescriptionItemId && (converted !== null || e.billQuantity != null)) {
+        const issued = await this.inventory.issueForEvent(tx, { productId: product.id, quantity: used, branchId: e.branchId, type: 'ADMINISTER', referenceType: 'Administration', referenceId: a.id, preferredBatchNumber: e.batchNumber });
         if (issued.length) await tx.medicationAdministration.update({ where: { id: a.id }, data: traceability(issued) });
       }
       if (a.prescriptionItemId) return; // charged when the prescription was dispensed
       const owner = await tx.patientOwnership.findFirst({ where: { patientId: a.patientId, endedAt: null, isPrimary: true } });
-      if (!owner || quantity === null) return;
+      if (!owner || !(billed > 0)) return;
+      const quantity = billed;
       await this.charges.capture(tx, {
         sourceType: 'Administration',
         sourceId: a.id,

@@ -253,9 +253,18 @@ describe('Prescriptions & pharmacy', () => {
     // 30 mg = 0.6 tablet → rounded up to the smallest dispensable amount (0.75)
     const b = await vet.client.post('/administrations', { patientId: patient.id, productId: product.id, dose: 30, doseUnit: 'mg', route: 'PO' });
     expect(Number((await prisma().charge.findFirst({ where: { sourceType: 'Administration', sourceId: b.body.id } }))?.quantity)).toBe(0.75);
-    // A unit that cannot be converted is neither deducted nor charged.
+    // A unit that cannot be converted is still billed (one selling unit) but not taken from stock.
+    const movements = () => prisma().stockMovement.count({ where: { referenceType: 'Administration' } });
+    const before = await movements();
     const c = await vet.client.post('/administrations', { patientId: patient.id, productId: product.id, dose: 1, doseUnit: 'mL', route: 'PO' });
-    expect(await prisma().charge.count({ where: { sourceType: 'Administration', sourceId: c.body.id } })).toBe(0);
+    expect(Number((await prisma().charge.findFirst({ where: { sourceType: 'Administration', sourceId: c.body.id } }))?.quantity)).toBe(1);
+    expect(await movements()).toBe(before);
+    // The vet's own amount to bill wins; 0 means free of charge.
+    const d = await vet.client.post('/administrations', { patientId: patient.id, productId: product.id, dose: 1, doseUnit: 'mL', route: 'PO', billQuantity: 3 });
+    expect(d.body.error ?? null).toBeNull();
+    expect(Number((await prisma().charge.findFirst({ where: { sourceType: 'Administration', sourceId: d.body.id } }))?.quantity)).toBe(3);
+    const free = await vet.client.post('/administrations', { patientId: patient.id, productId: product.id, dose: 100, doseUnit: 'mg', route: 'PO', billQuantity: 0 });
+    expect(await prisma().charge.count({ where: { sourceType: 'Administration', sourceId: free.body.id } })).toBe(0);
   });
 
   it('isolates prescriptions between organizations', async () => {
