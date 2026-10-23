@@ -79,7 +79,6 @@ export function AdministerDialog({ open, onOpenChange, patientId, encounterId }:
               <NativeSelect id="ad-r" value={f.route} onChange={set('route')}>{ROUTES.map((r) => <option key={r} value={r}>{routeLabel(r)}</option>)}</NativeSelect>
             </Field>
             <Field label="Site" htmlFor="ad-s"><Input id="ad-s" placeholder="e.g. L flank" value={f.site} onChange={set('site')} /></Field>
-            <Field label="Batch / lot" htmlFor="ad-b" help="The batch number printed on the pack. It lets you trace the medicine if there is ever a recall."><Input id="ad-b" value={f.batchNumber} onChange={set('batchNumber')} /></Field>
             <Field label="Expiry" htmlFor="ad-e"><Input id="ad-e" type="date" value={f.expiryDate} onChange={set('expiryDate')} /></Field>
           </div>
           <label className="flex items-center gap-2 text-sm"><Checkbox checked={notGiven} onCheckedChange={(v) => setNotGiven(v === true)} /> Dose was NOT given</label>

@@ -87,7 +87,7 @@ export function AdministrationsPanel(props: Ctx) {
           {q.data.map((a) => (
             <li key={a.id} className="px-3 py-2">
               <p className={`text-sm ${a.status === 'NOT_GIVEN' ? 'text-muted-foreground line-through' : ''}`}>{a.product.name} {a.dose} {a.doseUnit} · {routeLabel(a.route)}{a.site && ` · ${a.site}`}</p>
-              <p className="text-2xs text-muted-foreground">{fmtDateTime(a.administeredAt)} · {a.administeredByName}{a.batchNumber && ` · batch ${a.batchNumber}`}{a.reasonNotGiven && ` · not given: ${a.reasonNotGiven}`}</p>
+              <p className="text-2xs text-muted-foreground">{fmtDateTime(a.administeredAt)} · {a.administeredByName}{a.reasonNotGiven && ` · not given: ${a.reasonNotGiven}`}</p>
             </li>
           ))}
         </ul>
