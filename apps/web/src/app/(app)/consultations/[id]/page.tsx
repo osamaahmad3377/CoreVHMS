@@ -1,7 +1,7 @@
 'use client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { enumLabel, type Paginated } from '@vcms/shared';
-import { Activity, AlertTriangle, ArrowRight, BedDouble, CalendarPlus, CheckCircle2, ChevronDown, ClipboardList, FilePlus, FlaskConical, History, Paperclip, Pill, Printer, Receipt, Scissors, Stethoscope, Syringe, Upload, XCircle } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowRight, MoreHorizontal, BedDouble, CalendarPlus, CheckCircle2, ChevronDown, ClipboardList, FilePlus, FlaskConical, History, Paperclip, Pill, Printer, Receipt, Scissors, Stethoscope, Syringe, Upload, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
@@ -29,7 +29,7 @@ import { AttachmentsPanel } from '@/components/shared/attachments-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useAppointmentTypes } from '@/hooks/use-catalog';
 import { api, qs } from '@/lib/api';
 import { fmtDateTime } from '@/lib/format';
@@ -132,6 +132,8 @@ function Workspace() {
     if (then) setTimeout(then, 80);
   };
 
+  /** Shown as buttons; everything else goes under More. */
+  const PRIMARY_ACTIONS = ['Prescribe', 'Order test', 'Give medicine now', 'Book recheck'];
   const actions = [
     canSeeHistory && { label: 'History', icon: History, onClick: () => { setHistoryVisit(null); setHistoryOpen(true); } },
     writable && { label: 'Vitals', icon: Activity, onClick: () => (workspace ? goStep('arrival', () => vitalsRef.current?.openForm()) : vitalsRef.current?.openForm()) },
@@ -141,7 +143,7 @@ function Workspace() {
     active && can('lab.read') && can('lab.order') && { label: 'Order test', icon: FlaskConical, onClick: () => (workspace ? goStep('diagnosis', () => setLabOpen(true)) : setLabOpen(true)) },
     workspace && moduleOn('hospital') && can('hospital.write') && { label: 'Admit', icon: BedDouble, onClick: () => goStep('outcome', () => setAdmitOpen(true)) },
     workspace && moduleOn('surgery') && can('surgery.write') && { label: 'Surgery', icon: Scissors, onClick: () => goStep('outcome', () => setSurgeryOpen(true)) },
-    active && can('appointments.write') && { label: 'Follow-up', icon: CalendarPlus, onClick: () => setFollowUp(true) },
+    active && can('appointments.write') && { label: 'Book recheck', icon: CalendarPlus, onClick: () => setFollowUp(true) },
     writable && { label: 'Upload', icon: Upload, onClick: () => (workspace ? goStep('advice', () => scrollTo('attachments-card')) : scrollTo('attachments-card')) },
   ].filter(Boolean) as { label: string; icon: React.ComponentType<{ className?: string }>; onClick: () => void }[];
 
@@ -321,19 +323,7 @@ function Workspace() {
           )}
           {enc.status === 'OPEN' && can('clinical.write') && (
             <>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button size="sm" variant="ghost">
-                    More <ChevronDown />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem className="text-destructive" onSelect={() => void cancel()}>
-                    <XCircle /> Cancel consultation
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <Button size="sm" onClick={() => setFinishing(true)}>
+              <Button onClick={() => setFinishing(true)}>
                 <CheckCircle2 /> Finish consultation
               </Button>
             </>
@@ -342,12 +332,39 @@ function Workspace() {
       </div>
 
       {actions.length > 0 && (
-        <div role="toolbar" aria-label="Consultation actions" className="surface mb-6 flex flex-wrap gap-1 rounded-2xl p-1.5">
-          {actions.map((a) => (
-            <Button key={a.label} size="sm" variant="ghost" onClick={a.onClick}>
+        <div role="toolbar" aria-label="Consultation actions" className="surface mb-6 flex flex-wrap items-center gap-1 rounded-2xl p-1.5">
+          {/* The four things vets do most stay in view; the rest are one tap away under More. */}
+          {actions.filter((a) => PRIMARY_ACTIONS.includes(a.label)).map((a) => (
+            <Button key={a.label} variant="ghost" onClick={a.onClick}>
               <a.icon /> {a.label}
             </Button>
           ))}
+          {(actions.some((a) => !PRIMARY_ACTIONS.includes(a.label)) || (enc.status === 'OPEN' && can('clinical.write'))) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost">
+                  <MoreHorizontal /> More
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                {actions
+                  .filter((a) => !PRIMARY_ACTIONS.includes(a.label))
+                  .map((a) => (
+                    <DropdownMenuItem key={a.label} onSelect={a.onClick}>
+                      <a.icon /> {a.label}
+                    </DropdownMenuItem>
+                  ))}
+                {enc.status === 'OPEN' && can('clinical.write') && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => void cancel()}>
+                      <XCircle /> Cancel consultation
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       )}
 

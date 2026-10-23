@@ -175,8 +175,17 @@ export class ClinicalIntegrations implements OnModuleInit {
       permission: 'clinical.read',
       load: async () => {
         const ctx = RequestContext.require();
-        const [openEncounters, myDrafts] = await Promise.all([
+        const [openEncounters, mine, myDrafts] = await Promise.all([
           db().encounter.count({ where: { status: 'OPEN' } }),
+          // The vet's own consultations still in progress, newest first, to continue in one click.
+          ctx.membershipId
+            ? db().encounter.findMany({
+                where: { status: 'OPEN', clinicianId: ctx.membershipId },
+                include: { patient: { select: { name: true, species: { select: { name: true } } } } },
+                orderBy: { startedAt: 'desc' },
+                take: 5,
+              })
+            : Promise.resolve([]),
           db().clinicalNote.findMany({
             where: { status: { in: ['DRAFT', 'REVIEWED'] }, authorId: ctx.userId },
             include: { patient: { select: { name: true } }, encounter: { select: { id: true, number: true } } },
@@ -186,6 +195,7 @@ export class ClinicalIntegrations implements OnModuleInit {
         ]);
         return {
           openEncounters,
+          myOpen: mine.map((e) => ({ id: e.id, encounterNo: encounterNo(e.number), patient: e.patient.name, species: e.patient.species.name, chiefComplaint: e.chiefComplaint, startedAt: e.startedAt })),
           unsignedNotes: myDrafts.map((n) => ({ id: n.id, encounterId: n.encounter.id, encounterNo: encounterNo(n.encounter.number), patient: n.patient.name, updatedAt: n.updatedAt, status: n.status })),
         };
       },

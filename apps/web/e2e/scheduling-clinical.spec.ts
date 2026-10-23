@@ -44,8 +44,10 @@ test.describe('Clinical day: book → check in → consult → sign', () => {
     await page.locator('#n-objective').fill('Erythema and brown discharge in left canal.');
     await page.locator('#n-assessment').fill('Otitis externa (left).');
     await page.locator('#n-plan').fill('Ear cleaning; recheck 10 days.');
-    await page.getByRole('button', { name: 'Sign & lock note' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Sign note' }).click();
+    // A guided visit saves by itself; finishing it signs the vet's note.
+    await expect(page.getByText(/Saved automatically/)).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: 'Finish consultation' }).first().click();
+    await page.getByRole('dialog').getByRole('button', { name: /Sign notes? & finish/ }).click();
     await expect(page.getByText('Integrity verified')).toBeVisible();
     await expect(page.getByText('Signed · v1')).toBeVisible();
 

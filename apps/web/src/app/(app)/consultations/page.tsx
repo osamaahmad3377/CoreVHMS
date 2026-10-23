@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { NativeSelect } from '@/components/ui/input';
+import { dashboardRole } from '@/components/dashboard/quick-actions';
 import { useUrlState } from '@/hooks/use-url-state';
 import { api, qs } from '@/lib/api';
 import { fmtDateTime } from '@/lib/format';
@@ -27,11 +28,14 @@ function ConsultationsList() {
   const router = useRouter();
   const { can } = useSession();
   const url = useUrlState();
-  const [start, setStart] = useState(false);
+  // ?start=1 (e.g. "See a walk-in" on the dashboard) opens the start window straight away.
+  const [start, setStart] = useState(() => url.get('start') === '1');
+  // Vets see their own consultations first; everyone can switch to all.
+  const mineDefault = dashboardRole((p) => can(p)) === 'vet' ? 'true' : 'false';
   const params = {
     q: url.get('q'),
     status: url.get('status', 'OPEN'),
-    mine: url.get('mine') === 'true' ? 'true' : undefined,
+    mine: url.get('mine', mineDefault) === 'true' ? 'true' : undefined,
     page: Number(url.get('page', '1')),
     pageSize: Number(url.get('pageSize', '25')),
   };
@@ -60,7 +64,7 @@ function ConsultationsList() {
             <option value="ALL">All</option>
           </NativeSelect>
           <label className="flex items-center gap-2 text-sm">
-            <Checkbox checked={params.mine === 'true'} onCheckedChange={(v) => url.set({ mine: v === true ? 'true' : null, page: 1 })} /> Only mine
+            <Checkbox checked={params.mine === 'true'} onCheckedChange={(v) => url.set({ mine: v === true ? 'true' : 'false', page: 1 })} /> Only mine
           </label>
         </div>
         <DataTable

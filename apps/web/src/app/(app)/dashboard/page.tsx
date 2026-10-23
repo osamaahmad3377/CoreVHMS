@@ -10,6 +10,7 @@ import { BarChartCard } from '@/components/charts';
 import { EmptyState, ErrorState, LoadingRows, PageHeader } from '@/components/page';
 import { AttentionList, buildAttention } from '@/components/dashboard/attention';
 import { ArrivingNext, type FrontDeskWidget, WaitingNow, noMoreBookingsText } from '@/components/dashboard/front-desk-panels';
+import { VetFocus, type MyOpenConsultation } from '@/components/dashboard/vet-focus';
 import { DashboardHero } from '@/components/dashboard/hero';
 import { QuickActions, dashboardRole } from '@/components/dashboard/quick-actions';
 import { SetupChecklist, ShowSetupAgainLink } from '@/components/dashboard/setup-checklist';
@@ -34,7 +35,7 @@ interface DashboardData {
       staleDate?: string | null;
       upcoming: { id: string; startsAt: string; status: string; priority: string | null; patient: { id: string; name: string } | null; type: { name: string; color: string }; clinician: string | null }[];
     };
-    clinicalWork?: { openEncounters: number; unsignedNotes: { id: string; encounterId: string; encounterNo: string; patient: string; updatedAt: string; status: string }[] };
+    clinicalWork?: { openEncounters: number; myOpen?: MyOpenConsultation[]; unsignedNotes: { id: string; encounterId: string; encounterNo: string; patient: string; updatedAt: string; status: string }[] };
     pharmacy?: { awaitingAuthorization: number; readyToDispense: number };
     lab?: { toCollect: number; inProgress: number; awaitingValidation: number; critical: { id: string; orderNo: string; patient: { id: string; name: string }; status: string }[] };
     hospital?: { inpatients: number; overdueTreatments: number; critical: { id: string; admissionNo: string; patient: { id: string; name: string } }[] };
@@ -135,6 +136,8 @@ export default function DashboardPage() {
         <ErrorState error={q.error} onRetry={() => q.refetch()} />
       ) : (
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5">
+          {/* Vets: the next patient and their open consultations come first. */}
+          {role === 'vet' && w?.clinicalWork && <VetFocus frontDesk={w.frontDesk} myOpen={w.clinicalWork.myOpen ?? []} unsigned={w.clinicalWork.unsignedNotes.length} />}
           <QuickActions />
           <SetupChecklist />
 

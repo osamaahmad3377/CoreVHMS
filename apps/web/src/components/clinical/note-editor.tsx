@@ -521,7 +521,8 @@ export function NoteEditor({
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={status === 'REVIEWED' ? 'info' : 'warning'}>{amending ? 'Correction draft' : status === 'REVIEWED' ? `Approved${note?.reviewedByName ? ` by ${note.reviewedByName}` : ''} — not signed` : 'Draft — not signed'}</Badge>
+        {/* In a guided visit the note is signed when the visit is finished, so "draft" is not worth a warning. */}
+        {(!workflow || status === 'REVIEWED' || amending) && <Badge variant={status === 'REVIEWED' ? 'info' : 'warning'}>{amending ? 'Correction draft' : status === 'REVIEWED' ? `Approved${note?.reviewedByName ? ` by ${note.reviewedByName}` : ''} — not signed` : 'Draft — not signed'}</Badge>}
         <span className="flex items-center gap-1 text-xs text-muted-foreground" aria-live="polite">
           {saving.current ? (
             <>
@@ -530,7 +531,7 @@ export function NoteEditor({
           ) : dirty ? (
             'Unsaved changes'
           ) : savedAt ? (
-            `Saved ${fmtDateTime(savedAt)}`
+            workflow ? `✓ Saved automatically · ${fmtDateTime(savedAt)}` : `Saved ${fmtDateTime(savedAt)}`
           ) : (
             'Not saved yet'
           )}
@@ -547,8 +548,7 @@ export function NoteEditor({
         )}
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1.5 font-medium text-foreground"><MousePointerClick className="h-3.5 w-3.5 text-primary" /> Quick picks {picksOn ? 'on' : 'off'}</span>
-        {picksOn && <span className="hidden sm:inline">Tap a button to add it; tap again to remove it.</span>}
+        <span className="flex items-center gap-1.5 font-medium text-foreground" title="Tap a button to add it; tap again to remove it."><MousePointerClick className="h-3.5 w-3.5 text-primary" /> Quick picks {picksOn ? 'on' : 'off'}</span>
         <button type="button" onClick={togglePicks} className="font-medium text-primary hover:underline">{picksOn ? 'Hide buttons' : 'Show buttons'}</button>
         {can('settings.manage') && (
           <Link href="/settings/note-phrases" className="ml-auto flex items-center gap-1 font-medium text-primary hover:underline"><Settings2 className="h-3.5 w-3.5" /> Edit the buttons</Link>
@@ -597,7 +597,9 @@ export function NoteEditor({
         </>
       )}
 
-      <div className="action-bar -mb-2 flex flex-wrap items-center justify-end gap-2 pb-3 pt-3">
+      {/* A guided visit saves by itself and is signed by "Finish consultation": only the rare actions remain, quietly. */}
+      {(!workflow || !!noteId) && (
+      <div className={cn(workflow ? 'flex flex-wrap items-center justify-end gap-2 border-t border-foreground/[0.06] pt-3' : 'action-bar -mb-2 flex flex-wrap items-center justify-end gap-2 pb-3 pt-3')}>
         {noteId && !amending && (
           <Button
             variant="ghost"
@@ -616,16 +618,18 @@ export function NoteEditor({
             Cancel amendment
           </Button>
         )}
-        <Button variant="outline" size="sm" onClick={() => void save()} disabled={!dirty && !!noteId}>
-          <Save /> Save draft
-        </Button>
+        {!workflow && (
+          <Button variant="outline" size="sm" onClick={() => void save()} disabled={!dirty && !!noteId}>
+            <Save /> Save draft
+          </Button>
+        )}
         {/* Approving is for a note someone else (e.g. a nurse) wrote; your own note is simply signed. */}
         {can('clinical.sign') && status === 'DRAFT' && noteId && !amending && note && note.authorId !== session.user.id && (
           <Button variant="outline" size="sm" loading={transition.isPending && transition.variables === 'review'} onClick={() => transition.mutate('review')}>
             <CheckCircle2 /> Approve nurse's note
           </Button>
         )}
-        {can('clinical.sign') && (
+        {can('clinical.sign') && !workflow && (
           <Button
             size="sm"
             loading={transition.isPending && transition.variables === 'sign'}
@@ -649,6 +653,7 @@ export function NoteEditor({
           </Button>
         )}
       </div>
+      )}
     </div>
   );
 }
