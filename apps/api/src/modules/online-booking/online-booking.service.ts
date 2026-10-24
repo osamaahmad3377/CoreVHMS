@@ -56,7 +56,7 @@ export class OnlineBookingService {
       db.onlineBookingSettings.findFirst(),
       db.appointmentType.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, durationMinutes: true, priceMinor: true, allowOnlineBooking: true, category: true } }),
       db.branch.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
-      db.membership.findMany({ where: { status: 'ACTIVE', isClinician: true }, orderBy: { user: { name: 'asc' } }, select: { id: true, jobTitle: true, user: { select: { name: true } } } }),
+      db.membership.findMany({ where: { status: 'ACTIVE', isClinician: true }, orderBy: { user: { name: 'asc' } }, select: { id: true, jobTitle: true, user: { select: { name: true } }, workingHours: { select: { branchId: true } } } }),
       db.appointment.count({ where: { source: 'ONLINE', createdAt: { gte: new Date(Date.now() - 30 * DAY) } } }),
     ]);
     return {
@@ -73,8 +73,9 @@ export class OnlineBookingService {
       welcomeMessage: s?.welcomeMessage ?? '',
       updatedByName: s?.updatedByName ?? null,
       appointmentTypes: types,
-      branches,
-      clinicians: clinicians.map((c) => ({ id: c.id, name: c.user.name, jobTitle: c.jobTitle })),
+      // Whether anyone can be booked there: a branch needs at least one vet with working hours.
+      branches: branches.map((b) => ({ ...b, rosteredVets: clinicians.filter((c) => c.workingHours.some((h) => h.branchId === b.id)).length })),
+      clinicians: clinicians.map((c) => ({ id: c.id, name: c.user.name, jobTitle: c.jobTitle, hasHours: c.workingHours.length > 0 })),
       last30Days: last30,
     };
   }
@@ -148,16 +149,24 @@ export class OnlineBookingService {
       const [branches, types, clinicians, species] = await Promise.all([
         db.branch.findMany({ where: { isActive: true, ...(s.branchIds.length ? { id: { in: s.branchIds } } : {}) }, orderBy: { name: 'asc' } }),
         db.appointmentType.findMany({ where: { isActive: true, allowOnlineBooking: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, durationMinutes: true, priceMinor: true, category: true, color: true } }),
-        db.membership.findMany({ where: { status: 'ACTIVE', isClinician: true, ...(s.clinicianIds.length ? { id: { in: s.clinicianIds } } : {}) }, orderBy: { user: { name: 'asc' } }, select: { id: true, jobTitle: true, user: { select: { name: true } }, branches: { select: { branchId: true } } } }),
+        db.membership.findMany({ where: { status: 'ACTIVE', isClinician: true, ...(s.clinicianIds.length ? { id: { in: s.clinicianIds } } : {}) }, orderBy: { user: { name: 'asc' } }, select: { id: true, jobTitle: true, user: { select: { name: true } }, branches: { select: { branchId: true } }, workingHours: { select: { branchId: true } } } }),
         db.species.findMany({ where: { isActive: true }, orderBy: [{ category: 'asc' }, { name: 'asc' }], select: { id: true, name: true, category: true } }),
       ]);
       const branding = brandingOf(org, `/api/v1/public/booking/${slug}`);
+      // A vet is offered at a branch only where they have access and working hours; a branch only with such a vet.
+      const vets = clinicians
+        .map((c) => {
+          const access = new Set(c.branches.map((b) => b.branchId));
+          return { id: c.id, name: c.user.name, jobTitle: c.jobTitle, branchIds: [...new Set(c.workingHours.map((h) => h.branchId))].filter((b) => access.has(b)) };
+        })
+        .filter((c) => c.branchIds.length);
+      const open = branches.filter((b) => vets.some((v) => v.branchIds.includes(b.id)));
       return {
         clinic: { name: branding.brandName, phone: org.phone, country: org.country, currency: org.currency, branding },
         settings: { daysAhead: s.daysAhead, minNoticeHours: s.minNoticeHours, cancelNoticeHours: s.cancelNoticeHours, allowNewClients: s.allowNewClients, autoConfirm: s.autoConfirm, welcomeMessage: s.welcomeMessage },
-        branches: branches.map((b) => ({ id: b.id, name: b.name, address: fullAddress(b), phone: b.phone, timezone: b.timezone })),
+        branches: open.map((b) => ({ id: b.id, name: b.name, address: fullAddress(b), phone: b.phone, timezone: b.timezone })),
         appointmentTypes: types,
-        clinicians: clinicians.map((c) => ({ id: c.id, name: c.user.name, jobTitle: c.jobTitle, branchIds: c.branches.map((b) => b.branchId) })),
+        clinicians: vets,
         species,
       };
     });

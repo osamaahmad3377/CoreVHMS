@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatMoney, onlineBookingSettingsSchema } from '@vcms/shared';
-import { CalendarCheck, Code2, Download, ExternalLink, Globe, MessageCircle, QrCode, Share2 } from 'lucide-react';
+import { AlertTriangle, CalendarCheck, Code2, Download, ExternalLink, Globe, MessageCircle, QrCode, Share2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Field } from '@/components/forms/field';
@@ -33,8 +33,8 @@ interface Settings {
   welcomeMessage: string;
   updatedByName: string | null;
   appointmentTypes: { id: string; name: string; durationMinutes: number; priceMinor: number | null; allowOnlineBooking: boolean; category: string }[];
-  branches: { id: string; name: string }[];
-  clinicians: { id: string; name: string; jobTitle: string | null }[];
+  branches: { id: string; name: string; rosteredVets: number }[];
+  clinicians: { id: string; name: string; jobTitle: string | null; hasHours: boolean }[];
   last30Days: number;
 }
 
@@ -233,6 +233,7 @@ function OnlineBookingSettingsPage() {
                   <label key={c.id} className={cn('flex cursor-pointer items-center gap-2 rounded-pill surface-flat px-3 py-2 text-sm', d.clinicianIds.includes(c.id) && 'border-primary/40 bg-primary/[0.06]')}>
                     <Checkbox checked={d.clinicianIds.includes(c.id)} onCheckedChange={(v) => set('clinicianIds', toggle(d.clinicianIds, c.id, v === true))} />
                     {c.name}
+                    {!c.hasHours && <span className="text-xs text-warning">· no working hours</span>}
                   </label>
                 ))}
               </div>
@@ -250,6 +251,14 @@ function OnlineBookingSettingsPage() {
                   ))}
                 </div>
               </div>
+            )}
+            {s.branches.some((b) => !b.rosteredVets) && (
+              <p className="flex items-start gap-2 rounded-xl bg-warning/10 p-3 text-sm text-warning ring-1 ring-inset ring-warning/25">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  {s.branches.filter((b) => !b.rosteredVets).map((b) => b.name).join(', ')}: no vet has working hours there, so {s.branches.filter((b) => !b.rosteredVets).length === 1 ? 'it is' : 'they are'} not shown online. Set their working hours under Staff.
+                </span>
+              </p>
             )}
           </CardContent>
         </Card>

@@ -167,7 +167,7 @@ function BookingPage() {
           )}
           <section className="grid gap-3">
             <h3 className="text-lg font-semibold">What is the visit for?</h3>
-            {d.appointmentTypes.length ? (
+            {d.appointmentTypes.length && d.branches.length ? (
               <div className="grid gap-2 sm:grid-cols-2">
                 {d.appointmentTypes.map((t) => (
                   <button key={t.id} type="button" onClick={() => { setTypeId(t.id); setTime(null); }} className={cn('flex items-center gap-3 rounded-2xl p-4 text-left transition-all duration-200 ease-apple', typeId === t.id ? 'bg-primary/10 ring-2 ring-primary' : 'surface-flat hover:-translate-y-0.5')}>

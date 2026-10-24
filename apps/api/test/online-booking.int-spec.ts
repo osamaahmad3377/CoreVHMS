@@ -96,4 +96,19 @@ describe('Online booking page', () => {
     expect(known.status).toBe(201);
     expect(known.body.status).toBe('CONFIRMED');
   });
+
+  it('offers only branches and vets with working hours', async () => {
+    const org = await registerOrg();
+    const f = await schedulingFixture(org); // the vet works at the main branch only
+    const second = await org.owner.post('/branches', { name: 'Second branch', code: 'B2', timezone: 'Asia/Karachi' });
+    expect(second.status).toBe(201);
+    const s = settings(f.typeId);
+    await org.owner.call('put', '/online-booking', s);
+    const anon = new TestClient(await getApp());
+    const info = (await anon.get(`/public/booking/${s.slug}`)).body;
+    expect(info.branches.map((b: { id: string }) => b.id)).toEqual([org.branchId]);
+    expect(info.clinicians).toEqual([expect.objectContaining({ id: f.vet.membershipId, branchIds: [org.branchId] })]);
+    const view = (await org.owner.get('/online-booking')).body;
+    expect(view.branches).toEqual(expect.arrayContaining([expect.objectContaining({ id: second.body.id, rosteredVets: 0 })]));
+  });
 });

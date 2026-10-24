@@ -45,10 +45,18 @@ export function SlotPicker({
     queryFn: () => api.get<{ days: { date: string; free: number }[]; lastDate: string }>(`/public/booking/${slug}/days${qs({ ...base, from, count: 14 })}`),
     staleTime: 30_000,
   });
-  // Start on the first day with free times.
+  // Start on the first day with free times; when two whole weeks are full, look further ahead by itself.
+  const [searching, setSearching] = useState(true);
   useEffect(() => {
     if (!days.data) return;
-    if (!date || !days.data.days.some((d) => d.date === date)) setDate(days.data.days.find((d) => d.free > 0)?.date ?? null);
+    const first = days.data.days.find((d) => d.free > 0)?.date ?? null;
+    const more = days.data.days.length === 14 && shiftDate(from, 14) <= days.data.lastDate;
+    if (!first && more && searching) {
+      setFrom(shiftDate(from, 14));
+      return;
+    }
+    setSearching(false);
+    if (!date || !days.data.days.some((d) => d.date === date)) setDate(first);
   }, [days.data]); // eslint-disable-line react-hooks/exhaustive-deps
   const slots = useQuery({
     queryKey: ['public-slots', slug, base, date],
@@ -69,7 +77,7 @@ export function SlotPicker({
           <ChevronLeft className="h-5 w-5" />
         </button>
         <div ref={strip} role="listbox" aria-label="Day" className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {days.isLoading
+          {days.isLoading || searching
             ? Array.from({ length: 7 }, (_, i) => <Skeleton key={i} className="h-[76px] w-16 shrink-0 rounded-2xl" />)
             : days.data!.days.map((d) => {
                 const on = d.date === date;
@@ -136,7 +144,11 @@ export function SlotPicker({
           )}
         </div>
       )}
-      {!days.isLoading && !date && <p className="rounded-2xl surface-flat p-5 text-center text-sm text-muted-foreground">No free times in these two weeks. Try later days, or call the clinic.</p>}
+      {!days.isLoading && !searching && !date && (
+        <p className="rounded-2xl surface-flat p-5 text-center text-sm text-muted-foreground">
+          {from === today ? 'No free times are open online for this choice. Try another vet or service, or call the clinic.' : 'No free times in these two weeks. Use the arrows to see other days, or call the clinic.'}
+        </p>
+      )}
     </div>
   );
 }
