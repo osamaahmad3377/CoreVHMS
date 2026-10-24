@@ -364,6 +364,7 @@ model Organization {
   whatsAppIntegration    WhatsAppIntegration?
   whatsAppTemplateLinks  WhatsAppTemplateLink[]
   ClientNotificationRule ClientNotificationRule[]
+  OnlineBookingSettings  OnlineBookingSettings?
 }
 
 model Branch {
@@ -1246,6 +1247,8 @@ model Appointment {
   cancelledAt       DateTime?         @db.Timestamptz(3)
   cancelReason      String?
   createdById       String?           @db.Uuid
+  /// Hash of the private link a client who booked online uses to change or cancel it.
+  manageTokenHash   String?           @unique
   createdAt         DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime          @updatedAt @db.Timestamptz(3)
 
@@ -4746,4 +4749,32 @@ model ClientNotificationRule {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   @@unique([organizationId, event])
+}
+
+/// Online booking page (Settings → Online booking): the public link clients use to book a free time themselves.
+model OnlineBookingSettings {
+  id                String   @id @default(uuid()) @db.Uuid
+  organizationId    String   @unique @db.Uuid
+  enabled           Boolean  @default(false)
+  /// The address: /book/<slug>.
+  slug              String   @unique
+  /// How far ahead clients can book, and the least notice the clinic needs.
+  daysAhead         Int      @default(30)
+  minNoticeHours    Int      @default(2)
+  /// Branches and vets clients can choose (empty = all active ones).
+  branchIds         String[] @db.Uuid
+  clinicianIds      String[] @db.Uuid
+  /// New clients can book (otherwise only clients already registered, matched by mobile number).
+  allowNewClients   Boolean  @default(true)
+  /// Bookings are confirmed at once; otherwise they arrive as "booked" for the front desk to confirm.
+  autoConfirm       Boolean  @default(false)
+  /// Shown at the top of the booking page.
+  welcomeMessage    String?
+  /// Clients can cancel or move their booking themselves up to this many hours before.
+  cancelNoticeHours Int      @default(4)
+  updatedByName     String?
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 }

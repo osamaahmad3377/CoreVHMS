@@ -50,6 +50,7 @@ export function buildAttention(w: any, opts: { money: (minor: number) => string;
     detail: w?.clinicalWork?.unsignedNotes?.slice(0, 3).map((n: { patient: string }) => n.patient).join(', '),
     action: 'Sign notes', href: w?.clinicalWork?.unsignedNotes?.length === 1 ? `/consultations/${w.clinicalWork.unsignedNotes[0].encounterId}` : '/consultations?mine=true',
   });
+  add(w?.onlineBookings?.toConfirm, { key: 'online-bookings', severity: 'warning', icon: CalendarClock, text: `${plural(w?.onlineBookings?.toConfirm, 'online booking')} to confirm`, detail: 'Clients booked these themselves on your booking page', action: 'Open calendar', href: `/calendar${w?.onlineBookings?.firstDate ? `?date=${w.onlineBookings.firstDate}` : ''}` });
   add(w?.pharmacy?.awaitingAuthorization, { key: 'rx-auth', severity: 'warning', icon: Pill, text: `${plural(w?.pharmacy?.awaitingAuthorization, 'prescription')} waiting for authorisation`, action: 'Review', href: '/pharmacy?status=DRAFT' });
   add(opts.can('lab.approve') && w?.lab?.awaitingValidation, { key: 'lab-validate', severity: 'warning', icon: FlaskConical, text: `${plural(w?.lab?.awaitingValidation, 'lab result')} waiting for validation`, action: 'Validate', href: '/lab?tab=AWAITING_VALIDATION' });
   const overdueTasks = (w?.tasks?.dueOrOverdue ?? []).filter((t: { overdue: boolean }) => t.overdue).length;

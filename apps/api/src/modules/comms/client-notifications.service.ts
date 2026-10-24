@@ -79,23 +79,30 @@ export class ClientNotificationsService implements OnModuleInit {
   async handle(e: ClientEvent) {
     const orgId = RequestContext.orgId();
     const rule = (await this.rules()).find((r) => r.event === e.type)!;
-    if (!rule.whatsapp && !rule.email) return null;
     const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: orgId }, select: { name: true, phone: true, country: true, currency: true, defaultTimezone: true } });
     const n = await this.build(e, org);
     if (!n || n.client.status !== 'ACTIVE') return null;
     const wa = await this.whatsapp.sending(orgId);
     const byWhatsApp = rule.whatsapp && wa.active && !!toWhatsAppNumber(n.client.mobilePhone, org.country);
-    const byEmail = rule.email && !!n.client.email;
+    // A client who booked online asked for this confirmation: email is used when WhatsApp cannot be.
+    const online = e.type === 'APPOINTMENT_BOOKED' ? e.online : undefined;
+    if (!rule.whatsapp && !rule.email && !online) return null;
+    const byEmail = (rule.email || !!online) && !!n.client.email;
     // A client who asked for email gets email when the clinic sends it; otherwise WhatsApp comes first.
     const channel: MessageChannel | null = n.client.preferredChannel === 'EMAIL' && byEmail ? 'EMAIL' : byWhatsApp ? 'WHATSAPP' : byEmail ? 'EMAIL' : null;
     if (!channel) return null;
-    return this.messages.enqueueTemplate(
+    const m = await this.messages.enqueueTemplate(
       this.prisma.db,
       e.type,
       channel,
-      { clinicName: org.name, clinicPhone: org.phone ?? '', clinicPhoneLine: org.phone ? ` on ${org.phone}` : '', clientName: n.client.displayName, ...n.vars },
+      { clinicName: org.name, clinicPhone: org.phone ?? '', clinicPhoneLine: org.phone ? ` on ${org.phone}` : '', clientName: n.client.displayName, manageLink: online?.manageLink ?? '', manageLine: online ? `\nTo change or cancel: ${online.manageLink}` : '', ...n.vars },
       { clientId: n.client.id, patientId: n.patientId, recipient: MessagesService.recipientFor(n.client, channel), dedupeKey: n.dedupeKey, sourceType: n.sourceType, sourceId: n.sourceId },
     );
+    // A clinic's own (older) wording may not mention the change link: add it, so online bookers always get it.
+    if (online && m.status === 'QUEUED' && !m.body.includes(online.manageLink)) {
+      return this.prisma.db.outboundMessage.update({ where: { id: m.id }, data: { body: `${m.body}\n\nTo change or cancel: ${online.manageLink}` } });
+    }
+    return m;
   }
 
   private async build(e: ClientEvent, org: { currency: string; defaultTimezone: string }): Promise<Notification | null> {

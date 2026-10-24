@@ -71,7 +71,7 @@ export const WHATSAPP_VARIABLES: Record<WhatsAppPurpose, { key: string; label: s
     { key: 'body', label: 'The message text', example: 'Bella is ready to be collected.' },
     { key: 'clinicName', label: 'Clinic name', example: 'City Vet Clinic' },
   ],
-  APPOINTMENT_BOOKED: APPOINTMENT_VARS,
+  APPOINTMENT_BOOKED: [...APPOINTMENT_VARS, { key: 'manageLink', label: 'Change/cancel link (online bookings)', example: 'https://clinic.example/book/manage/…' }],
   APPOINTMENT_RESCHEDULED: APPOINTMENT_VARS,
   APPOINTMENT_CANCELLED: APPOINTMENT_VARS,
   LAB_RESULTS_READY: [

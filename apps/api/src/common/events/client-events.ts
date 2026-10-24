@@ -2,7 +2,8 @@ import { Global, Injectable, Logger, Module } from '@nestjs/common';
 
 /** Things that happened which a client may want to hear about (Settings → Client notifications). */
 export type ClientEvent =
-  | { type: 'APPOINTMENT_BOOKED'; appointmentId: string }
+  /** `online`: booked by the client on the booking page; the confirmation carries their private change link. */
+  | { type: 'APPOINTMENT_BOOKED'; appointmentId: string; online?: { manageLink: string } }
   | { type: 'APPOINTMENT_RESCHEDULED'; appointmentId: string }
   | { type: 'APPOINTMENT_CANCELLED'; appointmentId: string }
   | { type: 'LAB_RESULTS_READY'; orderId: string }

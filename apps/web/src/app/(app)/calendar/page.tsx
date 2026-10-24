@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertOctagon, CalendarPlus, ChevronLeft, ChevronRight } from 'lucide-react';
+import { AlertOctagon, CalendarPlus, ChevronLeft, ChevronRight, Globe } from 'lucide-react';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirm } from '@/components/confirm';
@@ -462,6 +462,7 @@ function CalendarView() {
                             <span className="tabular text-muted-foreground">{branchTime(a.startsAt, tz)}</span>
                             <span className="truncate">{a.patient?.name ?? a.client.displayName}</span>
                             {critical && <AlertOctagon className="h-3 w-3 shrink-0 text-destructive" aria-label="Critical alert" />}
+                            {a.source === 'ONLINE' && <Globe className={cn('h-3 w-3 shrink-0', a.status === 'BOOKED' ? 'text-warning' : 'text-primary')} aria-label={a.status === 'BOOKED' ? 'Booked online — to confirm' : 'Booked online'} />}
                             <PriorityDot priority={a.triage?.priority ?? a.priority} />
                           </span>
                           {end - start >= 25 && (

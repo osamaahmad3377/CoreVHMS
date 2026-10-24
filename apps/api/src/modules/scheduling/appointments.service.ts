@@ -309,7 +309,8 @@ export class AppointmentsService {
       return ids;
     });
     // The client hears about it (walk-ins are already at the desk; a series is confirmed once, with its first visit).
-    if (input.source !== 'WALK_IN' && slots[0].startsAt.getTime() > Date.now()) await this.events.emit({ type: 'APPOINTMENT_BOOKED', appointmentId: created[0] });
+    // Online bookings are confirmed by the booking page itself, with the client's private change link.
+    if (input.source !== 'WALK_IN' && input.source !== 'ONLINE' && slots[0].startsAt.getTime() > Date.now()) await this.events.emit({ type: 'APPOINTMENT_BOOKED', appointmentId: created[0] });
     const rows = await this.prisma.db.appointment.findMany({ where: { id: { in: created } }, include: appointmentInclude, orderBy: { startsAt: 'asc' } });
     const shaped = rows.map(shapeAppointment);
     return occurrences > 1 ? { series: shaped } : shaped[0];
