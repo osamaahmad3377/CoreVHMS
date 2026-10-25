@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { TRIAGE_PRIORITIES, enumLabel } from '@vcms/shared';
-import { AlertOctagon, CalendarPlus, Clock, DoorOpen, Info, LogIn, Phone, Play, Receipt, Siren, Stethoscope, UserPlus, Users } from 'lucide-react';
+import { AlertOctagon, CalendarPlus, Clock, DoorOpen, Info, LogIn, Phone, Play, Printer, Receipt, Siren, Stethoscope, UserPlus, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
@@ -21,6 +21,7 @@ import { AlertChip } from '@/components/status';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { CallButton, TokenBadge } from '@/components/scheduling/call-button';
+import { printTokenSlip } from '@/components/scheduling/token-slip';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input, NativeSelect } from '@/components/ui/input';
@@ -233,12 +234,31 @@ function FrontDesk() {
   }, [walkInPatient.data]); // eslint-disable-line react-hooks/exhaustive-deps
   const [book, setBook] = useState(false);
   const [triage, setTriage] = useState<Appointment | null>(null);
+  // Prints the client's token on the 80 mm receipt printer; "ahead" counts uncalled tokens checked in earlier.
+  const printToken = (a: Appointment) => {
+    if (!a.tokenNumber) return;
+    const waiting = q.data?.waiting ?? [];
+    const at = a.checkedInAt ? new Date(a.checkedInAt).getTime() : Date.now();
+    const ahead = waiting.filter((w) => w.id !== a.id && !w.calledAt && w.checkedInAt && new Date(w.checkedInAt).getTime() < at).length;
+    void printTokenSlip({
+      clinic: session.organization?.name ?? '',
+      branch: session.branch?.name ?? '',
+      token: a.tokenNumber,
+      petName: a.patient?.name ?? null,
+      service: a.appointmentType.name,
+      ahead,
+      issuedAt: branchTime(a.checkedInAt ?? new Date().toISOString(), tz, 'd MMM yyyy, h:mm a'),
+      bookedAt: a.source === 'WALK_IN' ? null : branchTime(a.startsAt, tz, 'h:mm a'),
+    });
+  };
+
   const act = useMutation({
     mutationFn: ({ id, action }: { id: string; action: string }) => api.post<Appointment & { encounterId: string | null }>(`/appointments/${id}/status`, { action }),
     onSuccess: (a, v) => {
       qc.invalidateQueries({ queryKey: ['queue'] });
       qc.invalidateQueries({ queryKey: ['appointments'] });
       if (v.action === 'start' && a.encounterId) router.push(`/consultations/${a.encounterId}`);
+      else if (v.action === 'check-in' && a.tokenNumber) toast.success(statusChangeMessage(v.action, a, tz), { action: { label: 'Print token', onClick: () => printToken(a) } });
       else toast.success(statusChangeMessage(v.action, a, tz));
     },
     onError: (e: Error) => toast.error(e.message),
@@ -306,6 +326,11 @@ function FrontDesk() {
                           )}
                           {c.key === 'waiting' && canAny('appointments.checkin', 'clinical.write') && (
                             <CallButton appointmentId={a.id} branchId={a.branchId} calledRoom={a.calledRoom} callCount={a.callCount} />
+                          )}
+                          {c.key === 'waiting' && !!a.tokenNumber && (
+                            <Button size="sm" variant="outline" onClick={() => printToken(a)} title="Print the token on the receipt printer (80 mm)">
+                              <Printer /> Print token
+                            </Button>
                           )}
                           {c.key === 'waiting' && can('triage.write') && a.patient && (
                             <Button size="sm" variant="outline" onClick={() => setTriage(a)}>

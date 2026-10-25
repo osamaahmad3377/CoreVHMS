@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { branchTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { printTokenSlip } from '@/components/scheduling/token-slip';
 
 interface KioskInfo {
   clinic: { name: string; phone: string | null; branding: Branding };
@@ -14,7 +15,7 @@ interface KioskInfo {
   walkIns: { id: string; name: string }[];
 }
 type Lookup = { found: false } | { found: true; firstName: string; visits: { id: string; startsAt: string; petName: string | null; service: string; checkedIn: boolean; token: number | null }[]; pets: { id: string; name: string }[] };
-type Done = { token: number | null; petName: string | null; startsAt: string; ahead: number; checkedInAt: string | null };
+type Done = { token: number | null; petName: string | null; startsAt: string; ahead: number; checkedInAt: string | null; service?: string | null; booked?: boolean };
 type Step = 'home' | 'phone' | 'choose' | 'reason' | 'done' | 'unknown';
 
 const IDLE_MS = 45_000;
@@ -125,16 +126,16 @@ function Kiosk() {
   });
   const checkIn = useMutation({
     mutationFn: (appointmentId: string) => api.post<Done>(`/public/waiting-room/kiosk/${key}/check-in`, { mobilePhone: phone, appointmentId }),
-    onSuccess: (r) => {
-      setDone(r);
+    onSuccess: (r, appointmentId) => {
+      setDone({ ...r, service: who?.visits.find((v) => v.id === appointmentId)?.service ?? null, booked: true });
       setStep('done');
     },
     onError: fail,
   });
   const walkIn = useMutation({
     mutationFn: (appointmentTypeId: string) => api.post<Done>(`/public/waiting-room/kiosk/${key}/walk-in`, { mobilePhone: phone, patientId: pet!.id, appointmentTypeId }),
-    onSuccess: (r) => {
-      setDone(r);
+    onSuccess: (r, appointmentTypeId) => {
+      setDone({ ...r, service: info.data?.walkIns.find((t) => t.id === appointmentTypeId)?.name ?? null, booked: false });
       setStep('done');
     },
     onError: fail,
@@ -295,7 +296,22 @@ function Kiosk() {
             </div>
             <p className="text-2xl text-muted-foreground">Please take a seat and watch the screen. We’ll call your number.</p>
             <div className="grid gap-3 sm:grid-cols-2">
-              <Big onClick={() => window.print()}>
+              <Big
+                onClick={() =>
+                  done.token != null &&
+                  void printTokenSlip({
+                    clinic: d.clinic.name,
+                    branch: d.branch.name,
+                    token: done.token,
+                    petName: done.petName,
+                    service: done.service,
+                    ahead: done.ahead,
+                    issuedAt: branchTime(done.checkedInAt ?? new Date().toISOString(), tz, 'd MMM yyyy, h:mm a'),
+                    bookedAt: done.booked ? branchTime(done.startsAt, tz, 'h:mm a') : null,
+                    phone: d.clinic.phone,
+                  })
+                }
+              >
                 <Printer className="h-7 w-7" /> Print my token
               </Big>
               <Big tone="primary" onClick={reset}>
@@ -323,20 +339,6 @@ function Kiosk() {
         )}
       </main>
 
-      {/* Token slip for a receipt printer attached to the tablet (only this prints). */}
-      {done && (
-        <div className="kiosk-slip hidden">
-          <style>{'@media print{body *{visibility:hidden}.kiosk-slip,.kiosk-slip *{visibility:visible}.kiosk-slip{display:block!important;position:absolute;left:0;top:0;width:58mm;padding:4mm;font-family:system-ui,sans-serif;color:#000;text-align:center}@page{size:58mm auto;margin:0}}'}</style>
-          <p style={{ fontWeight: 700, fontSize: 14 }}>{d.clinic.name}</p>
-          <p style={{ fontSize: 11 }}>{d.branch.name}</p>
-          <p style={{ fontSize: 12, marginTop: 8, letterSpacing: 2 }}>YOUR TOKEN</p>
-          <p style={{ fontSize: 48, fontWeight: 900, lineHeight: 1 }}>{tk(done.token)}</p>
-          {done.petName && <p style={{ fontSize: 13, marginTop: 4 }}>{done.petName}</p>}
-          <p style={{ fontSize: 11, marginTop: 6 }}>{done.ahead === 0 ? 'You are next' : `${done.ahead} ahead of you`}</p>
-          <p style={{ fontSize: 11 }}>{branchTime(done.checkedInAt ?? new Date().toISOString(), tz, 'd MMM yyyy, h:mm a')}</p>
-          <p style={{ fontSize: 10, marginTop: 6 }}>Please watch the screen. Keep this slip until you are called.</p>
-        </div>
-      )}
     </div>
   );
 }
