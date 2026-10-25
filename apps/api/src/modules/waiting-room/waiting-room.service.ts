@@ -134,8 +134,16 @@ export class WaitingRoomService {
         .filter((a) => a.status === 'CHECKED_IN' && !a.calledAt)
         .sort((a, b) => (PRIORITY_RANK[a.triage[0]?.priority ?? a.priority ?? 'NON_URGENT'] ?? 5) - (PRIORITY_RANK[b.triage[0]?.priority ?? b.priority ?? 'NON_URGENT'] ?? 5) || (a.checkedInAt?.getTime() ?? 0) - (b.checkedInAt?.getTime() ?? 0))
         .map((a) => ({ token: a.tokenNumber, pet: pet(a.patient?.name) }));
+      // Each consult room with the token now in it: the latest call to that room still being seen.
+      const roomNames = (await this.prisma.db.resource.findMany({ where: { branchId: branch.id, isActive: true, type: 'ROOM' }, orderBy: { name: 'asc' }, select: { name: true } })).map((r) => r.name);
+      const active = today.filter((a) => a.calledAt && a.calledRoom && ['CHECKED_IN', 'IN_CONSULTATION'].includes(a.status)).sort((a, b) => b.calledAt!.getTime() - a.calledAt!.getTime());
+      const rooms = [...new Set([...roomNames, ...active.map((a) => a.calledRoom!)])].map((name) => {
+        const a = active.find((x) => x.calledRoom === name);
+        return { name, token: a?.tokenNumber ?? null, pet: a ? pet(a.patient?.name) : null };
+      });
+      const seenToday = today.filter((a) => a.status === 'COMPLETED').length;
       const branding = brandingOf(org, `/api/v1/public/waiting-room/display/${key}`);
-      return { clinic: { name: branding.brandName, branding }, branch: { name: branch.name, timezone: branch.timezone }, message: s.message, announce: s.announce, now: new Date(), calls, waiting };
+      return { clinic: { name: branding.brandName, branding }, branch: { name: branch.name, timezone: branch.timezone }, message: s.message, announce: s.announce, now: new Date(), calls, waiting, rooms, seenToday };
     });
   }
 
@@ -144,7 +152,7 @@ export class WaitingRoomService {
     const { s, org, branch } = await this.device('kiosk', key);
     return this.run(s, async () => {
       const branding = brandingOf(org, `/api/v1/public/waiting-room/kiosk/${key}`);
-      return { clinic: { name: branding.brandName, phone: org.phone, branding }, branch: { name: branch.name, timezone: branch.timezone }, walkIns: s.kioskWalkIns ? await this.walkInTypes() : [] };
+      return { clinic: { name: branding.brandName, phone: org.phone, branding }, branch: { name: branch.name, timezone: branch.timezone, address: [branch.addressLine1, branch.city].filter(Boolean).join(', ') || null }, walkIns: s.kioskWalkIns ? await this.walkInTypes() : [] };
     });
   }
 
@@ -185,13 +193,21 @@ export class WaitingRoomService {
     });
   }
 
+  /** How many checked-in visits are still ahead of this one in the queue (not yet called, checked in earlier). */
+  private async ahead(branchId: string, timezone: string, appointmentId: string) {
+    const { start, end } = localDayBounds(new Date(), timezone);
+    const me = await this.prisma.db.appointment.findUnique({ where: { id: appointmentId }, select: { checkedInAt: true } });
+    if (!me?.checkedInAt) return 0;
+    return this.prisma.db.appointment.count({ where: { branchId, status: 'CHECKED_IN', calledAt: null, id: { not: appointmentId }, checkedInAt: { lt: me.checkedInAt, gte: start }, startsAt: { lt: end } } });
+  }
+
   async checkIn(key: string, mobilePhone: string, appointmentId: string) {
     const { s, branch } = await this.device('kiosk', key);
     return this.run(s, async () => {
       const w = await this.whoIs(branch.id, branch.timezone, mobilePhone);
       if (!w.visits.some((v) => v.id === appointmentId)) throw notFound('Appointment');
       const a = await this.appointments.checkInSelf(appointmentId);
-      return { token: a.tokenNumber, petName: a.patient?.name ?? null, startsAt: a.startsAt };
+      return { token: a.tokenNumber, petName: a.patient?.name ?? null, startsAt: a.startsAt, ahead: await this.ahead(branch.id, branch.timezone, a.id), checkedInAt: a.checkedInAt };
     });
   }
 
@@ -205,9 +221,9 @@ export class WaitingRoomService {
       if (!(await this.walkInTypes()).some((t) => t.id === input.appointmentTypeId)) throw notFound('Service');
       // Already checked in today for this animal: give the same token rather than a second place in the queue.
       const existing = w.visits.find((v) => v.patient?.name === pet.name && v.status === 'CHECKED_IN');
-      if (existing) return { token: existing.tokenNumber, petName: pet.name, startsAt: existing.startsAt };
+      if (existing) return { token: existing.tokenNumber, petName: pet.name, startsAt: existing.startsAt, ahead: await this.ahead(branch.id, branch.timezone, existing.id), checkedInAt: new Date() };
       const a = await this.appointments.walkIn({ branchId: branch.id, clientId: pet.ownerships[0].clientId, patientId: pet.id, appointmentTypeId: input.appointmentTypeId, reason: 'Checked in at the tablet (no appointment)' });
-      return { token: a.tokenNumber, petName: pet.name, startsAt: a.startsAt };
+      return { token: a.tokenNumber, petName: pet.name, startsAt: a.startsAt, ahead: await this.ahead(branch.id, branch.timezone, a.id), checkedInAt: a.checkedInAt };
     });
   }
 }

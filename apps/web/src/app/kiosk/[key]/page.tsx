@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { brandThemeCss, type Branding } from '@vcms/shared';
-import { ArrowLeft, CheckCircle2, Delete, LogIn, PawPrint, Phone } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Delete, LogIn, PawPrint, Phone, Printer, Users } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
@@ -10,15 +10,56 @@ import { cn } from '@/lib/utils';
 
 interface KioskInfo {
   clinic: { name: string; phone: string | null; branding: Branding };
-  branch: { name: string; timezone: string };
+  branch: { name: string; timezone: string; address: string | null };
   walkIns: { id: string; name: string }[];
 }
 type Lookup = { found: false } | { found: true; firstName: string; visits: { id: string; startsAt: string; petName: string | null; service: string; checkedIn: boolean; token: number | null }[]; pets: { id: string; name: string }[] };
-type Done = { token: number | null; petName: string | null; startsAt: string };
+type Done = { token: number | null; petName: string | null; startsAt: string; ahead: number; checkedInAt: string | null };
 type Step = 'home' | 'phone' | 'choose' | 'reason' | 'done' | 'unknown';
 
 const IDLE_MS = 45_000;
-const DONE_MS = 15_000;
+const DONE_MS = 20_000;
+/** Tokens read like a ticket: 7 → 007. */
+const tk = (n: number | null | undefined) => (n == null ? '—' : String(n).padStart(3, '0'));
+/** 03313213213 → 0331 321 3213 as it is typed. */
+const grouped = (p: string) => (p.startsWith('+') ? p.replace(/^(\+\d{2})(\d{0,3})(\d{0,3})(\d*)$/, (_, a, b, c, d) => [a, b, c, d].filter(Boolean).join(' ')) : p.replace(/^(\d{0,4})(\d{0,3})(\d*)$/, (_, a, b, c) => [a, b, c].filter(Boolean).join(' ')));
+
+/** Live time for the welcome screen. */
+function Now({ tz }: { tz: string }) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 15_000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <span className="text-right leading-tight">
+      <span className="block text-3xl font-bold tabular">{branchTime(now, tz, 'h:mm a')}</span>
+      <span className="block text-lg text-muted-foreground">{branchTime(now, tz, 'EEEE d MMMM')}</span>
+    </span>
+  );
+}
+
+/** Seconds left before the tablet goes back to the start, as a shrinking bar. */
+function Countdown({ ms, onEnd }: { ms: number; onEnd: () => void }) {
+  const [left, setLeft] = useState(ms);
+  useEffect(() => {
+    const started = Date.now();
+    const t = setInterval(() => {
+      const l = Math.max(0, ms - (Date.now() - started));
+      setLeft(l);
+      if (!l) onEnd();
+    }, 250);
+    return () => clearInterval(t);
+  }, [ms, onEnd]);
+  return (
+    <div className="grid gap-2">
+      <div className="h-1.5 overflow-hidden rounded-full bg-foreground/10">
+        <div className="h-full rounded-full bg-primary transition-[width] duration-300 ease-linear" style={{ width: `${(left / ms) * 100}%` }} />
+      </div>
+      <p className="text-center text-base text-muted-foreground">Back to the start in {Math.ceil(left / 1000)} s</p>
+    </div>
+  );
+}
 
 /** A big touch button for the tablet. */
 function Big({ children, onClick, tone = 'default', disabled, className }: { children: React.ReactNode; onClick: () => void; tone?: 'default' | 'primary' | 'ghost'; disabled?: boolean; className?: string }) {
@@ -65,7 +106,7 @@ function Kiosk() {
   useEffect(() => {
     if (step === 'home') return;
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(reset, step === 'done' ? DONE_MS : IDLE_MS);
+    if (step !== 'done') timer.current = setTimeout(reset, IDLE_MS);
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
@@ -125,10 +166,11 @@ function Kiosk() {
         ) : (
           <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-brand-2 text-3xl font-bold text-white">{d.clinic.name.charAt(0)}</span>
         )}
-        <div className="min-w-0">
-          <p className="truncate text-3xl font-bold tracking-tight">{d.clinic.name}</p>
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-2 text-balance text-2xl font-bold leading-tight tracking-tight sm:text-3xl">{d.clinic.name}</p>
           <p className="text-lg text-muted-foreground">{d.branch.name}</p>
         </div>
+        <Now tz={tz} />
       </header>
 
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-8 px-8 pb-10">
@@ -153,7 +195,7 @@ function Kiosk() {
           <div className="surface-strong grid gap-6 rounded-[2rem] p-8">
             <h2 className="text-center text-3xl font-bold">Your mobile number</h2>
             <p className="flex min-h-[80px] items-center justify-center rounded-2xl bg-foreground/[0.05] px-6 text-center text-5xl font-semibold tabular tracking-wider" aria-live="polite">
-              {phone || <span className="text-3xl font-normal text-muted-foreground">e.g. 0300 1234567</span>}
+              {phone ? grouped(phone) : <span className="text-3xl font-normal text-muted-foreground">e.g. 0300 1234567</span>}
             </p>
             <div className="grid grid-cols-3 gap-3">
               {['1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '0'].map((k) => (
@@ -240,17 +282,27 @@ function Kiosk() {
         )}
 
         {step === 'done' && done && (
-          <div className="surface-strong grid gap-6 rounded-[2rem] p-10 text-center">
-            <CheckCircle2 className="mx-auto h-20 w-20 text-success" />
-            <p className="text-3xl font-semibold">You’re checked in{done.petName ? ` with ${done.petName}` : ''}!</p>
-            <div>
-              <p className="text-2xl uppercase tracking-[0.25em] text-muted-foreground">Your token</p>
-              <p className="text-[9rem] font-black leading-none tabular tracking-tighter text-primary">{done.token ?? '—'}</p>
+          <div className="surface-strong grid gap-7 rounded-[2rem] p-10 text-center">
+            <div className="flex items-center justify-center gap-3 text-2xl font-semibold text-success">
+              <CheckCircle2 className="h-9 w-9" /> You’re checked in{done.petName ? ` with ${done.petName}` : ''}
             </div>
-            <p className="text-2xl text-muted-foreground">Please take a seat. Watch the screen — we’ll call your number.</p>
-            <Big tone="primary" onClick={reset}>
-              Done
-            </Big>
+            <div className="relative mx-auto w-full max-w-md overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-primary to-brand-2 px-8 py-8 text-white shadow-glow">
+              <p className="text-xl font-semibold uppercase tracking-[0.35em] text-white/80">Your token</p>
+              <p className="text-[8.5rem] font-black leading-none tabular tracking-tighter">{tk(done.token)}</p>
+              <p className="mt-2 flex items-center justify-center gap-2 text-xl text-white/85">
+                <Users className="h-5 w-5" /> {done.ahead === 0 ? 'You are next' : `${done.ahead} ${done.ahead === 1 ? 'person' : 'people'} ahead of you`}
+              </p>
+            </div>
+            <p className="text-2xl text-muted-foreground">Please take a seat and watch the screen. We’ll call your number.</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Big onClick={() => window.print()}>
+                <Printer className="h-7 w-7" /> Print my token
+              </Big>
+              <Big tone="primary" onClick={reset}>
+                Done
+              </Big>
+            </div>
+            <Countdown ms={DONE_MS} onEnd={reset} />
           </div>
         )}
 
@@ -270,6 +322,21 @@ function Kiosk() {
           </div>
         )}
       </main>
+
+      {/* Token slip for a receipt printer attached to the tablet (only this prints). */}
+      {done && (
+        <div className="kiosk-slip hidden">
+          <style>{'@media print{body *{visibility:hidden}.kiosk-slip,.kiosk-slip *{visibility:visible}.kiosk-slip{display:block!important;position:absolute;left:0;top:0;width:58mm;padding:4mm;font-family:system-ui,sans-serif;color:#000;text-align:center}@page{size:58mm auto;margin:0}}'}</style>
+          <p style={{ fontWeight: 700, fontSize: 14 }}>{d.clinic.name}</p>
+          <p style={{ fontSize: 11 }}>{d.branch.name}</p>
+          <p style={{ fontSize: 12, marginTop: 8, letterSpacing: 2 }}>YOUR TOKEN</p>
+          <p style={{ fontSize: 48, fontWeight: 900, lineHeight: 1 }}>{tk(done.token)}</p>
+          {done.petName && <p style={{ fontSize: 13, marginTop: 4 }}>{done.petName}</p>}
+          <p style={{ fontSize: 11, marginTop: 6 }}>{done.ahead === 0 ? 'You are next' : `${done.ahead} ahead of you`}</p>
+          <p style={{ fontSize: 11 }}>{branchTime(done.checkedInAt ?? new Date().toISOString(), tz, 'd MMM yyyy, h:mm a')}</p>
+          <p style={{ fontSize: 10, marginTop: 6 }}>Please watch the screen. Keep this slip until you are called.</p>
+        </div>
+      )}
     </div>
   );
 }
