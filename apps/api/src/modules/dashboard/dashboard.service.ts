@@ -125,6 +125,11 @@ export class DashboardService {
         const late = Date.now() - 15 * 60_000;
         const shape = (a: (typeof waiting)[number]) => ({
           id: a.id,
+          branchId: a.branchId,
+          tokenNumber: a.tokenNumber,
+          calledAt: a.calledAt,
+          calledRoom: a.calledRoom,
+          callCount: a.callCount,
           startsAt: a.startsAt,
           checkedInAt: a.checkedInAt,
           status: a.status,

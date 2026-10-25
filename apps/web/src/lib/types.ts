@@ -268,6 +268,11 @@ export interface Appointment {
   /** Front desk, finished visits: the client's charges not yet invoiced. */
   unbilledCharges?: number;
   triage: { id: string; priority: string; presentingComplaint: string; assessedAt: string; assessedByName: string } | null;
+  /** Waiting-room token for the day, and the last call to a room. */
+  tokenNumber?: number | null;
+  calledAt?: string | null;
+  calledRoom?: string | null;
+  callCount?: number;
   effectivePriority?: string | null;
   waitingMinutes?: number | null;
 }

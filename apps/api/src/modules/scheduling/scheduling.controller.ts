@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, P
 import { ApiTags } from '@nestjs/swagger';
 import {
   appointmentListQuery,
+  callPatientSchema,
   appointmentStatusActionSchema,
   appointmentTypeSchema,
   availabilityQuery,
@@ -155,6 +156,15 @@ export class SchedulingController {
   @ApiZodBody(appointmentStatusActionSchema)
   transition(@Param('id', UUID) id: string, @Body(zp(appointmentStatusActionSchema)) body: z.infer<typeof appointmentStatusActionSchema>) {
     return this.appointments.transition(id, body.action, body.reason);
+  }
+
+  /** Calls a waiting patient to a room (waiting-room screen). */
+  @Post('appointments/:id/call')
+  @HttpCode(200)
+  @RequireAnyPermission('appointments.checkin', 'clinical.write')
+  @ApiZodBody(callPatientSchema)
+  call(@Param('id', UUID) id: string, @Body(zp(callPatientSchema)) body: z.infer<typeof callPatientSchema>) {
+    return this.appointments.call(id, body.room);
   }
 
   // ── Front desk ──

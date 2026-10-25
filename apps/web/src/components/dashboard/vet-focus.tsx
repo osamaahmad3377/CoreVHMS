@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { PriorityDot } from '@/components/scheduling/appointment-status';
+import { CallButton, TokenBadge } from '@/components/scheduling/call-button';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
 import { fmtRelative } from '@/lib/format';
@@ -53,6 +54,7 @@ export function VetFocus({ frontDesk, myOpen, unsigned }: { frontDesk?: FrontDes
           <div className="relative mt-3 flex flex-wrap items-end gap-x-6 gap-y-4">
             <div className="min-w-0 flex-1">
               <p className="flex items-center gap-2 text-[1.75rem] font-bold leading-tight tracking-tight">
+                <TokenBadge token={next.tokenNumber} className="h-9 min-w-12 text-lg" />
                 {next.priority && <PriorityDot priority={next.priority} />}
                 <span className="truncate">{next.patient?.name ?? 'No patient yet'}</span>
               </p>
@@ -64,9 +66,12 @@ export function VetFocus({ frontDesk, myOpen, unsigned }: { frontDesk?: FrontDes
                 {mine.length > 1 && <span className="font-normal text-muted-foreground"> · {mine.length - 1} more after</span>}
               </p>
             </div>
-            <Button size="lg" className="w-full sm:w-auto" loading={start.isPending} onClick={() => start.mutate(next.id)}>
-              <Play /> Start consultation
-            </Button>
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
+              <CallButton appointmentId={next.id} branchId={next.branchId} calledRoom={next.calledRoom} callCount={next.callCount} size="default" />
+              <Button size="lg" className="w-full sm:w-auto" loading={start.isPending} onClick={() => start.mutate(next.id)}>
+                <Play /> Start consultation
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="relative mt-3 flex flex-wrap items-center gap-4">

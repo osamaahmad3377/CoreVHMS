@@ -365,6 +365,7 @@ model Organization {
   whatsAppTemplateLinks  WhatsAppTemplateLink[]
   ClientNotificationRule ClientNotificationRule[]
   OnlineBookingSettings  OnlineBookingSettings?
+  WaitingRoomSettings    WaitingRoomSettings[]
 }
 
 model Branch {
@@ -404,6 +405,7 @@ model Branch {
   boardingUnits BoardingUnit[]
   boardingStays BoardingStay[]
   groomingJobs  GroomingJob[]
+  waitingRoom   WaitingRoomSettings?
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -1247,6 +1249,14 @@ model Appointment {
   cancelledAt       DateTime?         @db.Timestamptz(3)
   cancelReason      String?
   createdById       String?           @db.Uuid
+  /// Waiting-room token: a number per branch and day, given at check-in ("Token 12").
+  tokenNumber       Int?
+  tokenDay          DateTime?         @db.Date
+  /// Called to a room from the waiting list (shown and announced on the waiting-room screen).
+  calledAt          DateTime?         @db.Timestamptz(3)
+  calledRoom        String?
+  calledByName      String?
+  callCount         Int               @default(0)
   /// Hash of the private link a client who booked online uses to change or cancel it.
   manageTokenHash   String?           @unique
   createdAt         DateTime          @default(now()) @db.Timestamptz(3)
@@ -1268,6 +1278,7 @@ model Appointment {
   groomingJob GroomingJob?
 
   @@unique([organizationId, number])
+  @@unique([branchId, tokenDay, tokenNumber])
   @@index([organizationId, branchId, startsAt])
   @@index([clinicianId, startsAt])
   @@index([patientId, startsAt])
@@ -4777,4 +4788,30 @@ model OnlineBookingSettings {
   updatedAt         DateTime @updatedAt @db.Timestamptz(3)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+}
+
+/// Waiting room for one branch (Settings → Waiting room): the TV screen and the check-in tablet, each opened
+/// with its own secret link.
+model WaitingRoomSettings {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  branchId       String   @unique @db.Uuid
+  displayEnabled Boolean  @default(true)
+  kioskEnabled   Boolean  @default(true)
+  displayKey     String   @unique
+  kioskKey       String   @unique
+  /// Show pets' names next to tokens on the TV (off: tokens only, for privacy).
+  showPetNames   Boolean  @default(true)
+  /// The tablet can check in clients without an appointment (as walk-ins).
+  kioskWalkIns   Boolean  @default(true)
+  /// Read the call out loud on the TV ("Token 12, please go to Room 2").
+  announce       Boolean  @default(true)
+  /// Shown on the TV under the clinic name.
+  message        String?
+  updatedByName  String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Restrict)
 }

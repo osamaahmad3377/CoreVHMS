@@ -8,6 +8,7 @@ import { RequestContext } from '../../common/context/request-context';
 import { CounterService, formatNumber } from '../../common/counter/counter.service';
 import { conflict, forbidden, notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import type { ScopedTx } from '../../common/prisma/tenant-extension';
 import { dayOfWeekOf, localDayBounds, localParts, zonedToUtc } from '../../common/time/tz';
 import { EncountersService } from '../clinical/encounters.service';
 
@@ -74,7 +75,25 @@ export function shapeAppointment(a: Row) {
     groomingJob: a.groomingJob,
     fieldVisit: a.fieldVisit,
     triage: a.triage[0] ?? null,
+    tokenNumber: a.tokenNumber,
+    calledAt: a.calledAt,
+    calledRoom: a.calledRoom,
+    callCount: a.callCount,
   };
+}
+
+/**
+ * Gives a checked-in visit the next waiting-room token of its branch for the day (1, 2, 3…). An advisory lock per
+ * branch and day keeps two check-ins at the same moment from taking the same number.
+ */
+export async function assignToken(tx: ScopedTx, a: { id: string; branchId: string; tokenNumber?: number | null }, timezone: string) {
+  if (a.tokenNumber) return a.tokenNumber;
+  const day = localParts(new Date(), timezone).date;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`token:${a.branchId}:${day}`}))`;
+  const max = await tx.appointment.aggregate({ where: { branchId: a.branchId, tokenDay: new Date(day) }, _max: { tokenNumber: true } });
+  const token = (max._max.tokenNumber ?? 0) + 1;
+  await tx.appointment.update({ where: { id: a.id }, data: { tokenNumber: token, tokenDay: new Date(day) } });
+  return token;
 }
 
 interface Resolved {
@@ -457,6 +476,7 @@ export class AppointmentsService {
       await tx.appointment.update({ where: { id }, data });
       const releases = ['CANCELLED', 'NO_SHOW'].includes(String(data.status));
       await tx.appointmentResource.updateMany({ where: { appointmentId: id }, data: { active: !releases } });
+      if (action === 'check-in') await assignToken(tx, a, (await tx.branch.findUniqueOrThrow({ where: { id: a.branchId }, select: { timezone: true } })).timezone);
       if (action === 'start') encounterId = await this.encounters.ensureForAppointment(tx, a);
       if (action === 'complete') await this.encounters.completeForAppointment(tx, a.id);
       await this.audit.record(
@@ -585,6 +605,35 @@ export class AppointmentsService {
     };
   }
 
+  /** Calls a waiting patient to a room: shown and announced on the waiting-room screen. Calling again repeats it. */
+  async call(id: string, room?: string | null) {
+    const ctx = RequestContext.require();
+    const a = await this.prisma.db.appointment.findUnique({ where: { id }, include: { branch: { select: { timezone: true } } } });
+    if (!a) throw notFound('Appointment');
+    if (!['CHECKED_IN', 'IN_CONSULTATION'].includes(a.status)) throw ruleViolation('NOT_WAITING', 'Only a patient who has checked in can be called');
+    await this.prisma.db.$transaction(async (tx) => {
+      const token = await assignToken(tx, a, a.branch.timezone);
+      await tx.appointment.update({ where: { id }, data: { calledAt: new Date(), calledRoom: room?.trim() || null, calledByName: ctx.userName ?? null, callCount: { increment: 1 } } });
+      await this.audit.record({ action: 'appointment.called', entityType: 'Appointment', entityId: id, summary: `Token ${token}${room ? ` → ${room}` : ''}` }, tx);
+    });
+    return this.get(id);
+  }
+
+  /** Check-in from the waiting-room tablet: the client's own booking for today, as the front desk would. */
+  async checkInSelf(id: string) {
+    const a = await this.prisma.db.appointment.findUnique({ where: { id }, include: { branch: { select: { timezone: true } } } });
+    if (!a) throw notFound('Appointment');
+    if (!['BOOKED', 'CONFIRMED', 'CHECKED_IN'].includes(a.status)) throw ruleViolation('INVALID_TRANSITION', 'This appointment cannot be checked in. Please see the front desk.');
+    if (a.status !== 'CHECKED_IN') {
+      await this.prisma.db.$transaction(async (tx) => {
+        await tx.appointment.update({ where: { id }, data: { status: 'CHECKED_IN', checkedInAt: new Date() } });
+        await assignToken(tx, a, a.branch.timezone);
+        await this.audit.record({ action: 'appointment.check_in', entityType: 'Appointment', entityId: id, summary: `${appointmentNo(a.number)} (self check-in)` }, tx);
+      });
+    }
+    return this.get(id);
+  }
+
   /** Registers an unbooked arrival. Walk-ins are allowed outside rosters and alongside bookings. */
   async walkIn(input: {
     branchId: string;
@@ -628,6 +677,7 @@ export class AppointmentsService {
         { action: 'appointment.walk_in', entityType: 'Appointment', entityId: a.id, summary: `${appointmentNo(number)}${input.priority ? ` priority ${input.priority}` : ''}` },
         tx,
       );
+      await assignToken(tx, a, r.branch.timezone);
       return a.id;
     });
     return this.get(id);

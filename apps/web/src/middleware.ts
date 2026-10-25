@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
 const PORTAL_PUBLIC = ['/portal/login', '/portal/accept', '/portal/forgot', '/portal/reset'];
-const PUBLIC = ['/login', '/register', '/forgot-password', '/reset-password', '/accept-invite', '/book/'];
+const PUBLIC = ['/login', '/register', '/forgot-password', '/reset-password', '/accept-invite', '/book/', '/display/', '/kiosk/'];
 /** Sign-in pages at the super admin address (no self-registration or invitations there). */
 const PLATFORM_PUBLIC = ['/login', '/forgot-password', '/reset-password'];
 

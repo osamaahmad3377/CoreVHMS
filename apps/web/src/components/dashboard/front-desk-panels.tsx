@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { PriorityDot } from '@/components/scheduling/appointment-status';
+import { CallButton, TokenBadge } from '@/components/scheduling/call-button';
 import { EmptyState } from '@/components/page';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,6 +16,11 @@ import { branchTime } from '@/lib/time';
 
 export interface FrontDeskVisit {
   id: string;
+  branchId: string;
+  tokenNumber: number | null;
+  calledAt: string | null;
+  calledRoom: string | null;
+  callCount: number;
   startsAt: string;
   checkedInAt: string | null;
   status: string;
@@ -65,6 +71,7 @@ export function WaitingNow({ data }: { data: FrontDeskWidget }) {
           {data.waiting.map((a) => (
             <li key={a.id} className="flex items-center gap-2 pr-4 hover:bg-muted/50">
               <Link href="/front-desk" className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-0.5 py-2 pl-4">
+                <TokenBadge token={a.tokenNumber} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{a.patient?.name ?? a.client?.displayName ?? 'Walk-in'}</span>
                   <span className="block truncate text-xs text-muted-foreground">{a.client?.displayName}{a.clinician ? ` · ${a.clinician}` : ''}</span>
@@ -72,6 +79,9 @@ export function WaitingNow({ data }: { data: FrontDeskWidget }) {
                 <PriorityDot priority={a.priority} />
                 <span className="text-xs text-muted-foreground">Waiting since {fmtRelative(a.checkedInAt ?? a.startsAt)}</span>
               </Link>
+              <span className="hidden sm:inline-flex">
+                <CallButton appointmentId={a.id} branchId={a.branchId} calledRoom={a.calledRoom} callCount={a.callCount} />
+              </span>
               {can('clinical.write') && a.patient && (
                 <Button size="sm" loading={start.isPending && start.variables === a.id} onClick={() => start.mutate(a.id)} aria-label={`Start consultation for ${a.patient.name}`}>
                   <Play /> Start

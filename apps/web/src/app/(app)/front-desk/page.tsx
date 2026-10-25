@@ -20,6 +20,7 @@ import { Stat } from '@/components/stat';
 import { AlertChip } from '@/components/status';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { CallButton, TokenBadge } from '@/components/scheduling/call-button';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input, NativeSelect } from '@/components/ui/input';
@@ -151,6 +152,7 @@ function QueueCard({
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <p className="flex items-center gap-1.5 truncate font-medium">
+              <TokenBadge token={a.tokenNumber} className="mr-0.5" />
               {urgent && <AlertOctagon className="h-4 w-4 shrink-0 text-destructive" />}
               {a.patient?.name ?? a.client.displayName}
               <span className="text-xs font-normal text-muted-foreground">{a.patient?.species.name}</span>
@@ -178,6 +180,7 @@ function QueueCard({
               </span>
             )}
             {a.source === 'WALK_IN' && <span className="text-2xs text-muted-foreground">Walk-in</span>}
+            {a.calledAt && a.status === 'CHECKED_IN' && <span className="text-2xs font-semibold text-primary">Called{a.calledRoom ? ` · ${a.calledRoom}` : ''}</span>}
           </div>
         </div>
         {!!a.patient?.alerts.length && (
@@ -195,7 +198,7 @@ function QueueCard({
 }
 
 function FrontDesk() {
-  const { session, can } = useSession();
+  const { session, can, canAny } = useSession();
   const router = useRouter();
   const qc = useQueryClient();
   const tz = session.branch?.timezone ?? 'UTC';
@@ -300,6 +303,9 @@ function FrontDesk() {
                             <Button size="sm" onClick={() => act.mutate({ id: a.id, action: 'check-in' })}>
                               <LogIn /> Check in
                             </Button>
+                          )}
+                          {c.key === 'waiting' && canAny('appointments.checkin', 'clinical.write') && (
+                            <CallButton appointmentId={a.id} branchId={a.branchId} calledRoom={a.calledRoom} callCount={a.callCount} />
                           )}
                           {c.key === 'waiting' && can('triage.write') && a.patient && (
                             <Button size="sm" variant="outline" onClick={() => setTriage(a)}>

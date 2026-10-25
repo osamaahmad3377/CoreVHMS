@@ -27,3 +27,4 @@ export * from './note-phrases';
 export * from './care-repeat';
 export * from './whatsapp';
 export * from './online-booking';
+export * from './waiting-room';
