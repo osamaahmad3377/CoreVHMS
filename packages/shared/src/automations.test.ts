@@ -41,6 +41,14 @@ describe('automation rules', () => {
       }
     }
   });
+  it('allows a check only where it applies, and never as the last step', () => {
+    const check = { type: 'CHECK' as const, check: 'STILL_UNPAID' as const };
+    const msg = { type: 'SEND_MESSAGE' as const, body: 'Hi' };
+    expect(automationSchema.safeParse({ name: 'x', trigger: 'INVOICE_OVERDUE', offset: 7, steps: [msg, check, msg] }).success).toBe(true);
+    expect(automationSchema.safeParse({ name: 'x', trigger: 'APPOINTMENT_COMPLETED', steps: [msg, check, msg] }).success).toBe(false);
+    expect(automationSchema.safeParse({ name: 'x', trigger: 'INVOICE_OVERDUE', offset: 7, steps: [msg, check] }).success).toBe(false);
+    expect(automationSchema.safeParse({ name: 'x', trigger: 'PATIENT_LAPSED', steps: [msg] }).success).toBe(false);
+  });
   it('gives sample values and wait lengths', () => {
     expect(sampleVars('PET_BIRTHDAY').petName).toBe('Tiger');
     expect(waitMs({ amount: 2, unit: 'HOURS' })).toBe(7_200_000);

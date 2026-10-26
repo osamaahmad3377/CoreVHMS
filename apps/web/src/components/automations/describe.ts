@@ -1,4 +1,4 @@
-import { CONDITION_INFO, TRIGGER_INFO, type AutomationCondition, type AutomationDraft, type AutomationStep } from '@vcms/shared';
+import { CHECK_INFO, CONDITION_INFO, TRIGGER_INFO, type AutomationCondition, type AutomationDraft, type AutomationStep } from '@vcms/shared';
 
 export interface AutomationOptions {
   species: { id: string; name: string }[];
@@ -16,7 +16,9 @@ export const hourLabel = (h: number) => `${String(h).padStart(2, '0')}:00`;
 export function whenText(a: Pick<AutomationDraft, 'trigger' | 'offset' | 'atHour'>) {
   const t = TRIGGER_INFO[a.trigger];
   const at = a.atHour != null ? ` at ${hourLabel(Number(a.atHour))}` : '';
-  if (t.timed === 'HOURS_BEFORE') return `${a.offset ?? 24} hours before an appointment`;
+  if (t.timed === 'HOURS_BEFORE') return `${a.offset ?? 24} hours before ${a.trigger === 'SURGERY_UPCOMING' ? 'a surgery' : 'an appointment'}`;
+  if (t.timed === 'DAYS_AFTER') return `${a.offset ?? 7} days after an invoice was due (still unpaid)${at}`;
+  if (t.timed === 'MONTHS_SINCE') return `${a.offset ?? 12} months after an animal’s last visit (nothing booked)${at}`;
   if (t.timed === 'DAYS_BEFORE') return Number(a.offset ?? 0) === 0 ? `On the day care is due${at}` : `${a.offset} days before care is due${at}`;
   if (t.timed === 'ON_DAY') return `On a pet’s birthday${at}`;
   return `When ${t.when}`;
@@ -52,6 +54,8 @@ export function stepText(s: AutomationStep) {
       return 'create a task';
     case 'EMAIL_TEAM':
       return `email ${s.to || 'the team'}`;
+    case 'CHECK':
+      return `only if ${CHECK_INFO[s.check].label}`;
   }
 }
 

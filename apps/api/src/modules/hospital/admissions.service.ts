@@ -182,6 +182,7 @@ export class AdmissionsService {
         await this.audit.record({ action: 'admission.created', entityType: 'Patient', entityId: patient.id, summary: `${admissionNo(number)}: ${input.reason}` }, tx);
         return a.id;
       });
+      await this.events.emit({ type: 'PATIENT_ADMITTED', admissionId: id });
       return this.get(id);
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw conflict('The patient or cage is already taken by another admission');

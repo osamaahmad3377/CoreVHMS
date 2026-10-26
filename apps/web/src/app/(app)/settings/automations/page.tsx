@@ -8,6 +8,7 @@ import {
   CalendarX,
   CheckCircle2,
   Clock,
+  BedDouble,
   Heart,
   Home,
   Mail,
@@ -15,6 +16,9 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  Receipt,
+  Repeat,
+  Scissors,
   Sparkles,
   Square,
   Syringe,
@@ -63,7 +67,7 @@ interface Run {
   automation: { name: string };
 }
 
-const RECIPE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = { heart: Heart, bell: Bell, home: Home, 'calendar-x': CalendarX, 'user-plus': UserPlus, cake: Cake, syringe: Syringe, mail: Mail };
+const RECIPE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = { heart: Heart, bell: Bell, home: Home, 'calendar-x': CalendarX, 'user-plus': UserPlus, cake: Cake, syringe: Syringe, mail: Mail, receipt: Receipt, scissors: Scissors, bed: BedDouble, repeat: Repeat };
 
 const RUN_STATUS: Record<Run['status'], { label: string; variant: 'success' | 'warning' | 'destructive' | 'secondary' | 'default' }> = {
   WAITING: { label: 'Waiting', variant: 'default' },

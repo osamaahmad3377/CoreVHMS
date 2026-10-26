@@ -6,6 +6,7 @@ import { RequestContext } from '../src/common/context/request-context';
 import { AutomationsService } from '../src/modules/automations/automations.service';
 import { MessagesService } from '../src/modules/comms/messages.service';
 import { EmailIntegrationService } from '../src/modules/integrations/email-integration.service';
+import { zonedToUtc } from '../src/common/time/tz';
 import { closeApp, getApp, mail, makeClient, makePatient, prisma, registerOrg, schedulingFixture, speciesId, staff } from './helpers';
 
 const svc = async <T>(cls: new (...a: any[]) => T) => (await getApp()).get(cls);
@@ -214,5 +215,90 @@ describe('Clinic email (Gmail / Outlook / SMTP) and automations', () => {
     expect(list.find((a: any) => a.id === created.body.id)).toMatchObject({ runCount: 2 });
     const activity = (await org.owner.get('/automations/runs')).body;
     expect(activity.meta.total).toBeGreaterThanOrEqual(4);
+  });
+
+  it('more triggers: overdue invoice with a "still unpaid" check, admitted to hospital, and not seen for a year with a "not booked" check', async () => {
+    const org = await registerOrg();
+    const f = await schedulingFixture(org);
+    const auto = await svc(AutomationsService);
+    const db = prisma();
+    const owner = await db.membership.findFirstOrThrow({ where: { organizationId: org.orgId }, orderBy: { createdAt: 'asc' } });
+    const client = await makeClient(org.owner, { email: 'payer@example.com' });
+    const pet = await makePatient(org.owner, client.id, { name: 'Raja' });
+
+    // Overdue invoice: 7 days after the due date → reminder → wait → only if still unpaid → second reminder + task.
+    const overdue = await org.owner.post('/automations', {
+      name: 'Overdue',
+      trigger: 'INVOICE_OVERDUE',
+      offset: 7,
+      steps: [
+        { type: 'SEND_MESSAGE', channel: 'EMAIL', subject: 'Invoice {{invoiceNumber}}', body: '{{amountDue}} still to pay (due {{dueDate}})' },
+        { type: 'WAIT', amount: 7, unit: 'DAYS' },
+        { type: 'CHECK', check: 'STILL_UNPAID' },
+        { type: 'SEND_MESSAGE', channel: 'EMAIL', subject: 'Second reminder', body: 'Still {{amountDue}}' },
+        { type: 'CREATE_TASK', title: 'Call about {{invoiceNumber}}' },
+      ],
+    });
+    expect(overdue.status).toBe(201);
+    // A check that does not fit the trigger is refused.
+    expect((await org.owner.post('/automations', { name: 'Bad', trigger: 'APPOINTMENT_COMPLETED', steps: [{ type: 'SEND_MESSAGE', body: 'x' }, { type: 'CHECK', check: 'STILL_UNPAID' }, { type: 'SEND_MESSAGE', body: 'y' }] })).status).toBe(400);
+    const dueAt = new Date(Date.now() - 7 * 86_400_000);
+    const mkInvoice = (number: number) =>
+      db.invoice.create({ data: { organizationId: org.orgId, branchId: org.branchId, number, clientId: client.id, patientId: pet.id, currency: 'PKR', status: 'ISSUED', totalMinor: 650000, balanceMinor: 650000, dueAt, createdById: owner.userId, createdByName: 'Test' } });
+    const unpaid = await mkInvoice(91001);
+    const paidLater = await mkInvoice(91002);
+    expect(await auto.scanTimed()).toBeGreaterThanOrEqual(2);
+    const first = await db.outboundMessage.findMany({ where: { organizationId: org.orgId, purpose: 'AUTOMATION', sourceType: 'Invoice' } });
+    expect(first).toHaveLength(2);
+    expect(first.find((m) => m.sourceId === unpaid.id)!.body).toMatch(/6,500.*still to pay/);
+    // One gets paid during the week; the other does not.
+    await db.invoice.update({ where: { id: paidLater.id }, data: { status: 'PAID', balanceMinor: 0, paidMinor: 650000 } });
+    await db.automationRun.updateMany({ where: { automationId: overdue.body.id }, data: { runAt: new Date(Date.now() - 1000) } });
+    await auto.runDue();
+    const runs = await db.automationRun.findMany({ where: { automationId: overdue.body.id } });
+    expect(runs.find((r) => r.sourceId === paidLater.id)).toMatchObject({ status: 'STOPPED', error: 'The invoice has been paid or voided' });
+    expect(runs.find((r) => r.sourceId === unpaid.id)).toMatchObject({ status: 'DONE' });
+    expect(await db.outboundMessage.count({ where: { organizationId: org.orgId, subject: 'Second reminder' } })).toBe(1);
+    expect(await db.task.count({ where: { organizationId: org.orgId, title: 'Call about INV-091001' } })).toBe(1);
+
+    // Admitted to hospital → reassuring message.
+    await org.owner.post('/automations', { name: 'Admitted', trigger: 'PATIENT_ADMITTED', steps: [{ type: 'SEND_MESSAGE', channel: 'EMAIL', subject: '{{petName}} is in our care', body: '{{petName}} was admitted at {{branchName}}.' }] });
+    const adm = await org.owner.post('/admissions', { patientId: pet.id, reason: 'Observation', condition: 'STABLE' });
+    expect(adm.status).toBe(201);
+    expect(await db.outboundMessage.count({ where: { organizationId: org.orgId, subject: 'Raja is in our care' } })).toBe(1);
+
+    // Not seen for 12 months → message with the booking link → wait → only if still not booked.
+    const lapsed = await org.owner.post('/automations', {
+      name: 'Recall',
+      trigger: 'PATIENT_LAPSED',
+      offset: 12,
+      steps: [
+        { type: 'SEND_MESSAGE', channel: 'EMAIL', subject: 'Check-up for {{petName}}', body: '{{monthsSince}} months since {{lastVisitDate}}. {{bookingLine}}' },
+        { type: 'WAIT', amount: 14, unit: 'DAYS' },
+        { type: 'CHECK', check: 'NOT_BOOKED' },
+        { type: 'SEND_MESSAGE', channel: 'EMAIL', subject: 'Reminder for {{petName}}', body: 'Still time to book' },
+      ],
+    });
+    expect(lapsed.status).toBe(201);
+    const c2 = await makeClient(org.owner, { email: 'lapsed@example.com' });
+    const old = await makePatient(org.owner, c2.id, { name: 'Lali' });
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi' }).format(new Date());
+    const [y, m, d] = today.split('-').map(Number);
+    const lastVisit = zonedToUtc(new Date(Date.UTC(y, m - 1 - 12, d)).toISOString().slice(0, 10), 12 * 60, 'Asia/Karachi');
+    await db.appointment.create({ data: { organizationId: org.orgId, branchId: org.branchId, number: 99101, clientId: c2.id, patientId: old.id, appointmentTypeId: f.typeId, startsAt: lastVisit, endsAt: new Date(lastVisit.getTime() + 20 * 60_000), status: 'COMPLETED' } });
+    await auto.scanTimed();
+    const recall = await db.automationRun.findFirstOrThrow({ where: { automationId: lapsed.body.id, sourceId: old.id } });
+    expect(recall.status).toBe('WAITING');
+    const msg = await db.outboundMessage.findFirstOrThrow({ where: { organizationId: org.orgId, subject: 'Check-up for Lali' } });
+    expect(msg.body).toMatch(/^12 months since/);
+    // The client books in the meantime: the follow-up is not sent.
+    const soon = new Date(Date.now() + 5 * 86_400_000);
+    await db.appointment.create({ data: { organizationId: org.orgId, branchId: org.branchId, number: 99102, clientId: c2.id, patientId: old.id, appointmentTypeId: f.typeId, startsAt: soon, endsAt: new Date(soon.getTime() + 20 * 60_000), status: 'BOOKED' } });
+    await db.automationRun.update({ where: { id: recall.id }, data: { runAt: new Date(Date.now() - 1000) } });
+    await auto.runDue();
+    const ended = await db.automationRun.findUniqueOrThrow({ where: { id: recall.id } });
+    expect(ended.status).toBe('DONE');
+    expect((ended.log as any[]).pop()).toMatchObject({ type: 'CHECK', note: 'The client has booked — no need to continue' });
+    expect(await db.outboundMessage.count({ where: { organizationId: org.orgId, subject: 'Reminder for Lali' } })).toBe(0);
   });
 });

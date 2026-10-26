@@ -4,6 +4,7 @@ import {
   AUTOMATION_RECIPES,
   AUTOMATION_VARIABLES,
   AUTOMATION_TRIGGERS,
+  CHECK_INFO,
   CONDITION_INFO,
   TRIGGER_INFO,
   sampleVars,
@@ -16,6 +17,7 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
+  BedDouble,
   Bell,
   CalendarCheck,
   CalendarClock,
@@ -25,6 +27,7 @@ import {
   ClipboardList,
   Clock,
   CreditCard,
+  Filter,
   FlaskConical,
   HeartPulse,
   Hourglass,
@@ -32,7 +35,10 @@ import {
   MessageCircle,
   Play,
   Plus,
+  Receipt,
+  Repeat,
   Save,
+  Scissors,
   Send,
   Stethoscope,
   Syringe,
@@ -98,11 +104,16 @@ const TRIGGER_ICONS: Record<AutomationTrigger, React.ComponentType<{ className?:
   CARE_DUE: Syringe,
   CLIENT_REGISTERED: UserPlus,
   PET_BIRTHDAY: Cake,
+  PATIENT_ADMITTED: BedDouble,
+  SURGERY_UPCOMING: Scissors,
+  INVOICE_OVERDUE: Receipt,
+  PATIENT_LAPSED: Repeat,
 };
 const STEP_INFO: Record<AutomationStep['type'], { label: string; icon: React.ComponentType<{ className?: string }>; tone: string }> = {
   SEND_MESSAGE: { label: 'Send a message to the client', icon: Send, tone: 'from-primary to-brand-2 text-white' },
   WAIT: { label: 'Wait', icon: Hourglass, tone: 'bg-foreground/[0.07] text-foreground' },
   CREATE_TASK: { label: 'Create a task for staff', icon: ClipboardList, tone: 'bg-warning/15 text-warning' },
+  CHECK: { label: 'Only continue if…', icon: Filter, tone: 'bg-success/15 text-success' },
   EMAIL_TEAM: { label: 'Email the team', icon: Users, tone: 'bg-info/15 text-info' },
 };
 const NEW_STEP: Record<AutomationStep['type'], () => AutomationStep> = {
@@ -110,9 +121,12 @@ const NEW_STEP: Record<AutomationStep['type'], () => AutomationStep> = {
   WAIT: () => ({ type: 'WAIT', amount: 1, unit: 'DAYS' }),
   CREATE_TASK: () => ({ type: 'CREATE_TASK', title: '', details: '', dueInDays: 0, assigneeId: null }),
   EMAIL_TEAM: () => ({ type: 'EMAIL_TEAM', to: '', subject: '', body: '' }),
+  CHECK: () => ({ type: 'CHECK', check: 'NOT_BOOKED' }),
 };
 const HOURS_BEFORE = [1, 2, 3, 6, 12, 24, 48, 72];
 const DAYS_BEFORE = [0, 1, 2, 3, 7, 14, 30];
+const DAYS_AFTER = [1, 3, 7, 14, 30, 60];
+const MONTHS_SINCE = [3, 6, 9, 12, 18, 24];
 
 const blankDraft = (): Draft => ({ name: '', description: '', isActive: true, marketing: false, trigger: 'APPOINTMENT_COMPLETED', offset: null, atHour: null, conditions: [], steps: withKeys([NEW_STEP.SEND_MESSAGE()]) });
 
@@ -356,6 +370,18 @@ function StepCard({ s, i, count, trigger, options, set, move, remove }: { s: Ste
               </Field>
             </div>
           )}
+          {s.type === 'CHECK' && (
+            <div className="grid gap-2">
+              <NativeSelect aria-label="Only continue if" className="h-9 w-full sm:w-auto" value={s.check} onChange={(e) => set({ check: e.target.value as typeof s.check })}>
+                {TRIGGER_INFO[trigger].checks.map((c) => (
+                  <option key={c} value={c}>
+                    Only continue if {CHECK_INFO[c].label}
+                  </option>
+                ))}
+              </NativeSelect>
+              <p className="text-sm text-muted-foreground">Checked when this step is reached (usually after a wait). If not, the automation ends here quietly — nothing more is sent.</p>
+            </div>
+          )}
           {s.type === 'EMAIL_TEAM' && (
             <div className="grid gap-4">
               <Field label="To" htmlFor={`to-${s.key}`} required hint="e.g. the manager or the front desk">
@@ -392,13 +418,13 @@ function PreviewDialog({ result, onClose }: { result: PreviewResult; onClose: ()
                   {s.when && <Badge variant="outline">{s.when}</Badge>}
                   {s.channel && <Badge>{s.channel === 'WHATSAPP' ? 'WhatsApp' : s.channel === 'EMAIL' ? 'Email' : s.channel}</Badge>}
                 </p>
-                {s.type === 'WAIT' && <p>{s.note}</p>}
+                {(s.type === 'WAIT' || s.type === 'CHECK') && <p>{s.note}</p>}
                 {s.recipient && <p className="text-xs text-muted-foreground">To {s.recipient}</p>}
                 {s.subject && <p className="font-semibold">{s.subject}</p>}
                 {s.body && <p className="whitespace-pre-wrap">{s.body}</p>}
                 {s.title && <p className="font-semibold">{s.title}</p>}
                 {s.details && <p>{s.details}</p>}
-                {s.note && s.type !== 'WAIT' && <p className="mt-1 text-xs text-warning">{s.note}</p>}
+                {s.note && s.type !== 'WAIT' && s.type !== 'CHECK' && <p className="mt-1 text-xs text-warning">{s.note}</p>}
               </div>
             ))}
           </div>
@@ -491,10 +517,19 @@ function Builder() {
   const chooseTrigger = (t: AutomationTrigger) => {
     const timed = TRIGGER_INFO[t].timed;
     const allowed = new Set(TRIGGER_INFO[t].conditions);
-    set({ trigger: t, offset: timed === 'HOURS_BEFORE' ? (d.offset ?? 24) : timed === 'DAYS_BEFORE' ? (d.offset ?? 7) : null, atHour: timed && timed !== 'HOURS_BEFORE' ? (d.atHour ?? 10) : null, conditions: d.conditions.filter((c) => allowed.has(c.field)) });
+    const checks = TRIGGER_INFO[t].checks;
+    const offset = timed === 'HOURS_BEFORE' ? 24 : timed === 'DAYS_BEFORE' || timed === 'DAYS_AFTER' ? 7 : timed === 'MONTHS_SINCE' ? 12 : null;
+    set({
+      trigger: t,
+      offset: timed && TRIGGER_INFO[d.trigger].timed === timed ? d.offset : offset,
+      atHour: timed && timed !== 'HOURS_BEFORE' ? (d.atHour ?? 10) : null,
+      conditions: d.conditions.filter((c) => allowed.has(c.field)),
+      // "Only continue if…" steps that do not fit the new trigger are removed.
+      steps: d.steps.filter((s) => s.type !== 'CHECK' || checks.includes(s.check)),
+    });
   };
   const groups = [...new Set(AUTOMATION_TRIGGERS.map((t) => TRIGGER_INFO[t].group))];
-  const missing = !d.name.trim() ? 'Give the automation a name' : d.steps.some((s) => (s.type === 'SEND_MESSAGE' && !s.body.trim()) || (s.type === 'CREATE_TASK' && !s.title.trim()) || (s.type === 'EMAIL_TEAM' && (!s.to.trim() || !s.subject.trim() || !s.body.trim()))) ? 'Fill in every step' : !d.steps.some((s) => s.type !== 'WAIT') ? 'Add a message or a task' : d.steps[d.steps.length - 1]?.type === 'WAIT' ? 'A wait cannot be the last step' : null;
+  const missing = !d.name.trim() ? 'Give the automation a name' : d.steps.some((s) => (s.type === 'SEND_MESSAGE' && !s.body.trim()) || (s.type === 'CREATE_TASK' && !s.title.trim()) || (s.type === 'EMAIL_TEAM' && (!s.to.trim() || !s.subject.trim() || !s.body.trim()))) ? 'Fill in every step' : !d.steps.some((s) => s.type !== 'WAIT' && s.type !== 'CHECK') ? 'Add a message or a task' : d.steps[d.steps.length - 1]?.type === 'WAIT' ? 'A wait cannot be the last step' : d.steps[d.steps.length - 1]?.type === 'CHECK' ? 'A check needs a step after it' : null;
 
   return (
     <div className="grid gap-6">
@@ -561,7 +596,7 @@ function Builder() {
                           </option>
                         ))}
                       </NativeSelect>
-                      before the appointment
+                      {d.trigger === 'SURGERY_UPCOMING' ? 'before the surgery' : 'before the appointment'}
                     </>
                   )}
                   {info.timed === 'DAYS_BEFORE' && (
@@ -576,9 +611,33 @@ function Builder() {
                       it is due,
                     </>
                   )}
+                  {info.timed === 'DAYS_AFTER' && (
+                    <>
+                      <NativeSelect aria-label="Days after the due date" className="h-9 w-auto" value={String(d.offset ?? 7)} onChange={(e) => set({ offset: Number(e.target.value) })}>
+                        {DAYS_AFTER.map((n) => (
+                          <option key={n} value={n}>
+                            {n === 1 ? '1 day' : `${n} days`}
+                          </option>
+                        ))}
+                      </NativeSelect>
+                      after the due date, while still unpaid,
+                    </>
+                  )}
+                  {info.timed === 'MONTHS_SINCE' && (
+                    <>
+                      <NativeSelect aria-label="Months since the last visit" className="h-9 w-auto" value={String(d.offset ?? 12)} onChange={(e) => set({ offset: Number(e.target.value) })}>
+                        {MONTHS_SINCE.map((n) => (
+                          <option key={n} value={n}>
+                            {n} months
+                          </option>
+                        ))}
+                      </NativeSelect>
+                      after the last visit, with nothing booked,
+                    </>
+                  )}
                   {info.timed !== 'HOURS_BEFORE' && (
                     <>
-                      at
+                      {' '}at
                       <NativeSelect aria-label="Time of day" className="h-9 w-auto" value={String(d.atHour ?? 10)} onChange={(e) => set({ atHour: Number(e.target.value) })}>
                         {Array.from({ length: 15 }, (_, k) => k + 7).map((h) => (
                           <option key={h} value={h}>
@@ -638,14 +697,17 @@ function Builder() {
                 <StepCard key={s.key} s={s} i={i} count={d.steps.length} trigger={d.trigger} options={options.data} set={(p) => setStep(i, p)} move={(dir) => move(i, dir)} remove={() => set({ steps: d.steps.filter((_, j) => j !== i) })} />
               ))}
               <div className="ml-[52px] flex flex-wrap gap-2">
-                {(Object.keys(NEW_STEP) as AutomationStep['type'][]).map((t) => {
-                  const Icon = STEP_INFO[t].icon;
-                  return (
-                    <Button key={t} type="button" size="sm" variant="outline" disabled={d.steps.length >= 12} onClick={() => set({ steps: [...d.steps, { ...NEW_STEP[t](), key: key() } as Step] })}>
-                      <Icon /> {t === 'SEND_MESSAGE' ? 'Message' : t === 'WAIT' ? 'Wait' : t === 'CREATE_TASK' ? 'Task' : 'Email the team'}
-                    </Button>
-                  );
-                })}
+                {(Object.keys(NEW_STEP) as AutomationStep['type'][])
+                  .filter((t) => t !== 'CHECK' || info.checks.length > 0)
+                  .map((t) => {
+                    const Icon = STEP_INFO[t].icon;
+                    const step = t === 'CHECK' ? ({ type: 'CHECK', check: info.checks[0] } as AutomationStep) : NEW_STEP[t]();
+                    return (
+                      <Button key={t} type="button" size="sm" variant="outline" disabled={d.steps.length >= 12} onClick={() => set({ steps: [...d.steps, { ...step, key: key() } as Step] })}>
+                        <Icon /> {t === 'SEND_MESSAGE' ? 'Message' : t === 'WAIT' ? 'Wait' : t === 'CREATE_TASK' ? 'Task' : t === 'CHECK' ? 'Only continue if…' : 'Email the team'}
+                      </Button>
+                    );
+                  })}
               </div>
             </CardContent>
           </Card>

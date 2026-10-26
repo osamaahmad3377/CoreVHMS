@@ -3,6 +3,7 @@ import { Interval } from '@nestjs/schedule';
 import { Automation, AutomationRun, MessageChannel, Prisma } from '@prisma/client';
 import {
   AUTOMATION_RECIPES,
+  CHECK_INFO,
   TRIGGER_INFO,
   conditionsMet,
   waitMs,
@@ -16,8 +17,9 @@ import { RequestContext } from '../../common/context/request-context';
 import { ClientEvent, ClientEvents } from '../../common/events/client-events';
 import { notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { appUrl } from '../../common/tenancy/hosts';
 import { TenancyService } from '../../common/tenancy/tenancy.service';
-import { addDays, localDateOnly, localParts } from '../../common/time/tz';
+import { addDays, localDateOnly, localDayBounds, localParts, zonedToUtc } from '../../common/time/tz';
 import { renderTemplate } from '../comms/templates.service';
 import { MessagesService } from '../comms/messages.service';
 import { EmailIntegrationService } from '../integrations/email-integration.service';
@@ -26,7 +28,7 @@ import { buildContext, OrgInfo, RunContext, SOURCE_OF } from './automation-conte
 
 const SCAN_EVERY_MS = 5 * 60_000;
 const STUCK_MS = 10 * 60_000;
-const TIMED: AutomationTrigger[] = ['APPOINTMENT_UPCOMING', 'CARE_DUE', 'PET_BIRTHDAY'];
+const TIMED: AutomationTrigger[] = ['APPOINTMENT_UPCOMING', 'CARE_DUE', 'PET_BIRTHDAY', 'SURGERY_UPCOMING', 'INVOICE_OVERDUE', 'PATIENT_LAPSED'];
 
 interface LogEntry {
   step: number;
@@ -215,7 +217,13 @@ export class AutomationsService implements OnModuleInit {
         steps.push({ type: s.type, note: `Wait ${s.amount} ${s.unit.toLowerCase()}` });
         continue;
       }
-      const when = delayMs ? `after ${Math.round(delayMs / 3_600_000) >= 1 ? `${Math.round(delayMs / 3_600_000)} h` : `${Math.round(delayMs / 60_000)} min`}` : 'straight away';
+      if (s.type === 'CHECK') {
+        const stops = await this.checkFails(s.check, ctx);
+        steps.push({ type: s.type, note: stops ? `${CHECK_INFO[s.check].stopped} (right now it would stop here)` : `Only continues if ${CHECK_INFO[s.check].label} — right now it would continue` });
+        continue;
+      }
+      const hours = delayMs / 3_600_000;
+      const when = !delayMs ? 'straight away' : hours >= 48 ? `after ${Math.round(hours / 24)} days` : hours >= 1 ? `after ${Math.round(hours)} h` : `after ${Math.round(delayMs / 60_000)} min`;
       if (s.type === 'SEND_MESSAGE') {
         const channel = ctx.client ? (s.channel === 'BEST' ? await this.messages.chooseChannel(ctx.client) : s.channel) : null;
         const consent = this.consentProblem(ctx, input.marketing);
@@ -256,7 +264,12 @@ export class AutomationsService implements OnModuleInit {
       case 'Client':
         return pick(await db.client.findFirst({ where: { status: 'ACTIVE' }, orderBy: { createdAt: 'desc' }, select: { id: true } }));
       case 'Patient':
+        if (trigger === 'PATIENT_LAPSED') return (await db.appointment.findFirst({ where: { status: 'COMPLETED', patientId: { not: null } }, orderBy: { startsAt: 'asc' }, select: { patientId: true } }))?.patientId ?? null;
         return pick(await db.patient.findFirst({ where: { status: 'ACTIVE', dateOfBirth: { not: null } }, orderBy: { createdAt: 'desc' }, select: { id: true } }));
+      case 'Surgery':
+        return pick(await db.surgery.findFirst({ orderBy: { scheduledAt: 'desc' }, select: { id: true } }));
+      case 'Invoice':
+        return pick(await db.invoice.findFirst({ where: { status: { in: ['ISSUED', 'PARTIALLY_PAID'] }, balanceMinor: { gt: 0 }, clientId: { not: null } }, orderBy: { dueAt: 'asc' }, select: { id: true } }));
     }
     return null;
   }
@@ -265,11 +278,20 @@ export class AutomationsService implements OnModuleInit {
 
   private async orgInfo(): Promise<OrgInfo> {
     const orgId = RequestContext.orgId();
-    const [org, wa] = await Promise.all([
+    const [org, wa, booking] = await Promise.all([
       this.prisma.raw.organization.findUniqueOrThrow({ where: { id: orgId }, select: { name: true, brandName: true, phone: true, country: true, currency: true, defaultTimezone: true } }),
       this.whatsapp.sending(orgId),
+      this.prisma.db.onlineBookingSettings.findFirst({ where: { enabled: true }, select: { slug: true } }),
     ]);
-    return { name: org.brandName ?? org.name, phone: org.phone, country: org.country, currency: org.currency, timezone: org.defaultTimezone, whatsappActive: wa.active };
+    return {
+      name: org.brandName ?? org.name,
+      phone: org.phone,
+      country: org.country,
+      currency: org.currency,
+      timezone: org.defaultTimezone,
+      whatsappActive: wa.active,
+      bookingLine: booking ? `Book online: ${appUrl()}/book/${booking.slug}` : '',
+    };
   }
 
   /** Something happened in the app: start every active automation listening for it. */
@@ -349,6 +371,15 @@ export class AutomationsService implements OnModuleInit {
           log.push({ step: i, type: s.type, at, ok: true, note: `Waiting until ${until.toISOString()}` });
           return finish('WAITING', null, { nextStep: i + 1, runAt: until });
         }
+        if (s.type === 'CHECK') {
+          const failed = await this.checkFails(s.check, ctx);
+          if (failed) {
+            log.push({ step: i, type: s.type, at, ok: true, note: CHECK_INFO[s.check].stopped });
+            return finish('DONE', null, { nextStep: steps.length });
+          }
+          log.push({ step: i, type: s.type, at, ok: true, note: `Checked: ${CHECK_INFO[s.check].label}` });
+          continue;
+        }
         if (s.type === 'SEND_MESSAGE') log.push(await this.sendStep(a, run, ctx, s, i));
         else if (s.type === 'CREATE_TASK') log.push(await this.taskStep(a, ctx, s, i));
         else log.push(await this.teamStep(run, ctx, s, i));
@@ -357,8 +388,31 @@ export class AutomationsService implements OnModuleInit {
         return finish('FAILED', (e as Error).message, { nextStep: i });
       }
     }
-    const skipped = log.length > 0 && log.filter((l) => l.type !== 'WAIT').every((l) => !l.ok);
+    const skipped = log.length > 0 && log.filter((l) => l.type !== 'WAIT' && l.type !== 'CHECK').every((l) => !l.ok);
     return finish(skipped ? 'SKIPPED' : 'DONE', skipped ? log[log.length - 1]?.note : null, { nextStep: steps.length });
+  }
+
+  /** True when an "Only continue if…" check no longer holds (the run then ends quietly). */
+  private async checkFails(check: string, ctx: RunContext) {
+    const db = this.prisma.db;
+    if (check === 'NOT_BOOKED') {
+      if (!ctx.client) return false;
+      const booked = await db.appointment.count({
+        where: { status: { in: ['BOOKED', 'CONFIRMED', 'CHECKED_IN'] }, startsAt: { gt: new Date() }, ...(ctx.patientId ? { patientId: ctx.patientId } : { clientId: ctx.client.id }), ...(ctx.sourceType === 'Appointment' ? { id: { not: ctx.sourceId } } : {}) },
+      });
+      return booked > 0;
+    }
+    if (check === 'STILL_UNPAID') {
+      if (ctx.sourceType !== 'Invoice') return false;
+      const inv = await db.invoice.findUnique({ where: { id: ctx.sourceId }, select: { status: true, balanceMinor: true } });
+      return !inv || !['ISSUED', 'PARTIALLY_PAID'].includes(inv.status) || inv.balanceMinor <= 0;
+    }
+    if (check === 'STILL_DUE') {
+      if (ctx.sourceType !== 'CareItem') return false;
+      const it = await db.careItem.findUnique({ where: { id: ctx.sourceId }, select: { status: true } });
+      return it?.status !== 'DUE';
+    }
+    return false;
   }
 
   private async sendStep(a: Automation, run: AutomationRun, ctx: RunContext, s: Extract<AutomationStep, { type: 'SEND_MESSAGE' }>, i: number): Promise<LogEntry> {
@@ -489,6 +543,38 @@ export class AutomationsService implements OnModuleInit {
             const target = addDays(localDateOnly(now, tz), a.offset ?? 0);
             const items = await db.careItem.findMany({ where: { status: 'DUE', dueDate: target }, select: { id: true }, take: 500 });
             for (const it of items) if (await this.start(a, it.id, `${a.offset ?? 0}:${target.toISOString().slice(0, 10)}`)) started++;
+          } else if (a.trigger === 'SURGERY_UPCOMING') {
+            const hours = a.offset ?? 24;
+            const ops = await db.surgery.findMany({ where: { status: { in: ['SCHEDULED', 'PRE_OP'] }, scheduledAt: { gt: now, lte: new Date(now.getTime() + hours * 3_600_000) } }, select: { id: true, scheduledAt: true, createdAt: true }, take: 500 });
+            for (const op of ops) {
+              if (op.createdAt.getTime() > op.scheduledAt.getTime() - hours * 3_600_000) continue;
+              if (await this.start(a, op.id, op.scheduledAt.toISOString())) started++;
+            }
+          } else if (a.trigger === 'INVOICE_OVERDUE') {
+            const days = a.offset ?? 7;
+            // Invoices whose due date was exactly `days` days ago (clinic calendar), still owing.
+            const bounds = localDayBounds(new Date(now.getTime() - days * 86_400_000), tz);
+            const invs = await db.invoice.findMany({ where: { status: { in: ['ISSUED', 'PARTIALLY_PAID'] }, balanceMinor: { gt: 0 }, clientId: { not: null }, dueAt: { gte: bounds.start, lt: bounds.end } }, select: { id: true }, take: 500 });
+            for (const inv of invs) if (await this.start(a, inv.id, `${days}`)) started++;
+          } else if (a.trigger === 'PATIENT_LAPSED') {
+            const months = a.offset ?? 12;
+            // Last visit on this calendar day `months` months ago, and nothing booked since.
+            const [y, m, dd] = local.date.split('-').map(Number);
+            const target = new Date(Date.UTC(y, m - 1 - months, dd)).toISOString().slice(0, 10);
+            const from = zonedToUtc(target, 0, tz);
+            const to = new Date(from.getTime() + 86_400_000);
+            const rows = await this.prisma.raw.$queryRaw<{ patientId: string; last: Date }[]>`
+              SELECT a."patientId", max(a."startsAt") AS last
+              FROM "Appointment" a JOIN "Patient" p ON p."id" = a."patientId"
+              WHERE a."organizationId" = ${organizationId}::uuid AND a."status" = 'COMPLETED' AND p."status" = 'ACTIVE'
+              GROUP BY a."patientId"
+              HAVING max(a."startsAt") >= ${from} AND max(a."startsAt") < ${to}
+              LIMIT 500`;
+            for (const r of rows) {
+              const upcoming = await db.appointment.count({ where: { patientId: r.patientId, status: { in: ['BOOKED', 'CONFIRMED', 'CHECKED_IN'] }, startsAt: { gt: now } } });
+              if (upcoming) continue;
+              if (await this.start(a, r.patientId, new Date(r.last).toISOString().slice(0, 10))) started++;
+            }
           } else if (a.trigger === 'PET_BIRTHDAY') {
             const today = localDateOnly(now, tz);
             const pets = await this.prisma.raw.$queryRaw<{ id: string }[]>`

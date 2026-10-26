@@ -13,7 +13,8 @@ export type ClientEvent =
   // Used by automations (Settings → Automations); no built-in client notification.
   | { type: 'APPOINTMENT_COMPLETED'; appointmentId: string }
   | { type: 'APPOINTMENT_NO_SHOW'; appointmentId: string }
-  | { type: 'CLIENT_REGISTERED'; clientId: string };
+  | { type: 'CLIENT_REGISTERED'; clientId: string }
+  | { type: 'PATIENT_ADMITTED'; admissionId: string };
 
 export type ClientEventHandler = (event: ClientEvent) => Promise<void>;
 

@@ -1,6 +1,7 @@
 import { formatMoney, toWhatsAppNumber, type AutomationFacts, type AutomationTrigger } from '@vcms/shared';
 import { formatInTimeZone } from 'date-fns-tz';
 import type { PrismaService } from '../../common/prisma/prisma.service';
+import { invoiceNo } from '../billing/invoices.service';
 import { receiptNo } from '../billing/payments.service';
 
 /** The clinic facts every automation message can use. */
@@ -11,6 +12,8 @@ export interface OrgInfo {
   currency: string;
   timezone: string;
   whatsappActive: boolean;
+  /** "Book online: <link>" when the clinic's booking page is on, else empty. */
+  bookingLine: string;
 }
 
 export interface RunClient {
@@ -59,10 +62,14 @@ export const SOURCE_OF: Record<AutomationTrigger, string> = {
   CARE_DUE: 'CareItem',
   CLIENT_REGISTERED: 'Client',
   PET_BIRTHDAY: 'Patient',
+  PATIENT_ADMITTED: 'Admission',
+  SURGERY_UPCOMING: 'Surgery',
+  INVOICE_OVERDUE: 'Invoice',
+  PATIENT_LAPSED: 'Patient',
 };
 
 const reach = (c: RunClient | null, org: OrgInfo) => ({ hasWhatsApp: !!c && org.whatsappActive && !!toWhatsAppNumber(c.mobilePhone, org.country), hasEmail: !!c?.email });
-const base = (org: OrgInfo, c: RunClient | null) => ({ clientName: c?.displayName ?? '', clinicName: org.name, clinicPhone: org.phone ?? '' });
+const base = (org: OrgInfo, c: RunClient | null) => ({ clientName: c?.displayName ?? '', clinicName: org.name, clinicPhone: org.phone ?? '', bookingLine: org.bookingLine });
 const day = (d: Date, tz: string) => formatInTimeZone(d, tz, 'd MMM yyyy');
 const dateOnly = (d: Date) => formatInTimeZone(d, 'UTC', 'd MMM yyyy');
 const yearsOld = (dob: Date | null, now = new Date()) => (dob ? String(now.getUTCFullYear() - dob.getUTCFullYear()) : '');
@@ -125,19 +132,81 @@ export async function buildContext(db: PrismaService['db'], trigger: AutomationT
       };
     }
     case 'Admission': {
-      const a = await db.admission.findUnique({ where: { id: sourceId }, include: { client: CLIENT, patient: PATIENT } });
+      const a = await db.admission.findUnique({ where: { id: sourceId }, include: { client: CLIENT, patient: { select: { ...PATIENT.select, status: true } }, branch: { select: { name: true } }, responsibleClinician: { select: { user: { select: { name: true } } } } } });
       if (!a) return null;
+      // Never a cheerful message about an animal that has died.
+      const alive = a.patient.status === 'ACTIVE' && a.outcome !== 'DECEASED' && a.outcome !== 'EUTHANASED';
+      const live = trigger === 'PATIENT_ADMITTED' ? alive && a.status !== 'CANCELLED' : alive;
       return {
         sourceType: 'Admission',
         sourceId: a.id,
         client: a.client,
         patientId: a.patientId,
         branchId: a.branchId,
-        vetMembershipId: null,
-        vars: { ...base(org, a.client), petName: a.patient.name, species: a.patient.species.name, homeCare: a.homeCareInstructions || 'As discussed at discharge', followUpDate: a.followUpAt ? day(a.followUpAt, org.timezone) : 'none booked' },
+        vetMembershipId: a.responsibleClinicianId,
+        vars: {
+          ...base(org, a.client),
+          petName: a.patient.name,
+          species: a.patient.species.name,
+          branchName: a.branch.name,
+          vetName: a.responsibleClinician?.user.name ?? '',
+          homeCare: a.homeCareInstructions || 'As discussed at discharge',
+          followUpDate: a.followUpAt ? day(a.followUpAt, org.timezone) : 'none booked',
+        },
         facts: { speciesId: a.patient.speciesId, branchId: a.branchId, ...reach(a.client, org) },
-        label: `${a.patient.name} · discharged`,
-        live: true,
+        label: `${a.patient.name} · ${trigger === 'PATIENT_ADMITTED' ? 'admitted' : 'discharged'}`,
+        live,
+        why: live ? undefined : 'The animal is no longer in a state where this applies',
+      };
+    }
+    case 'Surgery': {
+      const su = await db.surgery.findUnique({ where: { id: sourceId }, include: { client: CLIENT, patient: PATIENT, branch: { select: { name: true, timezone: true } } } });
+      if (!su) return null;
+      const live = ['SCHEDULED', 'PRE_OP'].includes(su.status);
+      return {
+        sourceType: 'Surgery',
+        sourceId: su.id,
+        client: su.client,
+        patientId: su.patientId,
+        branchId: su.branchId,
+        vetMembershipId: null,
+        vars: {
+          ...base(org, su.client),
+          petName: su.patient.name,
+          species: su.patient.species.name,
+          procedureName: su.procedure,
+          surgeryTime: formatInTimeZone(su.scheduledAt, su.branch.timezone, 'EEE d MMM, HH:mm'),
+          surgeryDate: formatInTimeZone(su.scheduledAt, su.branch.timezone, 'EEE d MMM'),
+          branchName: su.branch.name,
+        },
+        facts: { speciesId: su.patient.speciesId, branchId: su.branchId, ...reach(su.client, org) },
+        label: `${su.patient.name} · ${su.procedure} ${formatInTimeZone(su.scheduledAt, su.branch.timezone, 'EEE d MMM HH:mm')}`,
+        live,
+        why: live ? undefined : `The surgery is now ${su.status.toLowerCase().replace('_', ' ')}`,
+      };
+    }
+    case 'Invoice': {
+      const inv = await db.invoice.findUnique({ where: { id: sourceId }, include: { client: CLIENT } });
+      if (!inv) return null;
+      const live = ['ISSUED', 'PARTIALLY_PAID'].includes(inv.status) && inv.balanceMinor > 0;
+      return {
+        sourceType: 'Invoice',
+        sourceId: inv.id,
+        client: inv.client,
+        patientId: inv.patientId,
+        branchId: inv.branchId,
+        vetMembershipId: null,
+        vars: {
+          ...base(org, inv.client),
+          invoiceNumber: invoiceNo(inv.number),
+          amountDue: formatMoney(inv.balanceMinor, org.currency),
+          invoiceTotal: formatMoney(inv.totalMinor, org.currency),
+          dueDate: inv.dueAt ? day(inv.dueAt, org.timezone) : '',
+        },
+        facts: { branchId: inv.branchId, amountMinor: inv.balanceMinor, ...reach(inv.client, org) },
+        label: `${inv.client?.displayName ?? 'Invoice'} · ${invoiceNo(inv.number)} · ${formatMoney(inv.balanceMinor, org.currency)} owed`,
+        live,
+        why: live ? undefined : 'The invoice has been paid or voided',
       };
     }
     case 'Payment': {
@@ -195,6 +264,8 @@ export async function buildContext(db: PrismaService['db'], trigger: AutomationT
       const p = await db.patient.findUnique({ where: { id: sourceId }, select: { ...PATIENT.select, status: true, ownerships: { where: { endedAt: null, isPrimary: true }, select: { client: CLIENT } } } });
       if (!p) return null;
       const client = p.ownerships[0]?.client ?? null;
+      const last = trigger === 'PATIENT_LAPSED' ? await db.appointment.findFirst({ where: { patientId: p.id, status: 'COMPLETED' }, orderBy: { startsAt: 'desc' }, select: { startsAt: true } }) : null;
+      const months = last ? Math.max(0, Math.round((Date.now() - last.startsAt.getTime()) / (30.44 * 86_400_000))) : 0;
       return {
         sourceType: 'Patient',
         sourceId: p.id,
@@ -202,9 +273,9 @@ export async function buildContext(db: PrismaService['db'], trigger: AutomationT
         patientId: p.id,
         branchId: p.primaryBranchId,
         vetMembershipId: null,
-        vars: { ...base(org, client), petName: p.name, species: p.species.name, age: yearsOld(p.dateOfBirth) },
+        vars: { ...base(org, client), petName: p.name, species: p.species.name, age: yearsOld(p.dateOfBirth), lastVisitDate: last ? day(last.startsAt, org.timezone) : '', monthsSince: String(months) },
         facts: { speciesId: p.speciesId, branchId: p.primaryBranchId, ...reach(client, org) },
-        label: `${p.name} · birthday`,
+        label: trigger === 'PATIENT_LAPSED' ? `${p.name} · last seen ${last ? day(last.startsAt, org.timezone) : 'never'}` : `${p.name} · birthday`,
         live: p.status === 'ACTIVE',
         why: p.status === 'ACTIVE' ? undefined : `The animal is ${p.status.toLowerCase()}`,
       };
