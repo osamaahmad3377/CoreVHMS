@@ -620,3 +620,6 @@ export const EASY_DELAYS: { label: string; value: { amount: number; unit: 'MINUT
   { label: 'After 3 days', value: { amount: 3, unit: 'DAYS' } },
   { label: 'After 1 week', value: { amount: 7, unit: 'DAYS' } },
 ];
+
+/** Recipes every clinic gets, switched on, the first time automations are used. */
+export const BASIC_AUTOMATION_KEYS = ['reminder-24h', 'thank-you', 'missed', 'after-discharge', 'welcome', 'vaccine-due'] as const;

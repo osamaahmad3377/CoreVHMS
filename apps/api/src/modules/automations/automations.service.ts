@@ -3,6 +3,7 @@ import { Interval } from '@nestjs/schedule';
 import { Automation, AutomationRun, MessageChannel, Prisma } from '@prisma/client';
 import {
   AUTOMATION_RECIPES,
+  BASIC_AUTOMATION_KEYS,
   CHECK_INFO,
   TRIGGER_INFO,
   conditionsMet,
@@ -82,7 +83,43 @@ export class AutomationsService implements OnModuleInit {
 
   // ── Managing automations ──
 
+  /** Adds the basic automations, switched on, once per clinic (never again, so deleting one sticks). */
+  async seedBasics(organizationId?: string) {
+    const raw = this.prisma.raw;
+    const orgs = await raw.organization.findMany({ where: { automationsSeededAt: null, ...(organizationId ? { id: organizationId } : {}) }, select: { id: true } });
+    for (const o of orgs) {
+      const claimed = await raw.organization.updateMany({ where: { id: o.id, automationsSeededAt: null }, data: { automationsSeededAt: new Date() } });
+      if (!claimed.count) continue;
+      const have = await raw.automation.count({ where: { organizationId: o.id } });
+      if (have) continue; // already built their own
+      for (const key of BASIC_AUTOMATION_KEYS) {
+        const r = AUTOMATION_RECIPES.find((x) => x.key === key);
+        if (!r) continue;
+        await raw.automation.create({
+          data: {
+            organizationId: o.id,
+            name: r.automation.name,
+            description: r.automation.description || null,
+            isActive: true,
+            marketing: r.automation.marketing ?? false,
+            trigger: r.automation.trigger,
+            offset: r.automation.offset ?? null,
+            atHour: r.automation.atHour ?? null,
+            sendFromHour: r.automation.sendFromHour ?? null,
+            sendToHour: r.automation.sendToHour ?? null,
+            cooldownDays: r.automation.cooldownDays ?? null,
+            conditions: r.automation.conditions as unknown as Prisma.InputJsonValue,
+            steps: r.automation.steps as unknown as Prisma.InputJsonValue,
+            createdByName: 'NextCore',
+            updatedByName: 'NextCore',
+          },
+        });
+      }
+    }
+  }
+
   async list() {
+    await this.seedBasics(RequestContext.orgId());
     const db = this.prisma.db;
     const [rows, waiting, recent] = await Promise.all([
       db.automation.findMany({ orderBy: [{ isActive: 'desc' }, { createdAt: 'asc' }] }),
@@ -571,6 +608,7 @@ export class AutomationsService implements OnModuleInit {
       const scan = Date.now() - this.lastScan >= SCAN_EVERY_MS;
       if (scan) this.lastScan = Date.now();
       await this.tenancy.forEachDatabase('Automations', async () => {
+        if (scan) await this.seedBasics();
         await this.runDue();
         if (scan) await this.scanTimed();
       });

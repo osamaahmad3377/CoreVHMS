@@ -172,6 +172,8 @@ model Organization {
   primaryColor                String?
   /// White label (Settings → Branding, owner only): name in the menu, sign-in page and browser tab; null = clinic name.
   brandName                   String?
+  /// Set once the basic automations (thank you, reminders…) were added and switched on for this clinic.
+  automationsSeededAt         DateTime?          @db.Timestamptz(3)
   sidebarColor                String?
   /// Square icon for the browser tab; falls back to the logo.
   iconAttachmentId            String?            @db.Uuid
