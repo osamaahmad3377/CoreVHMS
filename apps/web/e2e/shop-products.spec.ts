@@ -32,8 +32,12 @@ test.describe('Shop products: food, grooming and accessories', () => {
     // Receive a delivery so it can be sold: food needs no batch number, and the supplier can be "bought locally".
     await page.goto('/inventory?receive=1');
     const rcv = page.getByRole('dialog');
+    // "What are you adding to stock?" — the food line then asks for no batch number.
+    await expect(rcv.getByRole('heading', { name: 'What are you adding to stock?' })).toBeVisible();
+    await rcv.getByRole('radio', { name: /Food/ }).click();
+    await expect(rcv.getByLabel('Line 1 batch number')).toHaveCount(0);
     await rcv.locator('#rcv-sup').selectOption({ label: 'Bought locally / not recorded' });
-    await rcv.getByRole('combobox').filter({ hasText: 'Product…' }).first().click();
+    await rcv.locator('button[role=combobox]').first().click();
     await page.getByLabel('Search products').fill(name);
     await page.getByRole('option', { name: new RegExp(name) }).click();
     await rcv.getByLabel('Line 1 quantity').fill('6');

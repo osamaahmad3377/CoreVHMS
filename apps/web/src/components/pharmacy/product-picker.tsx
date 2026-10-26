@@ -1,7 +1,7 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
 import { allergyMatches, type AllergyAlertLike, type Paginated } from '@vcms/shared';
-import { Check, ChevronsUpDown, Loader2, Lock, Search } from 'lucide-react';
+import { Check, ChevronsUpDown, Loader2, Lock, Plus, Search } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '../ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
@@ -23,6 +23,8 @@ export function ProductPicker({
   id,
   alerts,
   placeholder = 'Search by name, brand, generic name or SKU…',
+  type,
+  onCreate,
 }: {
   value: Product | null;
   onChange: (p: Product | null) => void;
@@ -31,19 +33,23 @@ export function ProductPicker({
   alerts?: AllergyAlertLike[];
   id?: string;
   placeholder?: string;
+  /** Only products of this kind (e.g. FOOD). */
+  type?: string;
+  /** Offers "New product" with what was typed, for products not in the catalogue yet. */
+  onCreate?: (name: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [term, setTerm] = useState('');
   const q = useDebounce(term.trim(), 200);
   const results = useQuery({
-    queryKey: ['product-picker', q, prescribable],
-    queryFn: () => api.get<Paginated<Product>>(`/products${qs({ q: q || undefined, pageSize: 15, prescribable: prescribable ? 'true' : undefined })}`),
+    queryKey: ['product-picker', q, prescribable, type],
+    queryFn: () => api.get<Paginated<Product>>(`/products${qs({ q: q || undefined, pageSize: 15, prescribable: prescribable ? 'true' : undefined, type })}`),
     enabled: open,
   });
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button id={id} type="button" variant="outline" role="combobox" aria-expanded={open} className={cn('w-full justify-between font-normal', !value && 'text-muted-foreground')}>
+        <Button id={id} type="button" variant="outline" role="combobox" aria-expanded={open} className={cn('w-full min-w-0 justify-between overflow-hidden font-normal', !value && 'text-muted-foreground')}>
           <span className="truncate">{value ? `${value.name} · ${productStrength(value)}` : placeholder}</span>
           <ChevronsUpDown className="opacity-50" />
         </Button>
@@ -55,7 +61,7 @@ export function ProductPicker({
           {results.isFetching && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
         </div>
         <ul className="max-h-72 overflow-y-auto p-1" role="listbox">
-          {!results.isFetching && !results.data?.data.length && <li className="px-3 py-4 text-center text-xs text-muted-foreground">No matching products. Add them in Stock → Products.</li>}
+          {!results.isFetching && !results.data?.data.length && <li className="px-3 py-4 text-center text-xs text-muted-foreground">{onCreate ? 'Not in your products yet.' : 'No matching products. Add them in Stock → Products.'}</li>}
           {results.data?.data.map((p) => (
             <li key={p.id}>
               <button
@@ -87,6 +93,20 @@ export function ProductPicker({
             </li>
           ))}
         </ul>
+        {onCreate && (
+          <div className="border-t p-1">
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                onCreate(term.trim());
+              }}
+              className="flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm font-medium text-primary hover:bg-primary/5"
+            >
+              <Plus className="h-4 w-4" /> {term.trim() ? `New product “${term.trim()}”` : 'New product'}
+            </button>
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   );

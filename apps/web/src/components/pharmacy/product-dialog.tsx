@@ -26,12 +26,12 @@ import { useSession } from '@/lib/session';
 import type { Product, ProductCategory } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
-type ProductType = (typeof PRODUCT_TYPES)[number];
+export type ProductType = (typeof PRODUCT_TYPES)[number];
 const CLINICAL = new Set<string>(PRESCRIBABLE_PRODUCT_TYPES);
 /** Shop items sold at the counter: brand, pack size and a shelf category instead of strength and dose data. */
 const SHOP = new Set<string>(['FOOD', 'GROOMING', 'ACCESSORY', 'SUPPLEMENT', 'RETAIL']);
 
-const TYPE_CHOICES: { type: ProductType; icon: React.ComponentType<{ className?: string }>; hint: string }[] = [
+export const TYPE_CHOICES: { type: ProductType; icon: React.ComponentType<{ className?: string }>; hint: string }[] = [
   { type: 'FOOD', icon: Bone, hint: 'Dry and wet food, diets, treats, livestock feed' },
   { type: 'GROOMING', icon: Brush, hint: 'Shampoos, brushes, clippers, ear and dental care, litter' },
   { type: 'ACCESSORY', icon: Shirt, hint: 'Collars, leads, toys, beds, carriers, bowls' },
@@ -43,6 +43,32 @@ const TYPE_CHOICES: { type: ProductType; icon: React.ComponentType<{ className?:
   { type: 'EQUIPMENT', icon: Wrench, hint: 'Durable equipment' },
 ];
 
+export const typeIcon = (t: string | null | undefined) => TYPE_CHOICES.find((c) => c.type === t)?.icon ?? Package;
+
+/** The "What are you adding?" tiles, shared by Add product and Receive stock. `compact` = smaller tiles for adding a line. */
+export function ProductTypeChooser({ value, onChoose, compact = false }: { value?: ProductType | null; onChoose: (type: ProductType) => void; compact?: boolean }) {
+  return (
+    <div className={cn('grid gap-2', compact ? 'grid-cols-2 sm:grid-cols-3' : 'sm:grid-cols-3')} role="radiogroup" aria-label="Product type">
+      {TYPE_CHOICES.map(({ type, icon: Icon, hint }) => (
+        <button
+          key={type}
+          type="button"
+          role="radio"
+          aria-checked={value === type}
+          onClick={() => onChoose(type)}
+          className={cn('flex items-start gap-3 rounded-xl surface-flat text-left text-sm transition-colors hover:border-primary hover:bg-primary/5', compact ? 'p-2.5' : 'p-3')}
+        >
+          <Icon className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+          <span className="min-w-0">
+            <span className="block font-medium">{PRODUCT_TYPE_LABELS[type]}</span>
+            {!compact && <span className="text-xs text-muted-foreground">{hint}</span>}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 const NAME_EXAMPLES: Partial<Record<ProductType, string>> = {
   FOOD: 'e.g. Adult dog food, chicken & rice',
   GROOMING: 'e.g. Oatmeal dog shampoo',
@@ -51,12 +77,24 @@ const NAME_EXAMPLES: Partial<Record<ProductType, string>> = {
   RETAIL: 'e.g. Pet travel bag',
 };
 
-export function ProductDialog({ product, open, onOpenChange, onSaved, defaultType }: { product: Product | null; open: boolean; onOpenChange: (o: boolean) => void; onSaved?: (p: Product) => void; defaultType?: ProductType }) {
+/** Sensible starting values for a new product of a kind (unit sold, form, prescription). */
+function typeDefaults(type: ProductType) {
+  const isClinical = CLINICAL.has(type);
+  return {
+    type,
+    requiresPrescription: isClinical,
+    isControlled: false,
+    dispensingUnit: isClinical ? (type === 'VACCINE' ? 'dose' : 'tablet') : SHOP.has(type) ? (type === 'FOOD' ? 'bag' : 'piece') : 'unit',
+    form: isClinical ? (type === 'VACCINE' ? 'INJECTION' : 'TABLET') : '',
+  };
+}
+
+export function ProductDialog({ product, open, onOpenChange, onSaved, defaultType, initialName }: { product: Product | null; open: boolean; onOpenChange: (o: boolean) => void; onSaved?: (p: Product) => void; defaultType?: ProductType; initialName?: string }) {
   const { currency, can } = useSession();
   const qc = useQueryClient();
   const [step, setStep] = useState<'type' | 'details'>(product || defaultType ? 'details' : 'type');
   const [f, setF] = useState({
-    name: product?.name ?? '',
+    name: product?.name ?? initialName ?? '',
     genericName: product?.genericName ?? '',
     sku: product?.sku ?? '',
     barcode: product?.barcode ?? '',
@@ -79,6 +117,8 @@ export function ProductDialog({ product, open, onOpenChange, onSaved, defaultTyp
     price: product?.sellPriceMinor != null ? fromMinor(product.sellPriceMinor, currency) : '',
     notes: product?.notes ?? '',
     isActive: product?.isActive ?? true,
+    // A new product whose kind was chosen beforehand (e.g. from Receive stock) starts with that kind's defaults.
+    ...(!product && defaultType ? typeDefaults(defaultType) : {}),
   });
   /** "Order more when below": saved to the stock settings after the product is created. */
   const [reorderLevel, setReorderLevel] = useState('');
@@ -92,16 +132,7 @@ export function ProductDialog({ product, open, onOpenChange, onSaved, defaultTyp
   const units = clinical ? DISPENSING_UNITS : shop ? RETAIL_UNITS : [...new Set([...DISPENSING_UNITS, ...RETAIL_UNITS])];
 
   const choose = (type: ProductType) => {
-    const isClinical = CLINICAL.has(type);
-    setF((s) => ({
-      ...s,
-      type,
-      categoryId: '',
-      requiresPrescription: isClinical,
-      isControlled: false,
-      dispensingUnit: isClinical ? (type === 'VACCINE' ? 'dose' : 'tablet') : SHOP.has(type) ? (type === 'FOOD' ? 'bag' : 'piece') : 'unit',
-      form: isClinical ? (type === 'VACCINE' ? 'INJECTION' : 'TABLET') : '',
-    }));
+    setF((s) => ({ ...s, ...typeDefaults(type), categoryId: '' }));
     setStep('details');
   };
 
@@ -157,21 +188,7 @@ export function ProductDialog({ product, open, onOpenChange, onSaved, defaultTyp
           {step === 'type' && <DialogDescription>Choose the kind of product. The form then asks only for what that kind needs.</DialogDescription>}
         </DialogHeader>
         {step === 'type' ? (
-          <div className="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Product type">
-            {TYPE_CHOICES.map(({ type, icon: Icon, hint }) => (
-              <button
-                key={type}
-                type="button"
-                role="radio"
-                aria-checked={f.type === type}
-                onClick={() => choose(type)}
-                className="flex items-start gap-3 rounded-xl surface-flat p-3 text-left text-sm transition-colors hover:border-primary hover:bg-primary/5"
-              >
-                <Icon className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-                <span><span className="block font-medium">{PRODUCT_TYPE_LABELS[type]}</span><span className="text-xs text-muted-foreground">{hint}</span></span>
-              </button>
-            ))}
-          </div>
+          <ProductTypeChooser value={f.type} onChoose={choose} />
         ) : (
           <div className="grid gap-3">
             {error && <FormError message={error} />}
