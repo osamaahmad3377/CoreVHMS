@@ -6,6 +6,7 @@ import {
   AUTOMATION_VARIABLES,
   CHECK_INFO,
   CONDITION_INFO,
+  TRIGGER_DEFAULTS,
   TRIGGER_INFO,
   sampleVars,
   type AutomationCondition,
@@ -20,6 +21,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { conditionText, describeAutomation, hourLabel, type AutomationOptions } from '@/components/automations/describe';
+import { EasyCreator } from '@/components/automations/easy-creator';
 import { GROUP_TONE, STEP_META, TRIGGER_ICONS } from '@/components/automations/flow-ui';
 import { Field } from '@/components/forms/field';
 import { FormError } from '@/components/forms/form-error';
@@ -72,7 +74,7 @@ const PAUSES = ['WAIT', 'WAIT_UNTIL', 'CHECK'];
 function makeStep(type: AutomationStep['type'], trigger: AutomationTrigger): AutomationStep {
   switch (type) {
     case 'SEND_MESSAGE':
-      return { type, channel: 'BEST', subject: '', body: '' };
+      return { type, channel: 'BEST', subject: TRIGGER_DEFAULTS[trigger].subject, body: TRIGGER_DEFAULTS[trigger].body };
     case 'WAIT':
       return { type, amount: 1, unit: 'DAYS' };
     case 'WAIT_UNTIL':
@@ -80,7 +82,7 @@ function makeStep(type: AutomationStep['type'], trigger: AutomationTrigger): Aut
     case 'CHECK':
       return { type, check: TRIGGER_INFO[trigger].checks[0] ?? 'NOT_BOOKED' };
     case 'CREATE_TASK':
-      return { type, title: '', details: '', dueInDays: 0, assigneeId: null };
+      return { type, title: TRIGGER_DEFAULTS[trigger].taskTitle, details: '', dueInDays: 0, assigneeId: null };
     case 'EMAIL_TEAM':
       return { type, to: '', subject: '', body: '' };
   }
@@ -929,11 +931,19 @@ function Builder() {
   );
 }
 
+/** New automations start in the easy three-question creator; recipes and "advanced" open the full editor. */
+function Entry() {
+  const { id } = useParams<{ id: string }>();
+  const params = useSearchParams();
+  if (id === 'new' && !params.get('recipe') && params.get('mode') !== 'advanced') return <EasyCreator />;
+  return <Builder />;
+}
+
 export default function AutomationBuilderPage() {
   return (
     <RequirePermission anyOf={['settings.manage', 'integrations.manage']}>
       <Suspense>
-        <Builder />
+        <Entry />
       </Suspense>
     </RequirePermission>
   );

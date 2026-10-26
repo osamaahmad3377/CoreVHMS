@@ -569,3 +569,54 @@ export const emailSettingsSchema = z.object({
   fromName: z.string().trim().max(120).nullish(),
   isActive: z.boolean(),
 });
+
+// ───────────────────────────── Suggested wording ─────────────────────────────
+
+export interface TriggerDefaults {
+  /** Email subject. */
+  subject: string;
+  /** Ready-to-use message in friendly plain words. */
+  body: string;
+  /** A sensible task for staff for this trigger. */
+  taskTitle: string;
+  /** Usual pause before the message (null = straight away). */
+  delay: { amount: number; unit: 'MINUTES' | 'HOURS' | 'DAYS' } | null;
+}
+
+const hi = 'Hello {{clientName}}, ';
+const help = ' Reply here or call {{clinicPhone}} if you need anything.';
+
+/** What the easy creator fills in for each trigger; the client can change every word. Only uses variables the trigger has. */
+export const TRIGGER_DEFAULTS: Record<AutomationTrigger, TriggerDefaults> = {
+  APPOINTMENT_BOOKED: { subject: 'Appointment booked for {{petName}}', body: `${hi}{{petName}} is booked at {{clinicName}} on {{appointmentTime}} ({{appointmentType}}).${help}`, taskTitle: 'Check the booking for {{petName}}', delay: null },
+  APPOINTMENT_RESCHEDULED: { subject: '{{petName}}’s appointment has moved', body: `${hi}{{petName}}’s appointment at {{clinicName}} is now on {{appointmentTime}}. If this time does not suit you, reply here.`, taskTitle: 'Call {{clientName}} about the new time', delay: null },
+  APPOINTMENT_CANCELLED: { subject: 'Appointment cancelled', body: `${hi}the appointment for {{petName}} on {{appointmentTime}} has been cancelled. We would be happy to find you another time.\n{{bookingLine}}`, taskTitle: 'Offer {{clientName}} another time for {{petName}}', delay: null },
+  APPOINTMENT_UPCOMING: { subject: 'Reminder: {{petName}} at {{clinicName}}', body: `${hi}a reminder that {{petName}} has an appointment on {{appointmentTime}} at {{clinicName}}, {{branchName}}.${help}`, taskTitle: 'Call {{clientName}} to confirm tomorrow', delay: null },
+  APPOINTMENT_CHECKED_IN: { subject: 'Token {{tokenNumber}}', body: `Welcome to {{clinicName}}, {{clientName}}! {{petName}}’s token number is {{tokenNumber}}. Please take a seat — we will call you.`, taskTitle: 'Greet {{clientName}}', delay: null },
+  APPOINTMENT_COMPLETED: { subject: 'Thank you for visiting {{clinicName}}', body: `${hi}thank you for bringing {{petName}} to {{clinicName}} today.${help}`, taskTitle: 'Call {{clientName}} to check on {{petName}}', delay: { amount: 2, unit: 'HOURS' } },
+  APPOINTMENT_NO_SHOW: { subject: 'We missed {{petName}} today', body: `${hi}we missed {{petName}} at {{clinicName}} today. Would you like to book another time?\n{{bookingLine}}`, taskTitle: 'Call {{clientName}} to rebook {{petName}}', delay: { amount: 1, unit: 'HOURS' } },
+  LAB_RESULTS_READY: { subject: '{{petName}}’s results are ready', body: `${hi}the results for {{petName}} ({{testNames}}) are ready. Your vet will go through them with you.${help}`, taskTitle: 'Call {{clientName}} with {{petName}}’s results', delay: null },
+  PATIENT_DISCHARGED: { subject: 'How is {{petName}}?', body: `${hi}how is {{petName}} doing at home? If anything worries you, please let us know.${help}`, taskTitle: 'Call to check on {{petName}} after discharge', delay: { amount: 3, unit: 'DAYS' } },
+  VACCINATION_GIVEN: { subject: '{{petName}}: {{vaccineName}} done', body: `${hi}{{petName}} had {{vaccineName}} on {{givenDate}}. Next due: {{nextDueDate}} — we will remind you before then.`, taskTitle: 'Note {{petName}}’s next vaccination', delay: null },
+  CARE_DUE: { subject: '{{petName}}: {{careName}} due on {{dueDate}}', body: `${hi}{{petName}}’s {{careName}} is due on {{dueDate}}. Reply or call {{clinicPhone}} to book.\n{{bookingLine}}`, taskTitle: 'Call {{clientName}} to book {{petName}}’s {{careName}}', delay: null },
+  PAYMENT_RECEIVED: { subject: 'Payment received — {{receiptNumber}}', body: `${hi}thank you, we received {{amount}} on {{paymentDate}} (receipt {{receiptNumber}}). Still owed: {{balance}}.`, taskTitle: 'Thank {{clientName}} for the payment', delay: null },
+  INVOICE_OVERDUE: { subject: 'Invoice {{invoiceNumber}}: {{amountDue}} still to pay', body: `${hi}a friendly reminder: {{amountDue}} is still to pay on invoice {{invoiceNumber}} (due {{dueDate}}). If you have already paid, thank you!${help}`, taskTitle: 'Call {{clientName}} about invoice {{invoiceNumber}}', delay: null },
+  ESTIMATE_SENT: { subject: 'Your estimate {{estimateNumber}}', body: `${hi}do you have any questions about estimate {{estimateNumber}} ({{estimateTotal}}) for {{petName}}? It is valid until {{validUntil}}.${help}`, taskTitle: 'Call {{clientName}} about estimate {{estimateNumber}}', delay: { amount: 3, unit: 'DAYS' } },
+  CLIENT_REGISTERED: { subject: 'Welcome to {{clinicName}}', body: `${hi}welcome to {{clinicName}}! Save this number — you can message us here any time or call {{clinicPhone}}.`, taskTitle: 'Welcome {{clientName}}', delay: null },
+  PET_BIRTHDAY: { subject: 'Happy birthday, {{petName}}!', body: 'Happy birthday to {{petName}} from everyone at {{clinicName}}! 🎉', taskTitle: 'Wish {{petName}} a happy birthday', delay: null },
+  PATIENT_ADMITTED: { subject: '{{petName}} is in our care', body: `${hi}{{petName}} has been admitted at {{clinicName}}, {{branchName}}. Our team will keep you updated.${help}`, taskTitle: 'Update {{clientName}} on {{petName}}', delay: null },
+  SURGERY_UPCOMING: { subject: '{{petName}}’s {{procedureName}} on {{surgeryTime}}', body: `${hi}{{petName}}’s {{procedureName}} at {{clinicName}} is on {{surgeryTime}}. Please follow the food and water instructions your vet gave you.${help}`, taskTitle: 'Confirm {{petName}}’s surgery with {{clientName}}', delay: null },
+  SURGERY_COMPLETED: { subject: 'How is {{petName}} after the {{procedureName}}?', body: `${hi}we hope {{petName}} is resting well after the {{procedureName}}. If anything worries you, please let us know.${help}`, taskTitle: 'Post-op call for {{petName}} ({{procedureName}})', delay: { amount: 1, unit: 'DAYS' } },
+  PRESCRIPTION_DISPENSED: { subject: 'How is {{petName}} doing?', body: `${hi}how is {{petName}} getting on with the medicine ({{medicines}})? If you have any trouble giving it, let us know.${help}`, taskTitle: 'Check {{petName}}’s medicine with {{clientName}}', delay: { amount: 2, unit: 'DAYS' } },
+  PATIENT_LAPSED: { subject: 'Time for {{petName}}’s check-up', body: `${hi}it has been {{monthsSince}} months since we last saw {{petName}}. A yearly check-up keeps problems small.\n{{bookingLine}}`, taskTitle: 'Call {{clientName}} to book {{petName}}’s check-up', delay: null },
+};
+
+/** "When should it go out?" choices in the easy creator. */
+export const EASY_DELAYS: { label: string; value: { amount: number; unit: 'MINUTES' | 'HOURS' | 'DAYS' } | null }[] = [
+  { label: 'Straight away', value: null },
+  { label: 'After 1 hour', value: { amount: 1, unit: 'HOURS' } },
+  { label: 'After 2 hours', value: { amount: 2, unit: 'HOURS' } },
+  { label: 'The next day', value: { amount: 1, unit: 'DAYS' } },
+  { label: 'After 3 days', value: { amount: 3, unit: 'DAYS' } },
+  { label: 'After 1 week', value: { amount: 7, unit: 'DAYS' } },
+];

@@ -1,4 +1,4 @@
-import { AUTOMATION_RECIPES, automationSchema, conditionsMet, sampleVars, TRIGGER_INFO, waitMs } from './automations';
+import { AUTOMATION_RECIPES, AUTOMATION_TRIGGERS, TRIGGER_DEFAULTS, automationSchema, conditionsMet, sampleVars, TRIGGER_INFO, waitMs } from './automations';
 
 describe('automation conditions', () => {
   const facts = { speciesId: 'dog', branchId: 'lhr', appointmentTypeId: 'vacc', hasWhatsApp: true, hasEmail: false, amountMinor: 600000, source: 'ONLINE' as const };
@@ -61,5 +61,14 @@ describe('automation rules', () => {
   it('gives sample values and wait lengths', () => {
     expect(sampleVars('PET_BIRTHDAY').petName).toBe('Tiger');
     expect(waitMs({ amount: 2, unit: 'HOURS' })).toBe(7_200_000);
+  });
+
+  it('suggested wording exists for every trigger and only uses that trigger’s values', () => {
+    for (const t of AUTOMATION_TRIGGERS) {
+      const d = TRIGGER_DEFAULTS[t];
+      const allowed = new Set(TRIGGER_INFO[t].variables);
+      for (const m of `${d.subject} ${d.body} ${d.taskTitle}`.matchAll(/\{\{(\w+)\}\}/g)) expect([t, allowed.has(m[1])]).toEqual([t, true]);
+      expect(automationSchema.safeParse({ name: 'x', trigger: t, offset: 7, steps: [{ type: 'SEND_MESSAGE', body: d.body }, { type: 'CREATE_TASK', title: d.taskTitle }] }).success).toBe(true);
+    }
   });
 });
