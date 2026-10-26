@@ -25,6 +25,10 @@ export const AUTOMATION_TRIGGERS = [
   'SURGERY_UPCOMING',
   'INVOICE_OVERDUE',
   'PATIENT_LAPSED',
+  'APPOINTMENT_CHECKED_IN',
+  'PRESCRIPTION_DISPENSED',
+  'SURGERY_COMPLETED',
+  'ESTIMATE_SENT',
 ] as const;
 export type AutomationTrigger = (typeof AUTOMATION_TRIGGERS)[number];
 
@@ -46,7 +50,8 @@ export interface TriggerInfo {
 
 const CLIENT_VARS = ['clientName', 'clinicName', 'clinicPhone', 'bookingLine'];
 const APPT_VARS = [...CLIENT_VARS, 'petName', 'species', 'appointmentTime', 'appointmentDate', 'appointmentType', 'branchName', 'vetName'];
-const APPT_CONDS: AutomationConditionField[] = ['species', 'branch', 'appointmentType', 'contact'];
+const PET_CONDS: AutomationConditionField[] = ['species', 'patientSex', 'ageAtLeast', 'ageUnder'];
+const APPT_CONDS: AutomationConditionField[] = ['species', 'branch', 'appointmentType', 'contact', 'firstVisit', 'patientSex', 'ageAtLeast', 'ageUnder'];
 
 export const TRIGGER_INFO: Record<AutomationTrigger, TriggerInfo> = {
   APPOINTMENT_BOOKED: { label: 'Appointment booked', when: 'an appointment is booked', group: 'Appointments', variables: APPT_VARS, conditions: [...APPT_CONDS, 'source'], checks: [] },
@@ -55,17 +60,21 @@ export const TRIGGER_INFO: Record<AutomationTrigger, TriggerInfo> = {
   APPOINTMENT_UPCOMING: { label: 'Before an appointment', when: 'an appointment is coming up', group: 'Appointments', timed: 'HOURS_BEFORE', variables: APPT_VARS, conditions: APPT_CONDS, checks: [] },
   APPOINTMENT_COMPLETED: { label: 'Visit finished', when: 'a visit is finished', group: 'Appointments', variables: APPT_VARS, conditions: APPT_CONDS, checks: ['NOT_BOOKED'] },
   APPOINTMENT_NO_SHOW: { label: 'Missed appointment', when: 'a client misses an appointment', group: 'Appointments', variables: APPT_VARS, conditions: APPT_CONDS, checks: ['NOT_BOOKED'] },
-  SURGERY_UPCOMING: { label: 'Before a surgery', when: 'a surgery is coming up', group: 'Clinical', timed: 'HOURS_BEFORE', variables: [...CLIENT_VARS, 'petName', 'species', 'procedureName', 'surgeryTime', 'surgeryDate', 'branchName'], conditions: ['species', 'branch', 'contact'], checks: [] },
-  PATIENT_ADMITTED: { label: 'Admitted to hospital', when: 'an animal is admitted to the hospital', group: 'Clinical', variables: [...CLIENT_VARS, 'petName', 'species', 'branchName', 'vetName'], conditions: ['species', 'branch', 'contact'], checks: [] },
-  LAB_RESULTS_READY: { label: 'Lab results ready', when: 'lab or X-ray results are released', group: 'Clinical', variables: [...CLIENT_VARS, 'petName', 'species', 'testNames'], conditions: ['species', 'branch', 'contact'], checks: [] },
-  PATIENT_DISCHARGED: { label: 'Animal goes home', when: 'an animal is discharged home from the hospital', group: 'Clinical', variables: [...CLIENT_VARS, 'petName', 'species', 'homeCare', 'followUpDate'], conditions: ['species', 'branch', 'contact'], checks: ['NOT_BOOKED'] },
-  VACCINATION_GIVEN: { label: 'Vaccination given', when: 'a vaccination is given here', group: 'Clinical', variables: [...CLIENT_VARS, 'petName', 'species', 'vaccineName', 'givenDate', 'nextDueDate'], conditions: ['species', 'contact'], checks: [] },
-  CARE_DUE: { label: 'Vaccination or care due', when: 'a vaccination or other care is due', group: 'Clinical', timed: 'DAYS_BEFORE', variables: [...CLIENT_VARS, 'petName', 'species', 'careName', 'dueDate'], conditions: ['species', 'contact'], checks: ['STILL_DUE', 'NOT_BOOKED'] },
+  APPOINTMENT_CHECKED_IN: { label: 'Checked in', when: 'a client checks in (front desk, walk-in or tablet)', group: 'Appointments', variables: [...APPT_VARS, 'tokenNumber'], conditions: APPT_CONDS, checks: [] },
+  SURGERY_UPCOMING: { label: 'Before a surgery', when: 'a surgery is coming up', group: 'Clinical', timed: 'HOURS_BEFORE', variables: [...CLIENT_VARS, 'petName', 'species', 'procedureName', 'surgeryTime', 'surgeryDate', 'branchName'], conditions: ['branch', 'contact', ...PET_CONDS], checks: [] },
+  SURGERY_COMPLETED: { label: 'Surgery finished', when: 'a surgery is finished', group: 'Clinical', variables: [...CLIENT_VARS, 'petName', 'species', 'procedureName', 'surgeryDate', 'branchName'], conditions: ['branch', 'contact', ...PET_CONDS], checks: ['NOT_BOOKED'] },
+  PRESCRIPTION_DISPENSED: { label: 'Medicine dispensed', when: 'medicine is dispensed for an animal', group: 'Clinical', variables: [...CLIENT_VARS, 'petName', 'species', 'medicines'], conditions: ['branch', 'contact', ...PET_CONDS], checks: ['NOT_BOOKED'] },
+  PATIENT_ADMITTED: { label: 'Admitted to hospital', when: 'an animal is admitted to the hospital', group: 'Clinical', variables: [...CLIENT_VARS, 'petName', 'species', 'branchName', 'vetName'], conditions: ['branch', 'contact', ...PET_CONDS], checks: [] },
+  LAB_RESULTS_READY: { label: 'Lab results ready', when: 'lab or X-ray results are released', group: 'Clinical', variables: [...CLIENT_VARS, 'petName', 'species', 'testNames'], conditions: ['branch', 'contact', ...PET_CONDS], checks: [] },
+  PATIENT_DISCHARGED: { label: 'Animal goes home', when: 'an animal is discharged home from the hospital', group: 'Clinical', variables: [...CLIENT_VARS, 'petName', 'species', 'homeCare', 'followUpDate'], conditions: ['branch', 'contact', ...PET_CONDS], checks: ['NOT_BOOKED'] },
+  VACCINATION_GIVEN: { label: 'Vaccination given', when: 'a vaccination is given here', group: 'Clinical', variables: [...CLIENT_VARS, 'petName', 'species', 'vaccineName', 'givenDate', 'nextDueDate'], conditions: ['contact', ...PET_CONDS], checks: [] },
+  CARE_DUE: { label: 'Vaccination or care due', when: 'a vaccination or other care is due', group: 'Clinical', timed: 'DAYS_BEFORE', variables: [...CLIENT_VARS, 'petName', 'species', 'careName', 'dueDate'], conditions: ['contact', ...PET_CONDS], checks: ['STILL_DUE', 'NOT_BOOKED'] },
   PAYMENT_RECEIVED: { label: 'Payment received', when: 'a payment is received', group: 'Money', variables: [...CLIENT_VARS, 'amount', 'receiptNumber', 'paymentDate', 'balance'], conditions: ['amountAtLeast', 'branch', 'contact'], checks: [] },
+  ESTIMATE_SENT: { label: 'Estimate given', when: 'an estimate (quote) is given to a client', group: 'Money', variables: [...CLIENT_VARS, 'petName', 'estimateNumber', 'estimateTotal', 'validUntil'], conditions: ['amountAtLeast', 'branch', 'contact'], checks: ['ESTIMATE_OPEN'] },
   INVOICE_OVERDUE: { label: 'Invoice overdue', when: 'an invoice is overdue', group: 'Money', timed: 'DAYS_AFTER', variables: [...CLIENT_VARS, 'invoiceNumber', 'amountDue', 'invoiceTotal', 'dueDate'], conditions: ['amountAtLeast', 'branch', 'contact'], checks: ['STILL_UNPAID'] },
   CLIENT_REGISTERED: { label: 'New client', when: 'a new client is registered', group: 'Clients & pets', variables: CLIENT_VARS, conditions: ['branch', 'contact'], checks: ['NOT_BOOKED'] },
-  PET_BIRTHDAY: { label: 'Pet’s birthday', when: 'it is a pet’s birthday', group: 'Clients & pets', timed: 'ON_DAY', variables: [...CLIENT_VARS, 'petName', 'species', 'age'], conditions: ['species', 'contact'], checks: [] },
-  PATIENT_LAPSED: { label: 'Not seen for a while', when: 'an animal has not been seen for a while', group: 'Clients & pets', timed: 'MONTHS_SINCE', variables: [...CLIENT_VARS, 'petName', 'species', 'lastVisitDate', 'monthsSince'], conditions: ['species', 'branch', 'contact'], checks: ['NOT_BOOKED'] },
+  PET_BIRTHDAY: { label: 'Pet’s birthday', when: 'it is a pet’s birthday', group: 'Clients & pets', timed: 'ON_DAY', variables: [...CLIENT_VARS, 'petName', 'species', 'age'], conditions: ['contact', ...PET_CONDS], checks: [] },
+  PATIENT_LAPSED: { label: 'Not seen for a while', when: 'an animal has not been seen for a while', group: 'Clients & pets', timed: 'MONTHS_SINCE', variables: [...CLIENT_VARS, 'petName', 'species', 'lastVisitDate', 'monthsSince'], conditions: ['branch', 'contact', ...PET_CONDS], checks: ['NOT_BOOKED'] },
 };
 
 /** What each {{variable}} means, for the message editor. */
@@ -102,17 +111,23 @@ export const AUTOMATION_VARIABLES: Record<string, { label: string; example: stri
   invoiceTotal: { label: 'Invoice total', example: 'Rs 12,000' },
   lastVisitDate: { label: 'Last visit', example: '14 Oct 2025' },
   monthsSince: { label: 'Months since last visit', example: '12' },
+  tokenNumber: { label: 'Token number', example: '12' },
+  medicines: { label: 'Medicines', example: 'Amoxicillin 250 mg tablets, Meloxicam oral suspension' },
+  estimateNumber: { label: 'Estimate number', example: 'EST-000045' },
+  estimateTotal: { label: 'Estimate total', example: 'Rs 35,000' },
+  validUntil: { label: 'Valid until', example: '9 Nov 2026' },
 };
 
 // ───────────────────────────── Checks ─────────────────────────────
 
 /** "Only continue if…" — checked when the step is reached (usually after a wait). */
-export const AUTOMATION_CHECKS = ['NOT_BOOKED', 'STILL_UNPAID', 'STILL_DUE'] as const;
+export const AUTOMATION_CHECKS = ['NOT_BOOKED', 'STILL_UNPAID', 'STILL_DUE', 'ESTIMATE_OPEN'] as const;
 export type AutomationCheck = (typeof AUTOMATION_CHECKS)[number];
 export const CHECK_INFO: Record<AutomationCheck, { label: string; stopped: string }> = {
   NOT_BOOKED: { label: 'the client has not booked another appointment', stopped: 'The client has booked — no need to continue' },
   STILL_UNPAID: { label: 'the invoice is still not paid', stopped: 'The invoice has been paid — no need to continue' },
   STILL_DUE: { label: 'the care is still due (not given yet)', stopped: 'The care was given or cancelled — no need to continue' },
+  ESTIMATE_OPEN: { label: 'the estimate has not been accepted or declined yet', stopped: 'The client has answered the estimate — no need to continue' },
 };
 
 export function sampleVars(trigger: AutomationTrigger) {
@@ -121,7 +136,7 @@ export function sampleVars(trigger: AutomationTrigger) {
 
 // ───────────────────────────── Conditions ─────────────────────────────
 
-export const AUTOMATION_CONDITION_FIELDS = ['species', 'branch', 'appointmentType', 'contact', 'amountAtLeast', 'source'] as const;
+export const AUTOMATION_CONDITION_FIELDS = ['species', 'branch', 'appointmentType', 'contact', 'amountAtLeast', 'source', 'patientSex', 'ageAtLeast', 'ageUnder', 'firstVisit'] as const;
 export type AutomationConditionField = (typeof AUTOMATION_CONDITION_FIELDS)[number];
 
 export const CONDITION_INFO: Record<AutomationConditionField, { label: string }> = {
@@ -131,6 +146,10 @@ export const CONDITION_INFO: Record<AutomationConditionField, { label: string }>
   contact: { label: 'Client can be reached by' },
   amountAtLeast: { label: 'Amount paid at least' },
   source: { label: 'Booked' },
+  patientSex: { label: 'Sex' },
+  ageAtLeast: { label: 'Age at least (years)' },
+  ageUnder: { label: 'Age under (years)' },
+  firstVisit: { label: 'First visit' },
 };
 
 export const automationConditionSchema = z.object({
@@ -151,6 +170,11 @@ export interface AutomationFacts {
   hasEmail?: boolean;
   amountMinor?: number | null;
   source?: 'ONLINE' | 'STAFF' | null;
+  /** MALE or FEMALE (neutered or not). */
+  patientSex?: 'MALE' | 'FEMALE' | null;
+  ageYears?: number | null;
+  /** The client's first visit to the clinic. */
+  firstVisit?: boolean;
 }
 
 /** True when every condition holds. A condition about something the trigger does not have is not met. */
@@ -170,6 +194,14 @@ export function conditionsMet(conditions: AutomationCondition[], f: AutomationFa
         return is(f.amountMinor != null && f.amountMinor >= Number(c.values[0]));
       case 'source':
         return is(!!f.source && c.values.includes(f.source));
+      case 'patientSex':
+        return is(!!f.patientSex && c.values.includes(f.patientSex));
+      case 'ageAtLeast':
+        return is(f.ageYears != null && f.ageYears >= Number(c.values[0]));
+      case 'ageUnder':
+        return is(f.ageYears != null && f.ageYears < Number(c.values[0]));
+      case 'firstVisit':
+        return is(c.values.includes(f.firstVisit ? 'FIRST' : 'RETURNING'));
     }
   });
 }
@@ -202,6 +234,13 @@ export const automationStepSchema = z.discriminatedUnion('type', [
     assigneeId: z.string().uuid().nullish(),
   }),
   z.object({
+    type: z.literal('WAIT_UNTIL'),
+    /** Hour of the day, clinic time. */
+    hour: z.coerce.number().int().min(0).max(23),
+    /** Skip Saturday and Sunday (or Friday for clinics that close on Fridays — set by `skipDays`). */
+    skipDays: z.array(z.coerce.number().int().min(0).max(6)).max(6).default([]),
+  }),
+  z.object({
     type: z.literal('CHECK'),
     check: z.enum(AUTOMATION_CHECKS),
   }),
@@ -227,13 +266,19 @@ export const automationSchema = z
     offset: z.coerce.number().int().min(0).max(720).nullish(),
     /** Timed triggers: the hour (0–23, clinic time) to send; null = as soon as due. */
     atHour: z.coerce.number().int().min(0).max(23).nullish(),
+    /** Messages only between these hours (clinic time); outside them they wait. Null = any time. */
+    sendFromHour: z.coerce.number().int().min(0).max(23).nullish(),
+    sendToHour: z.coerce.number().int().min(1).max(24).nullish(),
+    /** Not again for the same client within this many days (any record). */
+    cooldownDays: z.coerce.number().int().min(1).max(365).nullish(),
     conditions: z.array(automationConditionSchema).max(10).default([]),
     steps: z.array(automationStepSchema).min(1, 'Add at least one step').max(12),
   })
   .superRefine((a, ctx) => {
-    if (!a.steps.some((s) => s.type !== 'WAIT' && s.type !== 'CHECK')) ctx.addIssue({ code: 'custom', path: ['steps'], message: 'Add something to do (a message or a task), not only waits and checks' });
+    if (a.sendFromHour != null && a.sendToHour != null && a.sendToHour <= a.sendFromHour) ctx.addIssue({ code: 'custom', path: ['sendToHour'], message: 'The sending hours must end after they start' });
+    if (!a.steps.some((s) => s.type !== 'WAIT' && s.type !== 'WAIT_UNTIL' && s.type !== 'CHECK')) ctx.addIssue({ code: 'custom', path: ['steps'], message: 'Add something to do (a message or a task), not only waits and checks' });
     const last = a.steps[a.steps.length - 1]?.type;
-    if (last === 'WAIT' || last === 'CHECK') ctx.addIssue({ code: 'custom', path: ['steps'], message: `A ${last === 'WAIT' ? 'wait' : 'check'} at the end does nothing — remove it or add a step after it` });
+    if (last === 'WAIT' || last === 'WAIT_UNTIL' || last === 'CHECK') ctx.addIssue({ code: 'custom', path: ['steps'], message: `A ${last === 'CHECK' ? 'check' : 'wait'} at the end does nothing — remove it or add a step after it` });
     a.steps.forEach((s, i) => {
       if (s.type === 'CHECK' && !TRIGGER_INFO[a.trigger].checks.includes(s.check)) ctx.addIssue({ code: 'custom', path: ['steps', i], message: `“Only continue if ${CHECK_INFO[s.check].label}” does not apply to ${TRIGGER_INFO[a.trigger].label.toLowerCase()}` });
     });
@@ -425,6 +470,71 @@ export const AUTOMATION_RECIPES: { key: string; icon: string; automation: Automa
         { type: 'WAIT', amount: 14, unit: 'DAYS' },
         { type: 'CHECK', check: 'NOT_BOOKED' },
         { type: 'SEND_MESSAGE', channel: 'BEST', subject: 'A gentle reminder for {{petName}}', body: 'Hello {{clientName}}, just a gentle reminder that {{petName}} is due a check-up at {{clinicName}}. Call {{clinicPhone}} or reply to book.\n{{bookingLine}}' },
+      ],
+    },
+  },
+  {
+    key: 'checked-in',
+    icon: 'ticket',
+    automation: {
+      name: 'Your token number',
+      description: 'As soon as a client checks in, send their token number so they can wait comfortably.',
+      isActive: true,
+      trigger: 'APPOINTMENT_CHECKED_IN',
+      conditions: [],
+      steps: [{ type: 'SEND_MESSAGE', channel: 'WHATSAPP', subject: 'Token {{tokenNumber}}', body: 'Welcome to {{clinicName}}, {{clientName}}! {{petName}}’s token number is {{tokenNumber}}. Please take a seat — we will call you on the screen.' }],
+    },
+  },
+  {
+    key: 'medicine',
+    icon: 'pill',
+    automation: {
+      name: 'How is the medicine going?',
+      description: 'Two days after medicine is dispensed, check that the owner is managing — at 11:00, not at night.',
+      isActive: true,
+      trigger: 'PRESCRIPTION_DISPENSED',
+      conditions: [],
+      sendFromHour: 9,
+      sendToHour: 20,
+      steps: [
+        { type: 'WAIT', amount: 2, unit: 'DAYS' },
+        { type: 'WAIT_UNTIL', hour: 11, skipDays: [] },
+        { type: 'SEND_MESSAGE', channel: 'BEST', subject: 'How is {{petName}} doing?', body: 'Hello {{clientName}}, how is {{petName}} getting on with the medicine ({{medicines}})? If you have any trouble giving it, reply here or call {{clinicPhone}}.' },
+      ],
+    },
+  },
+  {
+    key: 'after-surgery',
+    icon: 'scissors',
+    automation: {
+      name: 'After a surgery',
+      description: 'The morning after surgery: a message to the owner and a check-up call task for the vet.',
+      isActive: true,
+      trigger: 'SURGERY_COMPLETED',
+      conditions: [],
+      steps: [
+        { type: 'WAIT_UNTIL', hour: 10, skipDays: [] },
+        { type: 'SEND_MESSAGE', channel: 'BEST', subject: 'How is {{petName}} after the {{procedureName}}?', body: 'Hello {{clientName}}, we hope {{petName}} had a good night after the {{procedureName}}. If anything worries you, reply here or call {{clinicPhone}}.' },
+        { type: 'CREATE_TASK', title: 'Post-op call for {{petName}} ({{procedureName}})', dueInDays: 0 },
+      ],
+    },
+  },
+  {
+    key: 'estimate',
+    icon: 'file-text',
+    automation: {
+      name: 'Follow up an estimate',
+      description: 'Three days after an estimate is given, if the client has not answered: a friendly follow-up and a call task.',
+      isActive: true,
+      trigger: 'ESTIMATE_SENT',
+      conditions: [],
+      sendFromHour: 9,
+      sendToHour: 19,
+      steps: [
+        { type: 'WAIT', amount: 3, unit: 'DAYS' },
+        { type: 'CHECK', check: 'ESTIMATE_OPEN' },
+        { type: 'SEND_MESSAGE', channel: 'BEST', subject: 'Your estimate {{estimateNumber}}', body: 'Hello {{clientName}}, do you have any questions about estimate {{estimateNumber}} ({{estimateTotal}}) for {{petName}}? It is valid until {{validUntil}}. Reply here or call {{clinicPhone}}.' },
+        { type: 'CREATE_TASK', title: 'Call {{clientName}} about estimate {{estimateNumber}}', dueInDays: 1 },
       ],
     },
   },

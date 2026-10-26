@@ -15,6 +15,15 @@ describe('automation conditions', () => {
     expect(conditionsMet([{ field: 'amountAtLeast', op: 'IS', values: ['500000'] }], facts)).toBe(true);
     expect(conditionsMet([{ field: 'amountAtLeast', op: 'IS', values: ['500000'] }, { field: 'source', op: 'IS', values: ['STAFF'] }], facts)).toBe(false);
   });
+  it('checks sex, age and first visit', () => {
+    const f = { patientSex: 'FEMALE' as const, ageYears: 8, firstVisit: true };
+    expect(conditionsMet([{ field: 'patientSex', op: 'IS', values: ['FEMALE'] }], f)).toBe(true);
+    expect(conditionsMet([{ field: 'ageAtLeast', op: 'IS', values: ['7'] }], f)).toBe(true);
+    expect(conditionsMet([{ field: 'ageUnder', op: 'IS', values: ['7'] }], f)).toBe(false);
+    expect(conditionsMet([{ field: 'firstVisit', op: 'IS', values: ['FIRST'] }], f)).toBe(true);
+    expect(conditionsMet([{ field: 'firstVisit', op: 'IS', values: ['RETURNING'] }], f)).toBe(false);
+    expect(conditionsMet([{ field: 'ageAtLeast', op: 'IS', values: ['1'] }], {})).toBe(false);
+  });
   it('treats a condition the trigger cannot answer as not met', () => {
     expect(conditionsMet([{ field: 'appointmentType', op: 'IS', values: ['vacc'] }], { speciesId: 'dog' })).toBe(false);
   });

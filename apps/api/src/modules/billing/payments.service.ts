@@ -281,6 +281,7 @@ export class EstimatesAndExpensesService {
     private readonly counters: CounterService,
     private readonly charges: ChargeCaptureService,
     private readonly invoices: InvoicesService,
+    private readonly events: ClientEvents,
   ) {}
 
   private async price(l: LineInputBody) {
@@ -349,6 +350,9 @@ export class EstimatesAndExpensesService {
     return this.prisma.db.$transaction(async (tx) => {
       const after = await tx.estimate.update({ where: { id }, data: { status } });
       await this.audit.record({ action: `estimate.${status.toLowerCase()}`, entityType: 'Estimate', entityId: id }, tx);
+      return after;
+    }).then(async (after) => {
+      if (status === 'SENT' && e.status !== 'SENT') await this.events.emit({ type: 'ESTIMATE_SENT', estimateId: id });
       return after;
     });
   }

@@ -40,6 +40,14 @@ export function conditionText(c: AutomationCondition, o?: AutomationOptions | nu
       return `${not}${Number(c.values[0]) / 100} or more`;
     case 'source':
       return `${not}booked ${c.values.map((v) => (v === 'ONLINE' ? 'online' : 'by staff')).join(' or ')}`;
+    case 'patientSex':
+      return `${not}${c.values.map((v) => v.toLowerCase()).join(' or ')}`;
+    case 'ageAtLeast':
+      return `${c.values[0]}+ years old`;
+    case 'ageUnder':
+      return `under ${c.values[0]} years old`;
+    case 'firstVisit':
+      return c.values.includes('FIRST') ? 'first visit' : 'returning client';
   }
   return CONDITION_INFO[c.field as keyof typeof CONDITION_INFO]?.label ?? '';
 }
@@ -56,6 +64,8 @@ export function stepText(s: AutomationStep) {
       return `email ${s.to || 'the team'}`;
     case 'CHECK':
       return `only if ${CHECK_INFO[s.check].label}`;
+    case 'WAIT_UNTIL':
+      return `wait until ${hourLabel(s.hour)}`;
   }
 }
 

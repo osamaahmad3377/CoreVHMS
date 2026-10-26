@@ -25,6 +25,7 @@ import { MessagesService } from '../comms/messages.service';
 import { EmailIntegrationService } from '../integrations/email-integration.service';
 import { WhatsAppService } from '../integrations/whatsapp.service';
 import { buildContext, OrgInfo, RunContext, SOURCE_OF } from './automation-context';
+import { nextAt } from './automation-time';
 
 const SCAN_EVERY_MS = 5 * 60_000;
 const STUCK_MS = 10 * 60_000;
@@ -40,8 +41,17 @@ interface LogEntry {
   taskId?: string;
 }
 
-const sourceIdOf = (e: ClientEvent) =>
-  'appointmentId' in e ? e.appointmentId : 'orderId' in e ? e.orderId : 'admissionId' in e ? e.admissionId : 'paymentId' in e ? e.paymentId : 'careItemId' in e ? e.careItemId : e.clientId;
+const sourceIdOf = (e: ClientEvent): string =>
+  'appointmentId' in e ? e.appointmentId
+  : 'orderId' in e ? e.orderId
+  : 'admissionId' in e ? e.admissionId
+  : 'paymentId' in e ? e.paymentId
+  : 'careItemId' in e ? e.careItemId
+  : 'prescriptionId' in e ? e.prescriptionId
+  : 'surgeryId' in e ? e.surgeryId
+  : 'estimateId' in e ? e.estimateId
+  : e.clientId;
+
 
 /**
  * The clinic's own workflows: when something happens (or a date comes round), and the conditions hold, run the
@@ -124,6 +134,9 @@ export class AutomationsService implements OnModuleInit {
       trigger: input.trigger,
       offset: timed && timed !== 'ON_DAY' ? (input.offset ?? 0) : null,
       atHour: timed && timed !== 'HOURS_BEFORE' ? (input.atHour ?? null) : null,
+      sendFromHour: input.sendFromHour != null && input.sendToHour != null ? input.sendFromHour : null,
+      sendToHour: input.sendFromHour != null && input.sendToHour != null ? input.sendToHour : null,
+      cooldownDays: input.cooldownDays ?? null,
       conditions: input.conditions as unknown as Prisma.InputJsonValue,
       steps: input.steps as unknown as Prisma.InputJsonValue,
     };
@@ -180,6 +193,51 @@ export class AutomationsService implements OnModuleInit {
     return { ok: true };
   }
 
+  /** Headline numbers for the last 30 days. */
+  async stats() {
+    const db = this.prisma.db;
+    const since = new Date(Date.now() - 30 * 86_400_000);
+    const [total, active, waiting, runs, problems, sent, tasks] = await Promise.all([
+      db.automation.count(),
+      db.automation.count({ where: { isActive: true } }),
+      db.automationRun.count({ where: { status: 'WAITING' } }),
+      db.automationRun.count({ where: { createdAt: { gte: since } } }),
+      db.automationRun.count({ where: { createdAt: { gte: since }, status: { in: ['FAILED', 'SKIPPED'] } } }),
+      db.outboundMessage.count({ where: { purpose: { in: ['AUTOMATION', 'AUTOMATION_TEAM'] }, status: 'SENT', createdAt: { gte: since } } }),
+      db.task.count({ where: { createdByName: { startsWith: 'Automation:' }, createdAt: { gte: since } } }),
+    ]);
+    return { total, active, waiting, runs, problems, sent, tasks };
+  }
+
+  /** A copy to adapt (switched off until saved on). */
+  async duplicate(id: string) {
+    const a = await this.get(id);
+    const ctx = RequestContext.require();
+    return this.prisma.db.$transaction(async (tx) => {
+      const copy = await tx.automation.create({
+        data: {
+          organizationId: ctx.organizationId!,
+          name: `${a.name} (copy)`.slice(0, 120),
+          description: a.description,
+          isActive: false,
+          marketing: a.marketing,
+          trigger: a.trigger,
+          offset: a.offset,
+          atHour: a.atHour,
+          sendFromHour: a.sendFromHour,
+          sendToHour: a.sendToHour,
+          cooldownDays: a.cooldownDays,
+          conditions: a.conditions as Prisma.InputJsonValue,
+          steps: a.steps as Prisma.InputJsonValue,
+          createdByName: ctx.userName ?? null,
+          updatedByName: ctx.userName ?? null,
+        },
+      });
+      await this.audit.record({ action: 'automation.created', entityType: 'Organization', entityId: ctx.organizationId!, summary: `${copy.name} (copy of ${a.name})` }, tx);
+      return copy;
+    });
+  }
+
   /** What automations did lately (or one automation's runs), newest first. */
   async runs(q: { automationId?: string; status?: string; page: number; pageSize: number }) {
     const where: Prisma.AutomationRunWhereInput = { automationId: q.automationId, status: q.status || undefined };
@@ -217,6 +275,10 @@ export class AutomationsService implements OnModuleInit {
         steps.push({ type: s.type, note: `Wait ${s.amount} ${s.unit.toLowerCase()}` });
         continue;
       }
+      if (s.type === 'WAIT_UNTIL') {
+        steps.push({ type: s.type, note: `Wait until ${String(s.hour).padStart(2, '0')}:00${s.skipDays.length ? ' (not on closed days)' : ''}` });
+        continue;
+      }
       if (s.type === 'CHECK') {
         const stops = await this.checkFails(s.check, ctx);
         steps.push({ type: s.type, note: stops ? `${CHECK_INFO[s.check].stopped} (right now it would stop here)` : `Only continues if ${CHECK_INFO[s.check].label} — right now it would continue` });
@@ -238,7 +300,7 @@ export class AutomationsService implements OnModuleInit {
         });
       } else if (s.type === 'CREATE_TASK') {
         steps.push({ type: s.type, when, title: renderTemplate(s.title, ctx.vars), details: s.details ? renderTemplate(s.details, ctx.vars) : null, note: s.dueInDays ? `Due ${s.dueInDays} day(s) later` : 'Due the same day' });
-      } else {
+      } else if (s.type === 'EMAIL_TEAM') {
         steps.push({ type: s.type, when, recipient: s.to, subject: renderTemplate(s.subject, ctx.vars), body: renderTemplate(s.body, ctx.vars) });
       }
     }
@@ -250,7 +312,7 @@ export class AutomationsService implements OnModuleInit {
     const pick = (r: { id: string } | null) => r?.id ?? null;
     switch (SOURCE_OF[trigger]) {
       case 'Appointment': {
-        const status = trigger === 'APPOINTMENT_CANCELLED' ? 'CANCELLED' : trigger === 'APPOINTMENT_NO_SHOW' ? 'NO_SHOW' : trigger === 'APPOINTMENT_COMPLETED' ? 'COMPLETED' : undefined;
+        const status = trigger === 'APPOINTMENT_CANCELLED' ? 'CANCELLED' : trigger === 'APPOINTMENT_NO_SHOW' ? 'NO_SHOW' : trigger === 'APPOINTMENT_COMPLETED' ? 'COMPLETED' : trigger === 'APPOINTMENT_CHECKED_IN' ? { in: ['CHECKED_IN', 'IN_CONSULTATION', 'COMPLETED'] as ('CHECKED_IN' | 'IN_CONSULTATION' | 'COMPLETED')[] } : undefined;
         return pick(await db.appointment.findFirst({ where: { status, patientId: { not: null } }, orderBy: { startsAt: 'desc' }, select: { id: true } }));
       }
       case 'DiagnosticOrder':
@@ -267,7 +329,11 @@ export class AutomationsService implements OnModuleInit {
         if (trigger === 'PATIENT_LAPSED') return (await db.appointment.findFirst({ where: { status: 'COMPLETED', patientId: { not: null } }, orderBy: { startsAt: 'asc' }, select: { patientId: true } }))?.patientId ?? null;
         return pick(await db.patient.findFirst({ where: { status: 'ACTIVE', dateOfBirth: { not: null } }, orderBy: { createdAt: 'desc' }, select: { id: true } }));
       case 'Surgery':
-        return pick(await db.surgery.findFirst({ orderBy: { scheduledAt: 'desc' }, select: { id: true } }));
+        return pick(await db.surgery.findFirst({ where: trigger === 'SURGERY_COMPLETED' ? { status: 'COMPLETED' } : {}, orderBy: { scheduledAt: 'desc' }, select: { id: true } }));
+      case 'Prescription':
+        return pick(await db.prescription.findFirst({ where: { status: { in: ['DISPENSED', 'PARTIALLY_DISPENSED'] } }, orderBy: { updatedAt: 'desc' }, select: { id: true } }));
+      case 'Estimate':
+        return pick(await db.estimate.findFirst({ orderBy: { createdAt: 'desc' }, select: { id: true } }));
       case 'Invoice':
         return pick(await db.invoice.findFirst({ where: { status: { in: ['ISSUED', 'PARTIALLY_PAID'] }, balanceMinor: { gt: 0 }, clientId: { not: null } }, orderBy: { dueAt: 'asc' }, select: { id: true } }));
     }
@@ -309,6 +375,11 @@ export class AutomationsService implements OnModuleInit {
     const ctx = await buildContext(this.prisma.db, trigger, sourceId, org);
     if (!ctx || !ctx.live) return null;
     if (!conditionsMet(a.conditions as unknown as AutomationCondition[], ctx.facts)) return null;
+    // Not again for the same client within the cooling-off period.
+    if (a.cooldownDays && ctx.client) {
+      const recent = await this.prisma.db.automationRun.count({ where: { automationId: a.id, clientId: ctx.client.id, createdAt: { gte: new Date(Date.now() - a.cooldownDays * 86_400_000) } } });
+      if (recent) return null;
+    }
     // A moved appointment counts once per new time.
     const dedupeKey = [trigger, sourceId, trigger === 'APPOINTMENT_RESCHEDULED' ? ctx.vars.appointmentTime : null, extraKey].filter(Boolean).join(':');
     let run: AutomationRun;
@@ -371,6 +442,21 @@ export class AutomationsService implements OnModuleInit {
           log.push({ step: i, type: s.type, at, ok: true, note: `Waiting until ${until.toISOString()}` });
           return finish('WAITING', null, { nextStep: i + 1, runAt: until });
         }
+        if (s.type === 'WAIT_UNTIL') {
+          const until = nextAt(s.hour, s.skipDays, (await this.orgInfo()).timezone);
+          log.push({ step: i, type: s.type, at, ok: true, note: `Waiting until ${until.toISOString()}` });
+          return finish('WAITING', null, { nextStep: i + 1, runAt: until });
+        }
+        // Sending hours: a client message outside them waits for the next start of the window.
+        if (s.type === 'SEND_MESSAGE' && a.sendFromHour != null && a.sendToHour != null) {
+          const tz = (await this.orgInfo()).timezone;
+          const minute = localParts(new Date(), tz).minuteOfDay;
+          if (minute < a.sendFromHour * 60 || minute >= a.sendToHour * 60) {
+            const until = nextAt(a.sendFromHour, [], tz);
+            log.push({ step: i, type: 'WAIT', at, ok: true, note: `Waiting until ${until.toISOString()}` });
+            return finish('WAITING', null, { nextStep: i, runAt: until });
+          }
+        }
         if (s.type === 'CHECK') {
           const failed = await this.checkFails(s.check, ctx);
           if (failed) {
@@ -382,13 +468,13 @@ export class AutomationsService implements OnModuleInit {
         }
         if (s.type === 'SEND_MESSAGE') log.push(await this.sendStep(a, run, ctx, s, i));
         else if (s.type === 'CREATE_TASK') log.push(await this.taskStep(a, ctx, s, i));
-        else log.push(await this.teamStep(run, ctx, s, i));
+        else if (s.type === 'EMAIL_TEAM') log.push(await this.teamStep(run, ctx, s, i));
       } catch (e) {
         log.push({ step: i, type: s.type, at, ok: false, note: (e as Error).message });
         return finish('FAILED', (e as Error).message, { nextStep: i });
       }
     }
-    const skipped = log.length > 0 && log.filter((l) => l.type !== 'WAIT' && l.type !== 'CHECK').every((l) => !l.ok);
+    const skipped = log.length > 0 && log.filter((l) => !['WAIT', 'WAIT_UNTIL', 'CHECK'].includes(l.type)).every((l) => !l.ok);
     return finish(skipped ? 'SKIPPED' : 'DONE', skipped ? log[log.length - 1]?.note : null, { nextStep: steps.length });
   }
 
@@ -406,6 +492,11 @@ export class AutomationsService implements OnModuleInit {
       if (ctx.sourceType !== 'Invoice') return false;
       const inv = await db.invoice.findUnique({ where: { id: ctx.sourceId }, select: { status: true, balanceMinor: true } });
       return !inv || !['ISSUED', 'PARTIALLY_PAID'].includes(inv.status) || inv.balanceMinor <= 0;
+    }
+    if (check === 'ESTIMATE_OPEN') {
+      if (ctx.sourceType !== 'Estimate') return false;
+      const es = await db.estimate.findUnique({ where: { id: ctx.sourceId }, select: { status: true } });
+      return es?.status !== 'SENT';
     }
     if (check === 'STILL_DUE') {
       if (ctx.sourceType !== 'CareItem') return false;

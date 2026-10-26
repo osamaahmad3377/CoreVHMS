@@ -301,4 +301,62 @@ describe('Clinic email (Gmail / Outlook / SMTP) and automations', () => {
     expect((ended.log as any[]).pop()).toMatchObject({ type: 'CHECK', note: 'The client has booked — no need to continue' });
     expect(await db.outboundMessage.count({ where: { organizationId: org.orgId, subject: 'Reminder for Lali' } })).toBe(0);
   });
+
+  it('even more: check-in token, first visit, once per client per N days, estimate follow-up, duplicate and headline numbers', async () => {
+    const org = await registerOrg();
+    const f = await schedulingFixture(org);
+    const auto = await svc(AutomationsService);
+    const db = prisma();
+    const client = await makeClient(org.owner, { email: 'tokens@example.com' });
+    const pet = await makePatient(org.owner, client.id, { name: 'Moti', sex: 'FEMALE_SPAYED' });
+
+    // Checked in → token number; not again for the same client within 30 days.
+    const token = await org.owner.post('/automations', { name: 'Token', trigger: 'APPOINTMENT_CHECKED_IN', cooldownDays: 30, conditions: [{ field: 'patientSex', op: 'IS', values: ['FEMALE'] }], steps: [{ type: 'SEND_MESSAGE', channel: 'EMAIL', subject: 'Token {{tokenNumber}}', body: '{{petName}} has token {{tokenNumber}}' }] });
+    expect(token.status).toBe(201);
+    // First visit only.
+    const firstOnly = await org.owner.post('/automations', { name: 'Welcome after first visit', trigger: 'APPOINTMENT_COMPLETED', conditions: [{ field: 'firstVisit', op: 'IS', values: ['FIRST'] }], steps: [{ type: 'SEND_MESSAGE', channel: 'EMAIL', subject: 'Welcome {{clientName}}', body: 'Thanks for your first visit' }] });
+    const w1 = await org.owner.post('/front-desk/walk-in', { branchId: org.branchId, clientId: client.id, patientId: pet.id, appointmentTypeId: f.typeId });
+    expect(w1.status).toBe(201);
+    const tokenMsg = await db.outboundMessage.findFirstOrThrow({ where: { organizationId: org.orgId, subject: { startsWith: 'Token ' } } });
+    expect(tokenMsg.body).toBe(`Moti has token ${w1.body.tokenNumber}`);
+    await org.owner.post(`/appointments/${w1.body.id}/status`, { action: 'complete' });
+    const w2 = await org.owner.post('/front-desk/walk-in', { branchId: org.branchId, clientId: client.id, patientId: pet.id, appointmentTypeId: f.typeId });
+    await org.owner.post(`/appointments/${w2.body.id}/status`, { action: 'complete' });
+    expect(await db.automationRun.count({ where: { automationId: token.body.id } })).toBe(1);
+    expect(await db.automationRun.count({ where: { automationId: firstOnly.body.id } })).toBe(1);
+
+    // Estimate given → wait 3 days → only if still not answered → follow-up.
+    const est = await org.owner.post('/automations', {
+      name: 'Estimate follow-up',
+      trigger: 'ESTIMATE_SENT',
+      steps: [{ type: 'WAIT', amount: 3, unit: 'DAYS' }, { type: 'CHECK', check: 'ESTIMATE_OPEN' }, { type: 'SEND_MESSAGE', channel: 'EMAIL', subject: 'About {{estimateNumber}}', body: '{{estimateTotal}} until {{validUntil}}' }],
+    });
+    expect(est.status).toBe(201);
+    const mkEstimate = async () => {
+      const e = await org.owner.post('/estimates', { clientId: client.id, patientId: pet.id, lines: [{ kind: 'CUSTOM', description: 'Dental scale and polish', quantity: 1, unitPriceMinor: 3500000 }] });
+      expect(e.status).toBe(201);
+      expect((await org.owner.post(`/estimates/${e.body.id}/status`, { status: 'SENT' })).status).toBeLessThan(300);
+      return e.body.id as string;
+    };
+    const open = await mkEstimate();
+    const answered = await mkEstimate();
+    await org.owner.post(`/estimates/${answered}/status`, { status: 'ACCEPTED' });
+    await db.automationRun.updateMany({ where: { automationId: est.body.id }, data: { runAt: new Date(Date.now() - 1000) } });
+    await auto.runDue();
+    const estRuns = await db.automationRun.findMany({ where: { automationId: est.body.id } });
+    expect(estRuns.find((r) => r.sourceId === open)).toMatchObject({ status: 'DONE' });
+    expect(estRuns.find((r) => r.sourceId === answered)?.status).toBe('STOPPED');
+    const follow = await db.outboundMessage.findFirstOrThrow({ where: { organizationId: org.orgId, subject: { startsWith: 'About EST-' } } });
+    expect(follow.body).toMatch(/35,000/);
+
+    // Duplicate (switched off) and the headline numbers.
+    const copy = await org.owner.post(`/automations/${token.body.id}/duplicate`);
+    expect(copy.status).toBe(201);
+    expect(copy.body).toMatchObject({ name: 'Token (copy)', isActive: false, cooldownDays: 30 });
+    const stats = (await org.owner.get('/automations/stats')).body;
+    expect(stats).toMatchObject({ total: 4, active: 3 });
+    expect(stats.runs).toBeGreaterThanOrEqual(4);
+    // Sending hours must make sense.
+    expect((await org.owner.post('/automations', { name: 'x', trigger: 'CLIENT_REGISTERED', sendFromHour: 20, sendToHour: 9, steps: [{ type: 'SEND_MESSAGE', body: 'x' }] })).status).toBe(400);
+  });
 });

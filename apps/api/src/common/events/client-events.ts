@@ -14,7 +14,11 @@ export type ClientEvent =
   | { type: 'APPOINTMENT_COMPLETED'; appointmentId: string }
   | { type: 'APPOINTMENT_NO_SHOW'; appointmentId: string }
   | { type: 'CLIENT_REGISTERED'; clientId: string }
-  | { type: 'PATIENT_ADMITTED'; admissionId: string };
+  | { type: 'PATIENT_ADMITTED'; admissionId: string }
+  | { type: 'APPOINTMENT_CHECKED_IN'; appointmentId: string }
+  | { type: 'PRESCRIPTION_DISPENSED'; prescriptionId: string }
+  | { type: 'SURGERY_COMPLETED'; surgeryId: string }
+  | { type: 'ESTIMATE_SENT'; estimateId: string };
 
 export type ClientEventHandler = (event: ClientEvent) => Promise<void>;
 

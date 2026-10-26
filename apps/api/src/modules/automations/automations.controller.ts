@@ -23,6 +23,18 @@ export class AutomationsController {
     return this.automations.list();
   }
 
+  @Get('stats')
+  @RequireAnyPermission('settings.manage', 'integrations.manage')
+  stats() {
+    return this.automations.stats();
+  }
+
+  @Post(':id/duplicate')
+  @RequireAnyPermission('settings.manage', 'integrations.manage')
+  duplicate(@Param('id', UUID) id: string) {
+    return this.automations.duplicate(id);
+  }
+
   @Get('options')
   @RequireAnyPermission('settings.manage', 'integrations.manage')
   options() {

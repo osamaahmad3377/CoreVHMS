@@ -4868,6 +4868,11 @@ model Automation {
   offset         Int?
   /// Timed triggers: hour of the day (clinic time) to send.
   atHour         Int?
+  /// Messages only between these hours (clinic time).
+  sendFromHour   Int?
+  sendToHour     Int?
+  /// Not again for the same client within this many days.
+  cooldownDays   Int?
   conditions     Json      @default("[]")
   steps          Json
   runCount       Int       @default(0)

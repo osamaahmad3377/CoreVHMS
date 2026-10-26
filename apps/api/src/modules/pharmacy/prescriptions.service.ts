@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, Product } from '@prisma/client';
 import { FREQUENCIES, allergyConflictText, allergyConflicts, allergyMatches, calculateDose, compareToRange, courseQuantity, type CreatePrescriptionInput, type PrescriptionItemInput } from '@vcms/shared';
 import { AuditService } from '../../common/audit/audit.service';
+import { ClientEvents } from '../../common/events/client-events';
 import { RequestContext } from '../../common/context/request-context';
 import { sha256 } from '../../common/crypto/crypto';
 import { CounterService, formatNumber } from '../../common/counter/counter.service';
@@ -93,6 +94,7 @@ export class PrescriptionsService {
     private readonly audit: AuditService,
     private readonly counters: CounterService,
     private readonly withdrawals: WithdrawalService,
+    private readonly events: ClientEvents,
   ) {}
 
   registerDispenseHook(hook: DispenseHook) {
@@ -417,6 +419,7 @@ export class PrescriptionsService {
         tx,
       );
     });
+    await this.events.emit({ type: 'PRESCRIPTION_DISPENSED', prescriptionId: id });
     return this.get(id);
   }
 

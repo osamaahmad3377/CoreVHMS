@@ -486,6 +486,7 @@ export class AppointmentsService {
     });
     if (action === 'cancel' && a.startsAt.getTime() > Date.now()) await this.events.emit({ type: 'APPOINTMENT_CANCELLED', appointmentId: id });
     if (action === 'complete') await this.events.emit({ type: 'APPOINTMENT_COMPLETED', appointmentId: id });
+    if (action === 'check-in') await this.events.emit({ type: 'APPOINTMENT_CHECKED_IN', appointmentId: id });
     if (action === 'no-show') await this.events.emit({ type: 'APPOINTMENT_NO_SHOW', appointmentId: id });
     const result = await this.get(id);
     return { ...result, encounterId: encounterId ?? result.encounter?.id ?? null };
@@ -633,6 +634,7 @@ export class AppointmentsService {
         await assignToken(tx, a, a.branch.timezone);
         await this.audit.record({ action: 'appointment.check_in', entityType: 'Appointment', entityId: id, summary: `${appointmentNo(a.number)} (self check-in)` }, tx);
       });
+      await this.events.emit({ type: 'APPOINTMENT_CHECKED_IN', appointmentId: id });
     }
     return this.get(id);
   }
@@ -684,6 +686,7 @@ export class AppointmentsService {
       await assignToken(tx, a, r.branch.timezone);
       return a.id;
     });
+    await this.events.emit({ type: 'APPOINTMENT_CHECKED_IN', appointmentId: id });
     return this.get(id);
   }
 }

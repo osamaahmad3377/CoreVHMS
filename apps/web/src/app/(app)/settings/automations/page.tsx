@@ -1,45 +1,56 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AUTOMATION_RECIPES, TRIGGER_INFO, type AutomationDraft, type AutomationTrigger } from '@vcms/shared';
+import { AUTOMATION_RECIPES, TRIGGER_INFO, type AutomationDraft, type AutomationStep, type AutomationTrigger, type TriggerGroup } from '@vcms/shared';
 import {
+  Activity,
   AlertTriangle,
+  BedDouble,
   Bell,
   Cake,
   CalendarX,
   CheckCircle2,
+  ClipboardList,
   Clock,
-  BedDouble,
+  Copy,
+  FileText,
   Heart,
   Home,
   Mail,
   MessageCircle,
   MoreHorizontal,
   Pencil,
+  Pill,
   Plus,
   Receipt,
   Repeat,
   Scissors,
+  Search,
+  Send,
   Sparkles,
   Square,
   Syringe,
+  Ticket,
   Trash2,
   UserPlus,
   Workflow,
   XCircle,
+  Zap,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Suspense } from 'react';
+import { Suspense, useState } from 'react';
 import { toast } from 'sonner';
-import { describeAutomation, type AutomationOptions } from '@/components/automations/describe';
+import { conditionText, type AutomationOptions } from '@/components/automations/describe';
+import { FlowChips, GROUP_TONE, TRIGGER_ICONS } from '@/components/automations/flow-ui';
 import { useConfirm } from '@/components/confirm';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/page';
 import { RequirePermission } from '@/components/require';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Switch } from '@/components/ui/checkbox';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useUrlState } from '@/hooks/use-url-state';
 import { api } from '@/lib/api';
@@ -54,173 +65,237 @@ interface AutomationRow extends AutomationDraft {
   last30Days: Record<string, number>;
   updatedByName: string | null;
 }
+interface Stats {
+  total: number;
+  active: number;
+  waiting: number;
+  runs: number;
+  problems: number;
+  sent: number;
+  tasks: number;
+}
 interface Run {
   id: string;
   status: 'WAITING' | 'RUNNING' | 'DONE' | 'SKIPPED' | 'FAILED' | 'STOPPED';
   trigger: AutomationTrigger;
-  runAt: string;
-  updatedAt: string;
   createdAt: string;
   vars: Record<string, string>;
   log: { step: number; type: string; at: string; ok: boolean; note: string }[];
   error: string | null;
-  automation: { name: string };
+  automation: { name: string; trigger: string };
 }
 
-const RECIPE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = { heart: Heart, bell: Bell, home: Home, 'calendar-x': CalendarX, 'user-plus': UserPlus, cake: Cake, syringe: Syringe, mail: Mail, receipt: Receipt, scissors: Scissors, bed: BedDouble, repeat: Repeat };
+const RECIPE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = { heart: Heart, bell: Bell, home: Home, 'calendar-x': CalendarX, 'user-plus': UserPlus, cake: Cake, syringe: Syringe, mail: Mail, receipt: Receipt, scissors: Scissors, bed: BedDouble, repeat: Repeat, ticket: Ticket, pill: Pill, 'file-text': FileText };
+const GROUPS: TriggerGroup[] = ['Appointments', 'Clinical', 'Money', 'Clients & pets'];
 
-const RUN_STATUS: Record<Run['status'], { label: string; variant: 'success' | 'warning' | 'destructive' | 'secondary' | 'default' }> = {
-  WAITING: { label: 'Waiting', variant: 'default' },
-  RUNNING: { label: 'Running', variant: 'default' },
-  DONE: { label: 'Done', variant: 'success' },
-  SKIPPED: { label: 'Not sent', variant: 'warning' },
-  FAILED: { label: 'Failed', variant: 'destructive' },
-  STOPPED: { label: 'Stopped', variant: 'secondary' },
+const RUN_STATUS: Record<Run['status'], { label: string; dot: string; badge: 'success' | 'warning' | 'destructive' | 'secondary' | 'default' }> = {
+  WAITING: { label: 'Waiting', dot: 'bg-primary', badge: 'default' },
+  RUNNING: { label: 'Running', dot: 'bg-primary', badge: 'default' },
+  DONE: { label: 'Done', dot: 'bg-success', badge: 'success' },
+  SKIPPED: { label: 'Not sent', dot: 'bg-warning', badge: 'warning' },
+  FAILED: { label: 'Failed', dot: 'bg-destructive', badge: 'destructive' },
+  STOPPED: { label: 'Stopped', dot: 'bg-muted-foreground', badge: 'secondary' },
 };
 
-function ChannelsBar({ o }: { o?: AutomationOptions }) {
+function Kpi({ icon: Icon, label, value, hint, tone }: { icon: React.ComponentType<{ className?: string }>; label: string; value: React.ReactNode; hint?: string; tone: string }) {
+  return (
+    <Card className="relative overflow-hidden p-4 sm:p-5">
+      <span aria-hidden className={cn('pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full opacity-25 blur-2xl', tone)} />
+      <div className="relative flex items-center gap-3">
+        <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-white shadow-sm', tone)}>
+          <Icon className="h-5 w-5" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-muted-foreground">{label}</p>
+          <p className="text-2xl font-semibold tabular tracking-tight">{value}</p>
+        </div>
+      </div>
+      {hint && <p className="relative mt-2 text-xs text-muted-foreground">{hint}</p>}
+    </Card>
+  );
+}
+
+function Channels({ o }: { o?: AutomationOptions }) {
   if (!o) return null;
   return (
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl surface-flat px-4 py-3 text-sm">
-      <span className="flex items-center gap-2">
-        <MessageCircle className={cn('h-4 w-4', o.channels.whatsapp ? 'text-[#25D366]' : 'text-muted-foreground')} />
-        {o.channels.whatsapp ? 'WhatsApp connected' : <span className="text-muted-foreground">WhatsApp not connected</span>}
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <span className={cn('inline-flex items-center gap-2 rounded-pill px-3 py-1.5 ring-1 ring-inset', o.channels.whatsapp ? 'bg-[#25D366]/10 text-[#128C4B] ring-[#25D366]/30 dark:text-[#4ade80]' : 'bg-card/70 text-muted-foreground ring-foreground/10')}>
+        <MessageCircle className="h-4 w-4" />
+        {o.channels.whatsapp ? 'WhatsApp connected' : 'WhatsApp not connected'}
         {!o.channels.whatsapp && (
           <Link href="/settings/integrations/whatsapp" className="font-semibold text-primary hover:underline">
             Connect
           </Link>
         )}
       </span>
-      <span className="flex items-center gap-2">
-        <Mail className={cn('h-4 w-4', o.channels.email.own ? 'text-primary' : 'text-muted-foreground')} />
-        {o.channels.email.own ? `Email from ${o.channels.email.address}` : <span className="text-muted-foreground">Email from the system address</span>}
-        <Link href="/settings/integrations/email" className="font-semibold text-primary hover:underline">
-          {o.channels.email.own ? 'Change' : 'Use your Gmail / Outlook'}
+      <span className={cn('inline-flex max-w-full items-center gap-2 rounded-pill px-3 py-1.5 ring-1 ring-inset', o.channels.email.own ? 'bg-primary/[0.07] text-primary ring-primary/20' : 'bg-card/70 text-muted-foreground ring-foreground/10')}>
+        <Mail className="h-4 w-4" />
+        <span className="truncate">{o.channels.email.own ? o.channels.email.address : 'System email address'}</span>
+        <Link href="/settings/integrations/email" className="whitespace-nowrap font-semibold text-primary hover:underline">
+          {o.channels.email.own ? 'Change' : 'Use Gmail / Outlook'}
         </Link>
       </span>
-      <span className="text-xs text-muted-foreground sm:ml-auto">“Best channel” = WhatsApp when connected, otherwise email — and always what the client asked for.</span>
     </div>
   );
 }
 
-function Recipes({ title, existing }: { title: string; existing: AutomationRow[] }) {
+function RecipeGallery({ existing, compact = false }: { existing: AutomationRow[]; compact?: boolean }) {
+  const [group, setGroup] = useState<TriggerGroup | 'ALL'>('ALL');
+  const [q, setQ] = useState('');
   const used = new Set(existing.map((a) => a.name));
+  const list = AUTOMATION_RECIPES.filter((r) => (group === 'ALL' || TRIGGER_INFO[r.automation.trigger].group === group) && (!q || `${r.automation.name} ${r.automation.description}`.toLowerCase().includes(q.toLowerCase())));
   return (
-    <Card>
-      <CardHeader>
-        <div>
-          <CardTitle className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-primary" /> {title}
-          </CardTitle>
-          <CardDescription className="mt-1">Open one, change the wording if you like, and save. Nothing is sent until you save it.</CardDescription>
+    <div className="grid gap-4">
+      {!compact && (
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="inline-flex flex-wrap gap-1 rounded-pill bg-foreground/[0.04] p-1" role="radiogroup" aria-label="Category">
+            {(['ALL', ...GROUPS] as const).map((g) => (
+              <button key={g} type="button" role="radio" aria-checked={group === g} onClick={() => setGroup(g)} className={cn('rounded-pill px-3 py-1.5 text-sm font-medium transition-all', group === g ? 'bg-card text-foreground shadow-sm ring-1 ring-foreground/10' : 'text-muted-foreground hover:text-foreground')}>
+                {g === 'ALL' ? `All (${AUTOMATION_RECIPES.length})` : g}
+              </button>
+            ))}
+          </div>
+          <div className="relative w-full sm:ml-auto sm:w-64">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input className="pl-9" placeholder="Search recipes" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search recipes" />
+          </div>
         </div>
-      </CardHeader>
-      <div className="grid gap-3 p-4 pt-0 sm:grid-cols-2 xl:grid-cols-4">
-        {AUTOMATION_RECIPES.map((r) => {
+      )}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {(compact ? list.slice(0, 6) : list).map((r) => {
           const Icon = RECIPE_ICONS[r.icon] ?? Workflow;
+          const g = TRIGGER_INFO[r.automation.trigger].group;
           return (
-            <Link key={r.key} href={`/settings/automations/new?recipe=${r.key}`} className="group grid content-start gap-2 rounded-2xl surface-flat p-4 transition-colors hover:border-primary hover:bg-primary/5">
-              <span className="flex items-center justify-between">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary/15 to-brand-2/15 text-primary">
-                  <Icon className="h-4 w-4" />
-                </span>
-                {used.has(r.automation.name) && <Badge variant="secondary">Added</Badge>}
-              </span>
-              <span className="font-semibold leading-snug">{r.automation.name}</span>
-              <span className="text-xs text-muted-foreground">{r.automation.description}</span>
-              <span className="text-2xs font-semibold uppercase tracking-wide text-primary opacity-0 transition-opacity group-hover:opacity-100">Use this →</span>
+            <Link key={r.key} href={`/settings/automations/new?recipe=${r.key}`} className="group">
+              <Card className="flex h-full flex-col gap-3 p-5 transition-all group-hover:-translate-y-0.5 group-hover:shadow-lg group-hover:ring-1 group-hover:ring-primary/25">
+                <div className="flex items-start justify-between gap-2">
+                  <span className={cn('flex h-11 w-11 items-center justify-center rounded-2xl shadow-sm', GROUP_TONE[g].tile)}>
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  {used.has(r.automation.name) ? <Badge variant="secondary">Added</Badge> : <Badge variant="outline">{g}</Badge>}
+                </div>
+                <div className="grid gap-1">
+                  <p className="font-semibold leading-snug">{r.automation.name}</p>
+                  <p className="text-sm text-muted-foreground">{r.automation.description}</p>
+                </div>
+                <FlowChips trigger={r.automation.trigger} steps={r.automation.steps as AutomationStep[]} className="mt-auto" />
+                <span className="text-sm font-semibold text-primary opacity-0 transition-opacity group-hover:opacity-100">Use this recipe →</span>
+              </Card>
             </Link>
           );
         })}
+      </div>
+      {!list.length && <p className="py-6 text-center text-sm text-muted-foreground">No recipe matches.</p>}
+    </div>
+  );
+}
+
+function AutomationCard({ a, options }: { a: AutomationRow; options?: AutomationOptions }) {
+  const qc = useQueryClient();
+  const confirm = useConfirm();
+  const router = useRouter();
+  const info = TRIGGER_INFO[a.trigger];
+  const TIcon = TRIGGER_ICONS[a.trigger] ?? Zap;
+  const refresh = () => ['automations', 'automation-stats', 'automation-runs'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+  const toggle = useMutation({
+    mutationFn: (isActive: boolean) => api.patch(`/automations/${a.id}/active`, { isActive }),
+    onSuccess: (_r, v) => {
+      refresh();
+      toast.success(v ? `“${a.name}” is on` : `“${a.name}” is off — runs already waiting will stop`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const duplicate = useMutation({
+    mutationFn: () => api.post<{ id: string }>(`/automations/${a.id}/duplicate`),
+    onSuccess: (r) => {
+      refresh();
+      toast.success('Copy made (off) — adjust it and switch it on');
+      router.push(`/settings/automations/${r.id}`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const remove = useMutation({
+    mutationFn: () => api.del(`/automations/${a.id}`),
+    onSuccess: () => {
+      refresh();
+      toast.success('Automation deleted');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const done = a.last30Days.DONE ?? 0;
+  const problems = (a.last30Days.FAILED ?? 0) + (a.last30Days.SKIPPED ?? 0);
+  const total = Object.values(a.last30Days).reduce((n, x) => n + x, 0);
+  const conds = (a.conditions ?? []).map((c) => conditionText(c as never, options));
+  return (
+    <Card className={cn('group relative overflow-hidden transition-shadow hover:shadow-lg', !a.isActive && 'opacity-75')}>
+      <span aria-hidden className={cn('absolute inset-y-0 left-0 w-1', a.isActive ? GROUP_TONE[info.group].dot : 'bg-foreground/10')} />
+      <div className="grid gap-4 p-5 pl-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+        <Link href={`/settings/automations/${a.id}`} className="flex min-w-0 gap-4">
+          <span className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl shadow-sm', a.isActive ? GROUP_TONE[info.group].tile : 'bg-foreground/[0.06] text-muted-foreground')}>
+            <TIcon className="h-5 w-5" />
+          </span>
+          <div className="grid min-w-0 gap-2">
+            <p className="flex flex-wrap items-center gap-2 font-semibold group-hover:underline">
+              {a.name}
+              {a.isActive ? <Badge variant="success">On</Badge> : <Badge variant="secondary">Off</Badge>}
+              {a.marketing && <Badge variant="info">Promotional</Badge>}
+            </p>
+            <FlowChips trigger={a.trigger} steps={a.steps as AutomationStep[]} />
+            {conds.length > 0 && <p className="text-xs text-muted-foreground">Only if: {conds.join(' · ')}</p>}
+          </div>
+        </Link>
+        <div className="flex flex-wrap items-center gap-4 lg:justify-end">
+          <div className="grid min-w-[160px] gap-1.5">
+            <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+              <span>{total} in 30 days</span>
+              {a.waiting > 0 && (
+                <span className="flex items-center gap-1 font-medium text-primary">
+                  <Clock className="h-3 w-3" /> {a.waiting} waiting
+                </span>
+              )}
+            </div>
+            <div className="flex h-1.5 overflow-hidden rounded-full bg-foreground/[0.07]" aria-label={`${done} done, ${problems} not sent`}>
+              {total > 0 && <span className="bg-success" style={{ width: `${(done / total) * 100}%` }} />}
+              {total > 0 && <span className="bg-warning" style={{ width: `${(problems / total) * 100}%` }} />}
+            </div>
+            <p className="text-xs text-muted-foreground">{a.lastRunAt ? `Last ${fmtDateTime(a.lastRunAt)}` : 'Not run yet'}</p>
+          </div>
+          <Switch checked={!!a.isActive} disabled={toggle.isPending} onCheckedChange={(v) => toggle.mutate(v)} aria-label={`${a.name} on or off`} />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon-sm" variant="ghost" aria-label={`More for ${a.name}`}>
+                <MoreHorizontal />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => router.push(`/settings/automations/${a.id}`)}>
+                <Pencil /> Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => duplicate.mutate()}>
+                <Copy /> Duplicate
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => router.push(`/settings/automations?tab=activity&automation=${a.id}`)}>
+                <Activity /> Activity
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive"
+                onSelect={async () => {
+                  const r = await confirm({ title: `Delete “${a.name}”?`, description: 'Runs waiting to continue are stopped. Messages already sent stay in the message log.', confirmLabel: 'Delete', destructive: true });
+                  if (r.confirmed) remove.mutate();
+                }}
+              >
+                <Trash2 /> Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </Card>
   );
 }
 
-function AutomationList({ rows, options }: { rows: AutomationRow[]; options?: AutomationOptions }) {
-  const qc = useQueryClient();
-  const confirm = useConfirm();
-  const router = useRouter();
-  const toggle = useMutation({
-    mutationFn: (v: { id: string; isActive: boolean }) => api.patch(`/automations/${v.id}/active`, { isActive: v.isActive }),
-    onSuccess: (_r, v) => {
-      qc.invalidateQueries({ queryKey: ['automations'] });
-      toast.success(v.isActive ? 'Switched on' : 'Switched off — runs already waiting will stop');
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-  const remove = useMutation({
-    mutationFn: (id: string) => api.del(`/automations/${id}`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['automations'] });
-      toast.success('Automation deleted');
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-  return (
-    <div className="grid gap-3">
-      {rows.map((a) => {
-        const info = TRIGGER_INFO[a.trigger];
-        const sent = a.last30Days.DONE ?? 0;
-        const problems = (a.last30Days.FAILED ?? 0) + (a.last30Days.SKIPPED ?? 0);
-        return (
-          <Card key={a.id} className={cn('flex flex-wrap items-center gap-4 p-4 sm:p-5', !a.isActive && 'opacity-70')}>
-            <span className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl', a.isActive ? 'bg-gradient-to-br from-primary to-brand-2 text-white' : 'bg-foreground/[0.06] text-muted-foreground')}>
-              <Workflow className="h-5 w-5" />
-            </span>
-            <Link href={`/settings/automations/${a.id}`} className="min-w-0 flex-1 basis-72">
-              <p className="flex flex-wrap items-center gap-2 font-semibold hover:underline">
-                {a.name} <Badge variant="outline">{info.group}</Badge>
-                {a.marketing && <Badge variant="info">Marketing</Badge>}
-              </p>
-              <p className="text-sm text-muted-foreground">{describeAutomation(a, options)}</p>
-              <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-                <span>
-                  {sent} done in 30 days{problems > 0 && <span className="text-warning"> · {problems} not sent</span>}
-                </span>
-                {a.waiting > 0 && (
-                  <span className="flex items-center gap-1 text-primary">
-                    <Clock className="h-3 w-3" /> {a.waiting} waiting
-                  </span>
-                )}
-                {a.lastRunAt && <span>last {fmtDateTime(a.lastRunAt)}</span>}
-              </p>
-            </Link>
-            <div className="flex items-center gap-2">
-              <Switch checked={!!a.isActive} disabled={toggle.isPending} onCheckedChange={(v) => toggle.mutate({ id: a.id, isActive: v })} aria-label={`${a.name} on or off`} />
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button size="icon-sm" variant="ghost" aria-label={`More for ${a.name}`}>
-                    <MoreHorizontal />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onSelect={() => router.push(`/settings/automations/${a.id}`)}>
-                    <Pencil /> Edit
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => router.push(`/settings/automations?tab=activity&automation=${a.id}`)}>
-                    <Clock /> Activity
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="text-destructive"
-                    onSelect={async () => {
-                      const r = await confirm({ title: `Delete “${a.name}”?`, description: 'Runs waiting to continue are stopped. Messages already sent stay in the message log.', confirmLabel: 'Delete', destructive: true });
-                      if (r.confirmed) remove.mutate(a.id);
-                    }}
-                  >
-                    <Trash2 /> Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </Card>
-        );
-      })}
-    </div>
-  );
-}
-
-function Activity({ automationId }: { automationId?: string }) {
+function ActivityList({ automationId }: { automationId?: string }) {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['automation-runs', automationId], queryFn: () => api.get<{ data: Run[]; meta: { total: number } }>(`/automations/runs${automationId ? `?automationId=${automationId}` : ''}`), refetchInterval: 30_000 });
   const stop = useMutation({
@@ -234,46 +309,60 @@ function Activity({ automationId }: { automationId?: string }) {
   if (q.isLoading) return <LoadingRows rows={5} />;
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
   const runs = q.data!.data;
-  if (!runs.length) return <Card><EmptyState icon={Clock} title="Nothing yet" description="Each time an automation starts for a client, it shows here with what it sent." /></Card>;
+  if (!runs.length)
+    return (
+      <Card>
+        <EmptyState icon={Activity} title="Nothing yet" description="Each time an automation starts for a client, it appears here with every step it took." />
+      </Card>
+    );
   return (
     <Card className="overflow-hidden">
-      <ul className="divide-y divide-foreground/[0.05]">
-        {runs.map((r) => {
+      <ol>
+        {runs.map((r, idx) => {
           const st = RUN_STATUS[r.status];
           const who = [r.vars.petName, r.vars.clientName].filter(Boolean).join(' · ');
+          const TIcon = TRIGGER_ICONS[r.trigger as AutomationTrigger] ?? Zap;
           return (
-            <li key={r.id} className="grid gap-2 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
-              <div className="min-w-0">
-                <p className="flex flex-wrap items-center gap-2 text-sm font-semibold">
-                  {r.automation.name} <Badge variant={st.variant}>{st.label}</Badge>
-                  <span className="font-normal text-muted-foreground">{who}</span>
-                </p>
-                <ol className="mt-1 grid gap-0.5 text-xs">
-                  {r.log.map((l, i) => (
-                    <li key={i} className={cn('flex items-start gap-1.5', l.ok ? 'text-muted-foreground' : 'text-warning')}>
-                      {l.ok ? <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-success" /> : <XCircle className="mt-0.5 h-3 w-3 shrink-0" />}
-                      {l.type === 'WAIT' ? `Waiting until ${fmtDateTime(l.note.replace('Waiting until ', ''))}` : l.note}
-                    </li>
-                  ))}
+            <li key={r.id} className={cn('grid grid-cols-[40px_minmax(0,1fr)] gap-3 px-5 py-4', idx > 0 && 'border-t border-foreground/[0.05]')}>
+              <span className="relative flex h-10 w-10 items-center justify-center rounded-2xl bg-foreground/[0.05] text-muted-foreground">
+                <TIcon className="h-4 w-4" />
+                <span className={cn('absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full ring-2 ring-card', st.dot)} />
+              </span>
+              <div className="grid min-w-0 gap-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-semibold">{r.automation.name}</p>
+                  <Badge variant={st.badge}>{st.label}</Badge>
+                  {who && <span className="text-sm text-muted-foreground">{who}</span>}
+                  <span className="ml-auto text-xs text-muted-foreground">{fmtDateTime(r.createdAt)}</span>
+                </div>
+                <ol className="grid gap-1 text-sm">
+                  {r.log.map((l, i) => {
+                    const Icon = l.type === 'SEND_MESSAGE' ? Send : l.type === 'CREATE_TASK' ? ClipboardList : l.type === 'EMAIL_TEAM' ? Mail : l.type.startsWith('WAIT') ? Clock : CheckCircle2;
+                    return (
+                      <li key={i} className={cn('flex items-start gap-2', l.ok ? 'text-muted-foreground' : 'text-warning')}>
+                        {l.ok ? <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
+                        <span>{l.type.startsWith('WAIT') ? `Waiting until ${fmtDateTime(l.note.replace('Waiting until ', ''))}` : l.note}</span>
+                      </li>
+                    );
+                  })}
                   {r.error && r.status !== 'SKIPPED' && (
-                    <li className="flex items-start gap-1.5 text-muted-foreground">
-                      <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" /> {r.error}
+                    <li className="flex items-start gap-2 text-muted-foreground">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {r.error}
                     </li>
                   )}
                 </ol>
-              </div>
-              <div className="flex items-center gap-3 text-xs text-muted-foreground sm:flex-col sm:items-end">
-                <span>{fmtDateTime(r.createdAt)}</span>
                 {r.status === 'WAITING' && (
-                  <Button size="sm" variant="outline" loading={stop.isPending && stop.variables === r.id} onClick={() => stop.mutate(r.id)}>
-                    <Square /> Stop
-                  </Button>
+                  <div>
+                    <Button size="sm" variant="outline" loading={stop.isPending && stop.variables === r.id} onClick={() => stop.mutate(r.id)}>
+                      <Square /> Stop this one
+                    </Button>
+                  </div>
                 )}
               </div>
             </li>
           );
         })}
-      </ul>
+      </ol>
     </Card>
   );
 }
@@ -282,42 +371,80 @@ function AutomationsPage() {
   const url = useUrlState();
   const tab = url.get('tab', 'mine');
   const q = useQuery({ queryKey: ['automations'], queryFn: () => api.get<AutomationRow[]>('/automations') });
+  const stats = useQuery({ queryKey: ['automation-stats'], queryFn: () => api.get<Stats>('/automations/stats'), refetchInterval: 60_000 });
   const options = useQuery({ queryKey: ['automation-options'], queryFn: () => api.get<AutomationOptions>('/automations/options'), staleTime: 60_000 });
   if (q.isLoading) return <LoadingRows rows={6} />;
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
   const rows = q.data!;
+  const s = stats.data;
   return (
-    <div className="grid gap-6">
-      <div className="flex flex-wrap items-center gap-4">
-        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-inset ring-primary/20" aria-hidden>
-          <Workflow className="h-5 w-5" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-xl font-semibold tracking-tight">Automations</h2>
-          <p className="text-sm text-muted-foreground">Your own workflows: when something happens → only if… → send a message, wait, create a task for staff. Built-in confirmations are under Client notifications.</p>
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
+      <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-primary/[0.12] via-brand-2/[0.08] to-transparent p-6 ring-1 ring-inset ring-primary/10 sm:p-8">
+        <span aria-hidden className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-primary/20 blur-3xl" />
+        <div className="relative flex flex-wrap items-start gap-5">
+          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-3xl bg-gradient-to-br from-primary to-brand-2 text-white shadow-lg">
+            <Workflow className="h-7 w-7" />
+          </span>
+          <div className="min-w-0 flex-1 basis-72">
+            <h2 className="text-2xl font-semibold tracking-tight">Automations</h2>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Let the clinic follow up for you: when something happens, check the details, then message the client, wait, or give staff a task — automatically and politely.</p>
+            <div className="mt-4">
+              <Channels o={options.data} />
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => url.set({ tab: 'recipes' })}>
+              <Sparkles /> Recipes
+            </Button>
+            <Button asChild>
+              <Link href="/settings/automations/new">
+                <Plus /> New automation
+              </Link>
+            </Button>
+          </div>
         </div>
-        <Button asChild>
-          <Link href="/settings/automations/new">
-            <Plus /> New automation
-          </Link>
-        </Button>
       </div>
 
-      <ChannelsBar o={options.data} />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Kpi icon={Zap} label="Active automations" value={s ? s.active : '—'} hint={s ? `${s.total} in total` : undefined} tone="bg-gradient-to-br from-primary to-brand-2" />
+        <Kpi icon={Send} label="Messages sent · 30 days" value={s?.sent ?? '—'} tone="bg-gradient-to-br from-emerald-500 to-teal-600" />
+        <Kpi icon={ClipboardList} label="Tasks created · 30 days" value={s?.tasks ?? '—'} tone="bg-gradient-to-br from-amber-500 to-orange-600" />
+        <Kpi icon={Clock} label="Waiting now" value={s?.waiting ?? '—'} hint={s?.problems ? `${s.problems} not sent in 30 days` : 'Nothing went wrong lately'} tone="bg-gradient-to-br from-sky-500 to-indigo-600" />
+      </div>
 
       <Tabs value={tab} onValueChange={(v) => url.set({ tab: v === 'mine' ? null : v, automation: null })}>
         <TabsList className="mb-4">
           <TabsTrigger value="mine">
             Your automations {rows.length > 0 && <Badge variant="secondary">{rows.length}</Badge>}
           </TabsTrigger>
+          <TabsTrigger value="recipes">
+            Recipes <Badge variant="secondary">{AUTOMATION_RECIPES.length}</Badge>
+          </TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
         </TabsList>
-        <TabsContent value="mine" className="grid gap-6">
-          {rows.length ? <AutomationList rows={rows} options={options.data} /> : null}
-          <Recipes title={rows.length ? 'Add a ready-made one' : 'Start with a ready-made automation'} existing={rows} />
+        <TabsContent value="mine" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
+          {rows.length ? (
+            rows.map((a) => <AutomationCard key={a.id} a={a} options={options.data} />)
+          ) : (
+            <Card className="grid gap-5 p-6">
+              <div>
+                <p className="text-lg font-semibold">Start with a ready-made automation</p>
+                <p className="text-sm text-muted-foreground">Open one, adjust the wording, and save. Nothing is sent until you do.</p>
+              </div>
+              <RecipeGallery existing={rows} compact />
+              <div>
+                <Button variant="outline" onClick={() => url.set({ tab: 'recipes' })}>
+                  See all {AUTOMATION_RECIPES.length} recipes
+                </Button>
+              </div>
+            </Card>
+          )}
+        </TabsContent>
+        <TabsContent value="recipes">
+          <RecipeGallery existing={rows} />
         </TabsContent>
         <TabsContent value="activity">
-          <Activity automationId={url.get('automation') || undefined} />
+          <ActivityList automationId={url.get('automation') || undefined} />
         </TabsContent>
       </Tabs>
     </div>

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AsaGrade, ChecklistPhase, Prisma, SurgeryPriority, SurgeryRole } from '@prisma/client';
 import { AuditService, diff } from '../../common/audit/audit.service';
+import { ClientEvents } from '../../common/events/client-events';
 import { RequestContext } from '../../common/context/request-context';
 import { CounterService, formatNumber } from '../../common/counter/counter.service';
 import { conflict, notFound, ruleViolation } from '../../common/http/errors';
@@ -79,6 +80,7 @@ export class SurgeryService {
     private readonly appointments: AppointmentsService,
     private readonly charges: ChargeCaptureService,
     private readonly inventory: InventoryService,
+    private readonly events: ClientEvents,
   ) {}
 
   // ── Checklist template ──
@@ -364,6 +366,7 @@ export class SurgeryService {
       const appt = await this.prisma.db.appointment.findUnique({ where: { id: s.appointmentId } });
       if (appt && ['CHECKED_IN', 'IN_CONSULTATION'].includes(appt.status)) await this.appointments.transition(s.appointmentId, 'complete');
     }
+    if (action === 'complete') await this.events.emit({ type: 'SURGERY_COMPLETED', surgeryId: id });
     return this.get(id);
   }
 
