@@ -62,10 +62,11 @@ export function isAllowedOrigin(origin: string, requestHost: string | undefined)
   if (origin === `http://localhost:${env().PORT}`) return true;
   if (!multiClinic()) {
     if (origin === new URL(env().APP_URL).origin) return true;
-    // Opened by another address of the same server (localhost, 127.0.0.1, the machine's name): the page's origin
-    // is the host the request was addressed to. A page on any other site never matches.
+    // Opened on this same machine by another loopback address (localhost, 127.0.0.1): fine. Any other address must
+    // be the configured APP_URL, so a production server never trusts a host just because the request names it.
     try {
-      return !!requestHost && new URL(origin).host === requestHost;
+      const o = new URL(origin);
+      return /^(localhost|127\.0\.0\.1|\[::1\])$/.test(o.hostname) && !!requestHost && o.host === requestHost;
     } catch {
       return false;
     }
