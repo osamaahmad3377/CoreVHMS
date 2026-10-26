@@ -181,7 +181,7 @@ function Notifications() {
           <span>A client who asked for email gets email when it is switched on; otherwise WhatsApp comes first. A death in hospital is never sent automatically.</span>
           {can('settings.manage') && (
             <Button variant="outline" size="sm" asChild>
-              <Link href="/settings/communications">Edit the wording</Link>
+              <Link href="/settings/automations">Automations</Link>
             </Button>
           )}
         </div>

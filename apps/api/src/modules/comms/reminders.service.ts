@@ -55,9 +55,11 @@ export class RemindersService {
     const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: RequestContext.orgId() } });
     const today = new Date(localParts(now, org.defaultTimezone).date);
     const base = { clinicName: org.name, clinicPhone: org.phone ?? '', clinicPhoneLine: org.phone ? ` on ${org.phone}` : '' };
-    const due = await this.careReminders('CARE_REMINDER', today, org.reminderLeadDays, org.overdueReminderDays, base);
+    // Reminders are managed in Settings → Automations; when an automation covers one, the built-in one stays quiet.
+    const covered = new Set((await this.prisma.raw.automation.findMany({ where: { organizationId: org.id, isActive: true, trigger: { in: ['APPOINTMENT_UPCOMING', 'CARE_DUE'] } }, select: { trigger: true } })).map((a) => a.trigger));
+    const due = covered.has('CARE_DUE') ? 0 : await this.careReminders('CARE_REMINDER', today, org.reminderLeadDays, org.overdueReminderDays, base);
     const overdue = await this.careReminders('CARE_OVERDUE', today, org.reminderLeadDays, org.overdueReminderDays, base);
-    const appointments = await this.appointmentReminders(now, org.appointmentReminderHours, base);
+    const appointments = covered.has('APPOINTMENT_UPCOMING') ? 0 : await this.appointmentReminders(now, org.appointmentReminderHours, base);
     return { careDue: due, careOverdue: overdue, appointments };
   }
 

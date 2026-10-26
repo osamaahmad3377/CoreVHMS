@@ -142,7 +142,6 @@ export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyO
   { label: 'Services you offer', href: '/settings/modules', icon: ToggleRight, anyOf: ['settings.manage', 'org.manage'], group: 'Your clinic', hint: 'Switch hospital, surgery, lab, farms, boarding or insurance on or off' },
   { label: 'Branches', href: '/settings/branches', icon: Building2, anyOf: ['branches.manage'], group: 'Your clinic', hint: 'Each location, its address and time zone' },
   { label: 'Receipts & printing', href: '/settings/receipts', icon: Printer, anyOf: ['settings.manage'], group: 'Your clinic', hint: 'Receipt size, logo and the text printed on it' },
-  { label: 'Reminder messages', href: '/settings/communications', icon: MessageSquare, anyOf: ['settings.manage'], group: 'Your clinic', hint: 'When reminders are sent and what they say' },
   { label: 'Online booking', href: '/settings/online-booking', icon: Globe, anyOf: ['settings.manage'], group: 'Your clinic', hint: 'A link clients use to book a free time themselves' },
   { label: 'Waiting room', href: '/settings/waiting-room', icon: Megaphone, anyOf: ['settings.manage'], group: 'Your clinic', hint: 'TV screen with token numbers, and a check-in tablet at the door' },
   { label: 'Staff accounts', href: '/settings/staff', icon: Users, anyOf: ['users.read'], group: 'Staff & access', hint: 'Add staff, reset passwords, suspend access' },
