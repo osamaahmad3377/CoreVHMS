@@ -296,6 +296,18 @@ export const waitMs = (s: { amount: number; unit: 'MINUTES' | 'HOURS' | 'DAYS' }
 /** Ready-made automations the clinic starts from (switched off until saved). */
 export const AUTOMATION_RECIPES: { key: string; icon: string; automation: AutomationDraft }[] = [
   {
+    key: 'booked',
+    icon: 'calendar',
+    automation: {
+      name: 'Appointment booked confirmation',
+      description: 'As soon as an appointment is booked: the date, time and vet.',
+      isActive: true,
+      trigger: 'APPOINTMENT_BOOKED',
+      conditions: [],
+      steps: [{ type: 'SEND_MESSAGE', channel: 'BEST', subject: 'Appointment booked for {{petName}}', body: 'Hello {{clientName}}, {{petName}} is booked at {{clinicName}}, {{branchName}} on {{appointmentTime}} with {{vetName}} ({{appointmentType}}). Reply here or call {{clinicPhone}} if you need to change it.' }],
+    },
+  },
+  {
     key: 'thank-you',
     icon: 'heart',
     automation: {
@@ -588,7 +600,7 @@ const help = ' Reply here or call {{clinicPhone}} if you need anything.';
 
 /** What the easy creator fills in for each trigger; the client can change every word. Only uses variables the trigger has. */
 export const TRIGGER_DEFAULTS: Record<AutomationTrigger, TriggerDefaults> = {
-  APPOINTMENT_BOOKED: { subject: 'Appointment booked for {{petName}}', body: `${hi}{{petName}} is booked at {{clinicName}} on {{appointmentTime}} ({{appointmentType}}).${help}`, taskTitle: 'Check the booking for {{petName}}', delay: null },
+  APPOINTMENT_BOOKED: { subject: 'Appointment booked for {{petName}}', body: `${hi}{{petName}} is booked at {{clinicName}}, {{branchName}} on {{appointmentTime}} with {{vetName}} ({{appointmentType}}).${help}`, taskTitle: 'Check the booking for {{petName}}', delay: null },
   APPOINTMENT_RESCHEDULED: { subject: '{{petName}}’s appointment has moved', body: `${hi}{{petName}}’s appointment at {{clinicName}} is now on {{appointmentTime}}. If this time does not suit you, reply here.`, taskTitle: 'Call {{clientName}} about the new time', delay: null },
   APPOINTMENT_CANCELLED: { subject: 'Appointment cancelled', body: `${hi}the appointment for {{petName}} on {{appointmentTime}} has been cancelled. We would be happy to find you another time.\n{{bookingLine}}`, taskTitle: 'Offer {{clientName}} another time for {{petName}}', delay: null },
   APPOINTMENT_UPCOMING: { subject: 'Reminder: {{petName}} at {{clinicName}}', body: `${hi}a reminder that {{petName}} has an appointment on {{appointmentTime}} at {{clinicName}}, {{branchName}}.${help}`, taskTitle: 'Call {{clientName}} to confirm tomorrow', delay: null },
@@ -622,4 +634,4 @@ export const EASY_DELAYS: { label: string; value: { amount: number; unit: 'MINUT
 ];
 
 /** Recipes every clinic gets, switched on, the first time automations are used. */
-export const BASIC_AUTOMATION_KEYS = ['reminder-24h', 'thank-you', 'missed', 'after-discharge', 'welcome', 'vaccine-due'] as const;
+export const BASIC_AUTOMATION_KEYS = ['booked', 'reminder-24h', 'thank-you', 'missed', 'after-discharge', 'welcome', 'vaccine-due'] as const;
