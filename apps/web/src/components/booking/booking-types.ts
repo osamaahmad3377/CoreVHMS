@@ -4,7 +4,7 @@ import type { Branding } from '@vcms/shared';
 export interface BookingInfo {
   clinic: { name: string; phone: string | null; country: string; currency: string; branding: Branding };
   settings: { daysAhead: number; minNoticeHours: number; cancelNoticeHours: number; allowNewClients: boolean; autoConfirm: boolean; welcomeMessage: string | null };
-  branches: { id: string; name: string; address: string | null; phone: string | null; timezone: string }[];
+  branches: { id: string; name: string; address: string | null; phone: string | null; timezone: string; vetCount: number }[];
   appointmentTypes: { id: string; name: string; durationMinutes: number; priceMinor: number | null; category: string; color: string }[];
   clinicians: { id: string; name: string; jobTitle: string | null; branchIds: string[] }[];
   species: { id: string; name: string; category: string }[];

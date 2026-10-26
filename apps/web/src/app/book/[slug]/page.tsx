@@ -86,7 +86,7 @@ function BookingPage() {
   const d = info.data;
   const branch = d?.branches.find((b) => b.id === branchId) ?? (d?.branches.length === 1 ? d.branches[0] : undefined);
   const type = d?.appointmentTypes.find((t) => t.id === typeId);
-  const vets = useMemo(() => (d?.clinicians ?? []).filter((c) => !branch || c.branchIds.includes(branch.id)), [d, branch]);
+  const vets = useMemo(() => (d?.clinicians ?? []).filter((c) => !!branch && c.branchIds.includes(branch.id)), [d, branch]);
   const vet = vets.find((v) => v.id === vetId);
   const tz = branch?.timezone ?? 'UTC';
 
@@ -154,12 +154,16 @@ function BookingPage() {
         <div className="surface grid grid-cols-[minmax(0,1fr)] gap-6 rounded-2xl p-5 sm:p-8">
           {d.branches.length > 1 && (
             <section className="grid gap-3">
-              <h3 className="text-lg font-semibold">Which clinic?</h3>
+              <h3 className="text-lg font-semibold">Which branch?</h3>
               <div className="grid gap-2 sm:grid-cols-2">
                 {d.branches.map((b) => (
-                  <button key={b.id} type="button" onClick={() => { setBranchId(b.id); setVetId(''); setTime(null); }} className={cn('rounded-2xl p-4 text-left transition-all duration-200 ease-apple', branch?.id === b.id ? 'bg-primary/10 ring-2 ring-primary' : 'surface-flat hover:-translate-y-0.5')}>
-                    <span className="block font-semibold">{b.name}</span>
+                  <button key={b.id} type="button" disabled={!b.vetCount} onClick={() => { setBranchId(b.id); setVetId(''); setTime(null); }} className={cn('rounded-2xl p-4 text-left transition-all duration-200 ease-apple disabled:cursor-not-allowed disabled:opacity-60', branch?.id === b.id ? 'bg-primary/10 ring-2 ring-primary' : 'surface-flat enabled:hover:-translate-y-0.5')}>
+                    <span className="flex items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate font-semibold">{b.name}</span>
+                      {branch?.id === b.id && <CheckCircle2 className="h-5 w-5 shrink-0 text-primary" />}
+                    </span>
                     {b.address && <span className="block text-sm text-muted-foreground">{b.address}</span>}
+                    <span className="mt-1 block text-xs font-medium text-muted-foreground">{b.vetCount ? `${b.vetCount} ${b.vetCount === 1 ? 'vet' : 'vets'} available` : `Not bookable online yet${b.phone ? ` — call ${b.phone}` : ''}`}</span>
                   </button>
                 ))}
               </div>
@@ -186,11 +190,12 @@ function BookingPage() {
               <p className="text-sm text-muted-foreground">No services can be booked online right now. Please call the clinic.</p>
             )}
           </section>
-          {vets.length > 1 && (
+          {d.branches.length > 1 && !branch && <p className="rounded-2xl surface-flat p-4 text-sm text-muted-foreground">Choose a branch to see its vets.</p>}
+          {vets.length > 0 && (
             <section className="grid gap-3">
-              <h3 className="text-lg font-semibold">Any vet you prefer?</h3>
+              <h3 className="text-lg font-semibold">{vets.length > 1 ? `Any vet you prefer at ${branch?.name}?` : `Your vet at ${branch?.name}`}</h3>
               <div className="flex flex-wrap gap-2">
-                {[{ id: '', name: 'Any vet', jobTitle: 'First free time' }, ...vets].map((v) => (
+                {[...(vets.length > 1 ? [{ id: '', name: 'Any vet', jobTitle: 'First free time' }] : []), ...vets].map((v) => (
                   <button key={v.id || 'any'} type="button" onClick={() => { setVetId(v.id); setTime(null); }} className={cn('min-h-12 rounded-2xl px-4 py-2 text-left transition-all duration-200 ease-apple', vetId === v.id ? 'bg-primary text-primary-foreground shadow-glow' : 'surface-flat hover:-translate-y-0.5')}>
                     <span className="block text-sm font-semibold">{v.name}</span>
                     {v.jobTitle && <span className={cn('block text-xs', vetId === v.id ? 'text-primary-foreground/80' : 'text-muted-foreground')}>{v.jobTitle}</span>}
