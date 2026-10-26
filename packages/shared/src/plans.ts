@@ -29,6 +29,8 @@ export interface Entitlements {
   planName: string | null;
   maxStaff: number | null;
   maxBranches: number | null;
+  /** Automations that may be switched on at once. */
+  maxAutomations: number | null;
   features: PlanFeature[];
 }
 
@@ -37,6 +39,7 @@ export interface PlanLike {
   name: string;
   maxStaff: number | null;
   maxBranches: number | null;
+  maxAutomations?: number | null;
   features: readonly string[];
 }
 
@@ -48,7 +51,7 @@ export interface PlanOverrides {
 }
 
 /** Everything allowed: no plan assigned. */
-export const FULL_ACCESS: Entitlements = { planId: null, planName: null, maxStaff: null, maxBranches: null, features: [...PLAN_FEATURES] };
+export const FULL_ACCESS: Entitlements = { planId: null, planName: null, maxStaff: null, maxBranches: null, maxAutomations: null, features: [...PLAN_FEATURES] };
 
 /**
  * A clinic's effective entitlements: its plan, then the super admin's per-clinic exceptions on top
@@ -64,6 +67,7 @@ export function resolveEntitlements(plan: PlanLike | null | undefined, o: PlanOv
     planName: plan.name,
     maxStaff: o.staffLimitOverride ?? plan.maxStaff,
     maxBranches: o.branchLimitOverride ?? plan.maxBranches,
+    maxAutomations: plan.maxAutomations ?? null,
     features: PLAN_FEATURES.filter((f) => features.has(f)),
   };
 }
@@ -102,6 +106,7 @@ export const planInputSchema = z.object({
   currency: z.enum(['PKR', 'AUD']).default('PKR'),
   maxStaff: limit,
   maxBranches: limit,
+  maxAutomations: limit.default(null),
   features: featureList,
   isActive: z.boolean().default(true),
   sortOrder: z.number().int().min(0).max(1000).default(0),
@@ -126,6 +131,7 @@ export interface PlatformPlan {
   currency: string;
   maxStaff: number | null;
   maxBranches: number | null;
+  maxAutomations: number | null;
   features: PlanFeature[];
   isActive: boolean;
   sortOrder: number;
@@ -135,12 +141,12 @@ export interface PlatformPlan {
 /** A clinic's plan as the owner sees it (Settings → Your plan). */
 export interface ClinicPlanView {
   entitlements: Entitlements;
-  usage: { staff: number; branches: number };
+  usage: { staff: number; branches: number; automations: number };
 }
 
 /** Plans created the first time the super admin opens Plans. Prices are only a starting point. */
 export const DEFAULT_PLANS: Omit<PlanInput, 'currency' | 'isActive'>[] = [
-  { name: 'Starter', description: 'A small clinic: one branch and a few staff.', priceMonthlyMinor: 600_000, maxStaff: 3, maxBranches: 1, features: [], sortOrder: 1 },
-  { name: 'Clinic', description: 'A growing clinic with lab, boarding, reports and its own branding.', priceMonthlyMinor: 1_200_000, maxStaff: 10, maxBranches: 1, features: ['lab', 'boarding', 'reports', 'branding'], sortOrder: 2 },
-  { name: 'Hospital', description: 'Everything, for hospitals and several branches.', priceMonthlyMinor: 2_500_000, maxStaff: 25, maxBranches: 3, features: [...PLAN_FEATURES], sortOrder: 3 },
+  { name: 'Starter', description: 'A small clinic: one branch and a few staff.', priceMonthlyMinor: 600_000, maxStaff: 3, maxBranches: 1, maxAutomations: 5, features: [], sortOrder: 1 },
+  { name: 'Clinic', description: 'A growing clinic with lab, boarding, reports and its own branding.', priceMonthlyMinor: 1_200_000, maxStaff: 10, maxBranches: 1, maxAutomations: 9, features: ['lab', 'boarding', 'reports', 'branding'], sortOrder: 2 },
+  { name: 'Hospital', description: 'Everything, for hospitals and several branches.', priceMonthlyMinor: 2_500_000, maxStaff: 25, maxBranches: 3, maxAutomations: null, features: [...PLAN_FEATURES], sortOrder: 3 },
 ];

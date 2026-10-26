@@ -10,7 +10,7 @@ describe('plans', () => {
   });
 
   it('uses the plan, then the clinic’s exceptions on top', () => {
-    expect(resolveEntitlements(plan)).toEqual({ planId: 'p1', planName: 'Starter', maxStaff: 3, maxBranches: 1, features: ['reports'] });
+    expect(resolveEntitlements(plan)).toEqual({ planId: 'p1', planName: 'Starter', maxStaff: 3, maxBranches: 1, maxAutomations: null, features: ['reports'] });
     const e = resolveEntitlements(plan, { staffLimitOverride: 8, extraFeatures: ['lab'], removedFeatures: ['reports'] });
     expect(e).toMatchObject({ maxStaff: 8, maxBranches: 1, features: ['lab'] });
     // Unknown feature keys (a retired feature stored earlier) are ignored, and order follows the catalogue.

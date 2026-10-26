@@ -47,6 +47,7 @@ function PlanView() {
           <div className="grid gap-3 sm:grid-cols-2">
             <Meter label="Staff accounts" used={usage.staff} limit={e.maxStaff} />
             <Meter label="Branches" used={usage.branches} limit={e.maxBranches} />
+            <Meter label="Automations switched on" used={usage.automations} limit={e.maxAutomations} />
           </div>
           <p className="text-xs text-muted-foreground">Staff accounts counted: active and invited people. Paused staff and paused branches do not count.</p>
         </CardContent>

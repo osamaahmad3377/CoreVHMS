@@ -49,6 +49,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Switch } from '@/components/ui/checkbox';
+import { usePlanUsage } from '@/hooks/use-plan-usage';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -190,13 +191,13 @@ function RecipeGallery({ existing, compact = false }: { existing: AutomationRow[
   );
 }
 
-function AutomationCard({ a, options }: { a: AutomationRow; options?: AutomationOptions }) {
+function AutomationCard({ a, options, full }: { a: AutomationRow; options?: AutomationOptions; full?: boolean }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
   const router = useRouter();
   const info = TRIGGER_INFO[a.trigger];
   const TIcon = TRIGGER_ICONS[a.trigger] ?? Zap;
-  const refresh = () => ['automations', 'automation-stats', 'automation-runs'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+  const refresh = () => ['automations', 'automation-stats', 'automation-runs', 'clinic-plan'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
   const toggle = useMutation({
     mutationFn: (isActive: boolean) => api.patch(`/automations/${a.id}/active`, { isActive }),
     onSuccess: (_r, v) => {
@@ -260,7 +261,7 @@ function AutomationCard({ a, options }: { a: AutomationRow; options?: Automation
             </div>
             <p className="text-xs text-muted-foreground">{a.lastRunAt ? `Last ${fmtDateTime(a.lastRunAt)}` : 'Not run yet'}</p>
           </div>
-          <Switch checked={!!a.isActive} disabled={toggle.isPending} onCheckedChange={(v) => toggle.mutate(v)} aria-label={`${a.name} on or off`} />
+          <Switch checked={!!a.isActive} disabled={toggle.isPending || (!!full && !a.isActive)} title={full && !a.isActive ? 'Your plan’s automations are all switched on. Switch one off, or upgrade your plan.' : undefined} onCheckedChange={(v) => toggle.mutate(v)} aria-label={`${a.name} on or off`} />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="icon-sm" variant="ghost" aria-label={`More for ${a.name}`}>
@@ -377,6 +378,7 @@ function AutomationsPage() {
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
   const rows = q.data!;
   const s = stats.data;
+  const plan = usePlanUsage();
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
       <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-primary/[0.12] via-brand-2/[0.08] to-transparent p-6 ring-1 ring-inset ring-primary/10 sm:p-8">
@@ -412,6 +414,28 @@ function AutomationsPage() {
         <Kpi icon={Clock} label="Waiting now" value={s?.waiting ?? '—'} hint={s?.problems ? `${s.problems} not sent in 30 days` : 'Nothing went wrong lately'} tone="bg-gradient-to-br from-sky-500 to-indigo-600" />
       </div>
 
+      {plan.automations.max !== null && (
+        <div className={cn('flex flex-wrap items-center gap-4 rounded-2xl p-4 ring-1 ring-inset sm:p-5', plan.automations.canAdd ? 'surface-flat ring-foreground/5' : 'bg-warning/10 ring-warning/30')}>
+          <span className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-white', plan.automations.canAdd ? 'bg-gradient-to-br from-primary to-brand-2' : 'bg-gradient-to-br from-amber-500 to-orange-600')}>
+            <Zap className="h-5 w-5" />
+          </span>
+          <div className="min-w-0 flex-1 basis-64">
+            <p className="font-semibold">
+              {plan.automations.used ?? '—'} of {plan.automations.max} automations switched on{plan.plan ? ` · ${plan.plan} plan` : ''}
+            </p>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-foreground/10" role="progressbar" aria-valuemin={0} aria-valuemax={plan.automations.max} aria-valuenow={plan.automations.used ?? 0}>
+              <div className={cn('h-full rounded-full', plan.automations.canAdd ? 'bg-primary' : 'bg-warning')} style={{ width: `${Math.min(100, ((plan.automations.used ?? 0) / plan.automations.max) * 100)}%` }} />
+            </div>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {plan.automations.canAdd ? 'Pick the ones that matter most to your clinic. Upgrade your plan to switch on more.' : 'You have reached your plan’s limit. Switch one off to use a different one, or upgrade your plan to switch on more.'}
+            </p>
+          </div>
+          <Button variant={plan.automations.canAdd ? 'outline' : 'default'} asChild>
+            <Link href="/settings/plan">See plans</Link>
+          </Button>
+        </div>
+      )}
+
       <Tabs value={tab} onValueChange={(v) => url.set({ tab: v === 'mine' ? null : v, automation: null })}>
         <TabsList className="mb-4">
           <TabsTrigger value="mine">
@@ -424,7 +448,7 @@ function AutomationsPage() {
         </TabsList>
         <TabsContent value="mine" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
           {rows.length ? (
-            rows.map((a) => <AutomationCard key={a.id} a={a} options={options.data} />)
+            rows.map((a) => <AutomationCard key={a.id} a={a} options={options.data} full={!plan.automations.canAdd} />)
           ) : (
             <Card className="grid gap-5 p-6">
               <div>

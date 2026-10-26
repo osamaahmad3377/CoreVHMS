@@ -17,7 +17,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input, NativeSelect, Textarea } from '@/components/ui/input';
 import { ApiError, api } from '@/lib/api';
 
-const EMPTY: PlanInput = { name: '', description: null, priceMonthlyMinor: 0, currency: 'PKR', maxStaff: 5, maxBranches: 1, features: [], isActive: true, sortOrder: 10 };
+const EMPTY: PlanInput = { name: '', description: null, priceMonthlyMinor: 0, currency: 'PKR', maxStaff: 5, maxBranches: 1, maxAutomations: null, features: [], isActive: true, sortOrder: 10 };
 
 /** A number box where empty means "no limit". */
 function LimitField({ id, label, value, onChange, error, unit }: { id: string; label: string; value: number | null; onChange: (v: number | null) => void; error?: string; unit: string }) {
@@ -43,7 +43,7 @@ function PlanDialog({ plan, open, onOpenChange }: { plan: PlatformPlan | null; o
   // Fill the form each time the dialog opens (for a new plan, or the plan being edited).
   if (open && !lastOpen) {
     setLastOpen(true);
-    setV(plan ? { name: plan.name, description: plan.description, priceMonthlyMinor: plan.priceMonthlyMinor, currency: plan.currency as 'PKR' | 'AUD', maxStaff: plan.maxStaff, maxBranches: plan.maxBranches, features: plan.features, isActive: plan.isActive, sortOrder: plan.sortOrder } : EMPTY);
+    setV(plan ? { name: plan.name, description: plan.description, priceMonthlyMinor: plan.priceMonthlyMinor, currency: plan.currency as 'PKR' | 'AUD', maxStaff: plan.maxStaff, maxBranches: plan.maxBranches, maxAutomations: plan.maxAutomations, features: plan.features, isActive: plan.isActive, sortOrder: plan.sortOrder } : EMPTY);
     setPrice(String((plan?.priceMonthlyMinor ?? 0) / 100));
     setErrors({});
     setError(null);
@@ -110,6 +110,7 @@ function PlanDialog({ plan, open, onOpenChange }: { plan: PlatformPlan | null; o
           <div className="grid gap-3 sm:grid-cols-2">
             <LimitField id="p-staff" label="Staff accounts" unit="staff accounts" value={v.maxStaff} onChange={(x) => set('maxStaff', x)} error={errors.maxStaff} />
             <LimitField id="p-branches" label="Branches" unit="branches" value={v.maxBranches} onChange={(x) => set('maxBranches', x)} error={errors.maxBranches} />
+            <LimitField id="p-automations" label="Automations switched on" unit="automations" value={v.maxAutomations} onChange={(x) => set('maxAutomations', x)} error={errors.maxAutomations} />
           </div>
           <fieldset className="grid gap-1">
             <legend className="mb-1 text-sm font-medium">Included features</legend>
@@ -137,7 +138,7 @@ export default function PlansPage() {
   const plans = useQuery({ queryKey: ['platform-plans'], queryFn: () => api.get<PlatformPlan[]>('/platform/plans') });
 
   const toggle = useMutation({
-    mutationFn: (p: PlatformPlan) => api.put<PlatformPlan>(`/platform/plans/${p.id}`, { name: p.name, description: p.description, priceMonthlyMinor: p.priceMonthlyMinor, currency: p.currency, maxStaff: p.maxStaff, maxBranches: p.maxBranches, features: p.features, isActive: !p.isActive, sortOrder: p.sortOrder }),
+    mutationFn: (p: PlatformPlan) => api.put<PlatformPlan>(`/platform/plans/${p.id}`, { name: p.name, description: p.description, priceMonthlyMinor: p.priceMonthlyMinor, currency: p.currency, maxStaff: p.maxStaff, maxBranches: p.maxBranches, maxAutomations: p.maxAutomations, features: p.features, isActive: !p.isActive, sortOrder: p.sortOrder }),
     onSuccess: (p) => {
       toast.success(p.isActive ? `${p.name} is available again` : `${p.name} switched off for new clinics`);
       qc.invalidateQueries({ queryKey: ['platform-plans'] });
@@ -181,6 +182,7 @@ export default function PlansPage() {
                 <dl className="grid grid-cols-2 gap-2 text-sm">
                   <div className="rounded-lg surface-flat p-2"><dt className="text-xs text-muted-foreground">Staff accounts</dt><dd className="font-semibold">{limitText(p.maxStaff)}</dd></div>
                   <div className="rounded-lg surface-flat p-2"><dt className="text-xs text-muted-foreground">Branches</dt><dd className="font-semibold">{limitText(p.maxBranches)}</dd></div>
+                  <div className="col-span-2 rounded-lg surface-flat p-2"><dt className="text-xs text-muted-foreground">Automations switched on</dt><dd className="font-semibold">{limitText(p.maxAutomations)}</dd></div>
                 </dl>
                 <FeatureList features={p.features} />
                 <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Building2 className="h-3.5 w-3.5" /> {p.clinicCount} clinic{p.clinicCount === 1 ? '' : 's'} on this plan</p>

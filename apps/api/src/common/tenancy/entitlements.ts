@@ -37,6 +37,7 @@ export function assertFeature(feature: PlanFeature) {
 const LIMIT_TEXT = {
   staff: { limit: (e: Entitlements) => e.maxStaff, noun: 'staff accounts', hint: 'Remove or pause someone, or ask NextCore for a bigger plan.' },
   branches: { limit: (e: Entitlements) => e.maxBranches, noun: 'branches', hint: 'Pause a branch you no longer use, or ask NextCore for a bigger plan.' },
+  automations: { limit: (e: Entitlements) => e.maxAutomations, noun: 'automations switched on', hint: 'Switch one off, or upgrade your plan to switch on more.' },
 } as const;
 
 /**

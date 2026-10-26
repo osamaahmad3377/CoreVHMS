@@ -18,6 +18,7 @@ import { RequestContext } from '../../common/context/request-context';
 import { ClientEvent, ClientEvents } from '../../common/events/client-events';
 import { notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { assertWithinLimit, currentEntitlements } from '../../common/tenancy/entitlements';
 import { appUrl } from '../../common/tenancy/hosts';
 import { TenancyService } from '../../common/tenancy/tenancy.service';
 import { addDays, localDateOnly, localDayBounds, localParts, zonedToUtc } from '../../common/time/tz';
@@ -92,6 +93,9 @@ export class AutomationsService implements OnModuleInit {
       if (!claimed.count) continue;
       const have = await raw.automation.count({ where: { organizationId: o.id } });
       if (have) continue; // already built their own
+      // Only as many as the plan allows are switched on (the rest are ready to switch on after an upgrade or a swap).
+      const room = currentEntitlements()?.maxAutomations ?? Infinity;
+      let n = 0;
       for (const key of BASIC_AUTOMATION_KEYS) {
         const r = AUTOMATION_RECIPES.find((x) => x.key === key);
         if (!r) continue;
@@ -100,7 +104,7 @@ export class AutomationsService implements OnModuleInit {
             organizationId: o.id,
             name: r.automation.name,
             description: r.automation.description || null,
-            isActive: true,
+            isActive: n++ < room,
             marketing: r.automation.marketing ?? false,
             trigger: r.automation.trigger,
             offset: r.automation.offset ?? null,
@@ -189,8 +193,15 @@ export class AutomationsService implements OnModuleInit {
     if (bad) throw ruleViolation('INVALID_CONDITION', `“${bad.field}” does not apply to ${TRIGGER_INFO[input.trigger].label.toLowerCase()}`);
   }
 
+  /** A plan allows only so many automations switched on at once; turning on one more needs room (or an upgrade). */
+  private async assertRoomToSwitchOn() {
+    if (currentEntitlements()?.maxAutomations == null) return;
+    assertWithinLimit('automations', await this.prisma.db.automation.count({ where: { isActive: true } }));
+  }
+
   async create(input: AutomationInput) {
     await this.validateRefs(input);
+    if (input.isActive) await this.assertRoomToSwitchOn();
     const ctx = RequestContext.require();
     return this.prisma.db.$transaction(async (tx) => {
       const a = await tx.automation.create({ data: { ...this.data(input), organizationId: ctx.organizationId!, createdByName: ctx.userName ?? null, updatedByName: ctx.userName ?? null } });
@@ -200,8 +211,9 @@ export class AutomationsService implements OnModuleInit {
   }
 
   async update(id: string, input: AutomationInput) {
-    await this.get(id);
+    const current = await this.get(id);
     await this.validateRefs(input);
+    if (input.isActive && !current.isActive) await this.assertRoomToSwitchOn();
     const ctx = RequestContext.require();
     return this.prisma.db.$transaction(async (tx) => {
       const a = await tx.automation.update({ where: { id }, data: { ...this.data(input), updatedByName: ctx.userName ?? null } });
@@ -212,6 +224,7 @@ export class AutomationsService implements OnModuleInit {
 
   async setActive(id: string, isActive: boolean) {
     const before = await this.get(id);
+    if (isActive && !before.isActive) await this.assertRoomToSwitchOn();
     const ctx = RequestContext.require();
     return this.prisma.db.$transaction(async (tx) => {
       const a = await tx.automation.update({ where: { id }, data: { isActive, updatedByName: ctx.userName ?? null } });

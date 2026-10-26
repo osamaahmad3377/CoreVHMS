@@ -36,6 +36,8 @@ model Plan {
   currency          String   @default("PKR") @db.Char(3)
   maxStaff          Int?
   maxBranches       Int?
+  /// How many automations may be switched on at once; null = no limit.
+  maxAutomations    Int?
   /// Feature keys from the plan catalogue (packages/shared/src/plans.ts).
   features          String[] @default([])
   isActive          Boolean  @default(true)

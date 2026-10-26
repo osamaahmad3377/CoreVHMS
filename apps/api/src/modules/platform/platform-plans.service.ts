@@ -16,6 +16,7 @@ const toPlan = (p: Plan, clinicCount: number): PlatformPlan => ({
   currency: p.currency,
   maxStaff: p.maxStaff,
   maxBranches: p.maxBranches,
+  maxAutomations: p.maxAutomations,
   features: p.features as PlanFeature[],
   isActive: p.isActive,
   sortOrder: p.sortOrder,
@@ -96,6 +97,7 @@ export class PlatformPlansService implements OnApplicationBootstrap {
           changes: {
             maxStaff: { from: before.maxStaff, to: p.maxStaff },
             maxBranches: { from: before.maxBranches, to: p.maxBranches },
+            maxAutomations: { from: before.maxAutomations, to: p.maxAutomations },
             features: { from: before.features, to: p.features },
             isActive: { from: before.isActive, to: p.isActive },
             priceMonthlyMinor: { from: before.priceMonthlyMinor, to: p.priceMonthlyMinor },

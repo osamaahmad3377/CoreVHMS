@@ -706,4 +706,4 @@ export const EASY_DELAYS: { label: string; value: { amount: number; unit: 'MINUT
 ];
 
 /** Recipes every clinic gets, switched on, the first time automations are used. */
-export const BASIC_AUTOMATION_KEYS = ['booked', 'rescheduled', 'cancelled', 'reminder-24h', 'results-ready', 'home-today', 'payment', 'vaccinated', 'thank-you', 'missed', 'after-discharge', 'welcome', 'vaccine-due'] as const;
+export const BASIC_AUTOMATION_KEYS = ['booked', 'reminder-24h', 'thank-you', 'missed', 'vaccine-due', 'rescheduled', 'cancelled', 'results-ready', 'payment', 'home-today', 'after-discharge', 'welcome', 'vaccinated'] as const;

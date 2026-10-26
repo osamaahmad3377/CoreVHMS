@@ -242,6 +242,29 @@ describe('Multi-clinic hosting', () => {
       expect((await lc.owner.get('/setup/modules')).body.locked).toEqual(expect.arrayContaining(['lab', 'hospital', 'surgery']));
     });
 
+    it('lets a clinic switch on only as many automations as its plan allows', async () => {
+      expect(starter.maxAutomations).toBe(5);
+      // The basic automations arrive with only the plan's number switched on.
+      const list = (await lc.owner.get('/automations')).body as any[];
+      expect(list).toHaveLength(13);
+      expect(list.filter((a) => a.isActive).map((a) => a.name)).toEqual(expect.arrayContaining(['Appointment booked confirmation', 'Appointment reminder the day before']));
+      expect(list.filter((a) => a.isActive)).toHaveLength(5);
+      expect((await lc.owner.get('/organization/plan')).body).toMatchObject({ usage: { automations: 5 }, entitlements: { maxAutomations: 5 } });
+      const off = list.find((a) => !a.isActive);
+      const over = await lc.owner.patch(`/automations/${off.id}/active`, { isActive: true });
+      expect(over.status).toBe(422);
+      expect(over.body.error).toMatchObject({ code: 'PLAN_LIMIT', details: { kind: 'automations', limit: 5, current: 5 } });
+      expect(over.body.error.message).toContain('Switch one off');
+      // Swapping is fine: switch one off, then another on.
+      const on = list.find((a) => a.isActive);
+      expect((await lc.owner.patch(`/automations/${on.id}/active`, { isActive: false })).status).toBe(200);
+      expect((await lc.owner.patch(`/automations/${off.id}/active`, { isActive: true })).status).toBe(200);
+      // A new automation saved as "on" counts too; saved as "off" is always allowed.
+      const draft = { name: 'Extra', isActive: true, trigger: 'PAYMENT_RECEIVED', conditions: [], steps: [{ type: 'SEND_MESSAGE', channel: 'BEST', subject: 'Thanks', body: 'Thank you {{clientName}}' }] };
+      expect((await lc.owner.post('/automations', draft)).body.error.code).toBe('PLAN_LIMIT');
+      expect((await lc.owner.post('/automations', { ...draft, isActive: false })).status).toBe(201);
+    });
+
     it('stops adding staff and branches beyond the plan, but never removes anyone', async () => {
       expect((await invite(lc.owner)).status).toBe(201); // owner + 1
       expect((await invite(lc.owner)).status).toBe(201); // owner + 2 = 3 of 3

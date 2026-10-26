@@ -97,7 +97,7 @@ describe('Online booking page', () => {
     expect(known.body.status).toBe('CONFIRMED');
   });
 
-  it('offers only branches and vets with working hours', async () => {
+  it('lists every branch, with only vets who have working hours there', async () => {
     const org = await registerOrg();
     const f = await schedulingFixture(org); // the vet works at the main branch only
     const second = await org.owner.post('/branches', { name: 'Second branch', code: 'B2', timezone: 'Asia/Karachi' });
@@ -106,7 +106,8 @@ describe('Online booking page', () => {
     await org.owner.call('put', '/online-booking', s);
     const anon = new TestClient(await getApp());
     const info = (await anon.get(`/public/booking/${s.slug}`)).body;
-    expect(info.branches.map((b: { id: string }) => b.id)).toEqual([org.branchId]);
+    // A branch with no vet on the roster is still listed (shown as "call to book"), with no vets.
+    expect(info.branches).toEqual(expect.arrayContaining([expect.objectContaining({ id: org.branchId, vetCount: 1 }), expect.objectContaining({ id: second.body.id, vetCount: 0 })]));
     expect(info.clinicians).toEqual([expect.objectContaining({ id: f.vet.membershipId, branchIds: [org.branchId] })]);
     const view = (await org.owner.get('/online-booking')).body;
     expect(view.branches).toEqual(expect.arrayContaining([expect.objectContaining({ id: second.body.id, rosteredVets: 0 })]));

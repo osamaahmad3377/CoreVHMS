@@ -91,11 +91,12 @@ export class OrganizationsService {
 
   /** The clinic's plan and how much of it is used (Settings → Your plan). */
   async plan(): Promise<ClinicPlanView> {
-    const [staff, branches] = await Promise.all([
+    const [staff, branches, automations] = await Promise.all([
       this.prisma.raw.membership.count({ where: { status: { in: ['ACTIVE', 'INVITED'] } } }),
       this.prisma.raw.branch.count({ where: { isActive: true } }),
+      this.prisma.db.automation.count({ where: { isActive: true } }),
     ]);
-    return { entitlements: currentEntitlements() ?? FULL_ACCESS, usage: { staff, branches } };
+    return { entitlements: currentEntitlements() ?? FULL_ACCESS, usage: { staff, branches, automations } };
   }
 
   async branding() {
