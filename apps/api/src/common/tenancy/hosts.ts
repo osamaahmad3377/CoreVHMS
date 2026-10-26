@@ -60,7 +60,16 @@ export function appUrl(): string {
  */
 export function isAllowedOrigin(origin: string, requestHost: string | undefined): boolean {
   if (origin === `http://localhost:${env().PORT}`) return true;
-  if (!multiClinic()) return origin === new URL(env().APP_URL).origin;
+  if (!multiClinic()) {
+    if (origin === new URL(env().APP_URL).origin) return true;
+    // Opened by another address of the same server (localhost, 127.0.0.1, the machine's name): the page's origin
+    // is the host the request was addressed to. A page on any other site never matches.
+    try {
+      return !!requestHost && new URL(origin).host === requestHost;
+    } catch {
+      return false;
+    }
+  }
   let parsed: URL;
   try {
     parsed = new URL(origin);
