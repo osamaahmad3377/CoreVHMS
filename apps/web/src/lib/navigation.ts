@@ -160,7 +160,6 @@ export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyO
   { label: 'Email', href: '/settings/integrations/email', icon: Mail, anyOf: ['integrations.manage', 'settings.manage'], group: 'Integrations', hint: 'Send client emails from your own Gmail, Outlook or clinic mailbox' },
   { label: 'WhatsApp', href: '/settings/integrations/whatsapp', icon: MessageCircle, anyOf: ['integrations.manage'], group: 'Integrations', hint: 'Send reminders and messages from your own WhatsApp Business number' },
   { label: 'Your automations', href: '/settings/automations', icon: Workflow, anyOf: ['settings.manage', 'integrations.manage'], group: 'Automations', hint: 'Your own workflows: when something happens → send a message, wait, create a task' },
-  { label: 'Client notifications', href: '/settings/notifications', icon: BellRing, anyOf: ['settings.manage', 'integrations.manage'], group: 'Automations', hint: 'Booking confirmed, results ready, payment received… on WhatsApp or email' },
   { label: 'Livestock pregnancy lengths', href: '/settings/livestock', icon: Tractor, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Used to work out calving and lambing dates', module: 'livestock' },
 ];
 

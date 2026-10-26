@@ -88,6 +88,9 @@ export class ClientNotificationsService implements OnModuleInit {
     // Events only automations use have no built-in notification.
     if (!(CLIENT_NOTIFICATION_EVENTS as readonly string[]).includes(e.type)) return null;
     const orgId = RequestContext.orgId();
+    // Settings → Automations is the one place for these messages: when an automation covers the event, it sends it.
+    const online = e.type === 'APPOINTMENT_BOOKED' ? e.online : undefined;
+    if (!online && (await this.prisma.db.automation.count({ where: { trigger: e.type, isActive: true } }))) return null;
     const rule = (await this.rules()).find((r) => r.event === e.type)!;
     const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: orgId }, select: { name: true, phone: true, country: true, currency: true, defaultTimezone: true } });
     const n = await this.build(e, org);
@@ -95,7 +98,6 @@ export class ClientNotificationsService implements OnModuleInit {
     const wa = await this.whatsapp.sending(orgId);
     const byWhatsApp = rule.whatsapp && wa.active && !!toWhatsAppNumber(n.client.mobilePhone, org.country);
     // A client who booked online asked for this confirmation: email is used when WhatsApp cannot be.
-    const online = e.type === 'APPOINTMENT_BOOKED' ? e.online : undefined;
     if (!rule.whatsapp && !rule.email && !online) return null;
     const byEmail = (rule.email || !!online) && !!n.client.email;
     // A client who asked for email gets email when the clinic sends it; otherwise WhatsApp comes first.

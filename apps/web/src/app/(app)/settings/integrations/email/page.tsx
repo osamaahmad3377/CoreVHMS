@@ -404,10 +404,7 @@ function EmailSettings() {
       {d.connection ? <Connected d={d as Overview & { connection: Connection }} /> : <Connect d={d} />}
       <div className="flex flex-wrap items-center gap-3 rounded-2xl surface-flat p-4 text-sm">
         <CheckCircle2 className="h-4 w-4 text-success" />
-        <span className="min-w-0 flex-1">Choose which messages go by email under Client notifications, or build your own under Automations.</span>
-        <Button variant="outline" size="sm" asChild>
-          <Link href="/settings/notifications">Client notifications</Link>
-        </Button>
+        <span className="min-w-0 flex-1">Choose which messages go by email, and build your own, under Automations.</span>
         <Button variant="outline" size="sm" asChild>
           <Link href="/settings/automations">
             <Workflow /> Automations

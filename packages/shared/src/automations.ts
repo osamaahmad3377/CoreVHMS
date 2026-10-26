@@ -296,6 +296,78 @@ export const waitMs = (s: { amount: number; unit: 'MINUTES' | 'HOURS' | 'DAYS' }
 /** Ready-made automations the clinic starts from (switched off until saved). */
 export const AUTOMATION_RECIPES: { key: string; icon: string; automation: AutomationDraft }[] = [
   {
+    key: 'rescheduled',
+    icon: 'calendar',
+    automation: {
+      name: 'Appointment moved',
+      description: 'Tells the client when their appointment time changes.',
+      isActive: true,
+      trigger: 'APPOINTMENT_RESCHEDULED',
+      conditions: [],
+      steps: [{ type: 'SEND_MESSAGE', channel: 'BEST', subject: '{{petName}}’s appointment has moved', body: 'Hello {{clientName}}, {{petName}}’s appointment at {{clinicName}} is now on {{appointmentTime}} with {{vetName}}. If this time does not suit you, reply here.' }],
+    },
+  },
+  {
+    key: 'cancelled',
+    icon: 'calendar',
+    automation: {
+      name: 'Appointment cancelled',
+      description: 'Tells the client when an appointment is cancelled.',
+      isActive: true,
+      trigger: 'APPOINTMENT_CANCELLED',
+      conditions: [],
+      steps: [{ type: 'SEND_MESSAGE', channel: 'BEST', subject: 'Appointment cancelled', body: 'Hello {{clientName}}, the appointment for {{petName}} on {{appointmentTime}} has been cancelled. We would be happy to find you another time.\n{{bookingLine}}' }],
+    },
+  },
+  {
+    key: 'results-ready',
+    icon: 'flask',
+    automation: {
+      name: 'Results are ready',
+      description: 'When lab or X-ray results are released.',
+      isActive: true,
+      trigger: 'LAB_RESULTS_READY',
+      conditions: [],
+      steps: [{ type: 'SEND_MESSAGE', channel: 'BEST', subject: '{{petName}}’s results are ready', body: 'Hello {{clientName}}, the results for {{petName}} ({{testNames}}) are ready. Your vet will go through them with you. Reply here or call {{clinicPhone}} if you need anything.' }],
+    },
+  },
+  {
+    key: 'home-today',
+    icon: 'home',
+    automation: {
+      name: 'Animal goes home',
+      description: 'Straight away when an animal is discharged.',
+      isActive: true,
+      trigger: 'PATIENT_DISCHARGED',
+      conditions: [],
+      steps: [{ type: 'SEND_MESSAGE', channel: 'BEST', subject: '{{petName}} is ready to go home', body: 'Hello {{clientName}}, {{petName}} is ready to go home from {{clinicName}}. {{homeCare}} Reply here or call {{clinicPhone}} if you need anything.' }],
+    },
+  },
+  {
+    key: 'payment',
+    icon: 'card',
+    automation: {
+      name: 'Payment received',
+      description: 'A receipt message when a payment is taken.',
+      isActive: true,
+      trigger: 'PAYMENT_RECEIVED',
+      conditions: [],
+      steps: [{ type: 'SEND_MESSAGE', channel: 'BEST', subject: 'Payment received — {{receiptNumber}}', body: 'Hello {{clientName}}, thank you, we received {{amount}} on {{paymentDate}} (receipt {{receiptNumber}}). Still owed: {{balance}}.' }],
+    },
+  },
+  {
+    key: 'vaccinated',
+    icon: 'syringe',
+    automation: {
+      name: 'Vaccination done',
+      description: 'After a vaccination: what was given and when it is next due.',
+      isActive: true,
+      trigger: 'VACCINATION_GIVEN',
+      conditions: [],
+      steps: [{ type: 'SEND_MESSAGE', channel: 'BEST', subject: '{{petName}}: {{vaccineName}} done', body: 'Hello {{clientName}}, {{petName}} had {{vaccineName}} on {{givenDate}}. Next due: {{nextDueDate}} — we will remind you before then.' }],
+    },
+  },
+  {
     key: 'booked',
     icon: 'calendar',
     automation: {
@@ -634,4 +706,4 @@ export const EASY_DELAYS: { label: string; value: { amount: number; unit: 'MINUT
 ];
 
 /** Recipes every clinic gets, switched on, the first time automations are used. */
-export const BASIC_AUTOMATION_KEYS = ['booked', 'reminder-24h', 'thank-you', 'missed', 'after-discharge', 'welcome', 'vaccine-due'] as const;
+export const BASIC_AUTOMATION_KEYS = ['booked', 'rescheduled', 'cancelled', 'reminder-24h', 'results-ready', 'home-today', 'payment', 'vaccinated', 'thank-you', 'missed', 'after-discharge', 'welcome', 'vaccine-due'] as const;

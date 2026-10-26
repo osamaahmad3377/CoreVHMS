@@ -401,6 +401,8 @@ export class AutomationsService implements OnModuleInit {
   async onEvent(e: ClientEvent) {
     const trigger = e.type as AutomationTrigger;
     if (!TRIGGER_INFO[trigger]) return;
+    // Booked online: the booking page’s own confirmation (with the change link) goes out instead.
+    if (e.type === 'APPOINTMENT_BOOKED' && e.online) return;
     const list = await this.prisma.db.automation.findMany({ where: { trigger, isActive: true } });
     for (const a of list) await this.start(a, sourceIdOf(e));
   }
