@@ -362,6 +362,9 @@ model Organization {
   productCategories      ProductCategory[]
   receiptSettings        ReceiptSettings?
   whatsAppIntegration    WhatsAppIntegration?
+  emailIntegration       EmailIntegration?
+  automations            Automation[]
+  automationRuns         AutomationRun[]
   whatsAppTemplateLinks  WhatsAppTemplateLink[]
   ClientNotificationRule ClientNotificationRule[]
   OnlineBookingSettings  OnlineBookingSettings?
@@ -4814,4 +4817,100 @@ model WaitingRoomSettings {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Restrict)
+}
+
+// ───────────────────────────── Clinic email & automations ─────────────────────────────
+
+/// The clinic's own mailbox for client emails (Settings → Integrations → Email): Gmail or Outlook by signing in
+/// (OAuth), or any mailbox with server details / an app password. Without one, emails go from the platform sender.
+model EmailIntegration {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @unique @db.Uuid
+  /// GMAIL, OUTLOOK or SMTP
+  provider        String
+  /// OAUTH (signed in with Google/Microsoft) or PASSWORD (server details / app password)
+  method          String
+  email           String
+  fromName        String?
+  isActive        Boolean   @default(true)
+  /// CONNECTED, or NEEDS_ATTENTION after the provider refused (password changed, access removed)
+  status          String    @default("CONNECTED")
+  smtpHost        String?
+  smtpPort        Int?
+  smtpSecure      Boolean?
+  smtpUser        String?
+  /// SMTP password or OAuth refresh token, encrypted.
+  secretEnc       String?
+  accessTokenEnc  String?
+  accessExpiresAt DateTime? @db.Timestamptz(3)
+  lastError       String?
+  lastErrorAt     DateTime? @db.Timestamptz(3)
+  lastSentAt      DateTime? @db.Timestamptz(3)
+  sentCount       Int       @default(0)
+  connectedByName String?
+  connectedAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+}
+
+/// A clinic's own workflow: when <trigger> (and conditions hold) → steps (messages, waits, tasks, team emails).
+model Automation {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  name           String
+  description    String?
+  isActive       Boolean   @default(true)
+  /// Promotional: only clients who agreed to marketing messages.
+  marketing      Boolean   @default(false)
+  trigger        String
+  /// Hours before an appointment, or days before care is due.
+  offset         Int?
+  /// Timed triggers: hour of the day (clinic time) to send.
+  atHour         Int?
+  conditions     Json      @default("[]")
+  steps          Json
+  runCount       Int       @default(0)
+  lastRunAt      DateTime? @db.Timestamptz(3)
+  createdByName  String?
+  updatedByName  String?
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  runs         AutomationRun[]
+
+  @@index([organizationId, trigger, isActive])
+}
+
+/// One automation working through one record (an appointment, a payment…), step by step; waits park it until runAt.
+model AutomationRun {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  automationId   String   @db.Uuid
+  trigger        String
+  sourceType     String
+  sourceId       String
+  /// Once per automation and record (and per new time for a moved appointment, per year for a birthday).
+  dedupeKey      String
+  /// WAITING, DONE, SKIPPED, FAILED or STOPPED
+  status         String   @default("WAITING")
+  nextStep       Int      @default(0)
+  runAt          DateTime @db.Timestamptz(3)
+  clientId       String?  @db.Uuid
+  patientId      String?  @db.Uuid
+  vars           Json     @default("{}")
+  facts          Json     @default("{}")
+  /// What each step did: [{ step, type, at, ok, note, messageId?, taskId? }]
+  log            Json     @default("[]")
+  error          String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  automation   Automation   @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  @@unique([automationId, dedupeKey])
+  @@index([status, runAt])
+  @@index([organizationId, createdAt])
 }

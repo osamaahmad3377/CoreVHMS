@@ -28,3 +28,4 @@ export * from './care-repeat';
 export * from './whatsapp';
 export * from './online-booking';
 export * from './waiting-room';
+export * from './automations';

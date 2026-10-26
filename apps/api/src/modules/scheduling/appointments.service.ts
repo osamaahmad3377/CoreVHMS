@@ -485,6 +485,8 @@ export class AppointmentsService {
       );
     });
     if (action === 'cancel' && a.startsAt.getTime() > Date.now()) await this.events.emit({ type: 'APPOINTMENT_CANCELLED', appointmentId: id });
+    if (action === 'complete') await this.events.emit({ type: 'APPOINTMENT_COMPLETED', appointmentId: id });
+    if (action === 'no-show') await this.events.emit({ type: 'APPOINTMENT_NO_SHOW', appointmentId: id });
     const result = await this.get(id);
     return { ...result, encounterId: encounterId ?? result.encounter?.id ?? null };
   }

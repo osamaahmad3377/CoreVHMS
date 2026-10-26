@@ -8,6 +8,7 @@ import type {
   UpdateClientInput,
 } from '@vcms/shared';
 import { AuditService, diff } from '../../common/audit/audit.service';
+import { ClientEvents } from '../../common/events/client-events';
 import { RequestContext } from '../../common/context/request-context';
 import { CounterService, formatNumber } from '../../common/counter/counter.service';
 import { notFound, ruleViolation } from '../../common/http/errors';
@@ -48,6 +49,7 @@ export class ClientsService {
     private readonly audit: AuditService,
     private readonly counters: CounterService,
     private readonly merger: ClientMergeService,
+    private readonly events: ClientEvents,
   ) {}
 
   async list(q: ClientListQuery) {
@@ -179,7 +181,7 @@ export class ClientsService {
     await this.assertBranch(input.primaryBranchId);
     const ctx = RequestContext.require();
     const { address, ...data } = input;
-    return this.prisma.db.$transaction(async (tx) => {
+    const created = await this.prisma.db.$transaction(async (tx) => {
       const number = await this.counters.next(tx, 'client');
       const client = await tx.client.create({
         data: {
@@ -202,6 +204,8 @@ export class ClientsService {
       );
       return { ...client, clientNo: clientNo(number) };
     });
+    await this.events.emit({ type: 'CLIENT_REGISTERED', clientId: created.id });
+    return created;
   }
 
   async update(id: string, input: UpdateClientInput) {

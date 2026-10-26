@@ -22,6 +22,7 @@ import { InventoryModule } from './modules/inventory/inventory.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { ClientEventsModule } from './common/events/client-events';
 import { WaitingRoomModule } from './modules/waiting-room/waiting-room.module';
+import { AutomationsModule } from './modules/automations/automations.module';
 import { OnlineBookingModule } from './modules/online-booking/online-booking.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { CommsModule } from './modules/comms/comms.module';
@@ -81,6 +82,7 @@ import { env } from './config/env';
     CommsModule,
     OnlineBookingModule,
     WaitingRoomModule,
+    AutomationsModule,
     PreventiveModule,
     LivestockModule,
     BoardingModule,

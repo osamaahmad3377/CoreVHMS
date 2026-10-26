@@ -1,6 +1,6 @@
 import { Global, Injectable, Logger, Module } from '@nestjs/common';
 
-/** Things that happened which a client may want to hear about (Settings → Client notifications). */
+/** Things that happened which a client may want to hear about (Settings → Client notifications and Automations). */
 export type ClientEvent =
   /** `online`: booked by the client on the booking page; the confirmation carries their private change link. */
   | { type: 'APPOINTMENT_BOOKED'; appointmentId: string; online?: { manageLink: string } }
@@ -9,7 +9,11 @@ export type ClientEvent =
   | { type: 'LAB_RESULTS_READY'; orderId: string }
   | { type: 'PATIENT_DISCHARGED'; admissionId: string }
   | { type: 'PAYMENT_RECEIVED'; paymentId: string }
-  | { type: 'VACCINATION_GIVEN'; careItemId: string };
+  | { type: 'VACCINATION_GIVEN'; careItemId: string }
+  // Used by automations (Settings → Automations); no built-in client notification.
+  | { type: 'APPOINTMENT_COMPLETED'; appointmentId: string }
+  | { type: 'APPOINTMENT_NO_SHOW'; appointmentId: string }
+  | { type: 'CLIENT_REGISTERED'; clientId: string };
 
 export type ClientEventHandler = (event: ClientEvent) => Promise<void>;
 

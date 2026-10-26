@@ -3,8 +3,12 @@ import { RequestContext } from '../context/request-context';
 import { classifyHost } from './hosts';
 import { TenancyService, tenantRef } from './tenancy.service';
 
-/** Reachable on any address, including a paused clinic or the bare domain: health checks and "which clinic is this?". */
-const OPEN_PATHS = /^\/api\/v1\/(health|tenant)(\/|$|\?)/;
+/**
+ * Reachable on any address, including a paused clinic or the bare domain: health checks, "which clinic is this?",
+ * and the return from Google/Microsoft sign-in (one registered address for every clinic; the signed state says
+ * which clinic it is for).
+ */
+const OPEN_PATHS = /^\/api\/v1\/(health|tenant|oauth\/email\/callback)(\/|$|\?)/;
 
 /** The address the browser used. The web server forwards it as X-Forwarded-Host when proxying /api. */
 export function requestHost(req: Request): string | undefined {

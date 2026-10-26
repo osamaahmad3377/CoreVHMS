@@ -45,6 +45,20 @@ const envSchema = z.object({
   // WhatsApp Business Platform (Meta Cloud API). Each clinic connects its own number in Settings → Integrations.
   WHATSAPP_GRAPH_URL: z.string().url().default('https://graph.facebook.com'),
   WHATSAPP_API_VERSION: z.string().regex(/^v\d+\.\d+$/).default('v21.0'),
+  // Clinic mailboxes (Settings → Integrations → Email). "Sign in with Google / Microsoft" appears only when the
+  // platform's OAuth app is configured; otherwise clinics connect with an app password or server details.
+  // Register this redirect address with both providers: <OAUTH_REDIRECT_URL or APP_URL>/api/v1/oauth/email/callback
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  MICROSOFT_CLIENT_ID: z.string().optional(),
+  MICROSOFT_CLIENT_SECRET: z.string().optional(),
+  MICROSOFT_TENANT: z.string().default('common'),
+  OAUTH_REDIRECT_URL: z.string().url().optional(),
+  GOOGLE_AUTH_URL: z.string().url().default('https://accounts.google.com/o/oauth2/v2/auth'),
+  GOOGLE_TOKEN_URL: z.string().url().default('https://oauth2.googleapis.com/token'),
+  GMAIL_API_URL: z.string().url().default('https://gmail.googleapis.com'),
+  MICROSOFT_LOGIN_URL: z.string().url().default('https://login.microsoftonline.com'),
+  MICROSOFT_GRAPH_URL: z.string().url().default('https://graph.microsoft.com'),
   MAX_UPLOAD_MB: z.coerce.number().int().min(1).max(200).default(20),
   /**
    * Multi-clinic hosting. Unset: one installation serves the clinics in DATABASE_URL (single-clinic mode).

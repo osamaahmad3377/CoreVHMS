@@ -7,6 +7,7 @@ import { RequestContext } from '../../common/context/request-context';
 import { ClientEvent, ClientEvents } from '../../common/events/client-events';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { receiptNo } from '../billing/payments.service';
+import { EmailIntegrationService } from '../integrations/email-integration.service';
 import { WhatsAppService } from '../integrations/whatsapp.service';
 import { MessagesService } from './messages.service';
 
@@ -38,6 +39,7 @@ export class ClientNotificationsService implements OnModuleInit {
     private readonly events: ClientEvents,
     private readonly messages: MessagesService,
     private readonly whatsapp: WhatsAppService,
+    private readonly mailbox: EmailIntegrationService,
   ) {}
 
   onModuleInit() {
@@ -59,7 +61,13 @@ export class ClientNotificationsService implements OnModuleInit {
     const orgId = RequestContext.orgId();
     const [rules, wa, links] = await Promise.all([this.rules(), this.whatsapp.sending(orgId), this.prisma.db.whatsAppTemplateLink.findMany({ select: { purpose: true } })]);
     const connected = !!(await this.prisma.db.whatsAppIntegration.findFirst({ select: { id: true } }));
-    return { rules, whatsapp: { connected, active: wa.active, linked: links.map((l) => l.purpose) } };
+    const box = await this.prisma.db.emailIntegration.findFirst({ select: { email: true, provider: true, isActive: true, status: true } });
+    const platform = (await this.mailbox.overview()).platformSender;
+    return {
+      rules,
+      whatsapp: { connected, active: wa.active, linked: links.map((l) => l.purpose) },
+      email: { own: !!box && box.isActive, address: box?.email ?? null, provider: box?.provider ?? null, needsAttention: box?.status === 'NEEDS_ATTENTION', platformSender: platform },
+    };
   }
 
   async saveRule(input: { event: ClientNotificationEvent; whatsapp: boolean; email: boolean }) {
@@ -77,6 +85,8 @@ export class ClientNotificationsService implements OnModuleInit {
 
   /** Builds the message for an event and queues it on the right channel (or nothing when no channel applies). */
   async handle(e: ClientEvent) {
+    // Events only automations use have no built-in notification.
+    if (!(CLIENT_NOTIFICATION_EVENTS as readonly string[]).includes(e.type)) return null;
     const orgId = RequestContext.orgId();
     const rule = (await this.rules()).find((r) => r.event === e.type)!;
     const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: orgId }, select: { name: true, phone: true, country: true, currency: true, defaultTimezone: true } });
@@ -167,6 +177,8 @@ export class ClientNotificationsService implements OnModuleInit {
           sourceId: i.id,
         };
       }
+      default:
+        return null;
     }
   }
 }

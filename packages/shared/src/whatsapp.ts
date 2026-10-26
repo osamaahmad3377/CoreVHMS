@@ -11,7 +11,7 @@ export const WHATSAPP_SEND_POLICIES = ['PREFERRED', 'ALL_MOBILE'] as const;
 export type WhatsAppSendPolicy = (typeof WHATSAPP_SEND_POLICIES)[number];
 
 /** Kinds of message a clinic can send by WhatsApp (those that are only ever emailed are left out). */
-export const WHATSAPP_PURPOSES = ['APPOINTMENT_REMINDER', 'CARE_REMINDER', 'CARE_OVERDUE', ...CLIENT_NOTIFICATION_EVENTS, 'GENERAL'] as const;
+export const WHATSAPP_PURPOSES = ['APPOINTMENT_REMINDER', 'CARE_REMINDER', 'CARE_OVERDUE', ...CLIENT_NOTIFICATION_EVENTS, 'GENERAL', 'AUTOMATION'] as const;
 export type WhatsAppPurpose = (typeof WHATSAPP_PURPOSES)[number];
 
 export const WHATSAPP_PURPOSE_LABELS: Record<WhatsAppPurpose, { title: string; text: string }> = {
@@ -19,6 +19,7 @@ export const WHATSAPP_PURPOSE_LABELS: Record<WhatsAppPurpose, { title: string; t
   CARE_REMINDER: { title: 'Vaccination & care due', text: 'Vaccinations, deworming and checks coming up.' },
   CARE_OVERDUE: { title: 'Vaccination & care overdue', text: 'When something due has been missed.' },
   GENERAL: { title: 'Messages from staff', text: 'Messages typed by staff to a client.' },
+  AUTOMATION: { title: 'Automations', text: 'Messages your own automations send (Settings → Automations).' },
   ...({
     APPOINTMENT_BOOKED: { title: 'Appointment booked', text: 'Confirmation as soon as an appointment is booked.' },
     APPOINTMENT_RESCHEDULED: { title: 'Appointment moved', text: 'When the date or time of an appointment changes.' },
@@ -69,6 +70,12 @@ export const WHATSAPP_VARIABLES: Record<WhatsAppPurpose, { key: string; label: s
   GENERAL: [
     { key: 'clientName', label: 'Client name', example: 'Ahmed Khan' },
     { key: 'body', label: 'The message text', example: 'Bella is ready to be collected.' },
+    { key: 'clinicName', label: 'Clinic name', example: 'City Vet Clinic' },
+  ],
+  AUTOMATION: [
+    { key: 'clientName', label: 'Client name', example: 'Ahmed Khan' },
+    { key: 'body', label: 'The message text', example: 'Thank you for bringing Bella in today.' },
+    { key: 'petName', label: 'Animal name', example: 'Bella' },
     { key: 'clinicName', label: 'Clinic name', example: 'City Vet Clinic' },
   ],
   APPOINTMENT_BOOKED: [...APPOINTMENT_VARS, { key: 'manageLink', label: 'Change/cancel link (online bookings)', example: 'https://clinic.example/book/manage/…' }],

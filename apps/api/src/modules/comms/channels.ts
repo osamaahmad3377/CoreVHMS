@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { MessageChannel } from '@prisma/client';
 import { EmailBrand, escapeHtml, layout, MailService } from '../../common/mail/mail.service';
+import { EmailIntegrationService } from '../integrations/email-integration.service';
 import { WhatsAppService } from '../integrations/whatsapp.service';
 
 export interface ChannelMessage {
@@ -41,6 +42,28 @@ class EmailAdapter implements ChannelAdapter {
   }
 }
 
+/**
+ * The clinic's own mailbox (Gmail, Outlook or its email server). If the mailbox stops working (password changed,
+ * access removed) the message still goes out from the platform sender, with the clinic as reply-to.
+ */
+class ClinicMailboxAdapter implements ChannelAdapter {
+  readonly configured = true;
+  constructor(
+    private readonly mailbox: EmailIntegrationService,
+    private readonly organizationId: string,
+    readonly provider: string,
+    private readonly fallback: ChannelAdapter,
+  ) {}
+  async send(m: ChannelMessage): Promise<ChannelResult> {
+    const subject = m.subject ?? '(no subject)';
+    const text = m.brand?.signature ? `${m.body}\n\n-- \n${m.brand.signature}` : m.body;
+    const r = await this.mailbox.send(this.organizationId, { to: m.recipient, subject, text, html: layout(escapeHtml(subject), `<p>${escapeHtml(m.body).replace(/\n/g, '<br>')}</p>`, m.brand), senderName: m.brand?.senderName ?? m.brand?.name });
+    if (r.ok) return { ok: true, providerMessageId: r.providerMessageId };
+    if (r.needsAttention) return this.fallback.send(m);
+    return { ok: false, error: r.error };
+  }
+}
+
 /** The clinic's own WhatsApp Business number (Settings → Integrations → WhatsApp). */
 class WhatsAppAdapter implements ChannelAdapter {
   readonly provider = 'WhatsApp Business (Meta)';
@@ -71,13 +94,17 @@ export class ChannelRegistry {
   constructor(
     mail: MailService,
     private readonly whatsapp: WhatsAppService,
+    private readonly mailbox: EmailIntegrationService,
   ) {
     this.email = new EmailAdapter(mail);
   }
 
   /** The adapter for a channel in one clinic (WhatsApp is each clinic's own number). */
   async forOrg(channel: MessageChannel, organizationId: string): Promise<ChannelAdapter> {
-    if (channel === 'EMAIL') return this.email;
+    if (channel === 'EMAIL') {
+      const own = await this.mailbox.usable(organizationId);
+      return own ? new ClinicMailboxAdapter(this.mailbox, organizationId, `${own.provider === 'GMAIL' ? 'Gmail' : own.provider === 'OUTLOOK' ? 'Outlook' : 'Clinic mailbox'} (${own.email})`, this.email) : this.email;
+    }
     if (channel === 'SMS') return this.sms;
     return new WhatsAppAdapter(this.whatsapp, organizationId, (await this.whatsapp.sending(organizationId)).active);
   }

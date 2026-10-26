@@ -37,6 +37,8 @@ import {
   type LucideIcon,
   UserCog,
   Users,
+  Mail,
+  Workflow,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -142,6 +144,7 @@ export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyO
   { label: 'Receipts & printing', href: '/settings/receipts', icon: Printer, anyOf: ['settings.manage'], group: 'Your clinic', hint: 'Receipt size, logo and the text printed on it' },
   { label: 'Reminder messages', href: '/settings/communications', icon: MessageSquare, anyOf: ['settings.manage'], group: 'Your clinic', hint: 'When reminders are sent and what they say' },
   { label: 'Client notifications', href: '/settings/notifications', icon: BellRing, anyOf: ['settings.manage', 'integrations.manage'], group: 'Your clinic', hint: 'Booking confirmed, results ready, payment received… on WhatsApp or email' },
+  { label: 'Automations', href: '/settings/automations', icon: Workflow, anyOf: ['settings.manage', 'integrations.manage'], group: 'Your clinic', hint: 'Your own workflows: when something happens → send a message, wait, create a task' },
   { label: 'Online booking', href: '/settings/online-booking', icon: Globe, anyOf: ['settings.manage'], group: 'Your clinic', hint: 'A link clients use to book a free time themselves' },
   { label: 'Waiting room', href: '/settings/waiting-room', icon: Megaphone, anyOf: ['settings.manage'], group: 'Your clinic', hint: 'TV screen with token numbers, and a check-in tablet at the door' },
   { label: 'Staff accounts', href: '/settings/staff', icon: Users, anyOf: ['users.read'], group: 'Staff & access', hint: 'Add staff, reset passwords, suspend access' },
@@ -157,6 +160,7 @@ export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyO
   { label: 'Species & breeds', href: '/settings/species', icon: PawPrint, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Already filled in; add a breed if one is missing' },
   { label: 'Normal vital-sign ranges', href: '/settings/vital-references', icon: Activity, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Normal temperature, heart rate… per species, to flag readings' },
   { label: 'Surgical checklist', href: '/settings/surgery-checklist', icon: Scissors, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Safety checks ticked before each operation', module: 'surgery' },
+  { label: 'Email', href: '/settings/integrations/email', icon: Mail, anyOf: ['integrations.manage', 'settings.manage'], group: 'Integrations', hint: 'Send client emails from your own Gmail, Outlook or clinic mailbox' },
   { label: 'WhatsApp', href: '/settings/integrations/whatsapp', icon: MessageCircle, anyOf: ['integrations.manage'], group: 'Integrations', hint: 'Send reminders and messages from your own WhatsApp Business number' },
   { label: 'Livestock pregnancy lengths', href: '/settings/livestock', icon: Tractor, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Used to work out calving and lambing dates', module: 'livestock' },
 ];

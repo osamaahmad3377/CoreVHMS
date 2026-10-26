@@ -298,7 +298,7 @@ Object.assign(ENUM_LABELS, {
   DEFERRED: 'Deferred', DUE: 'Due',
   EMAIL: 'Email', SMS: 'SMS', WHATSAPP: 'WhatsApp',
   QUEUED: 'Queued', SENDING: 'Sending', SENT: 'Sent', FAILED: 'Failed', SKIPPED: 'Not sent',
-  CARE_REMINDER: 'Care reminder', CARE_OVERDUE: 'Overdue care reminder', APPOINTMENT_REMINDER: 'Appointment reminder', PORTAL_INVITE: 'Portal invitation', PORTAL_RESET: 'Portal password reset', GENERAL: 'General message',
+  CARE_REMINDER: 'Care reminder', CARE_OVERDUE: 'Overdue care reminder', APPOINTMENT_REMINDER: 'Appointment reminder', PORTAL_INVITE: 'Portal invitation', PORTAL_RESET: 'Portal password reset', GENERAL: 'General message', AUTOMATION: 'Automation', AUTOMATION_TEAM: 'Automation (to the team)',
   MORNING: 'Morning', AFTERNOON: 'Afternoon', EVENING: 'Evening', ANY: 'Any time',
   PENDING: 'Pending', BOOKED: 'Booked', DECLINED: 'Declined',
 });

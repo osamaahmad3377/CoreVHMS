@@ -38,6 +38,8 @@ export class TestClient {
   session: any;
   /** Multi-clinic tests: the web address the request is sent to (forwarded as X-Forwarded-Host). */
   host?: string;
+  /** Extra headers on every request (e.g. Origin). */
+  headers: Record<string, string> = {};
 
   constructor(
     private readonly app: INestApplication,
@@ -61,6 +63,7 @@ export class TestClient {
     if (this.csrf && method !== 'get') r.set('x-csrf-token', this.csrf);
     if (this.branchId) r.set('x-branch-id', this.branchId);
     if (this.host) r.set('x-forwarded-host', this.host);
+    for (const [k, v] of Object.entries(this.headers)) r.set(k, v);
     return r as request.Test;
   }
 
