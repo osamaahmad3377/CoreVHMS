@@ -14,6 +14,7 @@ import { seedHospital } from './seed-hospital';
 import { seedComms } from './seed-comms';
 import { seedServices } from './seed-services';
 import { seedModules } from './seed-modules';
+import { seedForecast } from './seed-forecast';
 
 const prisma = new PrismaClient();
 export const DEMO_PASSWORD = 'DemoVet2026!';
@@ -273,6 +274,7 @@ async function main() {
   await seedModules(prisma, au);
   await seedFinance(prisma, pk);
   await seedFinance(prisma, au);
+  await seedForecast(prisma, pk);
   await seedHospital(prisma, pk);
   await seedHospital(prisma, au);
   // Demo portal logins, client messages and appointment requests only when the client portal is switched on.

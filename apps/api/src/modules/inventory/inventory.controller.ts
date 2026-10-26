@@ -3,13 +3,16 @@ import { ApiTags } from '@nestjs/swagger';
 import {
   adjustmentSchema,
   batchStatusSchema,
+  branchTransferSchema,
   countLineSchema,
   locationSchema,
+  prepareOrdersSchema,
   purchaseOrderSchema,
   purchaseRequestDecisionSchema,
   purchaseRequestSchema,
   purchaseRequestsToOrderSchema,
   receiveStockSchema,
+  stockForecastQuery,
   stockListQuery,
   supplierReturnSchema,
   supplierSchema,
@@ -20,6 +23,7 @@ import { z } from 'zod';
 import { RequireAnyPermission, RequirePermissions } from '../../common/auth/decorators';
 import { ApiZodBody, ApiZodQuery, zp } from '../../common/http/zod';
 import { RequestContext } from '../../common/context/request-context';
+import { ForecastService } from './forecast.service';
 import { InventoryService } from './inventory.service';
 import { PurchasingService } from './purchasing.service';
 import { ProcurementService } from './procurement.service';
@@ -44,7 +48,32 @@ export class InventoryController {
     private readonly inventory: InventoryService,
     private readonly procurement: ProcurementService,
     private readonly purchasing: PurchasingService,
+    private readonly forecasts: ForecastService,
   ) {}
+
+  // ── Stock forecast ──
+
+  /** What runs out at each branch, ready supplier orders, and transfers between branches. */
+  @Get('stock/forecast')
+  @RequireAnyPermission('inventory.read', 'procurement.read')
+  @ApiZodQuery(stockForecastQuery)
+  forecast(@Query(zp(stockForecastQuery)) q: z.infer<typeof stockForecastQuery>) {
+    return this.forecasts.forecast(q);
+  }
+
+  @Post('stock/forecast/orders')
+  @RequirePermissions('procurement.write')
+  @ApiZodBody(prepareOrdersSchema)
+  prepareOrders(@Body(zp(prepareOrdersSchema)) body: z.infer<typeof prepareOrdersSchema>) {
+    return this.forecasts.prepareOrders(body);
+  }
+
+  @Post('stock/branch-transfers')
+  @RequirePermissions('inventory.adjust')
+  @ApiZodBody(branchTransferSchema)
+  branchTransfer(@Body(zp(branchTransferSchema)) body: z.infer<typeof branchTransferSchema>) {
+    return this.forecasts.transferBetweenBranches(body);
+  }
 
   // ── Locations ──
   @Get('stock-locations')

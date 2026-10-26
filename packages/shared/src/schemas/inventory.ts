@@ -117,3 +117,39 @@ export const supplierReturnSchema = z.object({
 });
 
 export const countLineSchema = z.object({ lines: z.array(z.object({ lineId: z.string().uuid(), countedQty: z.coerce.number().min(0) })).min(1).max(2000) });
+
+// ── Stock forecast ──
+
+export const stockForecastQuery = z.object({
+  /** "Runs out within" — next week by default. */
+  horizonDays: z.coerce.number().int().min(1).max(60).default(7),
+  /** Days until a supplier delivery normally arrives. */
+  leadDays: z.coerce.number().int().min(0).max(60).default(3),
+  /** Order enough to last this long after it arrives. */
+  coverDays: z.coerce.number().int().min(1).max(120).default(14),
+  branchId: z.string().uuid().optional(),
+});
+
+/** Turns the forecast into draft purchase orders: one per supplier and branch. */
+export const prepareOrdersSchema = z.object({
+  orders: z
+    .array(
+      z.object({
+        supplierId: z.string().uuid(),
+        branchId: z.string().uuid(),
+        lines: z.array(z.object({ productId: z.string().uuid(), quantity: qty(), unitCostMinor: z.coerce.number().int().min(0) })).min(1).max(200),
+      }),
+    )
+    .min(1)
+    .max(30),
+});
+
+/** Moves a product from one branch to another (first-expiring batches first, or one named batch). */
+export const branchTransferSchema = z.object({
+  productId: z.string().uuid(),
+  fromBranchId: z.string().uuid(),
+  toBranchId: z.string().uuid(),
+  quantity: qty(),
+  batchId: z.string().uuid().nullish(),
+  notes: optText(300),
+});

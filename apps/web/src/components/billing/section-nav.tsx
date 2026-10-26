@@ -29,6 +29,7 @@ export const BILLING_LINKS: SectionLink[] = [
 export const INVENTORY_LINKS: SectionLink[] = [
   { href: '/inventory', label: 'Stock', anyOf: ['inventory.read'], exact: true },
   { href: '/inventory/catalog', label: 'Products', anyOf: ['inventory.read', 'formulary.manage'] },
+  { href: '/inventory/forecast', label: 'Forecast', anyOf: ['inventory.read', 'procurement.read'] },
   { href: '/inventory/purchase-orders', label: 'Orders', anyOf: ['procurement.read'] },
   { href: '/inventory/requests', label: 'Order requests', anyOf: ['procurement.request', 'procurement.read'] },
   { href: '/inventory/suppliers', label: 'Suppliers', anyOf: ['procurement.read', 'inventory.read'] },

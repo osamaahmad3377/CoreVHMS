@@ -132,7 +132,7 @@ export class WaitingRoomService {
         .map((a) => ({ id: a.id, token: a.tokenNumber, room: a.calledRoom, pet: pet(a.patient?.name), calledAt: a.calledAt, callCount: a.callCount }));
       const waiting = today
         .filter((a) => a.status === 'CHECKED_IN' && !a.calledAt)
-        .sort((a, b) => (PRIORITY_RANK[a.triage[0]?.priority ?? a.priority ?? 'NON_URGENT'] ?? 5) - (PRIORITY_RANK[b.triage[0]?.priority ?? b.priority ?? 'NON_URGENT'] ?? 5) || (a.checkedInAt?.getTime() ?? 0) - (b.checkedInAt?.getTime() ?? 0))
+        .sort((a, b) => (PRIORITY_RANK[a.triage[0]?.priority ?? a.priority ?? 'NON_URGENT'] ?? 5) - (PRIORITY_RANK[b.triage[0]?.priority ?? b.priority ?? 'NON_URGENT'] ?? 5) || (a.checkedInAt?.getTime() ?? 0) - (b.checkedInAt?.getTime() ?? 0) || (a.tokenNumber ?? 0) - (b.tokenNumber ?? 0))
         .map((a) => ({ token: a.tokenNumber, pet: pet(a.patient?.name) }));
       // Each consult room with the token now in it: the latest call to that room still being seen.
       const roomNames = (await this.prisma.db.resource.findMany({ where: { branchId: branch.id, isActive: true, type: 'ROOM' }, orderBy: { name: 'asc' }, select: { name: true } })).map((r) => r.name);

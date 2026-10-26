@@ -22,7 +22,7 @@ const ORDER: Record<Severity, number> = { danger: 0, warning: 1, info: 2 };
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** Stock items, left out of the front-desk list ("Still to do"): stock is not reception's job. */
-const STOCK_KEYS = new Set(['low-stock', 'expiring']);
+const STOCK_KEYS = new Set(['runs-out', 'stock-moves', 'low-stock', 'expiring']);
 
 /**
  * Widgets come from GET /dashboard; each is only present when the user may see it (and, for optional
@@ -60,6 +60,8 @@ export function buildAttention(w: any, opts: { money: (minor: number) => string;
     add(true, { key: `cash-${d.sessionId}`, severity: 'warning', icon: Wallet, text: `Cash drawer at ${d.register} not closed since ${fmtDate(d.openedAt)}`, detail: 'Count the cash and close the drawer', action: 'Count cash', href: '/billing/cash' });
   }
   add(w?.finance?.overdueInvoices, { key: 'overdue-inv', severity: 'warning', icon: Receipt, text: `${plural(w?.finance?.overdueInvoices, 'invoice')} overdue for payment`, action: 'Follow up', href: '/billing?tab=overdue' });
+  add(w?.stockForecast?.runsOutCount, { key: 'runs-out', severity: 'warning', icon: Boxes, text: `${plural(w?.stockForecast?.runsOutCount, 'product')} will run out within 7 days`, detail: w?.stockForecast?.runsOut?.slice(0, 3).map((p: { name: string; branch: string }) => p.name).join(', '), action: opts.can('procurement.write') ? 'Prepare order' : 'View forecast', href: '/inventory/forecast' });
+  add(w?.stockForecast?.transferCount, { key: 'stock-moves', severity: 'info', icon: Boxes, text: `${plural(w?.stockForecast?.transferCount, 'product')} to move between branches`, detail: 'Spare stock at one branch, running low at another', action: 'See moves', href: '/inventory/forecast?tab=move' });
   add(w?.inventory?.lowStockCount, { key: 'low-stock', severity: 'warning', icon: Boxes, text: `${plural(w?.inventory?.lowStockCount, 'product')} below reorder level`, detail: w?.inventory?.lowStock?.slice(0, 3).map((p: { name: string }) => p.name).join(', '), ...(opts.can('procurement.write') ? { action: 'Reorder', href: '/inventory/purchase-orders' } : { action: 'View', href: '/inventory?filter=low' }) });
   add(w?.insurance?.claimsQueried, { key: 'claims-queried', severity: 'warning', icon: ShieldAlert, text: `${plural(w?.insurance?.claimsQueried, 'insurance claim')} queried by the insurer`, action: 'Answer', href: '/insurance?tab=claims&status=QUERIED' });
   add(opts.portal && w?.communications?.unreadMessages, { key: 'unread', severity: 'warning', icon: MessageSquare, text: `${plural(w?.communications?.unreadMessages, 'unread client message')}`, action: 'Inbox', href: '/communications?tab=inbox' });

@@ -581,7 +581,8 @@ export class AppointmentsService {
       .sort(
         (a, b) =>
           (PRIORITY_RANK[a.effectivePriority ?? 'NON_URGENT'] ?? 5) - (PRIORITY_RANK[b.effectivePriority ?? 'NON_URGENT'] ?? 5) ||
-          (a.checkedInAt?.getTime() ?? 0) - (b.checkedInAt?.getTime() ?? 0),
+          (a.checkedInAt?.getTime() ?? 0) - (b.checkedInAt?.getTime() ?? 0) ||
+          (a.tokenNumber ?? 0) - (b.tokenNumber ?? 0),
       );
     // Finished visits whose client still has work not yet invoiced get a "Bill" button at the front desk.
     const done = shaped.filter((s) => ['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(s.status));
@@ -665,7 +666,8 @@ export class AppointmentsService {
           startsAt,
           endsAt,
           status: 'CHECKED_IN',
-          checkedInAt: startsAt,
+          // The exact arrival time keeps the queue in order when several walk-ins arrive within a minute.
+          checkedInAt: new Date(),
           source: 'WALK_IN',
           priority: input.priority ?? null,
           reason: input.reason,
