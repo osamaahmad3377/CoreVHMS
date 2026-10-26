@@ -131,8 +131,8 @@ export const NAV: NavSection[] = [
   },
 ];
 
-export type SettingsGroup = 'Your clinic' | 'Staff & access' | 'Prices & billing' | 'Rooms & spaces' | 'Clinical setup' | 'Integrations';
-export const SETTINGS_GROUPS: SettingsGroup[] = ['Your clinic', 'Staff & access', 'Prices & billing', 'Rooms & spaces', 'Clinical setup', 'Integrations'];
+export type SettingsGroup = 'Your clinic' | 'Staff & access' | 'Prices & billing' | 'Rooms & spaces' | 'Clinical setup' | 'Integrations' | 'Automations';
+export const SETTINGS_GROUPS: SettingsGroup[] = ['Your clinic', 'Staff & access', 'Prices & billing', 'Rooms & spaces', 'Clinical setup', 'Integrations', 'Automations'];
 
 /** Settings pages, grouped the way an owner thinks about them; `hint` is the one-line description on the Settings home page. */
 export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyOf: Permission[]; group: SettingsGroup; hint: string; module?: OptionalModule; /** Only where the installation has plans (multi-clinic hosting). */ plansOnly?: boolean }[] = [
@@ -143,8 +143,6 @@ export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyO
   { label: 'Branches', href: '/settings/branches', icon: Building2, anyOf: ['branches.manage'], group: 'Your clinic', hint: 'Each location, its address and time zone' },
   { label: 'Receipts & printing', href: '/settings/receipts', icon: Printer, anyOf: ['settings.manage'], group: 'Your clinic', hint: 'Receipt size, logo and the text printed on it' },
   { label: 'Reminder messages', href: '/settings/communications', icon: MessageSquare, anyOf: ['settings.manage'], group: 'Your clinic', hint: 'When reminders are sent and what they say' },
-  { label: 'Client notifications', href: '/settings/notifications', icon: BellRing, anyOf: ['settings.manage', 'integrations.manage'], group: 'Your clinic', hint: 'Booking confirmed, results ready, payment received… on WhatsApp or email' },
-  { label: 'Automations', href: '/settings/automations', icon: Workflow, anyOf: ['settings.manage', 'integrations.manage'], group: 'Your clinic', hint: 'Your own workflows: when something happens → send a message, wait, create a task' },
   { label: 'Online booking', href: '/settings/online-booking', icon: Globe, anyOf: ['settings.manage'], group: 'Your clinic', hint: 'A link clients use to book a free time themselves' },
   { label: 'Waiting room', href: '/settings/waiting-room', icon: Megaphone, anyOf: ['settings.manage'], group: 'Your clinic', hint: 'TV screen with token numbers, and a check-in tablet at the door' },
   { label: 'Staff accounts', href: '/settings/staff', icon: Users, anyOf: ['users.read'], group: 'Staff & access', hint: 'Add staff, reset passwords, suspend access' },
@@ -162,6 +160,8 @@ export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyO
   { label: 'Surgical checklist', href: '/settings/surgery-checklist', icon: Scissors, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Safety checks ticked before each operation', module: 'surgery' },
   { label: 'Email', href: '/settings/integrations/email', icon: Mail, anyOf: ['integrations.manage', 'settings.manage'], group: 'Integrations', hint: 'Send client emails from your own Gmail, Outlook or clinic mailbox' },
   { label: 'WhatsApp', href: '/settings/integrations/whatsapp', icon: MessageCircle, anyOf: ['integrations.manage'], group: 'Integrations', hint: 'Send reminders and messages from your own WhatsApp Business number' },
+  { label: 'Your automations', href: '/settings/automations', icon: Workflow, anyOf: ['settings.manage', 'integrations.manage'], group: 'Automations', hint: 'Your own workflows: when something happens → send a message, wait, create a task' },
+  { label: 'Client notifications', href: '/settings/notifications', icon: BellRing, anyOf: ['settings.manage', 'integrations.manage'], group: 'Automations', hint: 'Booking confirmed, results ready, payment received… on WhatsApp or email' },
   { label: 'Livestock pregnancy lengths', href: '/settings/livestock', icon: Tractor, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Used to work out calving and lambing dates', module: 'livestock' },
 ];
 
