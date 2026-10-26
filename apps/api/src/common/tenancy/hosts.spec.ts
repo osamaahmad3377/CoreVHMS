@@ -55,6 +55,8 @@ describe('multi-clinic addresses', () => {
     withEnv({ BASE_DOMAIN: undefined }, () => {
       expect(isAllowedOrigin('https://nextcore.net.au', 'anything')).toBe(true);
       expect(isAllowedOrigin('https://other.nextcore.net.au', 'other.nextcore.net.au')).toBe(false);
+      expect(isAllowedOrigin('http://localhost:3000', 'localhost:3000')).toBe(true);
+      expect(isAllowedOrigin('http://localhost:3000', 'evil.com')).toBe(false);
     });
   });
 

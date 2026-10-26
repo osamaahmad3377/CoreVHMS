@@ -160,11 +160,12 @@ export class OnlineBookingService {
           return { id: c.id, name: c.user.name, jobTitle: c.jobTitle, branchIds: [...new Set(c.workingHours.map((h) => h.branchId))].filter((b) => access.has(b)) };
         })
         .filter((c) => c.branchIds.length);
-      const open = branches.filter((b) => vets.some((v) => v.branchIds.includes(b.id)));
+      // Every branch is listed; one with no vet on the roster is shown as "call to book" instead of vanishing.
+      const open = branches;
       return {
         clinic: { name: branding.brandName, phone: org.phone, country: org.country, currency: org.currency, branding },
         settings: { daysAhead: s.daysAhead, minNoticeHours: s.minNoticeHours, cancelNoticeHours: s.cancelNoticeHours, allowNewClients: s.allowNewClients, autoConfirm: s.autoConfirm, welcomeMessage: s.welcomeMessage },
-        branches: open.map((b) => ({ id: b.id, name: b.name, address: fullAddress(b), phone: b.phone, timezone: b.timezone })),
+        branches: open.map((b) => ({ id: b.id, name: b.name, address: fullAddress(b), phone: b.phone, timezone: b.timezone, vetCount: vets.filter((v) => v.branchIds.includes(b.id)).length })),
         appointmentTypes: types,
         clinicians: vets,
         species,

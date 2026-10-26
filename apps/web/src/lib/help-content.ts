@@ -267,7 +267,7 @@ export const GUIDES: HelpGuide[] = [
       'Reminders are created automatically every hour: care due soon, care overdue and appointments coming up. Clients who opted out get none, and nobody gets the same reminder twice.',
       'To message a client, open the client → Communication tab → Send message, and choose email, SMS or WhatsApp.',
       'Messages → Message log shows every message and whether it was sent. Click Retry on a failed one.',
-      'Settings → Reminder messages: change reminder timing and the wording of each message.',
+      'Settings → Automations: change when reminders go out and the wording of each message.',
     ],
     tips: ['SMS and WhatsApp need a provider to be connected before they can be delivered. Until then those messages are shown as “Not sent”, and reminders use email when the client has an address.'],
     links: [{ label: 'Messages', href: '/communications' }],
