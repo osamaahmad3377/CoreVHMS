@@ -41,7 +41,11 @@ export function tenantResolverMiddleware(tenancy: TenancyService) {
           if (t?.status === 'ACTIVE') store.tenant = tenantRef(t, t.plan ? await tenancy.offers() : undefined);
           if (store.tenant || open) return next();
           if (!t) return reject(res, 404, 'CLINIC_NOT_FOUND', 'No clinic uses this address. Check the spelling.');
-          if (t.status === 'SUSPENDED') return reject(res, 403, 'CLINIC_SUSPENDED', 'This clinic’s account is paused. Please contact NextCore support.');
+          if (t.status === 'SUSPENDED') {
+            if (t.pausedReason === 'TRIAL_ENDED') return reject(res, 403, 'TRIAL_ENDED', 'The free trial for this clinic has ended. Your records are kept safely — contact NextCore to choose a plan and carry on.');
+            if (t.pausedReason === 'UNPAID') return reject(res, 403, 'PAYMENT_OVERDUE', 'This clinic’s NextCore subscription payment is overdue, so the account is paused. Your records are kept safely — contact NextCore to pay and carry on.');
+            return reject(res, 403, 'CLINIC_SUSPENDED', 'This clinic’s account is paused. Please contact NextCore support.');
+          }
           return reject(res, 503, 'CLINIC_NOT_READY', 'This clinic is still being set up. Please try again in a few minutes.');
         }
         default:

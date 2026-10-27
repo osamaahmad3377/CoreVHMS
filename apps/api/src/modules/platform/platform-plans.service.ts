@@ -1,27 +1,25 @@
 import { Injectable, NotFoundException, OnApplicationBootstrap } from '@nestjs/common';
 import type { Plan } from '@prisma/client';
-import { DEFAULT_PLANS, type PlanFeature, type PlanInput, type PlatformPlan } from '@vcms/shared';
+import { DEFAULT_PLANS, recommendedPlanMapping, type PlanFeature, type PlanInput, type PlatformPlan } from '@vcms/shared';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { conflict, notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { multiClinic } from '../../common/tenancy/hosts';
-import { TenancyService } from '../../common/tenancy/tenancy.service';
+import { TenancyService, planOffer } from '../../common/tenancy/tenancy.service';
 
 const toPlan = (p: Plan, clinicCount: number): PlatformPlan => ({
-  id: p.id,
-  name: p.name,
-  description: p.description,
-  priceMonthlyMinor: p.priceMonthlyMinor,
-  currency: p.currency,
-  maxStaff: p.maxStaff,
-  maxBranches: p.maxBranches,
-  maxAutomations: p.maxAutomations,
+  ...planOffer(p),
   features: p.features as PlanFeature[],
   isActive: p.isActive,
   sortOrder: p.sortOrder,
   clinicCount,
 });
+
+/** The fields whose before/after the history keeps when a plan changes. */
+const TRACKED = ['name', 'priceMonthlyMinor', 'priceYearlyMinor', 'maxStaff', 'maxBranches', 'maxAutomations', 'maxCustomAutomations', 'extraBranchMinor', 'extraStaffMinor', 'trialDays', 'supportResponse', 'whatsappSupport', 'phoneSupport', 'trainingSessions', 'features', 'isActive'] as const;
+const changesOf = (before: Partial<Plan>, after: Partial<Plan>) =>
+  Object.fromEntries(TRACKED.filter((k) => JSON.stringify(before[k] ?? null) !== JSON.stringify(after[k] ?? null)).map((k) => [k, { from: before[k] ?? null, to: after[k] ?? null }]));
 
 /** Super admin: the plans clinics can be put on. They live in the platform database. */
 @Injectable()
@@ -96,14 +94,7 @@ export class PlatformPlansService implements OnApplicationBootstrap {
           entityType: 'Plan',
           entityId: id,
           summary: `${p.name} (${clinics.length} clinic${clinics.length === 1 ? '' : 's'})`,
-          changes: {
-            maxStaff: { from: before.maxStaff, to: p.maxStaff },
-            maxBranches: { from: before.maxBranches, to: p.maxBranches },
-            maxAutomations: { from: before.maxAutomations, to: p.maxAutomations },
-            features: { from: before.features, to: p.features },
-            isActive: { from: before.isActive, to: p.isActive },
-            priceMonthlyMinor: { from: before.priceMonthlyMinor, to: p.priceMonthlyMinor },
-          },
+          changes: changesOf(before, p),
           organizationId: null,
         },
         tx,
@@ -113,6 +104,44 @@ export class PlatformPlansService implements OnApplicationBootstrap {
     clinics.forEach((c) => this.tenancy.forget(c.slug));
     this.tenancy.forgetOffers();
     return toPlan(after, clinics.length);
+  }
+
+  /**
+   * Brings the plans in line with the recommended Starter, Professional and Premium (prices, limits and features).
+   * A plan with the same name is updated; the others take over the remaining active plans in order, so clinics on
+   * them move with their plan (Clinic → Professional, Hospital → Premium). Other plans are left as they are.
+   */
+  async applyRecommended() {
+    this.assertPlatform();
+    const existing = await this.prisma.control.plan.findMany();
+    const rows = recommendedPlanMapping(existing);
+    const touched = rows.flatMap((r) => (r.replaces ? [r.replaces.id] : []));
+    const clinics = await this.prisma.control.tenant.findMany({ where: { planId: { in: touched } }, select: { slug: true } });
+    await this.prisma.control.$transaction(async (tx) => {
+      for (const { recommended, replaces } of rows) {
+        const data = { ...recommended, currency: 'PKR', isActive: true };
+        if (replaces) {
+          await tx.plan.update({ where: { id: replaces.id }, data });
+          await this.audit.record(
+            {
+              action: 'platform.plan_updated',
+              entityType: 'Plan',
+              entityId: replaces.id,
+              summary: `${replaces.name === recommended.name ? recommended.name : `${replaces.name} → ${recommended.name}`} (recommended plans)`,
+              changes: changesOf(replaces, { ...recommended, isActive: true } as Partial<Plan>),
+              organizationId: null,
+            },
+            tx,
+          );
+        } else {
+          const p = await tx.plan.create({ data });
+          await this.audit.record({ action: 'platform.plan_created', entityType: 'Plan', entityId: p.id, summary: `${p.name} (recommended plans)`, organizationId: null }, tx);
+        }
+      }
+    });
+    clinics.forEach((c) => this.tenancy.forget(c.slug));
+    this.tenancy.forgetOffers();
+    return this.list();
   }
 
   /** Only a plan no clinic is on can be deleted; otherwise switch it off so no new clinic picks it. */

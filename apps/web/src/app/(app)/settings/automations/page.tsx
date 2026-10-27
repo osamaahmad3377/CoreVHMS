@@ -66,6 +66,8 @@ interface AutomationRow extends AutomationDraft {
   waiting: number;
   last30Days: Record<string, number>;
   updatedByName: string | null;
+  /** The ready-made recipe it is (null = the clinic's own); plans limit the two separately. */
+  recipeKey?: string | null;
 }
 interface Stats {
   total: number;
@@ -263,7 +265,7 @@ function AutomationCard({ a, options, full }: { a: AutomationRow; options?: Auto
             </div>
             <p className="text-xs text-muted-foreground">{a.lastRunAt ? `Last ${fmtDateTime(a.lastRunAt)}` : 'Not run yet'}</p>
           </div>
-          <Switch checked={!!a.isActive} disabled={toggle.isPending || (!!full && !a.isActive)} title={full && !a.isActive ? 'Your plan’s automations are all switched on. Switch one off, or upgrade your plan.' : undefined} onCheckedChange={(v) => toggle.mutate(v)} aria-label={`${a.name} on or off`} />
+          <Switch checked={!!a.isActive} disabled={toggle.isPending || (!!full && !a.isActive)} title={full && !a.isActive ? `Your plan’s ${a.recipeKey ? 'ready-made' : 'own'} automations are all switched on. Switch one off, or upgrade your plan.` : undefined} onCheckedChange={(v) => toggle.mutate(v)} aria-label={`${a.name} on or off`} />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="icon-sm" variant="ghost" aria-label={`More for ${a.name}`}>
@@ -416,23 +418,34 @@ function AutomationsPage() {
         <Kpi icon={Clock} label="Waiting now" value={s?.waiting ?? '—'} hint={s?.problems ? `${s.problems} not sent in 30 days` : 'Nothing went wrong lately'} tone="bg-gradient-to-br from-sky-500 to-indigo-600" />
       </div>
 
-      {plan.automations.max !== null && (
-        <div className={cn('flex flex-wrap items-center gap-4 rounded-2xl p-4 ring-1 ring-inset sm:p-5', plan.automations.canAdd ? 'surface-flat ring-foreground/5' : 'bg-warning/10 ring-warning/30')}>
-          <span className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-white', plan.automations.canAdd ? 'bg-gradient-to-br from-primary to-brand-2' : 'bg-gradient-to-br from-amber-500 to-orange-600')}>
+      {(plan.automations.max !== null || plan.customAutomations.max !== null) && (
+        <div className={cn('flex flex-wrap items-center gap-4 rounded-2xl p-4 ring-1 ring-inset sm:p-5', plan.automations.canAdd && plan.customAutomations.canAdd ? 'surface-flat ring-foreground/5' : 'bg-warning/10 ring-warning/30')}>
+          <span className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-white', plan.automations.canAdd && plan.customAutomations.canAdd ? 'bg-gradient-to-br from-primary to-brand-2' : 'bg-gradient-to-br from-amber-500 to-orange-600')}>
             <Zap className="h-5 w-5" />
           </span>
-          <div className="min-w-0 flex-1 basis-64">
-            <p className="font-semibold">
-              {plan.automations.used ?? '—'} of {plan.automations.max} automations switched on{plan.plan ? ` · ${plan.plan} plan` : ''}
-            </p>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-foreground/10" role="progressbar" aria-valuemin={0} aria-valuemax={plan.automations.max} aria-valuenow={plan.automations.used ?? 0}>
-              <div className={cn('h-full rounded-full', plan.automations.canAdd ? 'bg-primary' : 'bg-warning')} style={{ width: `${Math.min(100, ((plan.automations.used ?? 0) / plan.automations.max) * 100)}%` }} />
-            </div>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {plan.automations.canAdd ? 'Pick the ones that matter most to your clinic. Upgrade your plan to switch on more.' : 'You have reached your plan’s limit. Switch one off to use a different one, or upgrade your plan to switch on more.'}
+          <div className="grid min-w-0 flex-1 basis-72 gap-3 sm:grid-cols-2">
+            {([
+              ['Ready-made automations on', plan.automations],
+              ['Your own automations on', plan.customAutomations],
+            ] as const).map(([label, u]) => (
+              <div key={label} className="min-w-0">
+                <p className="text-sm font-semibold">
+                  {label}: {u.used ?? '—'} <span className="font-normal text-muted-foreground">of {u.max ?? 'unlimited'}</span>
+                </p>
+                {u.max !== null && (
+                  <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-foreground/10" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={u.max} aria-valuenow={u.used ?? 0}>
+                    <div className={cn('h-full rounded-full', u.canAdd ? 'bg-primary' : 'bg-warning')} style={{ width: `${Math.min(100, ((u.used ?? 0) / u.max) * 100)}%` }} />
+                  </div>
+                )}
+              </div>
+            ))}
+            <p className="text-sm text-muted-foreground sm:col-span-2">
+              {plan.automations.canAdd && plan.customAutomations.canAdd
+                ? `Your ${plan.plan ?? ''} plan: pick the ones that matter most. Upgrade your plan to switch on more.`
+                : 'You have reached your plan’s limit. Switch one off to use a different one, or upgrade your plan to switch on more.'}
             </p>
           </div>
-          <Button variant={plan.automations.canAdd ? 'outline' : 'default'} asChild>
+          <Button variant={plan.automations.canAdd && plan.customAutomations.canAdd ? 'outline' : 'default'} asChild>
             <Link href="/settings/plan">See plans</Link>
           </Button>
         </div>
@@ -450,7 +463,7 @@ function AutomationsPage() {
         </TabsList>
         <TabsContent value="mine" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
           {rows.length ? (
-            rows.map((a) => <AutomationCard key={a.id} a={a} options={options.data} full={!plan.automations.canAdd} />)
+            rows.map((a) => <AutomationCard key={a.id} a={a} options={options.data} full={a.recipeKey ? !plan.automations.canAdd : !plan.customAutomations.canAdd} />)
           ) : (
             <Card className="grid gap-5 p-6">
               <div>

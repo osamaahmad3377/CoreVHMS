@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import type { Organization } from '@prisma/client';
-import { FULL_ACCESS, type BranchInput, type Branding, type BrandingUpdateInput, type ClinicPlanView, type OrganizationUpdateInput, type PlanFeature, type PlanOffer, type UpgradeRequestInput } from '@vcms/shared';
+import type { Organization, Plan, Tenant } from '@prisma/client';
+import { FULL_ACCESS, clinicBill, formatMoney, paymentState, receiptNumber, type BranchInput, type Branding, type BrandingUpdateInput, type ClinicPlanView, type OrganizationUpdateInput, type PlanFeature, type PlanOffer, type UpgradeRequestInput } from '@vcms/shared';
 import { AuditService, diff } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { notFound, ruleViolation } from '../../common/http/errors';
@@ -8,6 +8,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { MailService } from '../../common/mail/mail.service';
 import { assertWithinLimit, currentEntitlements } from '../../common/tenancy/entitlements';
 import { multiClinic } from '../../common/tenancy/hosts';
+import { planOffer } from '../../common/tenancy/tenancy.service';
 
 /**
  * A clinic's branding as the web app uses it. `base` is where the images are served: the signed-in
@@ -94,40 +95,111 @@ export class OrganizationsService {
 
   /** The clinic's plan and how much of it is used (Settings → Your plan). */
   async plan(): Promise<ClinicPlanView> {
-    const [staff, branches, automations] = await Promise.all([
+    const [staff, branches, automations, customAutomations] = await Promise.all([
       this.prisma.raw.membership.count({ where: { status: { in: ['ACTIVE', 'INVITED'] } } }),
       this.prisma.raw.branch.count({ where: { isActive: true } }),
-      this.prisma.db.automation.count({ where: { isActive: true } }),
+      this.prisma.db.automation.count({ where: { isActive: true, recipeKey: { not: null } } }),
+      this.prisma.db.automation.count({ where: { isActive: true, recipeKey: null } }),
     ]);
-    return { entitlements: currentEntitlements() ?? FULL_ACCESS, usage: { staff, branches, automations }, plans: await this.offers() };
+    const tenant = await this.hostedClinic();
+    return {
+      entitlements: currentEntitlements() ?? FULL_ACCESS,
+      usage: { staff, branches, automations, customAutomations },
+      plans: await this.offers(),
+      pendingRequest: await this.pendingRequest(),
+      billing: tenant?.plan ? await this.billing(tenant as typeof tenant & { plan: NonNullable<typeof tenant.plan> }, { staff, branches }) : null,
+      currentPlan: tenant?.plan ? planOffer(tenant.plan) : null,
+    };
+  }
+
+  /** How the clinic pays NextCore: its bill, what it has paid up to, and its receipts. */
+  private async billing(tenant: Tenant & { plan: Plan }, seats: { staff: number; branches: number }): Promise<NonNullable<ClinicPlanView['billing']>> {
+    const bill = clinicBill(tenant.plan, tenant, new Date(), seats);
+    const payments = await this.prisma.control.clinicPayment.findMany({ where: { tenantId: tenant.id, voidedAt: null }, orderBy: { paidAt: 'desc' }, take: 24 });
+    return {
+      cycle: tenant.billingCycle,
+      bill,
+      paidUntil: tenant.paidUntil?.toISOString() ?? null,
+      payment: paymentState({ bill, paidUntil: tenant.paidUntil, trialEndsAt: tenant.trialEndsAt }),
+      payments: payments.map((p) => ({
+        id: p.id,
+        receipt: receiptNumber(p.number),
+        paidAt: p.paidAt.toISOString(),
+        amountMinor: p.amountMinor,
+        currency: p.currency,
+        billingCycle: p.billingCycle,
+        paidMonths: p.paidMonths,
+        freeMonths: p.freeMonths,
+        periodStart: p.periodStart.toISOString(),
+        periodEnd: p.periodEnd.toISOString(),
+        method: p.method,
+      })),
+    };
+  }
+
+  /** This clinic's record in the platform database (hosted clinics only). */
+  private async hostedClinic() {
+    const ref = RequestContext.get()?.tenant;
+    if (!multiClinic() || !ref) return null;
+    return this.prisma.control.tenant.findUnique({ where: { id: ref.id }, include: { plan: true } });
+  }
+
+  /** The plan change (or extras) this clinic asked for and NextCore has not handled yet (hosted clinics only). */
+  private async pendingRequest(): Promise<ClinicPlanView['pendingRequest']> {
+    const tenant = RequestContext.get()?.tenant;
+    if (!multiClinic() || !tenant) return null;
+    const r = await this.prisma.control.planRequest.findFirst({ where: { tenantId: tenant.id, status: 'PENDING' }, include: { toPlan: true }, orderBy: { createdAt: 'desc' } });
+    return r ? { kind: r.kind, planId: r.toPlanId, planName: r.toPlan?.name ?? null, quantity: r.quantity, createdAt: r.createdAt.toISOString() } : null;
   }
 
   /** Plans a hosted clinic can move to (none without multi-clinic hosting). */
   private async offers(): Promise<PlanOffer[]> {
     if (!multiClinic()) return [];
     const plans = await this.prisma.control.plan.findMany({ where: { isActive: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
-    return plans.map((p) => ({ id: p.id, name: p.name, description: p.description, priceMonthlyMinor: p.priceMonthlyMinor, currency: p.currency, maxStaff: p.maxStaff, maxBranches: p.maxBranches, maxAutomations: p.maxAutomations, features: p.features as PlanFeature[] }));
+    return plans.map(planOffer);
   }
 
-  /** The owner asks NextCore to move the clinic to another plan: recorded, and emailed to the platform admins. */
+  /**
+   * The owner asks NextCore for another plan, or for more branches / staff accounts on the current one: recorded
+   * for the super admin to approve (one open request per clinic; a newer one replaces it) and emailed to them.
+   */
   async requestUpgrade(input: UpgradeRequestInput) {
     const ctx = RequestContext.require();
-    const plan = (await this.offers()).find((p) => p.id === input.planId);
-    if (!plan) throw notFound('Plan');
     const current = currentEntitlements()?.planName ?? 'no plan';
-    if (plan.name === current) throw ruleViolation('SAME_PLAN', `You are already on the ${plan.name} plan.`);
+    let what: string;
+    let plan: PlanOffer | undefined;
+    if (input.kind === 'PLAN') {
+      plan = (await this.offers()).find((p) => p.id === input.planId);
+      if (!plan) throw notFound('Plan');
+      if (plan.name === current) throw ruleViolation('SAME_PLAN', `You are already on the ${plan.name} plan.`);
+      what = `the ${plan.name} plan`;
+    } else {
+      const own = (await this.hostedClinic())?.plan;
+      const branch = input.kind === 'EXTRA_BRANCH';
+      const price = branch ? own?.extraBranchMinor : own?.extraStaffMinor;
+      const limited = branch ? own?.maxBranches != null : own?.maxStaff != null;
+      if (!own || !limited || price == null) throw ruleViolation('EXTRA_NOT_OFFERED', `Your plan does not offer extra ${branch ? 'branches' : 'staff accounts'}. Upgrade your plan instead.`);
+      const n = input.quantity;
+      what = `${n} extra ${branch ? (n === 1 ? 'branch' : 'branches') : n === 1 ? 'staff account' : 'staff accounts'} (${formatMoney(n * price, own.currency).replace(/\.00$/, '')} a month)`;
+    }
     const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: ctx.organizationId! } });
-    await this.prisma.db.$transaction((tx) => this.audit.record({ action: 'organization.plan_upgrade_requested', entityType: 'Organization', entityId: org.id, summary: `${current} → ${plan.name}${input.note ? ` · ${input.note}` : ''}` }, tx));
-    const admins = await this.prisma.control.user.findMany({ where: { isPlatformAdmin: true, status: 'ACTIVE' }, select: { email: true } });
+    await this.prisma.db.$transaction((tx) => this.audit.record({ action: 'organization.plan_upgrade_requested', entityType: 'Organization', entityId: org.id, summary: `${current}: ${what}${input.note ? ` · ${input.note}` : ''}` }, tx));
     const tenant = RequestContext.get()?.tenant;
+    if (tenant) {
+      const data = { kind: input.kind, quantity: input.kind === 'PLAN' ? 1 : input.quantity, toPlanId: plan?.id ?? null, fromPlanName: currentEntitlements()?.planName ?? null, note: input.note ?? null, requestedByName: ctx.userName ?? null };
+      const open = await this.prisma.control.planRequest.findFirst({ where: { tenantId: tenant.id, status: 'PENDING' } });
+      if (open) await this.prisma.control.planRequest.update({ where: { id: open.id }, data: { ...data, createdAt: new Date() } });
+      else await this.prisma.control.planRequest.create({ data: { ...data, tenantId: tenant.id } });
+    }
+    const admins = await this.prisma.control.user.findMany({ where: { isPlatformAdmin: true, status: 'ACTIVE' }, select: { email: true } });
     for (const a of admins) {
       await this.mail.send({
         to: a.email,
-        subject: `Plan change request: ${org.name} → ${plan.name}`,
-        text: [`${ctx.userName ?? 'The clinic owner'} at ${org.name}${tenant ? ` (${tenant.slug})` : ''} asked to move from ${current} to ${plan.name}.`, input.note ? `Note: ${input.note}` : '', org.phone ? `Clinic phone: ${org.phone}` : '', '', 'Change it in the super admin: Clinics → the clinic → Plan.'].filter((x) => x !== null).join('\n'),
+        subject: `Plan request from ${org.name}: ${what}`,
+        text: [`${ctx.userName ?? 'The clinic owner'} at ${org.name}${tenant ? ` (${tenant.slug})` : ''} (now on ${current}) asked for ${what}.`, input.note ? `Note: ${input.note}` : '', org.phone ? `Clinic phone: ${org.phone}` : '', '', 'Approve it in the super admin: Clinics → Plan requests.'].join('\n'),
       });
     }
-    return { ok: true, plan: plan.name };
+    return { ok: true, plan: plan?.name ?? null, what };
   }
 
   async branding() {

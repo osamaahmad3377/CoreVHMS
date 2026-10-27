@@ -5,9 +5,10 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { Public, RequirePermissions, SkipCsrf } from '../../common/auth/decorators';
 import { ApiZodBody, zp } from '../../common/http/zod';
+import { assertFeature } from '../../common/tenancy/entitlements';
 import { WebhookBody, WhatsAppService } from './whatsapp.service';
 
-/** Settings → Integrations → WhatsApp (clinic owner / staff with integrations.manage). */
+/** Settings → Integrations → WhatsApp (clinic owner / staff with integrations.manage). Needs the plan's WhatsApp Business feature; disconnecting is always allowed. */
 @ApiTags('integrations')
 @Controller('integrations/whatsapp')
 export class WhatsAppController {
@@ -24,6 +25,7 @@ export class WhatsAppController {
   @RequirePermissions('integrations.manage')
   @ApiZodBody(whatsappConnectSchema)
   connect(@Body(zp(whatsappConnectSchema)) body: z.infer<typeof whatsappConnectSchema>) {
+    assertFeature('whatsapp');
     return this.whatsapp.connect({ ...body, accessToken: body.accessToken || undefined, appSecret: body.appSecret || undefined });
   }
 
@@ -31,6 +33,7 @@ export class WhatsAppController {
   @HttpCode(200)
   @RequirePermissions('integrations.manage')
   verify() {
+    assertFeature('whatsapp');
     return this.whatsapp.verify();
   }
 
@@ -38,6 +41,7 @@ export class WhatsAppController {
   @RequirePermissions('integrations.manage')
   @ApiZodBody(whatsappSettingsSchema)
   settings(@Body(zp(whatsappSettingsSchema)) body: z.infer<typeof whatsappSettingsSchema>) {
+    assertFeature('whatsapp');
     return this.whatsapp.updateSettings(body);
   }
 
@@ -50,6 +54,7 @@ export class WhatsAppController {
   @Get('templates')
   @RequirePermissions('integrations.manage')
   templates() {
+    assertFeature('whatsapp');
     return this.whatsapp.templates();
   }
 
@@ -57,6 +62,7 @@ export class WhatsAppController {
   @RequirePermissions('integrations.manage')
   @ApiZodBody(whatsappTemplateLinkSchema)
   link(@Body(zp(whatsappTemplateLinkSchema)) body: z.infer<typeof whatsappTemplateLinkSchema>) {
+    assertFeature('whatsapp');
     return this.whatsapp.saveLink({ ...body, templateName: body.templateName || undefined, language: body.language || undefined });
   }
 
@@ -65,6 +71,7 @@ export class WhatsAppController {
   @RequirePermissions('integrations.manage')
   @ApiZodBody(whatsappTestSchema)
   test(@Body(zp(whatsappTestSchema)) body: z.infer<typeof whatsappTestSchema>) {
+    assertFeature('whatsapp');
     return this.whatsapp.sendTest(body);
   }
 }

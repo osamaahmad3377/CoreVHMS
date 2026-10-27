@@ -10,7 +10,7 @@ import { useSession } from '@/lib/session';
  */
 export function usePlanUsage() {
   const { session } = useSession();
-  const planned = !!session.entitlements && (session.entitlements.maxStaff !== null || session.entitlements.maxBranches !== null || session.entitlements.maxAutomations !== null);
+  const planned = !!session.entitlements && (session.entitlements.maxStaff !== null || session.entitlements.maxBranches !== null || session.entitlements.maxAutomations !== null || session.entitlements.maxCustomAutomations !== null);
   const q = useQuery({ queryKey: ['clinic-plan'], queryFn: () => api.get<ClinicPlanView>('/organization/plan'), enabled: planned, staleTime: 0 });
   const e = q.data?.entitlements ?? session.entitlements;
   const usage = q.data?.usage;
@@ -19,7 +19,10 @@ export function usePlanUsage() {
     plan: e?.planName ?? null,
     staff: { used: usage?.staff, max: e?.maxStaff ?? null, canAdd: room(usage?.staff, e?.maxStaff) },
     branches: { used: usage?.branches, max: e?.maxBranches ?? null, canAdd: room(usage?.branches, e?.maxBranches) },
+    /** Ready-made automations switched on. */
     automations: { used: usage?.automations, max: e?.maxAutomations ?? null, canAdd: room(usage?.automations, e?.maxAutomations) },
+    /** The clinic's own automations switched on. */
+    customAutomations: { used: usage?.customAutomations, max: e?.maxCustomAutomations ?? null, canAdd: room(usage?.customAutomations, e?.maxCustomAutomations) },
   };
 }
 

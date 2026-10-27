@@ -34,7 +34,8 @@ export function assertFeature(feature: PlanFeature) {
 const LIMIT_TEXT = {
   staff: { limit: (e: Entitlements) => e.maxStaff, noun: 'staff accounts', hint: 'Remove or pause someone', more: 'add more staff' },
   branches: { limit: (e: Entitlements) => e.maxBranches, noun: 'branches', hint: 'Pause a branch you no longer use', more: 'add more branches' },
-  automations: { limit: (e: Entitlements) => e.maxAutomations, noun: 'automations switched on', hint: 'Switch one off', more: 'switch on more' },
+  automations: { limit: (e: Entitlements) => e.maxAutomations, noun: 'ready-made automations switched on', hint: 'Switch one off', more: 'switch on more' },
+  customAutomations: { limit: (e: Entitlements) => e.maxCustomAutomations, noun: 'of your own automations switched on', hint: 'Switch one off', more: 'switch on more of your own' },
 } as const;
 
 /**

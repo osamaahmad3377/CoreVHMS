@@ -1,4 +1,4 @@
-import { AUTOMATION_RECIPES, AUTOMATION_TRIGGERS, TRIGGER_DEFAULTS, automationSchema, conditionsMet, sampleVars, TRIGGER_INFO, waitMs } from './automations';
+import { recipeKeyOf, AUTOMATION_RECIPES, AUTOMATION_TRIGGERS, TRIGGER_DEFAULTS, automationSchema, conditionsMet, sampleVars, TRIGGER_INFO, waitMs } from './automations';
 
 describe('automation conditions', () => {
   const facts = { speciesId: 'dog', branchId: 'lhr', appointmentTypeId: 'vacc', hasWhatsApp: true, hasEmail: false, amountMinor: 600000, source: 'ONLINE' as const };
@@ -70,5 +70,18 @@ describe('automation rules', () => {
       for (const m of `${d.subject} ${d.body} ${d.taskTitle}`.matchAll(/\{\{(\w+)\}\}/g)) expect([t, allowed.has(m[1])]).toEqual([t, true]);
       expect(automationSchema.safeParse({ name: 'x', trigger: t, offset: 7, steps: [{ type: 'SEND_MESSAGE', body: d.body }, { type: 'CREATE_TASK', title: d.taskTitle }] }).success).toBe(true);
     }
+  });
+});
+
+describe('ready-made or the clinic’s own', () => {
+  it('stays ready-made while it keeps the recipe’s shape, whatever the wording', () => {
+    const r = AUTOMATION_RECIPES.find((x) => x.key === 'payment')!;
+    const a = { ...r.automation, name: 'Thanks for paying', conditions: r.automation.conditions ?? [] } as never;
+    expect(recipeKeyOf(a, 'payment')).toBe('payment');
+    // Older automations are recognised by the recipe's name.
+    expect(recipeKeyOf({ ...r.automation, conditions: [] } as never)).toBe('payment');
+    // A different shape (an extra step) makes it the clinic's own; an unknown key counts for nothing.
+    expect(recipeKeyOf({ ...r.automation, conditions: [], steps: [{ type: 'WAIT', amount: 1, unit: 'HOURS' }, ...r.automation.steps] } as never, 'payment')).toBeNull();
+    expect(recipeKeyOf({ ...r.automation, name: 'Mine', conditions: [] } as never, 'nope')).toBeNull();
   });
 });

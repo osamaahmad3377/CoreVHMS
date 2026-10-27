@@ -28,24 +28,122 @@ enum TenantStatus {
 /// A subscription plan the super admin offers: what a clinic may use. Lives in the platform database
 /// (the table exists, empty, in clinic databases too). Null limits mean "unlimited".
 model Plan {
-  id                String   @id @default(uuid()) @db.Uuid
-  name              String   @unique
-  description       String?
+  id                   String   @id @default(uuid()) @db.Uuid
+  name                 String   @unique
+  description          String?
   /// Monthly price in minor units, for the super admin's reference (billing itself is outside the app).
-  priceMonthlyMinor Int      @default(0)
-  currency          String   @default("PKR") @db.Char(3)
-  maxStaff          Int?
-  maxBranches       Int?
-  /// How many automations may be switched on at once; null = no limit.
-  maxAutomations    Int?
+  priceMonthlyMinor    Int      @default(0)
+  currency             String   @default("PKR") @db.Char(3)
+  maxStaff             Int?
+  maxBranches          Int?
+  /// How many ready-made automations may be switched on at once; null = no limit.
+  maxAutomations       Int?
+  /// How many of the clinic's own automations (easy creator or builder) may be switched on; null = no limit.
+  maxCustomAutomations Int?
+  /// Yearly price in minor units (e.g. pay for 10 months, get 12); null = no yearly option.
+  priceYearlyMinor     Int?
+  /// Monthly price of one branch / staff account above the plan's limit; null = not offered.
+  extraBranchMinor     Int?
+  extraStaffMinor      Int?
+  /// Free trial length for new clinics on this plan (0 = none).
+  trialDays            Int      @default(0)
+  /// Support that comes with the plan.
+  supportResponse      String?
+  whatsappSupport      Boolean  @default(false)
+  phoneSupport         Boolean  @default(false)
+  trainingSessions     Int      @default(0)
   /// Feature keys from the plan catalogue (packages/shared/src/plans.ts).
-  features          String[] @default([])
-  isActive          Boolean  @default(true)
-  sortOrder         Int      @default(0)
-  createdAt         DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime @updatedAt @db.Timestamptz(3)
+  features             String[] @default([])
+  isActive             Boolean  @default(true)
+  sortOrder            Int      @default(0)
+  createdAt            DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime @updatedAt @db.Timestamptz(3)
 
-  tenants Tenant[]
+  tenants  Tenant[]
+  requests PlanRequest[]
+}
+
+enum PlanRequestKind {
+  PLAN
+  EXTRA_BRANCH
+  EXTRA_STAFF
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
+enum PlanRequestStatus {
+  PENDING
+  APPROVED
+  DISMISSED
+}
+
+/// A clinic owner's request to move to another plan (Settings → Your plan), for the super admin to approve or dismiss.
+model PlanRequest {
+  id              String            @id @default(uuid()) @db.Uuid
+  tenantId        String            @db.Uuid
+  tenant          Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  /// A different plan, or more branches / staff accounts on the current one.
+  kind            PlanRequestKind   @default(PLAN)
+  /// How many extra branches or staff accounts (EXTRA_* only).
+  quantity        Int               @default(1)
+  /// The plan the clinic was on when it asked (null = no plan).
+  fromPlanName    String?
+  toPlanId        String?           @db.Uuid
+  toPlan          Plan?             @relation(fields: [toPlanId], references: [id], onDelete: Cascade)
+  note            String?
+  requestedByName String?
+  status          PlanRequestStatus @default(PENDING)
+  createdAt       DateTime          @default(now()) @db.Timestamptz(3)
+  resolvedAt      DateTime?         @db.Timestamptz(3)
+  resolvedById    String?           @db.Uuid
+
+  @@index([status, createdAt])
+  @@index([tenantId, status])
+}
+
+enum PlatformPaymentMethod {
+  BANK_TRANSFER
+  CASH
+  JAZZCASH
+  EASYPAISA
+  CARD
+  CHEQUE
+  OTHER
+}
+
+/// A payment a clinic made to NextCore for its subscription. Never deleted: a mistake is cancelled (voided) with a reason.
+model ClinicPayment {
+  id             String                @id @default(uuid()) @db.Uuid
+  /// Receipt number (shown as NC-000012).
+  number         Int                   @unique @default(autoincrement())
+  tenantId       String                @db.Uuid
+  tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  /// The plan the clinic was on when it paid.
+  planName       String?
+  billingCycle   BillingCycle
+  amountMinor    Int
+  currency       String                @db.Char(3)
+  /// Months paid for, and free months given on top (e.g. a year upfront plus one free month).
+  paidMonths     Int
+  freeMonths     Int                   @default(0)
+  periodStart    DateTime              @db.Timestamptz(3)
+  periodEnd      DateTime              @db.Timestamptz(3)
+  paidAt         DateTime              @db.Timestamptz(3)
+  method         PlatformPaymentMethod
+  reference      String?
+  note           String?
+  recordedById   String?               @db.Uuid
+  recordedByName String?
+  createdAt      DateTime              @default(now()) @db.Timestamptz(3)
+  voidedAt       DateTime?             @db.Timestamptz(3)
+  voidedByName   String?
+  voidReason     String?
+
+  @@index([tenantId, paidAt])
+  @@index([paidAt])
 }
 
 model Tenant {
@@ -73,14 +171,25 @@ model Tenant {
   updatedAt         DateTime     @updatedAt @db.Timestamptz(3)
 
   /// The clinic's plan; null = no plan assigned (full access, no limits).
-  planId              String?   @db.Uuid
-  plan                Plan?     @relation(fields: [planId], references: [id], onDelete: Restrict)
+  planId              String?         @db.Uuid
+  plan                Plan?           @relation(fields: [planId], references: [id], onDelete: Restrict)
   /// Per-clinic exceptions to the plan (null / empty = follow the plan).
   staffLimitOverride  Int?
   branchLimitOverride Int?
-  extraFeatures       String[]  @default([])
-  removedFeatures     String[]  @default([])
-  planChangedAt       DateTime? @db.Timestamptz(3)
+  extraFeatures       String[]        @default([])
+  removedFeatures     String[]        @default([])
+  planChangedAt       DateTime?       @db.Timestamptz(3)
+  planRequests        PlanRequest[]
+  /// How the clinic pays (the yearly price, or the monthly one).
+  billingCycle        BillingCycle    @default(MONTHLY)
+  /// Free trial (or free period) ends; null = paying. At the end the clinic moves to trialThenPlanId, or is paused.
+  trialEndsAt         DateTime?       @db.Timestamptz(3)
+  trialThenPlanId     String?         @db.Uuid
+  /// Why the clinic is paused (e.g. TRIAL_ENDED), shown at its sign-in page.
+  pausedReason        String?
+  /// The end of the period the clinic has paid for (from its payments); null = nothing recorded.
+  paidUntil           DateTime?       @db.Timestamptz(3)
+  payments            ClinicPayment[]
 
   @@index([status])
   @@index([planId])
@@ -4879,6 +4988,8 @@ model Automation {
   cooldownDays   Int?
   conditions     Json      @default("[]")
   steps          Json
+  /// The ready-made recipe this automation is (null = the clinic's own); plans limit the two separately.
+  recipeKey      String?
   runCount       Int       @default(0)
   lastRunAt      DateTime? @db.Timestamptz(3)
   createdByName  String?

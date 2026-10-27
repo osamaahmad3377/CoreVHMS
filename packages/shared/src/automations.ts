@@ -273,6 +273,8 @@ export const automationSchema = z
     cooldownDays: z.coerce.number().int().min(1).max(365).nullish(),
     conditions: z.array(automationConditionSchema).max(10).default([]),
     steps: z.array(automationStepSchema).min(1, 'Add at least one step').max(12),
+    /** The ready-made recipe it was made from (kept while it keeps the recipe's shape). */
+    recipeKey: z.string().max(60).nullish(),
   })
   .superRefine((a, ctx) => {
     if (a.sendFromHour != null && a.sendToHour != null && a.sendToHour <= a.sendFromHour) ctx.addIssue({ code: 'custom', path: ['sendToHour'], message: 'The sending hours must end after they start' });
@@ -747,4 +749,13 @@ export function sameAutomationShape(a: Shaped, b: Shaped): boolean {
 /** Allowed without the full builder: easy, or shaped like a ready-made recipe. */
 export function fitsWithoutBuilder(a: Shaped): boolean {
   return isEasyAutomation(a) || AUTOMATION_RECIPES.some((r) => sameAutomationShape(a, r.automation as Shaped));
+}
+
+/**
+ * The ready-made recipe an automation is: the recipe it was made from (or, for older ones, the recipe with its
+ * name) while it keeps that recipe's shape — wording, timing and animals can change. Null = the clinic's own.
+ */
+export function recipeKeyOf(a: Shaped & { name?: string }, key?: string | null): string | null {
+  const r = (key ? AUTOMATION_RECIPES.find((x) => x.key === key) : undefined) ?? (a.name ? AUTOMATION_RECIPES.find((x) => x.automation.name === a.name) : undefined);
+  return r && sameAutomationShape(a, r.automation as Shaped) ? r.key : null;
 }

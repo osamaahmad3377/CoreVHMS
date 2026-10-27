@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { PlatformClinic } from '@vcms/shared';
-import { Check, Copy, ExternalLink, KeyRound, Loader2, MessageCircle, MoreHorizontal, Pause, Play, RotateCcw } from 'lucide-react';
+import { Ban, Check, Copy, ExternalLink, KeyRound, Loader2, Mail, MessageCircle, MoreHorizontal, Pause, Play, ReceiptText, RotateCcw } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirm } from '@/components/confirm';
@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { api } from '@/lib/api';
 import { fmtDateTime } from '@/lib/format';
+import { canRemind, useBillingActions } from './billing-ui';
 
 export const STATUS: Record<PlatformClinic['status'], { label: string; hint: string; variant: 'success' | 'info' | 'warning' | 'destructive' }> = {
   ACTIVE: { label: 'Ready', hint: 'Staff can sign in.', variant: 'success' },
@@ -129,6 +130,7 @@ export function useClinicActions(onOwnerAccess: (r: OwnerAccess) => void) {
     onSuccess: (r, { action }) => {
       qc.invalidateQueries({ queryKey: ['platform-clinics'] });
       qc.invalidateQueries({ queryKey: ['platform-clinic'] });
+      qc.invalidateQueries({ queryKey: ['platform-billing-summary'] });
       if (action === 'owner-password') onOwnerAccess(r as OwnerAccess);
       else toast.success({ suspend: 'Clinic paused', reactivate: 'Clinic reactivated — staff can sign in again', retry: 'Trying the set-up again' }[action]);
     },
@@ -157,19 +159,26 @@ export function useClinicActions(onOwnerAccess: (r: OwnerAccess) => void) {
   return { run, pending: act.isPending ? act.variables : undefined };
 }
 
-/** The ⋯ menu for a clinic. */
-export function ClinicActionsMenu({ clinic: c, run }: { clinic: PlatformClinic; run: (c: PlatformClinic, a: ClinicAction) => void }) {
+/** The ⋯ menu for a clinic: billing (record a payment, remind, pause for non-payment) and the clinic itself. */
+export function ClinicActionsMenu({ clinic: c, run, onRecordPayment }: { clinic: PlatformClinic; run: (c: PlatformClinic, a: ClinicAction) => void; onRecordPayment?: (c: PlatformClinic) => void }) {
+  const billing = useBillingActions();
+  const billable = !!c.planId && (c.status === 'ACTIVE' || c.status === 'SUSPENDED');
+  const overdue = c.status === 'ACTIVE' && (c.payment.kind === 'OVERDUE' || c.payment.kind === 'UNPAID');
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon-sm" aria-label={`More actions for ${c.name}`} onClick={(e) => e.stopPropagation()}><MoreHorizontal /></Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+        {billable && onRecordPayment && <DropdownMenuItem onSelect={() => onRecordPayment(c)}><ReceiptText /> Record payment</DropdownMenuItem>}
+        {canRemind(c) && <DropdownMenuItem onSelect={() => billing.remind(c)}><Mail /> Send payment reminder</DropdownMenuItem>}
+        {(billable && onRecordPayment) || canRemind(c) ? <DropdownMenuSeparator /> : null}
         {c.status === 'ACTIVE' && (
           <>
             <DropdownMenuItem asChild><a href={`${c.address}/login`} target="_blank" rel="noreferrer"><ExternalLink /> Open sign-in page</a></DropdownMenuItem>
             <DropdownMenuItem onSelect={() => run(c, 'owner-password')}><KeyRound /> New owner password</DropdownMenuItem>
             <DropdownMenuSeparator />
+            {overdue && <DropdownMenuItem onSelect={() => billing.pauseUnpaid(c)}><Ban /> Pause for non-payment</DropdownMenuItem>}
             <DropdownMenuItem onSelect={() => run(c, 'suspend')}><Pause /> Pause clinic</DropdownMenuItem>
           </>
         )}

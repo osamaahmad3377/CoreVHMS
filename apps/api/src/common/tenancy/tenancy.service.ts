@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Plan, Tenant } from '@prisma/client';
-import { resolveEntitlements, type PlanBrief, type PlanFeature } from '@vcms/shared';
+import { resolveEntitlements, type PlanBrief, type PlanFeature, type PlanOffer } from '@vcms/shared';
 import { RequestContext, TenantRef } from '../context/request-context';
 import { PrismaService } from '../prisma/prisma.service';
 import { multiClinic } from './hosts';
@@ -31,7 +31,23 @@ export const planBrief = (p: Plan): PlanBrief => ({
   maxStaff: p.maxStaff,
   maxBranches: p.maxBranches,
   maxAutomations: p.maxAutomations,
+  maxCustomAutomations: p.maxCustomAutomations,
   features: p.features as PlanFeature[],
+});
+
+/** A plan as clinics see it (Settings → Your plan): price, limits, extras, trial, support and features. */
+export const planOffer = (p: Plan): PlanOffer => ({
+  ...planBrief(p),
+  id: p.id,
+  description: p.description,
+  priceYearlyMinor: p.priceYearlyMinor,
+  extraBranchMinor: p.extraBranchMinor,
+  extraStaffMinor: p.extraStaffMinor,
+  trialDays: p.trialDays,
+  supportResponse: p.supportResponse,
+  whatsappSupport: p.whatsappSupport,
+  phoneSupport: p.phoneSupport,
+  trainingSessions: p.trainingSessions,
 });
 
 /** Looks up hosted clinics in the platform database and runs work against each clinic's database. */

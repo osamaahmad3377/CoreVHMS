@@ -1,6 +1,6 @@
 'use client';
 import { useQueryClient } from '@tanstack/react-query';
-import { Building2, LayoutList, LogOut, ShieldCheck } from 'lucide-react';
+import { Building2, LayoutDashboard, LayoutList, LogOut, ReceiptText, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
@@ -53,23 +53,25 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
         <header className="glass mx-auto flex h-14 max-w-6xl items-center gap-3 rounded-2xl border border-[hsl(var(--glass-edge))] px-4 shadow-card">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/favicon.svg" alt="" className="h-7 w-7" />
-          <span className="font-semibold tracking-tight">NextCore</span>
-          <span className="flex items-center gap-1 rounded-pill bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary ring-1 ring-inset ring-primary/20">
+          <span className="hidden font-semibold tracking-tight sm:inline">NextCore</span>
+          <span className="hidden items-center gap-1 rounded-pill bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary ring-1 ring-inset ring-primary/20 lg:flex">
             <ShieldCheck className="h-3.5 w-3.5" /> Super admin
           </span>
-          <nav aria-label="Super admin" className={cn(tabListClass, 'ml-4')}>
+          <nav aria-label="Super admin" className={cn(tabListClass, 'ml-2 lg:ml-4')}>
             {[
-              { href: '/platform', label: 'Clinics', icon: Building2, active: pathname === '/platform' || pathname.startsWith('/platform/clinics') },
+              { href: '/platform', label: 'Dashboard', icon: LayoutDashboard, active: pathname === '/platform' },
+              { href: '/platform/clinics', label: 'Clinics', icon: Building2, active: pathname.startsWith('/platform/clinics') },
+              ...(session.data.permissions.includes('platform.billing.manage') ? [{ href: '/platform/payments', label: 'Payments', icon: ReceiptText, active: pathname.startsWith('/platform/payments') }] : []),
               ...(session.data.permissions.includes('platform.plans.manage') ? [{ href: '/platform/plans', label: 'Plans', icon: LayoutList, active: pathname.startsWith('/platform/plans') }] : []),
             ].map((i) => (
-              <Link key={i.href} href={i.href} aria-current={i.active ? 'page' : undefined} className={tabTriggerClass()}>
-                <i.icon className="h-4 w-4" /> {i.label}
+              <Link key={i.href} href={i.href} aria-current={i.active ? 'page' : undefined} className={tabTriggerClass()} title={i.label}>
+                <i.icon className="h-4 w-4" /> <span className="hidden md:inline">{i.label}</span>
               </Link>
             ))}
           </nav>
           <div className="ml-auto flex items-center gap-2">
-            <span className="hidden text-sm text-muted-foreground sm:inline">{session.data.user.name}</span>
-            <Button variant="ghost" size="sm" onClick={logout}><LogOut /> Sign out</Button>
+            <span className="hidden text-sm text-muted-foreground xl:inline">{session.data.user.name}</span>
+            <Button variant="ghost" size="sm" onClick={logout} title="Sign out"><LogOut /> <span className="hidden sm:inline">Sign out</span></Button>
           </div>
         </header>
         </div>

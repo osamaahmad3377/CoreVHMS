@@ -7,6 +7,7 @@ import { RequestContext } from '../../common/context/request-context';
 import { decryptSecret, encryptSecret, randomToken, safeEqual } from '../../common/crypto/crypto';
 import { forbidden, notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { featureAllowed } from '../../common/tenancy/entitlements';
 import { friendlyWhatsAppError, graph, GraphError, GraphPhoneNumber, GraphTemplate, PERMANENT_ERRORS } from './whatsapp-graph';
 
 const DAY = 86_400_000;
@@ -259,6 +260,9 @@ export class WhatsAppService {
 
   /** Whether the clinic sends by WhatsApp, and its rules (cached for 30 s). */
   async sending(organizationId: string): Promise<WhatsAppSending> {
+    // Not in the clinic's plan: nothing goes by WhatsApp (messages go by email instead). Checked on every call, so
+    // switching the feature on or off for a plan or clinic applies straight away.
+    if (!featureAllowed('whatsapp')) return { active: false, policy: 'PREFERRED', fallbackToEmail: true };
     const hit = this.sendingCache.get(organizationId);
     if (hit && Date.now() - hit.at < 30_000) return hit.value;
     const i = await this.prisma.raw.whatsAppIntegration.findUnique({ where: { organizationId }, select: { enabled: true, sendPolicy: true, fallbackToEmail: true } });
@@ -273,6 +277,7 @@ export class WhatsAppService {
    */
   async send(organizationId: string, m: { recipient: string; body: string; purpose: string; vars?: Record<string, unknown> | null }): Promise<WhatsAppSendResult> {
     const raw = this.prisma.raw;
+    if (!featureAllowed('whatsapp')) return { ok: false, error: 'WhatsApp Business is not included in this clinic’s plan.', permanent: true };
     const i = await raw.whatsAppIntegration.findUnique({ where: { organizationId } });
     if (!i?.enabled) return { ok: false, error: 'WhatsApp sending is switched off in Settings → Integrations → WhatsApp.', permanent: true };
     const link = await raw.whatsAppTemplateLink.findUnique({ where: { organizationId_purpose: { organizationId, purpose: m.purpose } } });

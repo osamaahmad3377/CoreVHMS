@@ -1,291 +1,254 @@
 'use client';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { COUNTRIES, type CreateClinicInput, type PlatformClinic, type PlatformPlan, createClinicSchema } from '@vcms/shared';
-import { AlertTriangle, Building2, CheckCircle2, ExternalLink, KeyRound, Loader2, Mail, PauseCircle, Plus, RotateCcw } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
+import type { BillingSummary, ClinicPaymentView, PlatformClinic, PlatformPlan } from '@vcms/shared';
+import { AlertTriangle, ArrowDownRight, ArrowRight, ArrowUpRight, Building2, CalendarClock, Crown, Mail, Plus, ReceiptText, TrendingUp, Wallet } from 'lucide-react';
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { toast } from 'sonner';
-import { Field } from '@/components/forms/field';
-import { FormError } from '@/components/forms/form-error';
-import { EmptyState, ErrorState, LoadingRows, PageHeader } from '@/components/page';
-import { ClinicActionsMenu, CopyButton, OwnerAccessDialog, STATUS, StatusBadge, shortAddress, useClinicActions, type OwnerAccess } from '@/components/platform/clinic-ui';
-import { SearchInput } from '@/components/search-input';
-import { Badge } from '@/components/ui/badge';
+import { BarChartCard } from '@/components/charts';
+import { ErrorState, LoadingRows, PageHeader } from '@/components/page';
+import { AddClinicDialog } from '@/components/platform/add-clinic-dialog';
+import { PaymentBadge, PaymentsTable, RecordPaymentDialog, paymentText, useBillingActions } from '@/components/platform/billing-ui';
+import { OwnerAccessDialog, type OwnerAccess } from '@/components/platform/clinic-ui';
+import { PlanRequests, TrialsList } from '@/components/platform/plan-requests';
+import { amount } from '@/components/platform/plan-ui';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Input, NativeSelect } from '@/components/ui/input';
-import { TBody, TD, TH, THead, TR, Table } from '@/components/ui/table';
-import { ApiError, api } from '@/lib/api';
-import { fmtDate } from '@/lib/format';
-import { limitText } from '@/components/platform/plan-ui';
-import { useHostInfo } from '@/lib/host';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
-/** Suggests a web address from the clinic name: "Happy Paws Vet" → "happy-paws-vet". */
-function suggestAddress(name: string) {
-  const s = name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/^[^a-z]+/, '');
-  return s.slice(0, 30).replace(/-+$/, '');
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const monthLabel = (ym: string) => MONTHS[Number(ym.slice(5, 7)) - 1];
+/** "1.2M", "680k" for chart axes (the currency is in the chart's title). */
+const short = (minor: number) => {
+  const v = minor / 100;
+  return v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : v >= 1000 ? `${Math.round(v / 1000)}k` : String(v);
+};
+
+function Kpi({ icon, label, value, sub, tone = 'primary', href }: { icon: React.ReactNode; label: string; value: string; sub?: React.ReactNode; tone?: 'primary' | 'success' | 'destructive' | 'warning'; href?: string }) {
+  const tones = {
+    primary: 'from-primary/[0.10] ring-primary/15 [&_.kpi-icon]:bg-primary/12 [&_.kpi-icon]:text-primary',
+    success: 'from-success/[0.12] ring-success/20 [&_.kpi-icon]:bg-success/15 [&_.kpi-icon]:text-success',
+    destructive: 'from-destructive/[0.10] ring-destructive/20 [&_.kpi-icon]:bg-destructive/12 [&_.kpi-icon]:text-destructive',
+    warning: 'from-warning/[0.12] ring-warning/25 [&_.kpi-icon]:bg-warning/15 [&_.kpi-icon]:text-warning',
+  };
+  const body = (
+    <>
+      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        <span className="kpi-icon rounded-md p-1.5">{icon}</span>
+        {label}
+      </div>
+      <p className="mt-2 text-2xl font-semibold tabular-nums leading-tight">{value}</p>
+      {sub && <div className="mt-1 text-xs text-muted-foreground">{sub}</div>}
+    </>
+  );
+  const cls = cn('block rounded-2xl bg-gradient-to-br to-transparent p-4 shadow-card ring-1 ring-inset', tones[tone], href && 'transition-transform hover:-translate-y-px');
+  return href ? <Link href={href} className={cls}>{body}</Link> : <div className={cls}>{body}</div>;
 }
 
-const EMPTY: CreateClinicInput = { name: '', slug: '', country: 'PK', branchName: 'Main branch', ownerName: '', ownerEmail: '', ownerAccess: 'TEMPORARY_PASSWORD', planId: null };
-
-function AddClinicDialog({ open, onOpenChange, onOwnerAccess }: { open: boolean; onOpenChange: (o: boolean) => void; onOwnerAccess: (r: OwnerAccess) => void }) {
-  const qc = useQueryClient();
-  const baseDomain = useHostInfo().data?.baseDomain;
-  const plans = useQuery({ queryKey: ['platform-plans'], queryFn: () => api.get<PlatformPlan[]>('/platform/plans') });
-  const available = (plans.data ?? []).filter((p) => p.isActive);
-  const [v, setV] = useState<CreateClinicInput>(EMPTY);
-  // undefined = not touched: the first available plan is chosen for the new clinic ('' = deliberately no plan).
-  const [planChoice, setPlanChoice] = useState<string | undefined>(undefined);
-  const planId = planChoice ?? available[0]?.id ?? '';
-  const [addressEdited, setAddressEdited] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [error, setError] = useState<string | null>(null);
-  const set = <K extends keyof CreateClinicInput>(k: K, value: CreateClinicInput[K]) => setV((p) => ({ ...p, [k]: value }));
-
-  const reset = () => {
-    setV(EMPTY);
-    setPlanChoice(undefined);
-    setAddressEdited(false);
-    setErrors({});
-    setError(null);
-  };
-
-  const save = useMutation({
-    mutationFn: (input: CreateClinicInput) => api.post<OwnerAccess & { temporaryPassword: string | null }>('/platform/clinics', input),
-    onSuccess: (r) => {
-      qc.invalidateQueries({ queryKey: ['platform-clinics'] });
-      onOpenChange(false);
-      reset();
-      if (r.temporaryPassword) onOwnerAccess(r as OwnerAccess);
-      else toast.success(`Setting up ${r.clinic.name}. The owner gets an email when it is ready.`);
-    },
-    onError: (e: Error) => {
-      if (e instanceof ApiError) setErrors(e.fieldErrors);
-      setError(e.message);
-    },
-  });
-
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    const parsed = createClinicSchema.safeParse({ ...v, planId: planId || null });
-    if (!parsed.success) {
-      setErrors(Object.fromEntries(parsed.error.issues.map((i) => [i.path.join('.'), i.message])));
-      return;
-    }
-    setErrors({});
-    save.mutate(parsed.data);
-  };
-
+/** Clinics that owe money or will soon: overdue first, then no payment recorded, then due this week. */
+function PaymentsDue({ clinics, onRecordPayment }: { clinics: PlatformClinic[]; onRecordPayment: (c: PlatformClinic) => void }) {
+  const billing = useBillingActions();
+  const order = { OVERDUE: 0, UNPAID: 1, DUE_SOON: 2 } as Record<string, number>;
+  const rows = clinics
+    .filter((c) => c.status === 'ACTIVE' && c.payment.kind in order)
+    .sort((a, b) => order[a.payment.kind] - order[b.payment.kind] || (b.payment.days ?? 0) - (a.payment.days ?? 0));
+  if (!rows.length) return null;
   return (
-    <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) reset(); }}>
-      <DialogContent size="lg">
-        <DialogHeader>
-          <DialogTitle>Add clinic</DialogTitle>
-          <DialogDescription>Four things: the clinic’s name, its web address, and who the owner is. It is ready in about a minute.</DialogDescription>
-        </DialogHeader>
-        <form id="add-clinic" onSubmit={submit} className="grid gap-4" noValidate>
-          {error && <FormError message={error} />}
-          <div className="grid gap-3 sm:grid-cols-[1fr_180px]">
-            <Field label="Clinic name" htmlFor="c-name" required error={errors.name}>
-              <Input
-                id="c-name"
-                value={v.name}
-                onChange={(e) => {
-                  set('name', e.target.value);
-                  if (!addressEdited) set('slug', suggestAddress(e.target.value));
-                }}
-                autoFocus
-              />
-            </Field>
-            <Field label="Country" htmlFor="c-country" required>
-              <NativeSelect id="c-country" value={v.country} onChange={(e) => set('country', e.target.value as 'PK' | 'AU')}>
-                {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
-              </NativeSelect>
-            </Field>
-          </div>
-          <Field label="Web address" htmlFor="c-slug" required hint="Filled in from the name. Lowercase letters, numbers and hyphens; it cannot be changed later." error={errors.slug}>
-            <div className="flex items-center gap-2">
-              <Input
-                id="c-slug"
-                value={v.slug}
-                onChange={(e) => { setAddressEdited(true); set('slug', e.target.value.toLowerCase()); }}
-                autoCapitalize="none"
-                spellCheck={false}
-                placeholder="happy-paws"
-              />
-              {baseDomain && <span className="shrink-0 text-sm text-muted-foreground">.{baseDomain}</span>}
+    <Card className="overflow-hidden">
+      <div className="flex items-center gap-2 border-b bg-destructive/[0.06] px-4 py-3">
+        <CalendarClock className="h-4 w-4 text-destructive" aria-hidden />
+        <h2 className="text-sm font-semibold">Payments to collect</h2>
+        <span className="rounded-pill bg-destructive/15 px-2 py-0.5 text-2xs font-semibold text-destructive">{rows.length}</span>
+        <p className="ml-auto hidden text-xs text-muted-foreground sm:block">Overdue, never paid, or due within a week.</p>
+      </div>
+      <ul className="divide-y">
+        {rows.slice(0, 8).map((c) => (
+          <li key={c.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+            <div className="min-w-0 flex-1 basis-56">
+              <p className="font-medium">
+                <Link href={`/platform/clinics/${c.id}`} className="text-primary hover:underline">{c.name}</Link>
+                <span className="ml-2 text-sm font-normal text-muted-foreground">{c.planName} · {c.bill?.cycle === 'YEARLY' ? 'yearly' : 'monthly'}</span>
+              </p>
+              <p className="text-xs text-muted-foreground">{paymentText(c.payment)}</p>
             </div>
-          </Field>
-          <Field label="Plan" htmlFor="c-plan" hint="What the clinic may use, and its staff and branch limits. You can change it later.">
-            <NativeSelect id="c-plan" value={planId} onChange={(e) => setPlanChoice(e.target.value)} disabled={plans.isLoading}>
-              {available.map((p) => (
-                <option key={p.id} value={p.id}>{p.name} — {limitText(p.maxStaff).toLowerCase()} staff, {limitText(p.maxBranches).toLowerCase()} branch{p.maxBranches === 1 ? '' : 'es'}</option>
-              ))}
-              <option value="">No plan (no limits)</option>
-            </NativeSelect>
-          </Field>
-          <fieldset className="grid gap-3 rounded-lg surface-flat p-3">
-            <legend className="px-1 text-sm font-medium">Clinic owner</legend>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Full name" htmlFor="c-owner" required error={errors.ownerName}>
-                <Input id="c-owner" value={v.ownerName} onChange={(e) => set('ownerName', e.target.value)} />
-              </Field>
-              <Field label="Email" htmlFor="c-email" required hint="They sign in with this." error={errors.ownerEmail}>
-                <Input id="c-email" type="email" value={v.ownerEmail} onChange={(e) => set('ownerEmail', e.target.value)} />
-              </Field>
+            <div className="text-right">
+              <p className="font-semibold tabular-nums">{amount(c.payment.dueMinor, c.payment.currency)}</p>
+              <PaymentBadge state={c.payment} />
             </div>
-            <div role="radiogroup" aria-label="How the owner gets access" className="grid gap-2 sm:grid-cols-2">
-              {([
-                ['TEMPORARY_PASSWORD', KeyRound, 'Give them a password', 'You get a ready-made message to send by WhatsApp or SMS.'],
-                ['INVITATION', Mail, 'Email them a link', 'They choose their own password when the clinic is ready.'],
-              ] as const).map(([value, Icon, title, text]) => (
-                <button
-                  key={value}
-                  type="button"
-                  role="radio"
-                  aria-checked={v.ownerAccess === value}
-                  onClick={() => set('ownerAccess', value)}
-                  className={cn('flex items-start gap-3 rounded-lg surface-flat p-3 text-left text-sm transition-colors', v.ownerAccess === value ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:bg-muted')}
-                >
-                  <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                  <span><span className="block font-medium">{title}</span><span className="text-xs text-muted-foreground">{text}</span></span>
-                </button>
-              ))}
+            <div className="flex gap-1.5">
+              <Button size="sm" variant="ghost" onClick={() => billing.remind(c)} loading={billing.reminding === c.id} title="Email the owner a reminder"><Mail /> <span className="hidden sm:inline">Remind</span></Button>
+              <Button size="sm" variant="outline" onClick={() => onRecordPayment(c)}><ReceiptText /> Record payment</Button>
             </div>
-          </fieldset>
-          <Field label="Main branch name" htmlFor="c-branch" required hint="Change it if the clinic has a branch name, e.g. Lahore — Gulberg. They can add more branches later." error={errors.branchName}>
-            <Input id="c-branch" value={v.branchName} onChange={(e) => set('branchName', e.target.value)} />
-          </Field>
-        </form>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button type="submit" form="add-clinic" loading={save.isPending}><Plus /> Add clinic</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </li>
+        ))}
+      </ul>
+      {rows.length > 8 && <Link href="/platform/clinics" className="block border-t px-4 py-2.5 text-center text-sm text-primary hover:bg-muted/40">See all {rows.length} clinics</Link>}
+    </Card>
   );
 }
 
-type Filter = 'ALL' | PlatformClinic['status'];
+/** How many clinics are on each plan and what they bring in a month. */
+function PlanMix({ clinics }: { clinics: PlatformClinic[] }) {
+  const plans = useQuery({ queryKey: ['platform-plans'], queryFn: () => api.get<PlatformPlan[]>('/platform/plans') });
+  const live = clinics.filter((c) => c.status === 'ACTIVE');
+  const rows = (plans.data ?? [])
+    .map((p) => {
+      const on = live.filter((c) => c.planId === p.id);
+      return { plan: p, count: on.length, trials: on.filter((c) => c.payment.kind === 'TRIAL').length, income: on.reduce((n, c) => n + (c.bill?.totalMinor ?? 0), 0) };
+    })
+    .filter((r) => r.count > 0 || r.plan.isActive);
+  const noPlan = live.filter((c) => !c.planId).length;
+  const max = Math.max(1, ...rows.map((r) => r.count), noPlan);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><Crown className="h-4 w-4 text-amber-500" /> Clinics by plan</CardTitle>
+        <Link href="/platform/plans" className="text-xs text-primary hover:underline">Manage plans</Link>
+      </CardHeader>
+      <CardContent className="grid gap-3">
+        {rows.map((r) => (
+          <div key={r.plan.id} className={cn(!r.plan.isActive && 'opacity-70')}>
+            <div className="flex items-baseline justify-between gap-2 text-sm">
+              <span className="font-medium">{r.plan.name}</span>
+              <span className="tabular-nums text-muted-foreground">{amount(r.income, r.plan.currency)} / month</span>
+            </div>
+            <div className="mt-1 flex items-center gap-2">
+              <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                <div className="h-full rounded-full bg-primary/80" style={{ width: `${(r.count / max) * 100}%` }} />
+              </div>
+              <span className="w-24 shrink-0 text-right text-xs text-muted-foreground">{r.count} clinic{r.count === 1 ? '' : 's'}{r.trials ? ` · ${r.trials} trial` : ''}</span>
+            </div>
+          </div>
+        ))}
+        {noPlan > 0 && (
+          <div>
+            <div className="flex items-baseline justify-between gap-2 text-sm"><span className="font-medium">No plan</span><span className="text-muted-foreground">not charged</span></div>
+            <div className="mt-1 flex items-center gap-2">
+              <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-muted-foreground/40" style={{ width: `${(noPlan / max) * 100}%` }} /></div>
+              <span className="w-24 shrink-0 text-right text-xs text-muted-foreground">{noPlan} clinic{noPlan === 1 ? '' : 's'}</span>
+            </div>
+          </div>
+        )}
+        {!rows.length && !noPlan && <p className="text-sm text-muted-foreground">No clinics yet.</p>}
+      </CardContent>
+    </Card>
+  );
+}
 
-export default function PlatformClinicsPage() {
-  const router = useRouter();
+export default function PlatformDashboardPage() {
   const [adding, setAdding] = useState(false);
   const [access, setAccess] = useState<OwnerAccess | null>(null);
-  const [q, setQ] = useState('');
-  const [filter, setFilter] = useState<Filter>('ALL');
-  const { run, pending } = useClinicActions(setAccess);
-  const clinics = useQuery({
-    queryKey: ['platform-clinics'],
-    queryFn: () => api.get<PlatformClinic[]>('/platform/clinics'),
-    // Watch clinics that are still being set up.
-    refetchInterval: (query) => (query.state.data?.some((c) => c.status === 'PROVISIONING') ? 3000 : false),
-  });
+  const [paying, setPaying] = useState<PlatformClinic | null>(null);
+  const clinics = useQuery({ queryKey: ['platform-clinics'], queryFn: () => api.get<PlatformClinic[]>('/platform/clinics') });
+  const summary = useQuery({ queryKey: ['platform-billing-summary'], queryFn: () => api.get<BillingSummary>('/platform/billing/summary') });
+  const recent = useQuery({ queryKey: ['platform-payments', 'recent'], queryFn: () => api.get<ClinicPaymentView[]>('/platform/payments') });
 
   const all = useMemo(() => clinics.data ?? [], [clinics.data]);
-  const count = (s: PlatformClinic['status']) => all.filter((c) => c.status === s).length;
-  const rows = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    return all.filter((c) => (filter === 'ALL' || c.status === filter) && (!term || [c.name, c.slug, c.ownerName, c.ownerEmail].some((x) => x.toLowerCase().includes(term))));
-  }, [all, q, filter]);
+  const s = summary.data;
+  const chart = useMemo(() => (s?.months ?? []).map((m) => ({ name: monthLabel(m.month), value: m.totalMinor })), [s]);
 
-  const tiles: { key: Filter; label: string; value: number; icon: React.ReactNode; tone: string }[] = [
-    { key: 'ALL', label: 'All clinics', value: all.length, icon: <Building2 className="h-4 w-4" />, tone: 'text-primary bg-primary/10' },
-    { key: 'ACTIVE', label: 'Ready', value: count('ACTIVE'), icon: <CheckCircle2 className="h-4 w-4" />, tone: 'text-success bg-success/10' },
-    { key: 'SUSPENDED', label: 'Paused', value: count('SUSPENDED'), icon: <PauseCircle className="h-4 w-4" />, tone: 'text-warning bg-warning/15' },
-    { key: 'FAILED', label: 'Set-up failed', value: count('FAILED'), icon: <AlertTriangle className="h-4 w-4" />, tone: 'text-destructive bg-destructive/10' },
-  ];
+  if (clinics.isLoading || summary.isLoading) return <LoadingRows />;
+  if (clinics.error || summary.error) return <ErrorState error={clinics.error ?? summary.error} onRetry={() => { clinics.refetch(); summary.refetch(); }} />;
+
+  const cur = s!.currency;
+  const change = s!.collectedLastMonthMinor ? Math.round(((s!.collectedThisMonthMinor - s!.collectedLastMonthMinor) / s!.collectedLastMonthMinor) * 100) : null;
+  const ready = all.filter((c) => c.status === 'ACTIVE').length;
+  const paused = all.filter((c) => c.status === 'SUSPENDED').length;
+  const owed = s!.overdue.amountMinor + s!.unpaid.amountMinor;
 
   return (
     <>
-      <PageHeader title="Clinics" description="Each clinic has its own database and web address." actions={<Button onClick={() => setAdding(true)}><Plus /> Add clinic</Button>} />
-      {all.length > 0 && (
-        <div className="mb-4 grid grid-cols-2 gap-2 lg:grid-cols-4" role="group" aria-label="Show clinics">
-          {tiles.map((t) => {
-            const active = filter === t.key;
-            return (
-              <button
-                key={t.key}
-                type="button"
-                aria-pressed={active}
-                onClick={() => setFilter(active && t.key !== 'ALL' ? 'ALL' : t.key)}
-                className={cn('flex items-center gap-3 rounded-xl surface-flat p-3 text-left shadow-card transition-colors hover:border-primary/50', active && 'border-primary ring-1 ring-primary')}
-              >
-                <span className={cn('rounded-md p-2', t.tone)}>{t.icon}</span>
-                <span><span className="block text-xl font-semibold leading-tight">{t.value}</span><span className="text-xs text-muted-foreground">{t.label}</span></span>
-              </button>
-            );
-          })}
-        </div>
-      )}
+      <PageHeader
+        title="Dashboard"
+        description="Income, payments to collect and what needs your attention across all clinics."
+        actions={
+          <>
+            <Button asChild variant="outline"><Link href="/platform/clinics"><Building2 /> All clinics</Link></Button>
+            <Button onClick={() => setAdding(true)}><Plus /> Add clinic</Button>
+          </>
+        }
+      />
+
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Kpi
+          icon={<TrendingUp className="h-4 w-4" />}
+          tone="success"
+          label="Monthly recurring income"
+          value={amount(s!.mrrMinor, cur)}
+          sub={<>{amount(s!.mrrMinor * 12, cur)} a year · {s!.payingClinics} paying clinic{s!.payingClinics === 1 ? '' : 's'}</>}
+        />
+        <Kpi
+          icon={<Wallet className="h-4 w-4" />}
+          label="Collected this month"
+          value={amount(s!.collectedThisMonthMinor, cur)}
+          href="/platform/payments"
+          sub={
+            <span className="flex flex-wrap items-center gap-1">
+              {change !== null && (
+                <span className={cn('inline-flex items-center font-medium', change >= 0 ? 'text-success' : 'text-destructive')}>
+                  {change >= 0 ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}{Math.abs(change)}%
+                </span>
+              )}
+              Last month {amount(s!.collectedLastMonthMinor, cur)}
+            </span>
+          }
+        />
+        <Kpi
+          icon={<AlertTriangle className="h-4 w-4" />}
+          tone={owed ? 'destructive' : 'primary'}
+          label="To collect"
+          value={amount(owed, cur)}
+          href="/platform/clinics"
+          sub={<>{s!.overdue.count} overdue · {s!.unpaid.count} never paid · {s!.dueSoon.count} due this week</>}
+        />
+        <Kpi
+          icon={<Building2 className="h-4 w-4" />}
+          tone="primary"
+          label="Clinics"
+          value={`${ready} ready`}
+          href="/platform/clinics"
+          sub={<>{s!.trialClinics} on free trial · {paused} paused · {all.length} in total</>}
+        />
+      </div>
+
+      <div className="mb-4 grid gap-4">
+        <PlanRequests />
+        <PaymentsDue clinics={all} onRecordPayment={setPaying} />
+        <TrialsList clinics={all} onRecordPayment={setPaying} />
+      </div>
+
+      <div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <Card>
+          <CardHeader>
+            <div>
+              <CardTitle>Collected each month{cur === 'AUD' ? ' (A$)' : ' (Rs)'}</CardTitle>
+              <p className="mt-0.5 text-xs text-muted-foreground">Payments recorded, last 12 months · {amount(s!.collectedThisYearMinor, cur)} so far this year</p>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64">
+              <BarChartCard data={chart} name="Collected" format={(v) => amount(v, cur)} axisFormat={short} left={0} />
+            </div>
+          </CardContent>
+        </Card>
+        <PlanMix clinics={all} />
+      </div>
+
       <Card>
-        {all.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 border-b p-3">
-            <SearchInput value={q} onChange={setQ} placeholder="Search by clinic, address or owner" className="max-w-sm flex-1" />
-            {filter !== 'ALL' && <Button variant="ghost" size="sm" onClick={() => setFilter('ALL')}>Show all clinics</Button>}
-          </div>
-        )}
-        {clinics.isLoading ? (
-          <LoadingRows />
-        ) : clinics.error ? (
-          <ErrorState error={clinics.error} onRetry={() => clinics.refetch()} />
-        ) : !all.length ? (
-          <EmptyState icon={Building2} title="No clinics yet" description="Add the first clinic. It gets its own database and web address, ready in about a minute." action={<Button onClick={() => setAdding(true)}><Plus /> Add clinic</Button>} />
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><ReceiptText className="h-4 w-4" /> Latest payments</CardTitle>
+          <Link href="/platform/payments" className="flex items-center gap-1 text-xs text-primary hover:underline">All payments <ArrowRight className="h-3 w-3" /></Link>
+        </CardHeader>
+        {recent.data?.length ? (
+          <PaymentsTable payments={recent.data.slice(0, 6)} showClinic compact />
         ) : (
-          <Table>
-            <THead>
-              <TR><TH>Clinic</TH><TH className="hidden sm:table-cell">Web address</TH><TH className="hidden md:table-cell">Plan</TH><TH>Status</TH><TH className="hidden md:table-cell">Owner</TH><TH className="hidden lg:table-cell">Added</TH><TH className="w-px"><span className="sr-only">Actions</span></TH></TR>
-            </THead>
-            <TBody>
-              {rows.map((c) => (
-                <TR key={c.id} data-clickable="true" onClick={() => router.push(`/platform/clinics/${c.id}`)}>
-                  <TD>
-                    <div className="font-medium text-primary">{c.name}</div>
-                    <div className="text-xs text-muted-foreground">{COUNTRIES.find((x) => x.code === c.country)?.name ?? c.country}</div>
-                    <div className="mt-0.5 break-all text-xs text-muted-foreground sm:hidden">{shortAddress(c.address)}</div>
-                  </TD>
-                  <TD className="hidden sm:table-cell">
-                    <div className="flex items-center gap-1">
-                      <span className="break-all">{shortAddress(c.address)}</span>
-                      <CopyButton text={c.address} what="Address" />
-                    </div>
-                  </TD>
-                  <TD className="hidden md:table-cell">
-                    {c.planName ? <Badge variant="secondary">{c.planName}</Badge> : <span className="text-xs text-muted-foreground">No limits</span>}
-                  </TD>
-                  <TD>
-                    <StatusBadge status={c.status} />
-                    {c.status !== 'ACTIVE' && <p className="mt-1 max-w-[16rem] text-xs text-muted-foreground">{c.status === 'FAILED' && c.lastError ? c.lastError.split('\n')[0].slice(0, 120) : STATUS[c.status].hint}</p>}
-                  </TD>
-                  <TD className="hidden md:table-cell">
-                    <div>{c.ownerName}</div>
-                    <div className="text-xs text-muted-foreground">{c.ownerEmail}</div>
-                  </TD>
-                  <TD className="hidden lg:table-cell">{fmtDate(c.createdAt)}</TD>
-                  <TD onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-1">
-                      {c.status === 'ACTIVE' && (
-                        <Button asChild size="sm" variant="outline" className="hidden sm:inline-flex"><a href={`${c.address}/login`} target="_blank" rel="noreferrer"><ExternalLink /> Open</a></Button>
-                      )}
-                      {c.status === 'FAILED' && (
-                        <Button size="sm" variant="outline" loading={pending?.id === c.id} onClick={() => run(c, 'retry')}><RotateCcw /> Try again</Button>
-                      )}
-                      {c.status === 'PROVISIONING' && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Setting up" />}
-                      <ClinicActionsMenu clinic={c} run={run} />
-                    </div>
-                  </TD>
-                </TR>
-              ))}
-              {!rows.length && <TR><TD colSpan={7} className="py-8 text-center text-muted-foreground">No clinics match. <button type="button" className="text-primary hover:underline" onClick={() => { setQ(''); setFilter('ALL'); }}>Show all clinics</button></TD></TR>}
-            </TBody>
-          </Table>
+          <CardContent><p className="text-sm text-muted-foreground">No payments recorded yet. Use “Record payment” on a clinic when it pays.</p></CardContent>
         )}
       </Card>
+
       <AddClinicDialog open={adding} onOpenChange={setAdding} onOwnerAccess={setAccess} />
       <OwnerAccessDialog result={access} onClose={() => setAccess(null)} />
+      <RecordPaymentDialog clinic={paying} open={!!paying} onOpenChange={(o) => { if (!o) setPaying(null); }} />
     </>
   );
 }

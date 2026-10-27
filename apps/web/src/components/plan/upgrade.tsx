@@ -1,5 +1,5 @@
 'use client';
-import { hasFeature, PLAN_FEATURE_BENEFITS, PLAN_FEATURE_INFO, PLAN_FEATURES, planNames, plansWithFeature, upgradeLine, type PlanBrief, type PlanFeature } from '@vcms/shared';
+import { daysLeft, hasFeature, PLAN_FEATURE_BENEFITS, PLAN_FEATURE_INFO, PLAN_FEATURES, planNames, plansWithFeature, upgradeLine, type PlanBrief, type PlanFeature } from '@vcms/shared';
 import { Check, Crown, Lock, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { PageHeader } from '@/components/page';
@@ -148,7 +148,7 @@ export function PlanBanner() {
   const name = e?.planName ? `${e.planName} plan` : 'Full access';
   const owner = canAny('org.manage');
   const upgrade = owner && !!e?.planName && !topPlan(e);
-  const limits = [limitNote(usage.staff, 'staff'), limitNote(usage.branches, usage.branches.max === 1 ? 'branch' : 'branches'), limitNote(usage.automations, 'automations')]
+  const limits = [limitNote(usage.staff, 'staff'), limitNote(usage.branches, usage.branches.max === 1 ? 'branch' : 'branches'), limitNote(usage.automations, 'ready-made automations'), limitNote(usage.customAutomations, 'own automations')]
     .filter(Boolean)
     .map((t) => t.replace(/ used$/, ''));
   const included = e ? PLAN_FEATURES.filter((f) => e.features.includes(f)).length : PLAN_FEATURES.length;
@@ -161,7 +161,10 @@ export function PlanBanner() {
         </span>
         <div className="min-w-0 flex-1 basis-60">
           <p className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Your plan</p>
-          <p className="text-lg font-semibold tracking-tight">{name}</p>
+          <p className="flex flex-wrap items-center gap-2 text-lg font-semibold tracking-tight">
+            {name}
+            {e?.trialEndsAt && <span className="rounded-pill bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary ring-1 ring-inset ring-primary/20">Free trial · {daysLeft(e.trialEndsAt)} days left</span>}
+          </p>
           <p className="text-sm text-muted-foreground">
             {e?.planName
               ? `${included} of ${PLAN_FEATURES.length} areas included${limits.length ? ` · ${limits.join(' · ')}` : ''}`
@@ -186,5 +189,26 @@ export function PlanLockBadge({ label = 'Upgrade' }: { label?: string }) {
     <span className="inline-flex items-center gap-1 rounded-pill bg-primary/10 px-2 py-0.5 text-2xs font-semibold text-primary ring-1 ring-inset ring-primary/20">
       <Lock className="h-3 w-3" /> {label}
     </span>
+  );
+}
+
+/**
+ * A slim bar across the top for the clinic owner during a free trial (or free period) — every day for the last
+ * week, so the trial never ends by surprise.
+ */
+export function TrialBar() {
+  const { session, canAny } = useSession();
+  const ends = session.entitlements?.trialEndsAt;
+  if (!ends || !canAny('org.manage')) return null;
+  const left = daysLeft(ends);
+  if (left > 7) return null;
+  return (
+    <div className="no-print mx-3 mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl bg-gradient-to-r from-primary to-brand-2 px-4 py-2 text-sm text-white shadow sm:mx-4 lg:mx-6">
+      <Sparkles className="h-4 w-4 shrink-0" aria-hidden />
+      <span className="min-w-0 flex-1">
+        <b>{left === 0 ? 'Your free trial ends today.' : `Your free trial ends in ${left} day${left === 1 ? '' : 's'}.`}</b> Choose your plan to keep using {session.entitlements?.planName ?? 'NextCore'} without a break — your records stay exactly as they are.
+      </span>
+      <Link href="/settings/plan" className="rounded-pill bg-white/20 px-3 py-1 font-semibold transition-colors hover:bg-white/30">Choose plan</Link>
+    </div>
   );
 }

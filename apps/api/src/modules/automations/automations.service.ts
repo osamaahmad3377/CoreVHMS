@@ -5,6 +5,7 @@ import {
   AUTOMATION_RECIPES,
   BASIC_AUTOMATION_KEYS,
   fitsWithoutBuilder,
+  recipeKeyOf,
   sameAutomationShape,
   CHECK_INFO,
   TRIGGER_INFO,
@@ -116,6 +117,7 @@ export class AutomationsService implements OnModuleInit {
             cooldownDays: r.automation.cooldownDays ?? null,
             conditions: r.automation.conditions as unknown as Prisma.InputJsonValue,
             steps: r.automation.steps as unknown as Prisma.InputJsonValue,
+            recipeKey: r.key,
             createdByName: 'NextCore',
             updatedByName: 'NextCore',
           },
@@ -124,8 +126,18 @@ export class AutomationsService implements OnModuleInit {
     }
   }
 
+  /** Older automations made from a recipe (before recipes were recorded) count as ready-made again. */
+  private async markRecipes() {
+    const unmarked = await this.prisma.db.automation.findMany({ where: { recipeKey: null } });
+    for (const a of unmarked) {
+      const key = recipeKeyOf(a as never);
+      if (key) await this.prisma.db.automation.update({ where: { id: a.id }, data: { recipeKey: key } });
+    }
+  }
+
   async list() {
     await this.seedBasics(RequestContext.orgId());
+    await this.markRecipes();
     const db = this.prisma.db;
     const [rows, waiting, recent] = await Promise.all([
       db.automation.findMany({ orderBy: [{ isActive: 'desc' }, { createdAt: 'asc' }] }),
@@ -167,9 +179,10 @@ export class AutomationsService implements OnModuleInit {
     };
   }
 
-  private data(input: AutomationInput) {
+  private data(input: AutomationInput, recipeKey: string | null) {
     const timed = TRIGGER_INFO[input.trigger].timed;
     return {
+      recipeKey,
       name: input.name,
       description: input.description || null,
       isActive: input.isActive,
@@ -195,10 +208,19 @@ export class AutomationsService implements OnModuleInit {
     if (bad) throw ruleViolation('INVALID_CONDITION', `“${bad.field}” does not apply to ${TRIGGER_INFO[input.trigger].label.toLowerCase()}`);
   }
 
-  /** A plan allows only so many automations switched on at once; turning on one more needs room (or an upgrade). */
-  private async assertRoomToSwitchOn() {
-    if (currentEntitlements()?.maxAutomations == null) return;
-    assertWithinLimit('automations', await this.prisma.db.automation.count({ where: { isActive: true } }));
+  /**
+   * A plan allows only so many ready-made automations switched on at once, and only so many of the clinic's own;
+   * turning on one more of either needs room (or an upgrade).
+   */
+  private async assertRoomToSwitchOn(recipeKey: string | null) {
+    const e = currentEntitlements();
+    if (recipeKey) {
+      if (e?.maxAutomations == null) return;
+      assertWithinLimit('automations', await this.prisma.db.automation.count({ where: { isActive: true, recipeKey: { not: null } } }));
+    } else {
+      if (e?.maxCustomAutomations == null) return;
+      assertWithinLimit('customAutomations', await this.prisma.db.automation.count({ where: { isActive: true, recipeKey: null } }));
+    }
   }
 
   /**
@@ -215,10 +237,11 @@ export class AutomationsService implements OnModuleInit {
   async create(input: AutomationInput) {
     await this.validateRefs(input);
     this.assertPlanAllows(input);
-    if (input.isActive) await this.assertRoomToSwitchOn();
+    const recipeKey = recipeKeyOf(input, input.recipeKey);
+    if (input.isActive) await this.assertRoomToSwitchOn(recipeKey);
     const ctx = RequestContext.require();
     return this.prisma.db.$transaction(async (tx) => {
-      const a = await tx.automation.create({ data: { ...this.data(input), organizationId: ctx.organizationId!, createdByName: ctx.userName ?? null, updatedByName: ctx.userName ?? null } });
+      const a = await tx.automation.create({ data: { ...this.data(input, recipeKey), organizationId: ctx.organizationId!, createdByName: ctx.userName ?? null, updatedByName: ctx.userName ?? null } });
       await this.audit.record({ action: 'automation.created', entityType: 'Organization', entityId: ctx.organizationId!, summary: `${a.name} (${TRIGGER_INFO[input.trigger].label})` }, tx);
       return a;
     });
@@ -228,10 +251,12 @@ export class AutomationsService implements OnModuleInit {
     const current = await this.get(id);
     await this.validateRefs(input);
     this.assertPlanAllows(input, current);
-    if (input.isActive && !current.isActive) await this.assertRoomToSwitchOn();
+    const recipeKey = recipeKeyOf(input, current.recipeKey ?? input.recipeKey);
+    // Switching on, or turning a switched-on ready-made automation into one of the clinic's own, needs room.
+    if (input.isActive && (!current.isActive || (!!current.recipeKey && !recipeKey))) await this.assertRoomToSwitchOn(recipeKey);
     const ctx = RequestContext.require();
     return this.prisma.db.$transaction(async (tx) => {
-      const a = await tx.automation.update({ where: { id }, data: { ...this.data(input), updatedByName: ctx.userName ?? null } });
+      const a = await tx.automation.update({ where: { id }, data: { ...this.data(input, recipeKey), updatedByName: ctx.userName ?? null } });
       await this.audit.record({ action: 'automation.updated', entityType: 'Organization', entityId: ctx.organizationId!, summary: `${a.name}${a.isActive ? '' : ' (off)'}` }, tx);
       return a;
     });
@@ -241,7 +266,7 @@ export class AutomationsService implements OnModuleInit {
     const before = await this.get(id);
     if (isActive && !before.isActive) {
       if (before.marketing) assertFeature('marketing');
-      await this.assertRoomToSwitchOn();
+      await this.assertRoomToSwitchOn(before.recipeKey);
     }
     const ctx = RequestContext.require();
     return this.prisma.db.$transaction(async (tx) => {

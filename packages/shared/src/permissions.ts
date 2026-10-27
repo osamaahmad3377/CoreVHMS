@@ -189,6 +189,7 @@ export const OWNER_ONLY_PERMISSIONS: readonly Permission[] = ['branding.manage']
 export const PLATFORM_PERMISSIONS = {
   'platform.clinics.manage': 'Add clinics, pause and reactivate them',
   'platform.plans.manage': 'Create plans and choose each clinic’s plan and limits',
+  'platform.billing.manage': 'Record clinic payments, cancel them and send payment reminders',
 } as const;
 export type PlatformPermission = keyof typeof PLATFORM_PERMISSIONS;
 export const ALL_PLATFORM_PERMISSIONS = Object.keys(PLATFORM_PERMISSIONS) as PlatformPermission[];

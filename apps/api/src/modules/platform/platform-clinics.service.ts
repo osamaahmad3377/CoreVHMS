@@ -1,6 +1,6 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import type { Plan, Tenant } from '@prisma/client';
-import type { ClinicOverview, ClinicPlanInput, ClinicUsage, CreateClinicInput, PlanFeature, PlatformClinic } from '@vcms/shared';
+import { clinicBill, paymentState, type ClinicBillingInput, type ClinicOverview, type ClinicPlanInput, type ClinicUsage, type CreateClinicInput, type PlanFeature, type PlanRequestView, type PlatformClinic } from '@vcms/shared';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { randomToken, sha256 } from '../../common/crypto/crypto';
@@ -13,13 +13,23 @@ import { createDatabase, databaseExists, migrateDatabase, tenantDatabaseName } f
 import { TenancyService, entitlementsOf, tenantRef } from '../../common/tenancy/tenancy.service';
 import { OrgBootstrapService } from '../organizations/org-bootstrap.service';
 import { TEMP_PASSWORD_DAYS } from '../users/users.service';
+import { toPayment } from './platform-payments';
 
 const INVITE_DAYS = 7;
+/** How often ended free trials are looked for. */
+const TRIAL_CHECK_MS = 60 * 60_000;
 
 
-export type TenantWithPlan = Tenant & { plan?: Plan | null };
+export type TenantWithPlan = Tenant & { plan?: Plan | null; payments?: { paidAt: Date }[] };
 
-export function toClinic(t: TenantWithPlan): PlatformClinic {
+/** The latest payment that still counts, for "last paid". */
+const LAST_PAYMENT = { where: { voidedAt: null }, orderBy: { paidAt: 'desc' as const }, take: 1, select: { paidAt: true } };
+
+/** Staff accounts (active and invited) and branches a clinic really has — what its extras are billed on. */
+export type Seats = { staff: number; branches: number };
+
+export function toClinic(t: TenantWithPlan, seats?: Seats | null): PlatformClinic {
+  const bill = t.plan ? clinicBill(t.plan, t, new Date(), seats) : null;
   return {
     id: t.id,
     slug: t.slug,
@@ -39,6 +49,14 @@ export function toClinic(t: TenantWithPlan): PlatformClinic {
     extraFeatures: t.extraFeatures as PlanFeature[],
     removedFeatures: t.removedFeatures as PlanFeature[],
     entitlements: entitlementsOf(t),
+    billingCycle: t.billingCycle,
+    trialEndsAt: t.trialEndsAt?.toISOString() ?? null,
+    trialThenPlanId: t.trialThenPlanId,
+    pausedReason: t.pausedReason,
+    bill,
+    paidUntil: t.paidUntil?.toISOString() ?? null,
+    lastPaymentAt: t.payments?.[0]?.paidAt.toISOString() ?? null,
+    payment: paymentState({ bill, paidUntil: t.paidUntil, trialEndsAt: t.trialEndsAt }),
     provisionedAt: t.provisionedAt?.toISOString() ?? null,
     suspendedAt: t.suspendedAt?.toISOString() ?? null,
     createdAt: t.createdAt.toISOString(),
@@ -51,7 +69,9 @@ export function toClinic(t: TenantWithPlan): PlatformClinic {
  * main branch, roles, owner account and starter lists inside it.
  */
 @Injectable()
-export class PlatformClinicsService {
+export class PlatformClinicsService implements OnModuleInit, OnModuleDestroy {
+  private trialTimer: NodeJS.Timeout | null = null;
+
   private readonly log = new Logger(PlatformClinicsService.name);
   private readonly running = new Map<string, Promise<void>>();
 
@@ -63,27 +83,72 @@ export class PlatformClinicsService {
     private readonly tenancy: TenancyService,
   ) {}
 
+  onModuleInit() {
+    if (!multiClinic() || process.env.NODE_ENV === 'test') return;
+    const run = () => this.endTrials().catch((e) => this.log.error(`Ending free trials failed: ${(e as Error).message}`));
+    setTimeout(run, 30_000).unref();
+    this.trialTimer = setInterval(run, TRIAL_CHECK_MS);
+    this.trialTimer.unref();
+  }
+
+  onModuleDestroy() {
+    if (this.trialTimer) clearInterval(this.trialTimer);
+  }
+
   private assertPlatform() {
     if (!multiClinic() || !RequestContext.get()?.platform) {
       throw new NotFoundException({ code: 'NOT_FOUND', message: 'Multi-clinic hosting is not switched on' });
     }
   }
 
+  /** Throws unless this is the super admin area of a multi-clinic installation. */
+  assertPlatformArea() {
+    this.assertPlatform();
+  }
+
   private async find(id: string) {
     this.assertPlatform();
-    const t = await this.prisma.control.tenant.findUnique({ where: { id }, include: { plan: true } });
+    const t = await this.prisma.control.tenant.findUnique({ where: { id }, include: { plan: true, payments: LAST_PAYMENT } });
     if (!t) throw notFound('Clinic');
     return t;
   }
 
+  /** The clinic's platform record with its plan (for billing). */
+  findWithPlan(id: string) {
+    return this.find(id);
+  }
+
   async list() {
     this.assertPlatform();
-    const rows = await this.prisma.control.tenant.findMany({ orderBy: { createdAt: 'desc' }, include: { plan: true } });
-    return rows.map(toClinic);
+    const rows = await this.prisma.control.tenant.findMany({ orderBy: { createdAt: 'desc' }, include: { plan: true, payments: LAST_PAYMENT } });
+    const seats = await Promise.all(rows.map((t) => this.seats(t)));
+    return rows.map((t, i) => toClinic(t, seats[i]));
+  }
+
+  /**
+   * How many staff accounts and branches a clinic on a plan with limits has (counted in its own database), so its
+   * bill includes every one above the plan. Null when there is nothing to count or the database cannot be reached.
+   */
+  private async seats(t: TenantWithPlan): Promise<Seats | null> {
+    if (!t.plan || (t.plan.maxStaff == null && t.plan.maxBranches == null)) return null;
+    if (t.status !== 'ACTIVE' && t.status !== 'SUSPENDED') return null;
+    try {
+      return await RequestContext.runInTenant(tenantRef(t), async () => {
+        const [staff, branches] = await Promise.all([
+          this.prisma.raw.membership.count({ where: { status: { in: ['ACTIVE', 'INVITED'] } } }),
+          this.prisma.raw.branch.count({ where: { isActive: true } }),
+        ]);
+        return { staff, branches };
+      });
+    } catch (e) {
+      this.log.warn(`Staff and branch count for ${t.slug} unavailable: ${(e as Error).message}`);
+      return null;
+    }
   }
 
   async get(id: string) {
-    return toClinic(await this.find(id));
+    const t = await this.find(id);
+    return toClinic(t, await this.seats(t));
   }
 
   /**
@@ -120,7 +185,13 @@ export class PlatformClinicsService {
       take: 50,
       select: { id: true, action: true, summary: true, actorName: true, createdAt: true },
     });
-    return { clinic: toClinic(t), usage, events: events.map((e) => ({ ...e, createdAt: e.createdAt.toISOString() })) };
+    const payments = await this.prisma.control.clinicPayment.findMany({ where: { tenantId: id }, include: { tenant: { select: { name: true } } }, orderBy: [{ paidAt: 'desc' }, { number: 'desc' }] });
+    return {
+      clinic: toClinic(t, usage && { staff: usage.staffCounted, branches: usage.branches }),
+      usage,
+      events: events.map((e) => ({ ...e, createdAt: e.createdAt.toISOString() })),
+      payments: payments.map(toPayment),
+    };
   }
 
   async create(input: CreateClinicInput) {
@@ -151,10 +222,14 @@ export class PlatformClinicsService {
           createdById: RequestContext.get()?.userId ?? null,
           planId: plan?.id ?? null,
           planChangedAt: plan ? new Date() : null,
+          billingCycle: input.billingCycle,
+          // The plan's free trial: when it ends the clinic is paused until NextCore marks it as paid.
+          trialEndsAt: plan && input.startTrial && plan.trialDays > 0 ? new Date(Date.now() + plan.trialDays * 86400_000) : null,
         },
         include: { plan: true },
       });
-      await this.audit.record({ action: 'platform.clinic_created', entityType: 'Tenant', entityId: t.id, summary: `${t.name} (${t.slug})${plan ? ` · ${plan.name} plan` : ''}`, organizationId: null }, tx);
+      const trial = t.trialEndsAt ? ` · ${plan!.trialDays}-day free trial` : '';
+      await this.audit.record({ action: 'platform.clinic_created', entityType: 'Tenant', entityId: t.id, summary: `${t.name} (${t.slug})${plan ? ` · ${plan.name} plan` : ''}${trial}`, organizationId: null }, tx);
       return t;
     });
     this.start(tenant.id);
@@ -171,7 +246,13 @@ export class PlatformClinicsService {
    * above a lowered limit keeps what it has but cannot add more.
    */
   async assignPlan(id: string, input: ClinicPlanInput) {
-    const t = await this.find(id);
+    await this.setPlan(await this.find(id), input);
+    return this.get(id);
+  }
+
+  /** Applies a plan and exceptions (from the super admin, an approved request or an ended free period). */
+  private async setPlan(t: TenantWithPlan, input: ClinicPlanInput, extra: { trialEndsAt?: null; trialThenPlanId?: null } = {}) {
+    const id = t.id;
     const plan = input.planId ? await this.prisma.control.plan.findUnique({ where: { id: input.planId } }) : null;
     if (input.planId && !plan) throw notFound('Plan');
     if (plan && !plan.isActive && plan.id !== t.planId) throw ruleViolation('PLAN_UNAVAILABLE', 'That plan is switched off. Switch it on first, or choose another plan.');
@@ -183,7 +264,7 @@ export class PlatformClinicsService {
     if (overlap.length) throw ruleViolation('FEATURE_CONFLICT', `${overlap.join(', ')} cannot be both added and taken away`);
     const before = entitlementsOf(t);
     await this.prisma.control.$transaction(async (tx) => {
-      const after = await tx.tenant.update({ where: { id }, data: { planId: plan?.id ?? null, ...o, planChangedAt: new Date() }, include: { plan: true } });
+      const after = await tx.tenant.update({ where: { id }, data: { planId: plan?.id ?? null, ...o, ...extra, planChangedAt: new Date() }, include: { plan: true } });
       const now = entitlementsOf(after);
       const gained = now.features.filter((f) => !before.features.includes(f));
       const lost = before.features.filter((f) => !now.features.includes(f));
@@ -206,7 +287,137 @@ export class PlatformClinicsService {
       );
     });
     this.tenancy.forget(t.slug);
+  }
+
+  /**
+   * How the clinic pays and its free trial or free period (e.g. a month of Professional, then back to Starter).
+   * Clearing the end date marks the clinic as paying.
+   */
+  async setBilling(id: string, input: ClinicBillingInput) {
+    const t = await this.find(id);
+    const ends = input.trialEndsAt ? new Date(input.trialEndsAt) : null;
+    if (ends && ends <= new Date()) throw ruleViolation('DATE_PASSED', 'Choose an end date in the future');
+    const then = ends && input.trialThenPlanId ? await this.prisma.control.plan.findUnique({ where: { id: input.trialThenPlanId } }) : null;
+    if (ends && input.trialThenPlanId && (!then || !then.isActive)) throw ruleViolation('PLAN_UNAVAILABLE', 'Choose a plan that is switched on for after the free period');
+    await this.prisma.control.$transaction(async (tx) => {
+      await tx.tenant.update({ where: { id }, data: { billingCycle: input.billingCycle, trialEndsAt: ends, trialThenPlanId: ends ? (then?.id ?? null) : null } });
+      const summary = [
+        `${input.billingCycle === 'YEARLY' ? 'Yearly' : 'Monthly'} billing`,
+        ends ? `free until ${ends.toISOString().slice(0, 10)}, then ${then ? then.name : 'paused'}` : t.trialEndsAt ? 'marked as paying' : null,
+      ].filter(Boolean).join(' · ');
+      await this.audit.record({ action: 'platform.clinic_billing_changed', entityType: 'Tenant', entityId: id, summary, organizationId: null }, tx);
+    });
+    this.tenancy.forget(t.slug);
     return this.get(id);
+  }
+
+  /**
+   * Free trials and free periods that have ended: the clinic moves to the plan chosen for afterwards, or is paused
+   * (data kept) until NextCore marks it as paid. The owner is emailed either way.
+   */
+  async endTrials(now = new Date()) {
+    const ended = await this.prisma.control.tenant.findMany({ where: { status: 'ACTIVE', trialEndsAt: { lte: now } }, include: { plan: true } });
+    for (const t of ended) {
+      try {
+        await this.endTrial(t, now);
+      } catch (e) {
+        this.log.error(`Ending the free trial of ${t.slug} failed: ${(e as Error).message}`);
+      }
+    }
+    return ended.length;
+  }
+
+  private async endTrial(t: TenantWithPlan, now: Date) {
+    const then = t.trialThenPlanId ? await this.prisma.control.plan.findUnique({ where: { id: t.trialThenPlanId } }) : null;
+    if (then) {
+      await this.setPlan(t, { planId: then.id, staffLimitOverride: t.staffLimitOverride, branchLimitOverride: t.branchLimitOverride, extraFeatures: t.extraFeatures as PlanFeature[], removedFeatures: t.removedFeatures as PlanFeature[] }, { trialEndsAt: null, trialThenPlanId: null });
+      await this.notifyOwner(t, `${t.name} is now on the ${then.name} plan`, `Your free period on ${t.plan?.name ?? 'your plan'} has ended and ${t.name} is now on the ${then.name} plan. Everything you entered is kept.`);
+    } else {
+      await this.prisma.control.$transaction(async (tx) => {
+        await tx.tenant.update({ where: { id: t.id }, data: { status: 'SUSPENDED', suspendedAt: now, pausedReason: 'TRIAL_ENDED' } });
+        await this.audit.record({ action: 'platform.clinic_suspended', entityType: 'Tenant', entityId: t.id, summary: `${t.slug}: free trial ended`, organizationId: null, actorUserId: null, actorName: 'NextCore (automatic)' }, tx);
+      });
+      this.tenancy.forget(t.slug);
+      await this.prisma.release(t.databaseName);
+      await this.notifyOwner(t, `Your free trial of NextCore VCMS has ended`, `The free trial for ${t.name} has ended, so the clinic is paused. All your records are kept safely. Contact NextCore to choose a plan and carry on where you left off.`);
+    }
+  }
+
+  private async notifyOwner(t: TenantWithPlan, subject: string, text: string) {
+    try {
+      await this.mail.send({ to: t.ownerEmail, subject, text: `Hello ${t.ownerName},\n\n${text}\n\nNextCore VCMS`, html: layout(escapeHtml(subject), `<p>Hello ${escapeHtml(t.ownerName)},</p><p>${escapeHtml(text)}</p>`) });
+    } catch (e) {
+      this.log.error(`Email to ${t.ownerEmail} failed: ${(e as Error).message}`);
+    }
+  }
+
+  /** Plan changes clinic owners asked for (Settings → Your plan) and nobody has handled yet, oldest first. */
+  async planRequests(): Promise<PlanRequestView[]> {
+    this.assertPlatform();
+    const rows = await this.prisma.control.planRequest.findMany({ where: { status: 'PENDING' }, include: { tenant: { include: { plan: true } }, toPlan: true }, orderBy: { createdAt: 'asc' } });
+    return rows.map((r) => ({
+      id: r.id,
+      clinicId: r.tenantId,
+      clinicName: r.tenant.name,
+      clinicSlug: r.tenant.slug,
+      kind: r.kind,
+      quantity: r.quantity,
+      fromPlanName: r.fromPlanName,
+      toPlanId: r.toPlanId,
+      toPlanName: r.toPlan?.name ?? null,
+      priceMonthlyMinor: r.toPlan ? r.toPlan.priceMonthlyMinor : r.quantity * ((r.kind === 'EXTRA_BRANCH' ? r.tenant.plan?.extraBranchMinor : r.tenant.plan?.extraStaffMinor) ?? 0),
+      currency: (r.toPlan ?? r.tenant.plan)?.currency ?? 'PKR',
+      note: r.note,
+      requestedByName: r.requestedByName,
+      createdAt: r.createdAt.toISOString(),
+    }));
+  }
+
+  private async openRequest(id: string) {
+    this.assertPlatform();
+    const r = await this.prisma.control.planRequest.findUnique({ where: { id }, include: { tenant: { include: { plan: true } }, toPlan: true } });
+    if (!r) throw notFound('Plan request');
+    if (r.status !== 'PENDING') throw ruleViolation('REQUEST_HANDLED', 'This request has already been handled.');
+    return r;
+  }
+
+  /**
+   * Moves the clinic to the plan it asked for (keeping its own exceptions), closes the request and tells the owner.
+   * Billing happens outside the app: approve once the clinic has paid or agreed the new price.
+   */
+  async approvePlanRequest(id: string) {
+    const r = await this.openRequest(id);
+    const t = r.tenant;
+    const keep = { staffLimitOverride: t.staffLimitOverride, branchLimitOverride: t.branchLimitOverride, extraFeatures: t.extraFeatures as PlanFeature[], removedFeatures: t.removedFeatures as PlanFeature[] };
+    let what: string;
+    if (r.kind === 'PLAN') {
+      if (!r.toPlan) throw ruleViolation('PLAN_UNAVAILABLE', 'That plan no longer exists');
+      await this.setPlan(t, { planId: r.toPlan.id, ...keep });
+      what = `${t.name} has moved to the ${r.toPlan.name} plan. Everything it includes is ready to use now.`;
+    } else {
+      // More branches or staff accounts on the current plan: the clinic's own limit goes up by the number asked for.
+      if (!t.plan) throw ruleViolation('NO_PLAN', 'The clinic has no plan, so it has no limit to raise');
+      const branch = r.kind === 'EXTRA_BRANCH';
+      const base = branch ? (t.branchLimitOverride ?? t.plan.maxBranches) : (t.staffLimitOverride ?? t.plan.maxStaff);
+      if (base == null) throw ruleViolation('NO_LIMIT', `The ${t.plan.name} plan has no ${branch ? 'branch' : 'staff'} limit to raise`);
+      await this.setPlan(t, { planId: t.plan.id, ...keep, ...(branch ? { branchLimitOverride: base + r.quantity } : { staffLimitOverride: base + r.quantity }) });
+      what = `${t.name} can now have ${base + r.quantity} ${branch ? 'branches' : 'staff accounts'}.`;
+    }
+    await this.prisma.control.$transaction(async (tx) => {
+      await tx.planRequest.update({ where: { id }, data: { status: 'APPROVED', resolvedAt: new Date(), resolvedById: RequestContext.get()?.userId ?? null } });
+      await this.audit.record({ action: 'platform.plan_request_approved', entityType: 'Tenant', entityId: t.id, summary: `${t.name}: ${r.kind === 'PLAN' ? `${r.fromPlanName ?? 'No plan'} → ${r.toPlan?.name}` : `${r.quantity} extra ${r.kind === 'EXTRA_BRANCH' ? 'branch(es)' : 'staff account(s)'}`}`, organizationId: null }, tx);
+    });
+    await this.notifyOwner(t, r.kind === 'PLAN' ? `${t.name} is now on the ${r.toPlan!.name} plan` : `Your request for ${t.name} is done`, `${what} Thank you for choosing NextCore VCMS.`);
+    return this.get(t.id);
+  }
+
+  /** Closes a request without changing the clinic's plan (e.g. sorted out by phone, or not going ahead). */
+  async dismissPlanRequest(id: string) {
+    const r = await this.openRequest(id);
+    await this.prisma.control.$transaction(async (tx) => {
+      await tx.planRequest.update({ where: { id }, data: { status: 'DISMISSED', resolvedAt: new Date(), resolvedById: RequestContext.get()?.userId ?? null } });
+      await this.audit.record({ action: 'platform.plan_request_dismissed', entityType: 'Tenant', entityId: r.tenantId, summary: `${r.tenant.name}: ${r.kind === 'PLAN' ? `${r.fromPlanName ?? 'No plan'} → ${r.toPlan?.name}` : `${r.quantity} extra ${r.kind === 'EXTRA_BRANCH' ? 'branch(es)' : 'staff account(s)'}`}`, organizationId: null }, tx);
+    });
   }
 
   /** Sets up a clinic that failed part-way (each step is safe to repeat). */
@@ -219,12 +430,13 @@ export class PlatformClinicsService {
     return this.get(id);
   }
 
-  async suspend(id: string) {
+  /** Pauses a clinic; `UNPAID` tells its staff the subscription payment is overdue (lifted when it pays). */
+  async suspend(id: string, reason: 'UNPAID' | null = null) {
     const t = await this.find(id);
     if (t.status !== 'ACTIVE') throw ruleViolation('NOT_ACTIVE', 'Only an active clinic can be paused');
     await this.prisma.control.$transaction(async (tx) => {
-      await tx.tenant.update({ where: { id }, data: { status: 'SUSPENDED', suspendedAt: new Date() } });
-      await this.audit.record({ action: 'platform.clinic_suspended', entityType: 'Tenant', entityId: id, summary: t.slug, organizationId: null }, tx);
+      await tx.tenant.update({ where: { id }, data: { status: 'SUSPENDED', suspendedAt: new Date(), pausedReason: reason } });
+      await this.audit.record({ action: 'platform.clinic_suspended', entityType: 'Tenant', entityId: id, summary: reason === 'UNPAID' ? `${t.slug}: payment overdue` : t.slug, organizationId: null }, tx);
     });
     this.tenancy.forget(t.slug);
     await this.prisma.release(t.databaseName);
@@ -235,7 +447,8 @@ export class PlatformClinicsService {
     const t = await this.find(id);
     if (t.status !== 'SUSPENDED') throw ruleViolation('NOT_SUSPENDED', 'Only a paused clinic can be reactivated');
     await this.prisma.control.$transaction(async (tx) => {
-      await tx.tenant.update({ where: { id }, data: { status: 'ACTIVE', suspendedAt: null } });
+      // Reactivating a clinic paused at the end of its free trial means it is paying now.
+      await tx.tenant.update({ where: { id }, data: { status: 'ACTIVE', suspendedAt: null, pausedReason: null, ...(t.pausedReason === 'TRIAL_ENDED' ? { trialEndsAt: null, trialThenPlanId: null } : {}) } });
       await this.audit.record({ action: 'platform.clinic_reactivated', entityType: 'Tenant', entityId: id, summary: t.slug, organizationId: null }, tx);
     });
     this.tenancy.forget(t.slug);

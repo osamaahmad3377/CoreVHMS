@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query, Req, Res } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { clinicAddressSchema, clinicPlanSchema, createClinicSchema, planInputSchema, type HostInfo } from '@vcms/shared';
+import { clinicAddressSchema, clinicBillingSchema, clinicPlanSchema, createClinicSchema, paymentListSchema, planInputSchema, recordPaymentSchema, voidPaymentSchema, type HostInfo } from '@vcms/shared';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { Public, RequirePermissions } from '../../common/auth/decorators';
@@ -14,13 +14,19 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { env } from '../../config/env';
 import { AttachmentsService } from '../attachments/attachments.service';
 import { BrandImage, OrganizationsService, brandingOf } from '../organizations/organizations.service';
+import { PlatformBillingService } from './platform-billing.service';
 import { PlatformClinicsService } from './platform-clinics.service';
 import { PlatformPlansService } from './platform-plans.service';
+
+const suspendSchema = z.object({ reason: z.enum(['UNPAID']).nullish() }).default({});
 
 @ApiTags('platform')
 @Controller('platform/clinics')
 export class PlatformClinicsController {
-  constructor(private readonly clinics: PlatformClinicsService) {}
+  constructor(
+    private readonly clinics: PlatformClinicsService,
+    private readonly billing: PlatformBillingService,
+  ) {}
 
   @Get()
   @RequirePermissions('platform.clinics.manage')
@@ -54,6 +60,14 @@ export class PlatformClinicsController {
     return this.clinics.assignPlan(id, body);
   }
 
+  /** Monthly or yearly billing, and a free trial or free period (then another plan, or paused). */
+  @Put(':id/billing')
+  @RequirePermissions('platform.plans.manage')
+  @ApiZodBody(clinicBillingSchema)
+  setBilling(@Param('id', ParseUUIDPipe) id: string, @Body(zp(clinicBillingSchema)) body: z.infer<typeof clinicBillingSchema>) {
+    return this.clinics.setBilling(id, body);
+  }
+
   @Post(':id/retry')
   @HttpCode(200)
   @RequirePermissions('platform.clinics.manage')
@@ -61,11 +75,28 @@ export class PlatformClinicsController {
     return this.clinics.retry(id);
   }
 
+  /** Pauses the clinic; `{ reason: 'UNPAID' }` tells its staff the subscription payment is overdue. */
   @Post(':id/suspend')
   @HttpCode(200)
   @RequirePermissions('platform.clinics.manage')
-  suspend(@Param('id', ParseUUIDPipe) id: string) {
-    return this.clinics.suspend(id);
+  suspend(@Param('id', ParseUUIDPipe) id: string, @Body(zp(suspendSchema)) body: z.infer<typeof suspendSchema>) {
+    return this.clinics.suspend(id, body.reason ?? null);
+  }
+
+  /** Records what the clinic paid (a month, several months or a year upfront, plus any free months). */
+  @Post(':id/payments')
+  @RequirePermissions('platform.billing.manage')
+  @ApiZodBody(recordPaymentSchema)
+  recordPayment(@Param('id', ParseUUIDPipe) id: string, @Body(zp(recordPaymentSchema)) body: z.infer<typeof recordPaymentSchema>) {
+    return this.billing.record(id, body);
+  }
+
+  /** Emails the owner what is due and by when. */
+  @Post(':id/payment-reminder')
+  @HttpCode(200)
+  @RequirePermissions('platform.billing.manage')
+  remind(@Param('id', ParseUUIDPipe) id: string) {
+    return this.billing.remind(id);
   }
 
   @Post(':id/reactivate')
@@ -80,6 +111,34 @@ export class PlatformClinicsController {
   @RequirePermissions('platform.clinics.manage')
   ownerPassword(@Param('id', ParseUUIDPipe) id: string) {
     return this.clinics.resetOwnerPassword(id);
+  }
+}
+
+/** Payments clinics made to NextCore, and the money at a glance. */
+@ApiTags('platform')
+@Controller('platform')
+export class PlatformBillingController {
+  constructor(private readonly billing: PlatformBillingService) {}
+
+  @Get('payments')
+  @RequirePermissions('platform.billing.manage')
+  payments(@Query(zp(paymentListSchema)) q: z.infer<typeof paymentListSchema>) {
+    return this.billing.list(q);
+  }
+
+  /** Cancels a payment recorded by mistake (kept, marked cancelled, with the reason). */
+  @Post('payments/:id/cancel')
+  @HttpCode(200)
+  @RequirePermissions('platform.billing.manage')
+  @ApiZodBody(voidPaymentSchema)
+  cancel(@Param('id', ParseUUIDPipe) id: string, @Body(zp(voidPaymentSchema)) body: z.infer<typeof voidPaymentSchema>) {
+    return this.billing.void(id, body.reason);
+  }
+
+  @Get('billing/summary')
+  @RequirePermissions('platform.billing.manage')
+  summary() {
+    return this.billing.summary();
   }
 }
 
@@ -101,6 +160,14 @@ export class PlatformPlansController {
     return this.plans.create(body);
   }
 
+  /** Replaces the plans with the recommended Starter, Professional and Premium (clinics move with their plan). */
+  @Post('recommended')
+  @HttpCode(200)
+  @RequirePermissions('platform.plans.manage')
+  applyRecommended() {
+    return this.plans.applyRecommended();
+  }
+
   @Put(':id')
   @RequirePermissions('platform.plans.manage')
   @ApiZodBody(planInputSchema)
@@ -113,6 +180,33 @@ export class PlatformPlansController {
   @RequirePermissions('platform.plans.manage')
   async remove(@Param('id', ParseUUIDPipe) id: string) {
     await this.plans.remove(id);
+  }
+}
+
+/** Clinic owners' requests to change plan, for the super admin to approve or dismiss. */
+@ApiTags('platform')
+@Controller('platform/plan-requests')
+export class PlatformPlanRequestsController {
+  constructor(private readonly clinics: PlatformClinicsService) {}
+
+  @Get()
+  @RequirePermissions('platform.plans.manage')
+  list() {
+    return this.clinics.planRequests();
+  }
+
+  @Post(':id/approve')
+  @HttpCode(200)
+  @RequirePermissions('platform.plans.manage')
+  approve(@Param('id', ParseUUIDPipe) id: string) {
+    return this.clinics.approvePlanRequest(id);
+  }
+
+  @Post(':id/dismiss')
+  @HttpCode(204)
+  @RequirePermissions('platform.plans.manage')
+  async dismiss(@Param('id', ParseUUIDPipe) id: string) {
+    await this.clinics.dismissPlanRequest(id);
   }
 }
 

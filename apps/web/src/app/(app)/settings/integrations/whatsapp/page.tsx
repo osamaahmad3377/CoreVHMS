@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { WHATSAPP_PURPOSE_LABELS, WHATSAPP_PURPOSES, type WhatsAppPurpose } from '@vcms/shared';
-import { AlertTriangle, BellRing, CheckCheck, ChevronRight, CheckCircle2, ExternalLink, Eye, EyeOff, Link2, MessageCircle, PlugZap, RefreshCw, Send, ShieldCheck, Unplug, Webhook, XCircle } from 'lucide-react';
+import { WHATSAPP_PURPOSE_LABELS, WHATSAPP_PURPOSES, hasFeature, type WhatsAppPurpose } from '@vcms/shared';
+import { AlertTriangle, BellRing, CheckCheck, ChevronRight, CheckCircle2, ExternalLink, Eye, EyeOff, Link2, MessageCircle, PauseCircle, PlugZap, RefreshCw, Send, ShieldCheck, Unplug, Webhook, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -10,6 +10,7 @@ import { Field } from '@/components/forms/field';
 import { FormError } from '@/components/forms/form-error';
 import { WhatsAppTemplateDialog } from '@/components/integrations/whatsapp-template-dialog';
 import { ErrorState, LoadingRows } from '@/components/page';
+import { UpgradeCard } from '@/components/plan/upgrade';
 import { CopyButton } from '@/components/platform/clinic-ui';
 import { RequirePermission } from '@/components/require';
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +19,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Switch } from '@/components/ui/checkbox';
 import { Input, NativeSelect } from '@/components/ui/input';
 import { api } from '@/lib/api';
+import { useSession } from '@/lib/session';
 import { fmtDateTime } from '@/lib/format';
 import type { WhatsAppOverview } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -480,6 +482,8 @@ function Connected({ data }: { data: WhatsAppOverview }) {
 }
 
 function WhatsAppSettings() {
+  const { session } = useSession();
+  const allowed = hasFeature(session.entitlements, 'whatsapp');
   // Refreshed every minute while connected, so delivery figures and Meta's updates show up.
   const q = useQuery({ queryKey: ['whatsapp'], queryFn: () => api.get<WhatsAppOverview>('/integrations/whatsapp'), refetchInterval: (query) => (query.state.data?.connected ? 60_000 : false) });
   return (
@@ -491,7 +495,25 @@ function WhatsAppSettings() {
           <p className="text-sm text-muted-foreground">Send appointment and vaccination reminders and messages from your clinic’s own WhatsApp Business number.</p>
         </div>
       </div>
-      {q.isLoading ? <LoadingRows rows={5} /> : q.error ? <ErrorState error={q.error} onRetry={() => q.refetch()} /> : q.data!.connected ? <Connected data={q.data!} /> : <NotConnected />}
+      {q.isLoading ? (
+        <LoadingRows rows={5} />
+      ) : q.error ? (
+        <ErrorState error={q.error} onRetry={() => q.refetch()} />
+      ) : !allowed ? (
+        <>
+          <UpgradeCard feature="whatsapp" text="Your client messages — confirmations, reminders and results — go by email now. Send them on WhatsApp, automatically, from your own WhatsApp Business number." />
+          {q.data!.connected && (
+            <p className="flex items-start gap-2 rounded-2xl surface-flat p-4 text-sm text-muted-foreground">
+              <PauseCircle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+              Your WhatsApp number is still saved, but nothing is sent from it on your current plan. It starts sending again as soon as your plan includes WhatsApp Business.
+            </p>
+          )}
+        </>
+      ) : q.data!.connected ? (
+        <Connected data={q.data!} />
+      ) : (
+        <NotConnected />
+      )}
     </div>
   );
 }

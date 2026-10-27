@@ -8,6 +8,7 @@ import { CommandPalette } from './command-palette';
 import { RouteProgress } from './route-progress';
 import { Logo, Sidebar, SidebarNav } from './sidebar';
 import { Topbar } from './topbar';
+import { TrialBar } from '../plan/upgrade';
 
 const COLLAPSE_KEY = 'vcms.sidebar.collapsed';
 
@@ -76,6 +77,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar onMenu={() => setMobileOpen(true)} onSearch={() => setSearchOpen(true)} />
+        <TrialBar />
         <main id="main" className="page-enter mx-auto w-full max-w-[1600px] flex-1 px-4 pb-8 pt-6 sm:px-6 lg:px-8 lg:pt-8">
           {children}
         </main>

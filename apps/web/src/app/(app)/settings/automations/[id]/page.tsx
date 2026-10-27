@@ -697,8 +697,10 @@ function Builder() {
           delete copy.key;
           return copy as AutomationStep;
         }),
+        // Made from a recipe: counts as ready-made while it keeps the recipe's shape (the API checks).
+        ...(isNew && params.get('recipe') ? { recipeKey: params.get('recipe') } : {}),
       },
-    [d],
+    [d, isNew, params],
   );
   const save = useMutation({
     mutationFn: () => (isNew ? api.post<{ id: string }>('/automations', payload) : api.put<{ id: string }>(`/automations/${id}`, payload)),
