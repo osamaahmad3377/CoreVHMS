@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Building2, Check, ChevronDown, CircleHelp, LogOut, Menu, Moon, Plus, Search, Shield, Sun } from 'lucide-react';
+import { Building2, Check, Crown, ChevronDown, CircleHelp, LogOut, Menu, Moon, Plus, Search, Shield, Sun } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
@@ -23,7 +23,8 @@ import {
 import { Avatar, Kbd } from '../ui/misc';
 
 export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () => void }) {
-  const { session, can } = useSession();
+  const { session, can, canAny } = useSession();
+  const planLabel = session.entitlements?.planName ? `${session.entitlements.planName} plan` : 'Full access';
   const qc = useQueryClient();
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
@@ -154,6 +155,18 @@ export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () 
               <div className="truncate text-sm font-medium text-foreground">{session.user.name}</div>
               <div className="truncate text-xs">{session.user.email}</div>
             </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {canAny('org.manage') ? (
+              <DropdownMenuItem asChild>
+                <Link href="/settings/plan">
+                  <Crown className="text-amber-500" /> {planLabel}
+                </Link>
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuLabel className="flex items-center gap-2 font-normal">
+                <Crown className="h-4 w-4 text-amber-500" /> <span className="text-sm text-foreground">{planLabel}</span>
+              </DropdownMenuLabel>
+            )}
             {session.branches.length > 1 && (
               <div className="md:hidden">
                 <DropdownMenuSeparator />

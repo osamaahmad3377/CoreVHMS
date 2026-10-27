@@ -38,7 +38,7 @@ export function tenantResolverMiddleware(tenancy: TenancyService) {
           return next();
         case 'tenant': {
           const t = await tenancy.bySlug(host.slug);
-          if (t?.status === 'ACTIVE') store.tenant = tenantRef(t);
+          if (t?.status === 'ACTIVE') store.tenant = tenantRef(t, t.plan ? await tenancy.offers() : undefined);
           if (store.tenant || open) return next();
           if (!t) return reject(res, 404, 'CLINIC_NOT_FOUND', 'No clinic uses this address. Check the spelling.');
           if (t.status === 'SUSPENDED') return reject(res, 403, 'CLINIC_SUSPENDED', 'This clinic’s account is paused. Please contact NextCore support.');

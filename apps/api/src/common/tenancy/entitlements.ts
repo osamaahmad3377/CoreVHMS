@@ -1,5 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
-import { PLAN_FEATURE_INFO, hasFeature, permissionInPlan, type Entitlements, type PlanFeature } from '@vcms/shared';
+import { featureLockedMessage, hasFeature, permissionInPlan, planNames, plansAllowing, type Entitlements, type PlanFeature } from '@vcms/shared';
 import { RequestContext } from '../context/request-context';
 import { ruleViolation } from '../http/errors';
 
@@ -21,23 +21,20 @@ export function featureAllowed(feature: PlanFeature): boolean {
   return hasFeature(currentEntitlements(), feature);
 }
 
-const UPGRADE = 'Ask NextCore to add it to your plan.';
-
 /** Throws unless the clinic's plan includes the feature. */
 export function assertFeature(feature: PlanFeature) {
   if (featureAllowed(feature)) return;
-  const e = currentEntitlements();
   throw new ForbiddenException({
     code: 'PLAN_FEATURE',
-    message: `${PLAN_FEATURE_INFO[feature].label} is not part of your ${e?.planName ? `${e.planName} ` : ''}plan. ${UPGRADE}`,
+    message: featureLockedMessage(currentEntitlements(), feature),
     details: { feature },
   });
 }
 
 const LIMIT_TEXT = {
-  staff: { limit: (e: Entitlements) => e.maxStaff, noun: 'staff accounts', hint: 'Remove or pause someone, or ask NextCore for a bigger plan.' },
-  branches: { limit: (e: Entitlements) => e.maxBranches, noun: 'branches', hint: 'Pause a branch you no longer use, or ask NextCore for a bigger plan.' },
-  automations: { limit: (e: Entitlements) => e.maxAutomations, noun: 'automations switched on', hint: 'Switch one off, or upgrade your plan to switch on more.' },
+  staff: { limit: (e: Entitlements) => e.maxStaff, noun: 'staff accounts', hint: 'Remove or pause someone', more: 'add more staff' },
+  branches: { limit: (e: Entitlements) => e.maxBranches, noun: 'branches', hint: 'Pause a branch you no longer use', more: 'add more branches' },
+  automations: { limit: (e: Entitlements) => e.maxAutomations, noun: 'automations switched on', hint: 'Switch one off', more: 'switch on more' },
 } as const;
 
 /**
@@ -50,5 +47,7 @@ export function assertWithinLimit(kind: keyof typeof LIMIT_TEXT, current: number
   const t = LIMIT_TEXT[kind];
   const max = t.limit(e);
   if (max === null || current + adding <= max) return;
-  throw ruleViolation('PLAN_LIMIT', `Your ${e.planName ? `${e.planName} ` : ''}plan allows ${max} ${t.noun}, and you have ${current}. ${t.hint}`, { kind, limit: max, current });
+  const bigger = plansAllowing(e, kind, current + adding);
+  const upgrade = bigger.length ? `upgrade to ${planNames(bigger)} to ${t.more}` : `upgrade your plan to ${t.more}`;
+  throw ruleViolation('PLAN_LIMIT', `Your ${e.planName ? `${e.planName} ` : ''}plan allows ${max} ${t.noun}, and you have ${current}. ${t.hint}, or ${upgrade}.`, { kind, limit: max, current, plans: bigger.map((p) => p.name) });
 }

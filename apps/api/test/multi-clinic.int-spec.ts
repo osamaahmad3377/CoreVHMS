@@ -237,6 +237,8 @@ describe('Multi-clinic hosting', () => {
       expect(lab.status).toBe(403);
       expect(lab.body.error.code).toBe('PLAN_FEATURE');
       expect(lab.body.error.message).toContain('Starter plan');
+      expect(lab.body.error.message).toContain('Upgrade to Professional or Premium');
+      expect(session.entitlements.offers.map((p: { name: string }) => p.name)).toEqual(['Starter', 'Professional', 'Premium']);
       expect((await lc.owner.call('put', '/organization/branding', { primaryColor: '#dc2626' })).status).toBe(200);
       // The newer plan areas: stock forecast, branch transfers and the clinic's own mailbox.
       expect((await lc.owner.get('/stock/forecast')).body.error).toMatchObject({ code: 'PLAN_FEATURE', details: { feature: 'forecast' } });

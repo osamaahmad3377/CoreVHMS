@@ -2,6 +2,7 @@
 import { ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { SETTINGS_GROUPS, visibleSettings } from '@/lib/navigation';
+import { PlanBanner } from '@/components/plan/upgrade';
 import { useSession } from '@/lib/session';
 
 /** Settings home: every settings page as a card with one line saying what it is for, grouped like an owner thinks. */
@@ -11,6 +12,7 @@ export default function SettingsIndex() {
   const items = visibleSettings(canAny, session.organization?.enabledModules, !!session.entitlements);
   return (
     <div className="grid gap-6">
+      <PlanBanner />
       {SETTINGS_GROUPS.map((g) => {
         const inGroup = items.filter((i) => i.group === g);
         if (!inGroup.length) return null;

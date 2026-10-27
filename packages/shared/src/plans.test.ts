@@ -1,4 +1,4 @@
-import { DEFAULT_PLANS, FULL_ACCESS, PLAN_FEATURES, clinicPlanSchema, featureOfPermission, permissionInPlan, planInputSchema, resolveEntitlements } from './plans';
+import { DEFAULT_PLANS, FULL_ACCESS, PLAN_FEATURES, PLAN_FEATURE_BENEFITS, clinicPlanSchema, featureLockedMessage, featureOfPermission, permissionInPlan, planInputSchema, plansAllowing, plansWithFeature, resolveEntitlements } from './plans';
 import { ALL_PERMISSIONS } from './permissions';
 
 const plan = { id: 'p1', name: 'Starter', maxStaff: 3, maxBranches: 1, features: ['reports'] };
@@ -49,5 +49,26 @@ describe('plans', () => {
     expect(DEFAULT_PLANS.map((p) => [p.maxStaff, p.maxBranches, p.maxAutomations, p.priceMonthlyMinor])).toEqual([[2, 1, 5, 680_000], [6, 2, 9, 980_000], [null, 3, null, 1_500_000]]);
     for (const p of DEFAULT_PLANS) expect(planInputSchema.safeParse({ ...p, currency: 'PKR', isActive: true }).success).toBe(true);
     expect(DEFAULT_PLANS[2].features).toEqual([...PLAN_FEATURES]);
+  });
+});
+
+describe('upgrade messages', () => {
+  const offers = DEFAULT_PLANS.map((p) => ({ ...p, currency: 'PKR' })).reverse();
+  const starter = { ...resolveEntitlements({ id: 's', ...DEFAULT_PLANS[0] }), offers };
+
+  it('names the cheaper plans that include a feature first, without the current plan', () => {
+    expect(plansWithFeature(starter, 'lab').map((p) => p.name)).toEqual(['Professional', 'Premium']);
+    expect(plansWithFeature(starter, 'livestock').map((p) => p.name)).toEqual(['Premium']);
+    expect(featureLockedMessage(starter, 'lab')).toBe('Lab & X-ray is not included in your Starter plan. Upgrade to Professional or Premium to use it.');
+  });
+
+  it('names the plans that allow more, and falls back when the offers are unknown', () => {
+    expect(plansAllowing(starter, 'staff', 3).map((p) => p.name)).toEqual(['Professional', 'Premium']);
+    expect(plansAllowing(starter, 'branches', 3).map((p) => p.name)).toEqual(['Premium']);
+    expect(featureLockedMessage({ ...starter, offers: undefined }, 'lab')).toBe('Lab & X-ray is not included in your Starter plan. Upgrade your plan to use it.');
+  });
+
+  it('describes every feature', () => {
+    for (const f of PLAN_FEATURES) expect(PLAN_FEATURE_BENEFITS[f].length).toBeGreaterThan(0);
   });
 });

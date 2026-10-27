@@ -26,6 +26,23 @@ export const PLAN_FEATURE_INFO: Record<PlanFeature, { label: string; description
   marketing: { label: 'Marketing automations', description: 'Birthdays, recalls and other promotional messages.' },
 };
 
+/** What a clinic gets with each feature: shown on the "upgrade to unlock" page. */
+export const PLAN_FEATURE_BENEFITS: Record<PlanFeature, string[]> = {
+  lab: ['Order blood tests, urine tests and X-rays from the consultation', 'Results with normal ranges, flagged when out of range', 'Imaging reports kept on the patient’s record'],
+  hospital: ['Admit patients to wards and kennels', 'Treatment sheets with doses due, given and missed', 'Discharge summaries for the owner'],
+  surgery: ['Book operations and theatres', 'Anaesthesia records and monitoring', 'The surgical safety checklist, signed by the team'],
+  livestock: ['Farms, herds and flocks with their animals', 'Breeding, pregnancy and calving records', 'Field visits and herd treatments'],
+  boarding: ['Kennels and boarding stays with check-in and check-out', 'Grooming jobs and their prices', 'Everything billed to the client’s invoice'],
+  insurance: ['Clients’ insurance policies', 'Insurance claims from invoices', 'Referrals to other vets with the history attached'],
+  reports: ['Takings, sales and payments by day, staff and branch', 'Clinical and vaccination reports', 'Stock reports, with exports you can open in Excel'],
+  branding: ['Your logo and colours across the system', 'Your name on the sign-in page', 'Branded printouts and emails'],
+  forecast: ['See which medicines and items run out next', 'Supplier orders prepared for you', 'Less money tied up in stock'],
+  transfers: ['Suggested stock moves between branches', 'Move stock before a branch runs out', 'Every transfer recorded on both sides'],
+  mailbox: ['Client emails sent from your own Gmail, Outlook or mail server', 'Replies come straight to your inbox', 'Higher trust: emails carry your clinic’s address'],
+  automationBuilder: ['Waits, checks and conditions in your automations', 'Tasks for your team when something needs a person', 'Sending hours and limits on how often clients hear from you'],
+  marketing: ['Birthday messages for pets', 'Recalls for clients who have not visited in a while', 'Promotional messages, with clients able to opt out'],
+};
+
 const isFeature = (x: string): x is PlanFeature => (PLAN_FEATURES as readonly string[]).includes(x);
 
 /** What a clinic is allowed. Null limits mean unlimited. */
@@ -35,6 +52,19 @@ export interface Entitlements {
   maxStaff: number | null;
   maxBranches: number | null;
   /** Automations that may be switched on at once. */
+  maxAutomations: number | null;
+  features: PlanFeature[];
+  /** The plans on offer (hosted clinics only), to say which plan unlocks a feature or allows more. */
+  offers?: PlanBrief[];
+}
+
+/** A plan on offer, as much as a clinic needs to know to choose an upgrade. */
+export interface PlanBrief {
+  name: string;
+  priceMonthlyMinor: number;
+  currency: string;
+  maxStaff: number | null;
+  maxBranches: number | null;
   maxAutomations: number | null;
   features: PlanFeature[];
 }
@@ -78,6 +108,34 @@ export function resolveEntitlements(plan: PlanLike | null | undefined, o: PlanOv
 }
 
 export const hasFeature = (e: Entitlements | null | undefined, f: PlanFeature) => !e || e.features.includes(f);
+
+/** The other plans that include a feature, cheapest first. */
+export function plansWithFeature(e: Entitlements | null | undefined, f: PlanFeature): PlanBrief[] {
+  return (e?.offers ?? []).filter((p) => p.name !== e?.planName && p.features.includes(f)).sort((a, b) => a.priceMonthlyMinor - b.priceMonthlyMinor);
+}
+
+/** The other plans that allow at least `needed` of something, cheapest first. */
+export function plansAllowing(e: Entitlements | null | undefined, kind: 'staff' | 'branches' | 'automations', needed: number): PlanBrief[] {
+  const max = (p: PlanBrief) => (kind === 'staff' ? p.maxStaff : kind === 'branches' ? p.maxBranches : p.maxAutomations);
+  return (e?.offers ?? []).filter((p) => p.name !== e?.planName && (max(p) === null || max(p)! >= needed)).sort((a, b) => a.priceMonthlyMinor - b.priceMonthlyMinor);
+}
+
+/** "Professional", "Professional or Premium", "Starter, Professional or Premium". */
+export function planNames(plans: readonly { name: string }[], joiner = 'or'): string {
+  const n = plans.map((p) => p.name);
+  return n.length <= 1 ? (n[0] ?? '') : `${n.slice(0, -1).join(', ')} ${joiner} ${n[n.length - 1]}`;
+}
+
+/** "Upgrade to Professional or Premium to use it." — or a general line when the plans on offer are not known. */
+export function upgradeLine(plans: readonly { name: string }[], what = 'use it') {
+  return plans.length ? `Upgrade to ${planNames(plans)} to ${what}.` : `Upgrade your plan to ${what}.`;
+}
+
+/** The message for a feature the clinic's plan does not include. */
+export function featureLockedMessage(e: Entitlements | null | undefined, f: PlanFeature): string {
+  const plan = e?.planName ? `your ${e.planName} plan` : 'your plan';
+  return `${PLAN_FEATURE_INFO[f].label} is not included in ${plan}. ${upgradeLine(plansWithFeature(e, f))}`;
+}
 
 /**
  * The plan feature a permission belongs to, by its name (`lab.read` → lab, `reports.view` → reports), or null for

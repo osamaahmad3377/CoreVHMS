@@ -46,6 +46,7 @@ export class PlatformPlansService implements OnApplicationBootstrap {
   async ensureDefaults() {
     if (await this.prisma.control.plan.count()) return;
     await this.prisma.control.plan.createMany({ data: DEFAULT_PLANS.map((p) => ({ ...p, currency: 'PKR', isActive: true })), skipDuplicates: true });
+    this.tenancy.forgetOffers();
   }
 
   async list() {
@@ -74,6 +75,7 @@ export class PlatformPlansService implements OnApplicationBootstrap {
       await this.audit.record({ action: 'platform.plan_created', entityType: 'Plan', entityId: p.id, summary: p.name, organizationId: null }, tx);
       return p;
     });
+    this.tenancy.forgetOffers();
     return toPlan(plan, 0);
   }
 
@@ -109,6 +111,7 @@ export class PlatformPlansService implements OnApplicationBootstrap {
       return p;
     });
     clinics.forEach((c) => this.tenancy.forget(c.slug));
+    this.tenancy.forgetOffers();
     return toPlan(after, clinics.length);
   }
 
@@ -121,5 +124,6 @@ export class PlatformPlansService implements OnApplicationBootstrap {
       await tx.plan.delete({ where: { id } });
       await this.audit.record({ action: 'platform.plan_deleted', entityType: 'Plan', entityId: id, summary: p.name, organizationId: null }, tx);
     });
+    this.tenancy.forgetOffers();
   }
 }
