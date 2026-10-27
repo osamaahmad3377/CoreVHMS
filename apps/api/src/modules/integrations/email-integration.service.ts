@@ -7,6 +7,7 @@ import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { decryptSecret, encryptSecret, randomToken, safeEqual } from '../../common/crypto/crypto';
 import { ruleViolation } from '../../common/http/errors';
+import { featureAllowed } from '../../common/tenancy/entitlements';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { multiClinic } from '../../common/tenancy/hosts';
 import { TenancyService, tenantRef } from '../../common/tenancy/tenancy.service';
@@ -94,6 +95,8 @@ export class EmailIntegrationService {
   /** A mailbox that can send right now, or null (emails then go from the platform sender). */
   async usable(organizationId: string) {
     if (!/^[0-9a-f-]{36}$/i.test(organizationId)) return null;
+    // A plan without its own mailbox sends from the platform address (the connection is kept for an upgrade).
+    if (!featureAllowed('mailbox')) return null;
     const r = await this.prisma.raw.emailIntegration.findUnique({ where: { organizationId } });
     return r && r.isActive && r.status === 'CONNECTED' ? r : null;
   }

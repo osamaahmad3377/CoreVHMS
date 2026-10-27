@@ -49,6 +49,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Switch } from '@/components/ui/checkbox';
+import { PlanLockBadge, usePlanFeature } from '@/components/plan/upgrade';
 import { usePlanUsage } from '@/hooks/use-plan-usage';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
@@ -141,6 +142,7 @@ function Channels({ o }: { o?: AutomationOptions }) {
 }
 
 function RecipeGallery({ existing, compact = false }: { existing: AutomationRow[]; compact?: boolean }) {
+  const marketingOk = usePlanFeature('marketing');
   const [group, setGroup] = useState<TriggerGroup | 'ALL'>('ALL');
   const [q, setQ] = useState('');
   const used = new Set(existing.map((a) => a.name));
@@ -173,7 +175,7 @@ function RecipeGallery({ existing, compact = false }: { existing: AutomationRow[
                   <span className={cn('flex h-11 w-11 items-center justify-center rounded-2xl shadow-sm', GROUP_TONE[g].tile)}>
                     <Icon className="h-5 w-5" />
                   </span>
-                  {used.has(r.automation.name) ? <Badge variant="secondary">Added</Badge> : <Badge variant="outline">{g}</Badge>}
+                  {used.has(r.automation.name) ? <Badge variant="secondary">Added</Badge> : r.automation.marketing && !marketingOk ? <PlanLockBadge /> : <Badge variant="outline">{g}</Badge>}
                 </div>
                 <div className="grid gap-1">
                   <p className="font-semibold leading-snug">{r.automation.name}</p>
@@ -374,11 +376,11 @@ function AutomationsPage() {
   const q = useQuery({ queryKey: ['automations'], queryFn: () => api.get<AutomationRow[]>('/automations') });
   const stats = useQuery({ queryKey: ['automation-stats'], queryFn: () => api.get<Stats>('/automations/stats'), refetchInterval: 60_000 });
   const options = useQuery({ queryKey: ['automation-options'], queryFn: () => api.get<AutomationOptions>('/automations/options'), staleTime: 60_000 });
+  const plan = usePlanUsage();
   if (q.isLoading) return <LoadingRows rows={6} />;
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
   const rows = q.data!;
   const s = stats.data;
-  const plan = usePlanUsage();
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
       <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-primary/[0.12] via-brand-2/[0.08] to-transparent p-6 ring-1 ring-inset ring-primary/10 sm:p-8">

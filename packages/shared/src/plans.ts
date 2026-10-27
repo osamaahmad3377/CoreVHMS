@@ -7,7 +7,7 @@ import { optText, reqText } from './schemas/common';
  *
  * Without multi-clinic hosting, or for a clinic with no plan, nothing is limited.
  */
-export const PLAN_FEATURES = ['lab', 'hospital', 'surgery', 'livestock', 'boarding', 'insurance', 'reports', 'branding'] as const;
+export const PLAN_FEATURES = ['lab', 'hospital', 'surgery', 'livestock', 'boarding', 'insurance', 'reports', 'branding', 'forecast', 'transfers', 'mailbox', 'automationBuilder', 'marketing'] as const;
 export type PlanFeature = (typeof PLAN_FEATURES)[number];
 
 export const PLAN_FEATURE_INFO: Record<PlanFeature, { label: string; description: string }> = {
@@ -19,6 +19,11 @@ export const PLAN_FEATURE_INFO: Record<PlanFeature, { label: string; description
   insurance: { label: 'Insurance & referrals', description: 'Insurance claims and referrals to other vets.' },
   reports: { label: 'Reports', description: 'Financial, clinical and stock reports and exports.' },
   branding: { label: 'Branding', description: 'The clinic’s own logo, colours, sign-in page, printouts and emails.' },
+  forecast: { label: 'Stock forecast', description: 'What runs out next, and supplier orders ready to send.' },
+  transfers: { label: 'Branch transfers', description: 'Suggested stock moves between branches, before anyone runs out.' },
+  mailbox: { label: 'Your own mailbox', description: 'Client emails sent from the clinic’s Gmail, Outlook or mail server.' },
+  automationBuilder: { label: 'Full automation builder', description: 'Waits, checks, conditions, tasks and sending hours in your own automations.' },
+  marketing: { label: 'Marketing automations', description: 'Birthdays, recalls and other promotional messages.' },
 };
 
 const isFeature = (x: string): x is PlanFeature => (PLAN_FEATURES as readonly string[]).includes(x);
@@ -142,11 +147,27 @@ export interface PlatformPlan {
 export interface ClinicPlanView {
   entitlements: Entitlements;
   usage: { staff: number; branches: number; automations: number };
+  /** The plans on offer, to compare and ask for an upgrade (multi-clinic hosting only). */
+  plans: PlanOffer[];
 }
+
+export type PlanOffer = Pick<PlatformPlan, 'id' | 'name' | 'description' | 'priceMonthlyMinor' | 'currency' | 'maxStaff' | 'maxBranches' | 'maxAutomations' | 'features'>;
+
+export const upgradeRequestSchema = z.object({ planId: z.string().uuid(), note: optText(500) });
+export type UpgradeRequestInput = z.infer<typeof upgradeRequestSchema>;
 
 /** Plans created the first time the super admin opens Plans. Prices are only a starting point. */
 export const DEFAULT_PLANS: Omit<PlanInput, 'currency' | 'isActive'>[] = [
-  { name: 'Starter', description: 'A small clinic: one branch and a few staff.', priceMonthlyMinor: 600_000, maxStaff: 3, maxBranches: 1, maxAutomations: 5, features: [], sortOrder: 1 },
-  { name: 'Clinic', description: 'A growing clinic with lab, boarding, reports and its own branding.', priceMonthlyMinor: 1_200_000, maxStaff: 10, maxBranches: 1, maxAutomations: 9, features: ['lab', 'boarding', 'reports', 'branding'], sortOrder: 2 },
-  { name: 'Hospital', description: 'Everything, for hospitals and several branches.', priceMonthlyMinor: 2_500_000, maxStaff: 25, maxBranches: 3, maxAutomations: null, features: [...PLAN_FEATURES], sortOrder: 3 },
+  { name: 'Starter', description: 'A small clinic: 1 branch, 2 staff, 5 automations. Email support within 2 working days.', priceMonthlyMinor: 680_000, maxStaff: 2, maxBranches: 1, maxAutomations: 5, features: ['branding'], sortOrder: 1 },
+  {
+    name: 'Professional',
+    description: 'Most popular: lab, hospital, surgery, reports and stock forecast. 2 branches, 6 staff, 9 automations. Email and WhatsApp support within 1 working day.',
+    priceMonthlyMinor: 980_000,
+    maxStaff: 6,
+    maxBranches: 2,
+    maxAutomations: 9,
+    features: ['lab', 'hospital', 'surgery', 'boarding', 'reports', 'branding', 'forecast', 'mailbox', 'automationBuilder', 'marketing'],
+    sortOrder: 2,
+  },
+  { name: 'Premium', description: 'Everything, for hospitals and groups: 3 branches, unlimited staff and automations. Priority support within 4 hours, by phone too.', priceMonthlyMinor: 1_500_000, maxStaff: null, maxBranches: 3, maxAutomations: null, features: [...PLAN_FEATURES], sortOrder: 3 },
 ];

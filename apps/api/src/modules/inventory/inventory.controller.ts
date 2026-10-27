@@ -21,6 +21,7 @@ import {
 import { MOVEMENT_TYPES } from '@vcms/shared';
 import { z } from 'zod';
 import { RequireAnyPermission, RequirePermissions } from '../../common/auth/decorators';
+import { assertFeature } from '../../common/tenancy/entitlements';
 import { ApiZodBody, ApiZodQuery, zp } from '../../common/http/zod';
 import { RequestContext } from '../../common/context/request-context';
 import { ForecastService } from './forecast.service';
@@ -58,6 +59,7 @@ export class InventoryController {
   @RequireAnyPermission('inventory.read', 'procurement.read')
   @ApiZodQuery(stockForecastQuery)
   forecast(@Query(zp(stockForecastQuery)) q: z.infer<typeof stockForecastQuery>) {
+    assertFeature('forecast');
     return this.forecasts.forecast(q);
   }
 
@@ -65,6 +67,7 @@ export class InventoryController {
   @RequirePermissions('procurement.write')
   @ApiZodBody(prepareOrdersSchema)
   prepareOrders(@Body(zp(prepareOrdersSchema)) body: z.infer<typeof prepareOrdersSchema>) {
+    assertFeature('forecast');
     return this.forecasts.prepareOrders(body);
   }
 

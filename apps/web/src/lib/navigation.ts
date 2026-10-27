@@ -1,4 +1,5 @@
 import type { OptionalModule, Permission } from '@vcms/shared';
+import { hasFeature, type Entitlements, type PlanFeature } from '@vcms/shared';
 import {
   Activity,
   BarChart3,
@@ -51,6 +52,10 @@ export interface NavItem {
   ready: boolean;
   /** Optional area (Settings → Services you offer); hidden while the clinic has it switched off. */
   module?: OptionalModule;
+  /** Plan feature the area belongs to: shown locked (with a way to upgrade) to owners when the plan lacks it. */
+  feature?: PlanFeature;
+  /** Set by visibleNav: in the menu only as an upgrade prompt. */
+  locked?: boolean;
 }
 
 export interface NavSection {
@@ -79,9 +84,9 @@ export const NAV: NavSection[] = [
     items: [
       { label: 'Consultations', href: '/consultations', icon: Stethoscope, anyOf: ['clinical.read'], ready: true },
       { label: 'Pharmacy', href: '/pharmacy', icon: Pill, anyOf: ['prescriptions.read', 'pharmacy.dispense'], ready: true },
-      { label: 'Lab & X-ray', href: '/lab', icon: FlaskConical, anyOf: ['lab.read'], ready: true, module: 'lab' },
-      { label: 'Hospital', href: '/hospital', icon: Bed, anyOf: ['hospital.read'], ready: true, module: 'hospital' },
-      { label: 'Surgery', href: '/surgery', icon: HeartPulse, anyOf: ['surgery.read'], ready: true, module: 'surgery' },
+      { label: 'Lab & X-ray', href: '/lab', icon: FlaskConical, anyOf: ['lab.read'], feature: 'lab', ready: true, module: 'lab' },
+      { label: 'Hospital', href: '/hospital', icon: Bed, anyOf: ['hospital.read'], feature: 'hospital', ready: true, module: 'hospital' },
+      { label: 'Surgery', href: '/surgery', icon: HeartPulse, anyOf: ['surgery.read'], feature: 'surgery', ready: true, module: 'surgery' },
       { label: 'Vaccines & reminders', href: '/preventive', icon: Syringe, anyOf: ['preventive.read'], ready: true },
     ],
   },
@@ -91,15 +96,15 @@ export const NAV: NavSection[] = [
       { label: 'Shop counter', href: '/pos', icon: ShoppingCart, anyOf: ['pos.use'], ready: true },
       { label: 'Billing', href: '/billing', icon: Receipt, anyOf: ['billing.read'], ready: true },
       { label: 'Stock', href: '/inventory', icon: Boxes, anyOf: ['inventory.read', 'procurement.read'], ready: true },
-      { label: 'Reports', href: '/reports', icon: BarChart3, anyOf: ['reports.view'], ready: true },
+      { label: 'Reports', href: '/reports', icon: BarChart3, anyOf: ['reports.view'], feature: 'reports', ready: true },
     ],
   },
   {
     label: 'Extra services',
     items: [
-      { label: 'Livestock & farms', href: '/livestock', icon: Tractor, anyOf: ['livestock.read'], ready: true, module: 'livestock' },
-      { label: 'Boarding & grooming', href: '/boarding', icon: Scissors, anyOf: ['boarding.read'], ready: true, module: 'boarding' },
-      { label: 'Insurance & referrals', href: '/insurance', icon: ShieldCheck, anyOf: ['insurance.read'], ready: true, module: 'insurance' },
+      { label: 'Livestock & farms', href: '/livestock', icon: Tractor, anyOf: ['livestock.read'], feature: 'livestock', ready: true, module: 'livestock' },
+      { label: 'Boarding & grooming', href: '/boarding', icon: Scissors, anyOf: ['boarding.read'], feature: 'boarding', ready: true, module: 'boarding' },
+      { label: 'Insurance & referrals', href: '/insurance', icon: ShieldCheck, anyOf: ['insurance.read'], feature: 'insurance', ready: true, module: 'insurance' },
     ],
   },
   {
@@ -164,8 +169,17 @@ export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyO
 ];
 
 /** `modules` = the clinic's enabled optional modules (session.organization.enabledModules); omitted = all on. */
-export function visibleNav(canAny: (...p: Permission[]) => boolean, modules?: readonly OptionalModule[]): NavSection[] {
-  return NAV.map((s) => ({ ...s, items: s.items.filter((i) => i.ready && moduleOn(i.module, modules) && (!i.anyOf.length || canAny(...i.anyOf))) })).filter((s) => s.items.length);
+export function visibleNav(canAny: (...p: Permission[]) => boolean, modules?: readonly OptionalModule[], entitlements?: Entitlements | null): NavSection[] {
+  // Owners see areas outside the plan too, locked, so they know what an upgrade brings.
+  const owner = canAny('org.manage');
+  return NAV.map((s) => ({
+    ...s,
+    items: s.items.flatMap((i): NavItem[] => {
+      if (!i.ready) return [];
+      if (i.feature && !hasFeature(entitlements, i.feature)) return owner ? [{ ...i, href: `/settings/plan?unlock=${i.feature}`, locked: true }] : [];
+      return moduleOn(i.module, modules) && (!i.anyOf.length || canAny(...i.anyOf)) ? [i] : [];
+    }),
+  })).filter((s) => s.items.length);
 }
 
 /** Settings pages the user may open, without those of switched-off modules. */

@@ -5,6 +5,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { Public, RequireAnyPermission, SkipCsrf } from '../../common/auth/decorators';
 import { ruleViolation } from '../../common/http/errors';
+import { assertFeature } from '../../common/tenancy/entitlements';
 import { ApiZodBody, zp } from '../../common/http/zod';
 import { requestHost } from '../../common/tenancy/tenant-resolver.middleware';
 import { EmailIntegrationService } from './email-integration.service';
@@ -29,6 +30,7 @@ export class EmailIntegrationController {
   @RequireAnyPermission('integrations.manage', 'settings.manage')
   @ApiZodBody(emailSmtpConnectSchema)
   connect(@Body(zp(emailSmtpConnectSchema)) body: z.infer<typeof emailSmtpConnectSchema>) {
+    assertFeature('mailbox');
     return this.email.connectWithPassword(body);
   }
 
@@ -38,6 +40,7 @@ export class EmailIntegrationController {
   @RequireAnyPermission('integrations.manage', 'settings.manage')
   @ApiZodBody(signInSchema)
   signIn(@Body(zp(signInSchema)) body: z.infer<typeof signInSchema>, @Req() req: Request) {
+    assertFeature('mailbox');
     const origin = req.header('origin');
     // Back to the address the clinic is using (checked against the request, so it cannot point elsewhere).
     if (!origin || new URL(origin).host !== requestHost(req)) throw ruleViolation('BAD_ORIGIN', 'Open the settings page from your clinic’s address and try again');

@@ -7,6 +7,7 @@ import { DashboardService } from '../dashboard/dashboard.service';
 import { FcOptions, FcRow, FcSeries, FcTransfer, forecast } from './forecast.engine';
 import { InventoryService } from './inventory.service';
 import { poNo, ProcurementService } from './procurement.service';
+import { assertFeature, featureAllowed } from '../../common/tenancy/entitlements';
 import { r4, StockEngine } from './stock.engine';
 
 const DAY = 86_400_000;
@@ -63,7 +64,7 @@ export class ForecastService implements OnModuleInit {
   }
 
   async forecast(o: ForecastOptions) {
-    const opts: FcOptions = { horizonDays: o.horizonDays, leadDays: o.leadDays, coverDays: o.coverDays, safetyDays: o.safetyDays ?? 3 };
+    const opts: FcOptions = { horizonDays: o.horizonDays, leadDays: o.leadDays, coverDays: o.coverDays, safetyDays: o.safetyDays ?? 3, transfers: featureAllowed('transfers') };
     const key = `${RequestContext.orgId()}:${JSON.stringify(opts)}`;
     const hit = this.cache.get(key);
     const all = hit && Date.now() - hit.at < CACHE_MS ? hit.value : await this.compute(opts);
@@ -291,6 +292,7 @@ export class ForecastService implements OnModuleInit {
    * (or the named batch), into the receiving branch's main store room.
    */
   async transferBetweenBranches(input: { productId: string; fromBranchId: string; toBranchId: string; quantity: number; batchId?: string | null; notes?: string | null }) {
+    assertFeature('transfers');
     if (input.fromBranchId === input.toBranchId) throw ruleViolation('SAME_BRANCH', 'Choose two different branches');
     const db = this.prisma.db;
     const [product, from, to] = await Promise.all([

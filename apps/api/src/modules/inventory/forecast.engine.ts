@@ -42,6 +42,8 @@ export interface FcOptions {
   coverDays: number;
   /** Extra days of stock kept for busy days. */
   safetyDays: number;
+  /** Suggest moves between branches first (plan feature); off = supplier orders only. */
+  transfers?: boolean;
 }
 
 export type FcStatus = 'OUT' | 'RUNS_OUT' | 'ORDER_SOON' | 'BELOW_LEVEL' | 'OK' | 'UNUSED';
@@ -225,7 +227,7 @@ export function forecast(series: FcSeries[], o: FcOptions): { rows: FcRow[]; tra
   const remaining = new Map<(typeof base)[number], number>(base.map((b) => [b, b.r.need]));
   const transferIn = new Map<(typeof base)[number], number>();
   for (const group of byProduct.values()) {
-    if (group.length < 2) continue;
+    if (group.length < 2 || o.transfers === false) continue;
     const takers = group.filter((g) => g.r.need > EPS && g.r.weekly > EPS).sort((a, b) => (a.r.runOutDay ?? 999) - (b.r.runOutDay ?? 999));
     // Expiring stock first: a batch one branch will not finish can be used up by a busier branch.
     const expiring = group.flatMap((g) => g.r.waste.map((w) => ({ g, w: { ...w } })));

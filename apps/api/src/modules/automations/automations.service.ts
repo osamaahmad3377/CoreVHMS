@@ -4,6 +4,8 @@ import { Automation, AutomationRun, MessageChannel, Prisma } from '@prisma/clien
 import {
   AUTOMATION_RECIPES,
   BASIC_AUTOMATION_KEYS,
+  fitsWithoutBuilder,
+  sameAutomationShape,
   CHECK_INFO,
   TRIGGER_INFO,
   conditionsMet,
@@ -18,7 +20,7 @@ import { RequestContext } from '../../common/context/request-context';
 import { ClientEvent, ClientEvents } from '../../common/events/client-events';
 import { notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { assertWithinLimit, currentEntitlements } from '../../common/tenancy/entitlements';
+import { assertFeature, assertWithinLimit, currentEntitlements, featureAllowed } from '../../common/tenancy/entitlements';
 import { appUrl } from '../../common/tenancy/hosts';
 import { TenancyService } from '../../common/tenancy/tenancy.service';
 import { addDays, localDateOnly, localDayBounds, localParts, zonedToUtc } from '../../common/time/tz';
@@ -199,8 +201,20 @@ export class AutomationsService implements OnModuleInit {
     assertWithinLimit('automations', await this.prisma.db.automation.count({ where: { isActive: true } }));
   }
 
+  /**
+   * Plan rules for what an automation may be: without the full builder, the easy shape or a ready-made recipe's (or,
+   * when editing, the shape it already has — the wording can always change); marketing needs its own feature.
+   */
+  private assertPlanAllows(input: AutomationInput, current?: { trigger: string; steps: unknown; conditions: unknown; sendFromHour: number | null; sendToHour: number | null; cooldownDays: number | null; marketing: boolean }) {
+    if (input.marketing && !current?.marketing) assertFeature('marketing');
+    if (featureAllowed('automationBuilder') || fitsWithoutBuilder(input)) return;
+    if (current && sameAutomationShape(input, current as never)) return;
+    assertFeature('automationBuilder');
+  }
+
   async create(input: AutomationInput) {
     await this.validateRefs(input);
+    this.assertPlanAllows(input);
     if (input.isActive) await this.assertRoomToSwitchOn();
     const ctx = RequestContext.require();
     return this.prisma.db.$transaction(async (tx) => {
@@ -213,6 +227,7 @@ export class AutomationsService implements OnModuleInit {
   async update(id: string, input: AutomationInput) {
     const current = await this.get(id);
     await this.validateRefs(input);
+    this.assertPlanAllows(input, current);
     if (input.isActive && !current.isActive) await this.assertRoomToSwitchOn();
     const ctx = RequestContext.require();
     return this.prisma.db.$transaction(async (tx) => {
@@ -224,7 +239,10 @@ export class AutomationsService implements OnModuleInit {
 
   async setActive(id: string, isActive: boolean) {
     const before = await this.get(id);
-    if (isActive && !before.isActive) await this.assertRoomToSwitchOn();
+    if (isActive && !before.isActive) {
+      if (before.marketing) assertFeature('marketing');
+      await this.assertRoomToSwitchOn();
+    }
     const ctx = RequestContext.require();
     return this.prisma.db.$transaction(async (tx) => {
       const a = await tx.automation.update({ where: { id }, data: { isActive, updatedByName: ctx.userName ?? null } });
@@ -422,6 +440,8 @@ export class AutomationsService implements OnModuleInit {
 
   /** Starts one automation for one record (once — the dedupe key guards repeats). */
   async start(a: Automation, sourceId: string, extraKey?: string) {
+    // Promotional automations rest while the clinic's plan does not include marketing.
+    if (a.marketing && !featureAllowed('marketing')) return null;
     const org = await this.orgInfo();
     const trigger = a.trigger as AutomationTrigger;
     const ctx = await buildContext(this.prisma.db, trigger, sourceId, org);

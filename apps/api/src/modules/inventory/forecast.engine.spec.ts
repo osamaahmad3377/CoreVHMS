@@ -85,6 +85,13 @@ describe('forecast across branches', () => {
     expect(lhr.order).toBe(0);
     expect(rows.find((r) => r.branchId === 'isb')!.order).toBe(0);
   });
+  it('orders from the supplier only when the plan has no branch transfers', () => {
+    const lahore = series({ branchId: 'lhr', lots: [lot(2)] });
+    const isb = series({ branchId: 'isb', weeks: [1, 1, 1, 1, 1, 1, 1, 1], lots: [lot(40)] });
+    const { rows, transfers } = forecast([lahore, isb], { ...opts, transfers: false });
+    expect(transfers).toEqual([]);
+    expect(rows.find((r) => r.branchId === 'lhr')!).toMatchObject({ transferIn: 0, order: 18 });
+  });
   it('moves only what the other branch can spare and orders the rest', () => {
     const lahore = series({ branchId: 'lhr', lots: [lot(2)] }); // needs 18
     const isb = series({ branchId: 'isb', weeks: [1, 1, 1, 1, 1, 1, 1, 1], lots: [lot(10)] }); // keeps ~3, spares 6

@@ -707,3 +707,44 @@ export const EASY_DELAYS: { label: string; value: { amount: number; unit: 'MINUT
 
 /** Recipes every clinic gets, switched on, the first time automations are used. */
 export const BASIC_AUTOMATION_KEYS = ['booked', 'reminder-24h', 'thank-you', 'missed', 'vaccine-due', 'rescheduled', 'cancelled', 'results-ready', 'payment', 'home-today', 'after-discharge', 'welcome', 'vaccinated'] as const;
+
+type Shaped = { trigger: string; steps: readonly AutomationStep[]; conditions?: readonly { field: string }[]; sendFromHour?: number | null; sendToHour?: number | null; cooldownDays?: number | null };
+
+/**
+ * What the easy creator makes: an optional wait first, then a message and/or a staff task, limited to some kinds of
+ * animal. Plans without the full builder can make these (and ready-made recipes) and change their wording.
+ */
+export function isEasyAutomation(a: Shaped): boolean {
+  const types = a.steps.map((s) => s.type);
+  const body = types[0] === 'WAIT' ? types.slice(1) : types;
+  const once = (t: string) => body.filter((x) => x === t).length <= 1;
+  return (
+    body.length > 0 &&
+    body.every((t) => t === 'SEND_MESSAGE' || t === 'CREATE_TASK') &&
+    once('SEND_MESSAGE') &&
+    once('CREATE_TASK') &&
+    (a.conditions ?? []).every((c) => c.field === 'species') &&
+    a.sendFromHour == null &&
+    a.sendToHour == null &&
+    a.cooldownDays == null
+  );
+}
+
+/** Same trigger, the same kinds of step in the same order (and the same checks), and conditions on the same things. */
+export function sameAutomationShape(a: Shaped, b: Shaped): boolean {
+  const sig = (x: Shaped) =>
+    JSON.stringify([
+      x.trigger,
+      x.steps.map((s) => (s.type === 'CHECK' ? `CHECK:${s.check}` : s.type)),
+      (x.conditions ?? []).map((c) => c.field).sort(),
+      x.sendFromHour ?? null,
+      x.sendToHour ?? null,
+      x.cooldownDays ?? null,
+    ]);
+  return sig(a) === sig(b);
+}
+
+/** Allowed without the full builder: easy, or shaped like a ready-made recipe. */
+export function fitsWithoutBuilder(a: Shaped): boolean {
+  return isEasyAutomation(a) || AUTOMATION_RECIPES.some((r) => sameAutomationShape(a, r.automation as Shaped));
+}

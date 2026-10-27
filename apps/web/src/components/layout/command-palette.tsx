@@ -59,7 +59,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
 
   const results = search.data?.results ?? [];
   const grouped = results.reduce<Record<string, Hit[]>>((acc, h) => ((acc[h.type] ??= []).push(h), acc), {});
-  const pages = visibleNav(canAny, session.organization?.enabledModules).flatMap((s) => s.items);
+  const pages = visibleNav(canAny, session.organization?.enabledModules, session.entitlements).flatMap((s) => s.items).filter((i) => !i.locked);
   const needle = term.trim().toLowerCase();
   // Typing, or the request is still in flight: say so rather than showing an empty list.
   const searching = term.trim().length >= 2 && (term.trim() !== q || search.isFetching);

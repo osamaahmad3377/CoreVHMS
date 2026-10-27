@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPip
 import type { Response } from 'express';
 import { AttachmentsService } from '../attachments/attachments.service';
 import { ApiTags } from '@nestjs/swagger';
-import { branchSchema, branchUpdateSchema, brandingUpdateSchema, organizationUpdateSchema } from '@vcms/shared';
+import { branchSchema, branchUpdateSchema, brandingUpdateSchema, organizationUpdateSchema, upgradeRequestSchema } from '@vcms/shared';
 import { z } from 'zod';
 import { RequireAnyPermission, RequirePermissions } from '../../common/auth/decorators';
 import { ApiZodBody, zp } from '../../common/http/zod';
@@ -23,6 +23,15 @@ export class OrganizationsController {
   @RequireAnyPermission('org.manage', 'users.read', 'branches.manage')
   plan() {
     return this.orgs.plan();
+  }
+
+  /** The owner asks NextCore for another plan. */
+  @Post('organization/plan/upgrade-request')
+  @HttpCode(200)
+  @RequirePermissions('org.manage')
+  @ApiZodBody(upgradeRequestSchema)
+  requestUpgrade(@Body(zp(upgradeRequestSchema)) body: z.infer<typeof upgradeRequestSchema>) {
+    return this.orgs.requestUpgrade(body);
   }
 
   // ── Branding (white label): owner only ──

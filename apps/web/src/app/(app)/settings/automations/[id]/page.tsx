@@ -36,6 +36,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Input, NativeSelect, Textarea } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { api } from '@/lib/api';
+import { PlanLockBadge, UpgradeCard, usePlanFeature } from '@/components/plan/upgrade';
 import { useSession } from '@/lib/session';
 import { cn } from '@/lib/utils';
 
@@ -626,15 +627,15 @@ function PreviewDialog({ result, onClose }: { result: PreviewResult; onClose: ()
   );
 }
 
-function SettingToggle({ title, text, checked, onChange, children }: { title: string; text: string; checked: boolean; onChange: (v: boolean) => void; children?: React.ReactNode }) {
+function SettingToggle({ title, text, checked, onChange, children, locked }: { title: string; text: string; checked: boolean; onChange: (v: boolean) => void; children?: React.ReactNode; locked?: boolean }) {
   return (
     <div className="grid gap-2">
       <label className="flex items-start justify-between gap-4">
         <span>
-          <span className="block text-sm font-semibold">{title}</span>
+          <span className="flex flex-wrap items-center gap-2 text-sm font-semibold">{title} {locked && <PlanLockBadge />}</span>
           <span className="block text-xs text-muted-foreground">{text}</span>
         </span>
-        <Switch checked={checked} onCheckedChange={onChange} aria-label={title} />
+        <Switch checked={checked} disabled={locked && !checked} onCheckedChange={onChange} aria-label={title} />
       </label>
       {checked && children}
     </div>
@@ -657,6 +658,8 @@ function Builder() {
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
+  const planBuilder = usePlanFeature('automationBuilder');
+  const planMarketing = usePlanFeature('marketing');
 
   useEffect(() => {
     if (d) return;
@@ -761,6 +764,8 @@ function Builder() {
             : d.sendFromHour != null && d.sendToHour != null && d.sendToHour <= d.sendFromHour
               ? 'The sending hours must end after they start'
               : null;
+  const builder = planBuilder;
+  const marketingOk = planMarketing;
   const sentence = describeAutomation(payload, options.data);
   const conditionsText = d.conditions.filter((c) => c.values.length).map((c) => conditionText(c, options.data)).join(' · ') || null;
 
@@ -777,6 +782,13 @@ function Builder() {
         </Badge>
       </div>
       {error && <FormError message={error} />}
+      {!builder && (
+        <UpgradeCard
+          feature="automationBuilder"
+          compact
+          text="Your plan includes the ready-made automations and the easy creator: you can change the wording, the timing and who it is for. Adding waits, checks, conditions and more steps needs the full builder."
+        />
+      )}
 
       <div className="grid gap-1">
         <input aria-label="Automation name" className="w-full bg-transparent text-2xl font-semibold tracking-tight outline-none placeholder:text-muted-foreground/50 sm:text-3xl" placeholder="Name your automation…" value={d.name} onChange={(e) => set({ name: e.target.value })} />
@@ -904,7 +916,7 @@ function Builder() {
                 </NativeSelect>
               </div>
             </SettingToggle>
-            <SettingToggle title="Promotional" text="Only to clients who agreed to marketing. Clients who asked for no messages never get any." checked={d.marketing} onChange={(v) => set({ marketing: v })} />
+            <SettingToggle title="Promotional" text="Only to clients who agreed to marketing. Clients who asked for no messages never get any." checked={d.marketing} locked={!marketingOk} onChange={(v) => set({ marketing: v })} />
           </Card>
           <Card className="grid gap-3 p-5">
             <p className="flex items-center gap-2 font-semibold">

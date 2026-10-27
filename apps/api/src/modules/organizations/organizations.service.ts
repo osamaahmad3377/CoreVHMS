@@ -1,11 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import type { Organization } from '@prisma/client';
-import { FULL_ACCESS, type BranchInput, type Branding, type BrandingUpdateInput, type ClinicPlanView, type OrganizationUpdateInput } from '@vcms/shared';
+import { FULL_ACCESS, type BranchInput, type Branding, type BrandingUpdateInput, type ClinicPlanView, type OrganizationUpdateInput, type PlanFeature, type PlanOffer, type UpgradeRequestInput } from '@vcms/shared';
 import { AuditService, diff } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { MailService } from '../../common/mail/mail.service';
 import { assertWithinLimit, currentEntitlements } from '../../common/tenancy/entitlements';
+import { multiClinic } from '../../common/tenancy/hosts';
 
 /**
  * A clinic's branding as the web app uses it. `base` is where the images are served: the signed-in
@@ -70,6 +72,7 @@ export class OrganizationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly mail: MailService,
   ) {}
 
   async current() {
@@ -96,7 +99,35 @@ export class OrganizationsService {
       this.prisma.raw.branch.count({ where: { isActive: true } }),
       this.prisma.db.automation.count({ where: { isActive: true } }),
     ]);
-    return { entitlements: currentEntitlements() ?? FULL_ACCESS, usage: { staff, branches, automations } };
+    return { entitlements: currentEntitlements() ?? FULL_ACCESS, usage: { staff, branches, automations }, plans: await this.offers() };
+  }
+
+  /** Plans a hosted clinic can move to (none without multi-clinic hosting). */
+  private async offers(): Promise<PlanOffer[]> {
+    if (!multiClinic()) return [];
+    const plans = await this.prisma.control.plan.findMany({ where: { isActive: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
+    return plans.map((p) => ({ id: p.id, name: p.name, description: p.description, priceMonthlyMinor: p.priceMonthlyMinor, currency: p.currency, maxStaff: p.maxStaff, maxBranches: p.maxBranches, maxAutomations: p.maxAutomations, features: p.features as PlanFeature[] }));
+  }
+
+  /** The owner asks NextCore to move the clinic to another plan: recorded, and emailed to the platform admins. */
+  async requestUpgrade(input: UpgradeRequestInput) {
+    const ctx = RequestContext.require();
+    const plan = (await this.offers()).find((p) => p.id === input.planId);
+    if (!plan) throw notFound('Plan');
+    const current = currentEntitlements()?.planName ?? 'no plan';
+    if (plan.name === current) throw ruleViolation('SAME_PLAN', `You are already on the ${plan.name} plan.`);
+    const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: ctx.organizationId! } });
+    await this.prisma.db.$transaction((tx) => this.audit.record({ action: 'organization.plan_upgrade_requested', entityType: 'Organization', entityId: org.id, summary: `${current} → ${plan.name}${input.note ? ` · ${input.note}` : ''}` }, tx));
+    const admins = await this.prisma.control.user.findMany({ where: { isPlatformAdmin: true, status: 'ACTIVE' }, select: { email: true } });
+    const tenant = RequestContext.get()?.tenant;
+    for (const a of admins) {
+      await this.mail.send({
+        to: a.email,
+        subject: `Plan change request: ${org.name} → ${plan.name}`,
+        text: [`${ctx.userName ?? 'The clinic owner'} at ${org.name}${tenant ? ` (${tenant.slug})` : ''} asked to move from ${current} to ${plan.name}.`, input.note ? `Note: ${input.note}` : '', org.phone ? `Clinic phone: ${org.phone}` : '', '', 'Change it in the super admin: Clinics → the clinic → Plan.'].filter((x) => x !== null).join('\n'),
+      });
+    }
+    return { ok: true, plan: plan.name };
   }
 
   async branding() {

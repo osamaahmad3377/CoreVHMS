@@ -1,5 +1,5 @@
 'use client';
-import { ChevronDown, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { ChevronDown, Lock, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import Link from 'next/link';
 import { useTheme } from 'next-themes';
 import { usePathname } from 'next/navigation';
@@ -43,7 +43,7 @@ const readFolded = (): string[] => {
 export function SidebarNav({ collapsed, onNavigate }: { collapsed?: boolean; onNavigate?: () => void }) {
   const { canAny, session } = useSession();
   const pathname = usePathname();
-  const sections = visibleNav(canAny, session.organization?.enabledModules);
+  const sections = visibleNav(canAny, session.organization?.enabledModules, session.entitlements);
   // Sections the user folded away (remembered on this computer); the section with the current page always shows.
   const [folded, setFolded] = useState<string[]>([]);
   useEffect(() => setFolded(readFolded()), []);
@@ -74,7 +74,7 @@ export function SidebarNav({ collapsed, onNavigate }: { collapsed?: boolean; onN
             {open && (
               <ul className="grid gap-0.5">
                 {s.items.map((item) => {
-                  const active = isActive(item.href);
+                  const active = !item.locked && isActive(item.href);
                   const link = (
                     <Link
                       href={item.href}
@@ -89,7 +89,8 @@ export function SidebarNav({ collapsed, onNavigate }: { collapsed?: boolean; onN
                       <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors duration-200', active ? 'bg-white/20' : 'bg-sidebar-strong/[0.06] group-hover/nav:bg-sidebar-strong/10')}>
                         <item.icon className="h-4 w-4" aria-hidden />
                       </span>
-                      {collapsed ? <span className="sr-only">{item.label}</span> : <span className="truncate">{item.label}</span>}
+                      {collapsed ? <span className="sr-only">{item.label}{item.locked ? ' (upgrade to unlock)' : ''}</span> : <span className="min-w-0 flex-1 truncate">{item.label}</span>}
+                      {item.locked && !collapsed && <Lock className="h-3.5 w-3.5 shrink-0 opacity-60" aria-label="Upgrade to unlock" />}
                     </Link>
                   );
                   return <li key={item.href}>{collapsed ? <Tip label={item.label} side="right">{link}</Tip> : link}</li>;

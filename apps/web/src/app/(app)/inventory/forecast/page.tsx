@@ -20,6 +20,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useUrlState } from '@/hooks/use-url-state';
 import { api, qs } from '@/lib/api';
 import { fmtMoney } from '@/lib/format';
+import { UpgradeCard, usePlanFeature } from '@/components/plan/upgrade';
 import { useSession } from '@/lib/session';
 import { cn } from '@/lib/utils';
 
@@ -144,6 +145,17 @@ function Spark({ history, trend }: { history: number[]; trend: Row['trend'] }) {
 }
 
 function ForecastPage() {
+  const allowed = usePlanFeature('forecast');
+  if (allowed) return <Forecaster />;
+  return (
+    <>
+      <PageHeader title="Stock forecast" description="What will run out, a ready order for each supplier, and stock to move between branches." />
+      <UpgradeCard feature="forecast" text="See what will run out next week at each branch, and get supplier orders ready to send in one click." />
+    </>
+  );
+}
+
+function Forecaster() {
   const { can, currency } = useSession();
   const qc = useQueryClient();
   const url = useUrlState();
@@ -393,6 +405,8 @@ function OrdersTab({ f, windowText, money, canOrder, onDone }: { f: Forecast; wi
 
 function TransfersTab({ f, money, canMove, onDone }: { f: Forecast; money: (m: number) => string; canMove: boolean; onDone: () => void }) {
   const [moving, setMoving] = useState<Transfer | null>(null);
+  const transfers = usePlanFeature('transfers');
+  if (!transfers) return <UpgradeCard feature="transfers" compact text="Move spare or soon-expiring stock to the branch that needs it, instead of buying more." />;
   if (!f.transfers.length) {
     return (
       <Card>

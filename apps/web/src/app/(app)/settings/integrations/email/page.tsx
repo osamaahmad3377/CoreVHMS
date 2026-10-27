@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { EMAIL_SMTP_PRESETS, type EmailProvider } from '@vcms/shared';
+import { EMAIL_SMTP_PRESETS, hasFeature, type EmailProvider } from '@vcms/shared';
 import { AlertTriangle, ArrowLeft, CheckCircle2, ExternalLink, Eye, EyeOff, KeyRound, LogIn, Mail, Send, Server, ShieldCheck, Unplug, Workflow } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -18,6 +18,7 @@ import { Switch } from '@/components/ui/checkbox';
 import { Input, NativeSelect } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { fmtDateTime } from '@/lib/format';
+import { UpgradeCard } from '@/components/plan/upgrade';
 import { useSession } from '@/lib/session';
 import { cn } from '@/lib/utils';
 
@@ -371,6 +372,7 @@ function Connected({ d }: { d: Overview & { connection: Connection } }) {
 }
 
 function EmailSettings() {
+  const { session } = useSession();
   const router = useRouter();
   const params = useSearchParams();
   const q = useQuery({ queryKey: ['email-integration'], queryFn: () => api.get<Overview>('/integrations/email') });
@@ -388,6 +390,7 @@ function EmailSettings() {
   if (q.isLoading) return <LoadingRows rows={6} />;
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
   const d = q.data!;
+  const mailbox = hasFeature(session.entitlements, 'mailbox');
   return (
     <div className="grid gap-6">
       <div className="flex items-center gap-4">
@@ -401,7 +404,13 @@ function EmailSettings() {
           </p>
         </div>
       </div>
-      {d.connection ? <Connected d={d as Overview & { connection: Connection }} /> : <Connect d={d} />}
+      {!mailbox ? (
+        <UpgradeCard feature="mailbox" text={`Client emails come from ${d.platformSender} with your clinic’s name. Send them from your own Gmail, Outlook or mail server instead.`} />
+      ) : d.connection ? (
+        <Connected d={d as Overview & { connection: Connection }} />
+      ) : (
+        <Connect d={d} />
+      )}
       <div className="flex flex-wrap items-center gap-3 rounded-2xl surface-flat p-4 text-sm">
         <CheckCircle2 className="h-4 w-4 text-success" />
         <span className="min-w-0 flex-1">Choose which messages go by email, and build your own, under Automations.</span>

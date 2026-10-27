@@ -29,8 +29,10 @@ describe('plans', () => {
     expect(permissionInPlan(e, 'reports.view')).toBe(true);
     expect(permissionInPlan(e, 'billing.write')).toBe(true);
     expect(permissionInPlan(null, 'lab.read')).toBe(true);
-    // Every feature closes at least one real permission, so a plan can never gate nothing.
-    for (const f of PLAN_FEATURES) expect(ALL_PERMISSIONS.some((p) => featureOfPermission(p) === f)).toBe(true);
+    // Every area feature closes at least one real permission, so a plan can never gate nothing. The newer features
+    // live inside areas everyone has (stock, email, automations) and are checked by the API where they are used.
+    const inCode = ['forecast', 'transfers', 'mailbox', 'automationBuilder', 'marketing'];
+    for (const f of PLAN_FEATURES) expect(ALL_PERMISSIONS.some((p) => featureOfPermission(p) === f)).toBe(!inCode.includes(f));
   });
 
   it('validates plans and per-clinic exceptions', () => {
@@ -43,7 +45,8 @@ describe('plans', () => {
   });
 
   it('ships three sensible starter plans', () => {
-    expect(DEFAULT_PLANS.map((p) => p.name)).toEqual(['Starter', 'Clinic', 'Hospital']);
+    expect(DEFAULT_PLANS.map((p) => p.name)).toEqual(['Starter', 'Professional', 'Premium']);
+    expect(DEFAULT_PLANS.map((p) => [p.maxStaff, p.maxBranches, p.maxAutomations, p.priceMonthlyMinor])).toEqual([[2, 1, 5, 680_000], [6, 2, 9, 980_000], [null, 3, null, 1_500_000]]);
     for (const p of DEFAULT_PLANS) expect(planInputSchema.safeParse({ ...p, currency: 'PKR', isActive: true }).success).toBe(true);
     expect(DEFAULT_PLANS[2].features).toEqual([...PLAN_FEATURES]);
   });

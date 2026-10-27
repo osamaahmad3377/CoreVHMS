@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AUTOMATION_RECIPES, AUTOMATION_TRIGGERS, AUTOMATION_VARIABLES, EASY_DELAYS, TRIGGER_DEFAULTS, TRIGGER_INFO, sampleVars, type AutomationDraft, type AutomationStep, type AutomationTrigger, type TriggerGroup } from '@vcms/shared';
 import { ArrowLeft, ArrowRight, Check, ClipboardList, Clock, Mail, MessageCircle, Play, Search, Send, Settings2, Sparkles, Wand2, Workflow } from 'lucide-react';
 import Link from 'next/link';
+import { PlanLockBadge, usePlanFeature } from '@/components/plan/upgrade';
 import { useRouter } from 'next/navigation';
 import { useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -27,6 +28,7 @@ type Choice = 'BEST' | 'WHATSAPP' | 'EMAIL';
  * be changed afterwards in the full editor.
  */
 export function EasyCreator() {
+  const builder = usePlanFeature('automationBuilder');
   const router = useRouter();
   const qc = useQueryClient();
   const options = useQuery({ queryKey: ['automation-options'], queryFn: () => api.get<AutomationOptions>('/automations/options'), staleTime: 60_000 });
@@ -124,10 +126,16 @@ export function EasyCreator() {
             <ArrowLeft /> Automations
           </Link>
         </Button>
-        <Link href="/settings/automations/new?mode=advanced" className="ml-auto text-sm font-semibold text-primary hover:underline">
-          <Settings2 className="mr-1 inline h-3.5 w-3.5" />
-          Open the full editor instead
-        </Link>
+        {builder ? (
+          <Link href="/settings/automations/new?mode=advanced" className="ml-auto text-sm font-semibold text-primary hover:underline">
+            <Settings2 className="mr-1 inline h-3.5 w-3.5" />
+            Open the full editor instead
+          </Link>
+        ) : (
+          <Link href="/settings/plan?unlock=automationBuilder" className="ml-auto inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-primary">
+            Full editor <PlanLockBadge />
+          </Link>
+        )}
       </div>
 
       <div>
