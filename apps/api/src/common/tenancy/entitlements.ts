@@ -1,5 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
-import { featureLockedMessage, hasFeature, permissionInPlan, planNames, plansAllowing, type Entitlements, type PlanFeature } from '@vcms/shared';
+import { GB, featureLockedMessage, hasFeature, permissionInPlan, planNames, plansAllowing, storageText, type Entitlements, type PlanFeature } from '@vcms/shared';
 import { RequestContext } from '../context/request-context';
 import { ruleViolation } from '../http/errors';
 
@@ -51,4 +51,22 @@ export function assertWithinLimit(kind: keyof typeof LIMIT_TEXT, current: number
   const bigger = plansAllowing(e, kind, current + adding);
   const upgrade = bigger.length ? `upgrade to ${planNames(bigger)} to ${t.more}` : `upgrade your plan to ${t.more}`;
   throw ruleViolation('PLAN_LIMIT', `Your ${e.planName ? `${e.planName} ` : ''}plan allows ${max} ${t.noun}, and you have ${current}. ${t.hint}, or ${upgrade}.`, { kind, limit: max, current, plans: bigger.map((p) => p.name) });
+}
+
+/**
+ * Throws when a new file would take the clinic's files (documents, photos, X-rays) over its plan's storage.
+ * Files already kept are never touched: a clinic over a lowered limit can still open and delete them.
+ */
+export function assertStorage(usedBytes: number, addingBytes: number) {
+  const e = currentEntitlements();
+  if (!e || e.maxStorageGb === null) return;
+  const max = e.maxStorageGb * GB;
+  if (usedBytes + addingBytes <= max) return;
+  const bigger = plansAllowing(e, 'storage', Math.ceil((usedBytes + addingBytes) / GB));
+  const upgrade = bigger.length ? `upgrade to ${planNames(bigger)}` : 'upgrade your plan';
+  throw ruleViolation(
+    'PLAN_LIMIT',
+    `Your ${e.planName ? `${e.planName} ` : ''}plan includes ${e.maxStorageGb} GB of file storage, and ${storageText(usedBytes)} is used, so this ${storageText(addingBytes)} file does not fit. Delete files you no longer need, ask for more storage (Settings → Your plan), or ${upgrade}.`,
+    { kind: 'storage', limit: e.maxStorageGb, current: usedBytes, adding: addingBytes, plans: bigger.map((p) => p.name) },
+  );
 }

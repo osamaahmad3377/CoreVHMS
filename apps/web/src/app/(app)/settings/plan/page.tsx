@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { daysLeft, formatMoney, monthlyPrice, PLAN_FEATURES, PLAN_FEATURE_INFO, yearlyMonthsFree, type BillingCycle, type ClinicPlanView, type PlanFeature, type PlanOffer } from '@vcms/shared';
-import { Building2, Check, Clock, GraduationCap, Headphones, Lock, MessageCircle, Phone, Plus, Receipt, Sparkles, Star, Users, Wand2, X, Zap } from 'lucide-react';
+import { GB, STORAGE_PACK_GB, daysLeft, formatMoney, storageText, monthlyPrice, PLAN_FEATURES, PLAN_FEATURE_INFO, yearlyMonthsFree, type BillingCycle, type ClinicPlanView, type PlanFeature, type PlanOffer } from '@vcms/shared';
+import { Building2, Check, Clock, GraduationCap, HardDrive, Headphones, Lock, MessageCircle, Phone, Plus, Receipt, Sparkles, Star, Users, Wand2, X, Zap } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import { toast } from 'sonner';
@@ -33,6 +33,29 @@ function Meter({ label, used, limit, action, fullText = 'Full: add more, or upgr
         </div>
       )}
       {full && <p className="mt-2 text-xs text-warning">{used > (limit ?? 0) ? 'Over the limit: you keep what you have but cannot add more.' : fullText}</p>}
+      {action && <div className="mt-auto pt-3">{action}</div>}
+    </div>
+  );
+}
+
+/** File storage used: documents, photos and X-rays kept (deleted files are not counted). */
+function StorageMeter({ used, limitGb, action }: { used: number; limitGb: number | null; action?: React.ReactNode }) {
+  const limit = limitGb === null ? null : limitGb * GB;
+  const pct = limit ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+  return (
+    <div className="flex flex-col rounded-xl surface-flat p-4">
+      <p className="flex items-center gap-1.5 text-sm text-muted-foreground"><HardDrive className="h-3.5 w-3.5" /> File storage</p>
+      <p className="mt-1 text-2xl font-semibold">
+        {storageText(used)} <span className="text-base font-normal text-muted-foreground">{limitGb === null ? 'used · no limit' : `of ${limitGb} GB`}</span>
+      </p>
+      {limit !== null && (
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label="File storage used" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+          <div className={cn('h-full rounded-full', used > limit ? 'bg-destructive' : pct >= 90 ? 'bg-warning' : 'bg-primary')} style={{ width: `${pct}%` }} />
+        </div>
+      )}
+      {limit !== null && pct >= 90 && (
+        <p className="mt-2 text-xs text-warning">{used >= limit ? 'Full: new files cannot be added. Delete files you no longer need, add storage or upgrade your plan.' : 'Almost full: add storage or upgrade your plan before uploads stop.'}</p>
+      )}
       {action && <div className="mt-auto pt-3">{action}</div>}
     </div>
   );
@@ -96,12 +119,15 @@ function PlanCard({ plan, cycle, current, popular, onAsk, asking, highlight, req
         <li className="flex items-center gap-2"><Building2 className="h-4 w-4 text-primary" /> {limitLine(plan.maxBranches, 'branch', 'branches')}</li>
         <li className="flex items-center gap-2"><Zap className="h-4 w-4 text-primary" /> {plan.maxAutomations === null ? 'All ready-made automations' : `${plan.maxAutomations} ready-made automations`} on</li>
         <li className="flex items-center gap-2"><Wand2 className="h-4 w-4 text-primary" /> {plan.maxCustomAutomations === null ? 'Unlimited automations of your own' : `${plan.maxCustomAutomations} automations of your own`}</li>
+        <li className="flex items-center gap-2"><HardDrive className="h-4 w-4 text-primary" /> {plan.storageGb === null ? 'Unlimited file storage' : `${plan.storageGb} GB file storage`}</li>
       </ul>
-      {(plan.extraBranchMinor != null || plan.extraStaffMinor != null) && (
+      {(plan.extraBranchMinor != null || plan.extraStaffMinor != null || (plan.storageGb != null && plan.extraStorageMinor != null)) && (
         <p className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-          {plan.extraBranchMinor != null && <>Extra branch {price(plan.extraBranchMinor, plan.currency)}/month</>}
-          {plan.extraBranchMinor != null && plan.extraStaffMinor != null && ' · '}
-          {plan.extraStaffMinor != null && <>Extra staff {price(plan.extraStaffMinor, plan.currency)}/month</>}
+          {[
+            plan.extraBranchMinor != null && `Extra branch ${price(plan.extraBranchMinor, plan.currency)}/month`,
+            plan.extraStaffMinor != null && `Extra staff ${price(plan.extraStaffMinor, plan.currency)}/month`,
+            plan.storageGb != null && plan.extraStorageMinor != null && `Extra ${STORAGE_PACK_GB} GB storage ${price(plan.extraStorageMinor, plan.currency)}/month`,
+          ].filter(Boolean).join(' · ')}
         </p>
       )}
       <ul className="grid gap-1.5 border-t border-foreground/[0.06] pt-4 text-sm">
@@ -138,7 +164,7 @@ function PlanCard({ plan, cycle, current, popular, onAsk, asking, highlight, req
   );
 }
 
-type Ask = { kind: 'PLAN'; planId: string } | { kind: 'EXTRA_BRANCH' | 'EXTRA_STAFF'; quantity: number };
+type Ask = { kind: 'PLAN'; planId: string } | { kind: 'EXTRA_BRANCH' | 'EXTRA_STAFF' | 'EXTRA_STORAGE'; quantity: number };
 
 const METHOD: Record<string, string> = { BANK_TRANSFER: 'Bank transfer', CASH: 'Cash', JAZZCASH: 'JazzCash', EASYPAISA: 'Easypaisa', CARD: 'Card', CHEQUE: 'Cheque', OTHER: 'Other' };
 
@@ -228,6 +254,27 @@ function PlanView() {
     );
   };
 
+  /** "Add 50 GB — Rs 1,000 a month" under the storage meter once it is 80% full, when the plan sells extra storage. */
+  const addStorage = () => {
+    const each = currentPlan?.extraStorageMinor;
+    if (e.maxStorageGb === null || each == null || !currentPlan || usage.storageBytes < e.maxStorageGb * GB * 0.8) return undefined;
+    if (pendingRequest?.kind === 'EXTRA_STORAGE') return <p className="text-xs text-muted-foreground"><Clock className="mr-1 inline h-3.5 w-3.5" />More storage requested</p>;
+    return (
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-auto w-full flex-wrap whitespace-normal py-1.5 leading-tight"
+        loading={ask.isPending && ask.variables?.kind === 'EXTRA_STORAGE'}
+        onClick={async () => {
+          const r = await confirm({ title: `Add ${STORAGE_PACK_GB} GB of storage?`, description: `${STORAGE_PACK_GB} GB more for your files for ${price(each, currentPlan.currency)} a month on top of your ${currentPlan.name} plan. NextCore confirms it and it is ready straight away.`, confirmLabel: 'Ask NextCore' });
+          if (r.confirmed) ask.mutate({ kind: 'EXTRA_STORAGE', quantity: 1 });
+        }}
+      >
+        <Plus /> Add {STORAGE_PACK_GB} GB <span className="font-normal text-muted-foreground">{price(each, currentPlan.currency)}/month</span>
+      </Button>
+    );
+  };
+
   return (
     <div className="grid gap-6">
       {wanted && (
@@ -264,17 +311,18 @@ function PlanView() {
                 : billing
                   ? billing.bill.inTrial
                     ? `Free until ${fmtDate(e.trialEndsAt!)}. Then ${price(billing.bill.planMinor + billing.bill.extrasMinor, billing.bill.currency)} a month${billing.cycle === 'YEARLY' ? ' (paid yearly)' : ''}.`
-                    : `${billing.bill.cycle === 'YEARLY' ? `You pay ${price(billing.bill.chargeMinor, billing.bill.currency)} a year, upfront` : `You pay ${price(billing.bill.chargeMinor, billing.bill.currency)} a month`}${billing.bill.extrasMinor && currentPlan ? (billing.bill.cycle === 'YEARLY' ? `, including ${[billing.bill.extraStaff && `${billing.bill.extraStaff} extra staff`, billing.bill.extraBranches && `${billing.bill.extraBranches} extra branch${billing.bill.extraBranches === 1 ? '' : 'es'}`].filter(Boolean).join(' and ')}` : ` (${billSummary(billing.bill, currentPlan.name, billing.cycle)})`) : ''}.${billing.paidUntil ? ` Paid until ${fmtDate(billing.paidUntil)}.` : ''}`
+                    : `${billing.bill.cycle === 'YEARLY' ? `You pay ${price(billing.bill.chargeMinor, billing.bill.currency)} a year, upfront` : `You pay ${price(billing.bill.chargeMinor, billing.bill.currency)} a month`}${billing.bill.extrasMinor && currentPlan ? (billing.bill.cycle === 'YEARLY' ? `, including ${[billing.bill.extraStaff && `${billing.bill.extraStaff} extra staff`, billing.bill.extraBranches && `${billing.bill.extraBranches} extra branch${billing.bill.extraBranches === 1 ? '' : 'es'}`, billing.bill.extraStoragePacks && `${billing.bill.extraStoragePacks * STORAGE_PACK_GB} GB extra storage`].filter(Boolean).join(' and ')}` : ` (${billSummary(billing.bill, currentPlan.name, billing.cycle)})`) : ''}.${billing.paidUntil ? ` Paid until ${fmtDate(billing.paidUntil)}.` : ''}`
                   : 'What your clinic uses of its plan.'}
             </CardDescription>
           </div>
         </CardHeader>
         <CardContent className="grid gap-4">
-          <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
             <Meter label="Staff accounts" used={usage.staff} limit={e.maxStaff} action={addExtra('EXTRA_STAFF', usage.staff, e.maxStaff)} />
             <Meter label="Branches" used={usage.branches} limit={e.maxBranches} action={addExtra('EXTRA_BRANCH', usage.branches, e.maxBranches)} />
             <Meter label="Ready-made automations on" used={usage.automations} limit={e.maxAutomations} fullText="Full: switch one off, or upgrade your plan." />
             <Meter label="Your own automations on" used={usage.customAutomations} limit={e.maxCustomAutomations} fullText="Full: switch one off, or upgrade your plan." />
+            <StorageMeter used={usage.storageBytes} limitGb={e.maxStorageGb} action={addStorage()} />
           </div>
           {currentPlan && (
             <div className="rounded-xl surface-flat p-4">
@@ -282,7 +330,7 @@ function PlanView() {
               <SupportList plan={currentPlan} />
             </div>
           )}
-          <p className="text-xs text-muted-foreground">Staff accounts counted: active and invited people. Paused staff and paused branches do not count.</p>
+          <p className="text-xs text-muted-foreground">Staff accounts counted: active and invited people. Paused staff and paused branches do not count. File storage counts the documents, photos and X-rays you keep; deleting a file frees its space.</p>
         </CardContent>
       </Card>
 
@@ -295,7 +343,9 @@ function PlanView() {
             <b>
               {pendingRequest.kind === 'PLAN'
                 ? `You asked to move to ${pendingRequest.planName}`
-                : `You asked for ${pendingRequest.quantity} extra ${pendingRequest.kind === 'EXTRA_BRANCH' ? (pendingRequest.quantity === 1 ? 'branch' : 'branches') : pendingRequest.quantity === 1 ? 'staff account' : 'staff accounts'}`}
+                : pendingRequest.kind === 'EXTRA_STORAGE'
+                  ? `You asked for ${pendingRequest.quantity * STORAGE_PACK_GB} GB more storage`
+                  : `You asked for ${pendingRequest.quantity} extra ${pendingRequest.kind === 'EXTRA_BRANCH' ? (pendingRequest.quantity === 1 ? 'branch' : 'branches') : pendingRequest.quantity === 1 ? 'staff account' : 'staff accounts'}`}
             </b>{' '}
             on {fmtDate(pendingRequest.createdAt)}. NextCore will confirm shortly — you will get an email when it is done.
           </p>

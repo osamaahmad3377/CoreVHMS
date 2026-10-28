@@ -1,5 +1,5 @@
 'use client';
-import { PLAN_FEATURES, PLAN_FEATURE_INFO, type BillingCycle, type ClinicBill, type PlanFeature, type PlatformPlan } from '@vcms/shared';
+import { PLAN_FEATURES, PLAN_FEATURE_INFO, STORAGE_PACK_GB, type BillingCycle, type ClinicBill, type PlanFeature, type PlatformPlan } from '@vcms/shared';
 import { Check, Minus } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
@@ -20,6 +20,7 @@ export function billLines(bill: ClinicBill, planName: string, cycle: BillingCycl
   const each = (n: number, what: string, price: number | null) => `${n} ${what}${price != null ? ` × ${amount(price, bill.currency)}` : ''}`;
   if (bill.extraStaff) lines.push({ label: each(bill.extraStaff, 'extra staff', bill.extraStaffMinor), minor: bill.extraStaff * (bill.extraStaffMinor ?? 0) });
   if (bill.extraBranches) lines.push({ label: each(bill.extraBranches, `extra branch${bill.extraBranches === 1 ? '' : 'es'}`, bill.extraBranchMinor), minor: bill.extraBranches * (bill.extraBranchMinor ?? 0) });
+  if (bill.extraStoragePacks) lines.push({ label: `${bill.extraStoragePacks * STORAGE_PACK_GB} GB extra storage${bill.extraStorageMinor != null ? ` (${bill.extraStoragePacks} × ${amount(bill.extraStorageMinor, bill.currency)})` : ''}`, minor: bill.extraStoragePacks * (bill.extraStorageMinor ?? 0) });
   return lines;
 }
 

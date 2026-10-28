@@ -1,4 +1,4 @@
-import { DEFAULT_PLANS, FULL_ACCESS, clinicBill, daysLeft, matchesRecommended, monthlyPrice, yearlyPriceFor, yearlyMonthsFree, PLAN_FEATURES, PLAN_FEATURE_BENEFITS, clinicPlanSchema, featureLockedMessage, featureOfPermission, permissionInPlan, planInputSchema, plansAllowing, plansWithFeature, resolveEntitlements } from './plans';
+import { DEFAULT_PLANS, FULL_ACCESS, GB, STORAGE_PACK_GB, storageText, clinicBill, daysLeft, matchesRecommended, monthlyPrice, yearlyPriceFor, yearlyMonthsFree, PLAN_FEATURES, PLAN_FEATURE_BENEFITS, clinicPlanSchema, featureLockedMessage, featureOfPermission, permissionInPlan, planInputSchema, plansAllowing, plansWithFeature, resolveEntitlements } from './plans';
 import { ALL_PERMISSIONS } from './permissions';
 import { addMonths, nextPeriodStart, paymentState, receiptNumber, recordPaymentSchema } from './schemas/platform';
 
@@ -11,7 +11,7 @@ describe('plans', () => {
   });
 
   it('uses the plan, then the clinic’s exceptions on top', () => {
-    expect(resolveEntitlements(plan)).toEqual({ planId: 'p1', planName: 'Starter', maxStaff: 3, maxBranches: 1, maxAutomations: null, maxCustomAutomations: null, features: ['reports'], trialEndsAt: null });
+    expect(resolveEntitlements(plan)).toEqual({ planId: 'p1', planName: 'Starter', maxStaff: 3, maxBranches: 1, maxAutomations: null, maxCustomAutomations: null, maxStorageGb: null, features: ['reports'], trialEndsAt: null });
     const e = resolveEntitlements(plan, { staffLimitOverride: 8, extraFeatures: ['lab'], removedFeatures: ['reports'] });
     expect(e).toMatchObject({ maxStaff: 8, maxBranches: 1, features: ['lab'] });
     // Unknown feature keys (a retired feature stored earlier) are ignored, and order follows the catalogue.
@@ -117,6 +117,19 @@ describe('clinic fees and payments', () => {
   const [starter, professional] = DEFAULT_PLANS.map((p) => ({ ...p, currency: 'PKR' }));
   const clinic = { billingCycle: 'MONTHLY' as const, staffLimitOverride: null, branchLimitOverride: null, trialEndsAt: null };
   const now = new Date('2026-10-27T10:00:00Z');
+
+  it('gives each recommended plan its file storage, and bills extra storage the clinic was given in whole packs', () => {
+    expect(DEFAULT_PLANS.map((p) => [p.name, p.storageGb, p.extraStorageMinor])).toEqual([['Starter', 10, 100_000], ['Professional', 50, 100_000], ['Premium', 200, 100_000]]);
+    const s = { ...starter, storageGb: 10, extraStorageMinor: 100_000 };
+    expect(resolveEntitlements({ ...s, id: 'p', features: [] }).maxStorageGb).toBe(10);
+    expect(resolveEntitlements({ ...s, id: 'p', features: [] }, { storageLimitOverrideGb: 60 }).maxStorageGb).toBe(60);
+    expect(clinicBill(s, { ...clinic, storageLimitOverrideGb: null }, now)).toMatchObject({ extraStoragePacks: 0, extrasMinor: 0 });
+    expect(clinicBill(s, { ...clinic, storageLimitOverrideGb: 10 + STORAGE_PACK_GB }, now)).toMatchObject({ extraStoragePacks: 1, extrasMinor: 100_000, monthlyFeeMinor: 680_000 + 100_000 });
+    // A limit between packs counts as a whole pack; a lower limit than the plan costs nothing extra.
+    expect(clinicBill(s, { ...clinic, storageLimitOverrideGb: 70 }, now).extraStoragePacks).toBe(2);
+    expect(clinicBill(s, { ...clinic, storageLimitOverrideGb: 5 }, now).extraStoragePacks).toBe(0);
+    expect([storageText(0), storageText(820 * 1024 ** 2), storageText(3.44 * GB), storageText(150 * GB)]).toEqual(['0 KB', '820 MB', '3.4 GB', '150 GB']);
+  });
 
   it('works out the monthly and the yearly (upfront) fee, extras included', () => {
     const b = clinicBill(starter, clinic, now, { staff: 3, branches: 1 });

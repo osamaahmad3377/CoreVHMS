@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { PLAN_FEATURES, PLAN_FEATURE_INFO, clinicBill, daysLeft, type ClinicOverview, type PlanFeature, type PlatformPlan } from '@vcms/shared';
+import { GB, PLAN_FEATURES, PLAN_FEATURE_INFO, STORAGE_PACK_GB, clinicBill, storageText, daysLeft, type ClinicOverview, type PlanFeature, type PlatformPlan } from '@vcms/shared';
 import { AlertTriangle, BadgeCheck, CalendarClock, Gift, LayoutList, Minus, Plus, RotateCcw, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
@@ -35,8 +35,28 @@ function UsageBar({ label, used, limit }: { label: string; used: number | null; 
   );
 }
 
+/** File storage used against the clinic's storage limit (in GB). */
+function StorageBar({ used, limitGb }: { used: number | null; limitGb: number | null }) {
+  const limit = limitGb === null ? null : limitGb * GB;
+  const pct = limit && used !== null ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+  const over = limit !== null && used !== null && used > limit;
+  return (
+    <div className="grid gap-1">
+      <div className="flex items-baseline justify-between text-sm">
+        <span>File storage</span>
+        <span className={over ? 'font-semibold text-destructive' : 'font-medium'}>{used === null ? '—' : storageText(used)} <span className="font-normal text-muted-foreground">of {limitGb === null ? 'unlimited' : `${limitGb} GB`}</span></span>
+      </div>
+      {limit !== null && (
+        <div className="h-1.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label="File storage used" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+          <div className={`h-full rounded-full ${over ? 'bg-destructive' : pct >= 90 ? 'bg-warning' : 'bg-primary'}`} style={{ width: `${over ? 100 : pct}%` }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** − 2 + : how many extra branches or staff accounts the clinic pays for. */
-function Stepper({ id, label, value, onChange, price, base }: { id: string; label: string; value: number; onChange: (n: number) => void; price: string | null; base: number }) {
+function Stepper({ id, label, value, onChange, price, base, total }: { id: string; label: string; value: number; onChange: (n: number) => void; price: string | null; base: number; total?: string }) {
   return (
     <div className="grid gap-1">
       <label htmlFor={id} className="text-sm font-medium">{label}</label>
@@ -45,13 +65,15 @@ function Stepper({ id, label, value, onChange, price, base }: { id: string; labe
         <Input id={id} type="number" min={0} max={50} className="h-8 w-16 text-center" value={value} onChange={(e) => onChange(Math.max(0, Math.min(50, Number(e.target.value) || 0)))} />
         <Button type="button" size="icon" variant="outline" className="h-8 w-8" aria-label={`More ${label.toLowerCase()}`} disabled={value >= 50} onClick={() => onChange(value + 1)}><Plus /></Button>
       </div>
-      <p className="text-xs text-muted-foreground">{base + value} in total · {price ? `${price} each a month` : 'no price set on the plan'}</p>
+      <p className="text-xs text-muted-foreground">{total ?? base + value} in total · {price ? `${price} each a month` : 'no price set on the plan'}</p>
     </div>
   );
 }
 
 const sameSet = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x) => b.includes(x));
 const extraOver = (override: number | null, base: number | null) => (override != null && base != null ? Math.max(0, override - base) : 0);
+/** Extra storage packs given to the clinic above its plan's storage. */
+const packsOver = (overrideGb: number | null, baseGb: number | null) => Math.ceil(extraOver(overrideGb, baseGb) / STORAGE_PACK_GB);
 
 /**
  * A clinic's plan: choosing a plan gives the clinic that plan's features and limits; on top, extra branches and
@@ -66,28 +88,32 @@ export function ClinicPlanCard({ overview }: { overview: ClinicOverview }) {
   const [planId, setPlanId] = useState<string>(c.planId ?? '');
   const [extraBranches, setExtraBranches] = useState<number | null>(null);
   const [extraStaff, setExtraStaff] = useState<number | null>(null);
+  const [extraPacks, setExtraPacks] = useState<number | null>(null);
   const [features, setFeatures] = useState<PlanFeature[]>(c.entitlements.features);
 
   const plan = plans.data?.find((p) => p.id === planId) ?? null;
   const samePlan = planId === (c.planId ?? '');
   const xBranches = extraBranches ?? (samePlan ? extraOver(c.branchLimitOverride, savedPlan?.maxBranches ?? null) : 0);
   const xStaff = extraStaff ?? (samePlan ? extraOver(c.staffLimitOverride, savedPlan?.maxStaff ?? null) : 0);
+  const xPacks = extraPacks ?? (samePlan ? packsOver(c.storageLimitOverrideGb, savedPlan?.storageGb ?? null) : 0);
   const choices = (plans.data ?? []).filter((p) => p.isActive || p.id === c.planId);
   const planFeatures = plan?.features ?? [...PLAN_FEATURES];
   const extra = features.filter((f) => !planFeatures.includes(f));
   const removed = planFeatures.filter((f) => !features.includes(f));
   const branchOverride = plan && plan.maxBranches != null && xBranches > 0 ? plan.maxBranches + xBranches : null;
   const staffOverride = plan && plan.maxStaff != null && xStaff > 0 ? plan.maxStaff + xStaff : null;
+  const storageOverride = plan && plan.storageGb != null && xPacks > 0 ? plan.storageGb + xPacks * STORAGE_PACK_GB : null;
+  const storageLimit = plan ? (storageOverride ?? plan.storageGb) : null;
   const staffLimit = staffOverride ?? plan?.maxStaff ?? null;
   const branchLimit = branchOverride ?? plan?.maxBranches ?? null;
   const staffUsed = usage?.staffCounted ?? null;
   const branchesUsed = usage?.branches ?? null;
-  const bill = plan ? clinicBill(plan, { billingCycle: c.billingCycle, staffLimitOverride: staffOverride, branchLimitOverride: branchOverride, trialEndsAt: c.trialEndsAt }, undefined, usage && { staff: usage.staffCounted, branches: usage.branches }) : null;
+  const bill = plan ? clinicBill(plan, { billingCycle: c.billingCycle, staffLimitOverride: staffOverride, branchLimitOverride: branchOverride, storageLimitOverrideGb: storageOverride, trialEndsAt: c.trialEndsAt }, undefined, usage && { staff: usage.staffCounted, branches: usage.branches }) : null;
   // Staff or branches in use above the plan and the extra places given are billed too.
   const billedOverStaff = bill ? bill.extraStaff - xStaff : 0;
   const billedOverBranches = bill ? bill.extraBranches - xBranches : 0;
 
-  const dirty = !samePlan || branchOverride !== c.branchLimitOverride || staffOverride !== c.staffLimitOverride || !sameSet(extra, c.extraFeatures) || !sameSet(removed, c.removedFeatures);
+  const dirty = !samePlan || branchOverride !== c.branchLimitOverride || staffOverride !== c.staffLimitOverride || storageOverride !== c.storageLimitOverrideGb || !sameSet(extra, c.extraFeatures) || !sameSet(removed, c.removedFeatures);
   const overStaff = staffLimit !== null && staffUsed !== null && staffUsed > staffLimit;
   const overBranches = branchLimit !== null && branchesUsed !== null && branchesUsed > branchLimit;
 
@@ -95,12 +121,14 @@ export function ClinicPlanCard({ overview }: { overview: ClinicOverview }) {
     setPlanId(id);
     setExtraBranches(id === (c.planId ?? '') ? null : 0);
     setExtraStaff(id === (c.planId ?? '') ? null : 0);
+    setExtraPacks(id === (c.planId ?? '') ? null : 0);
     setFeatures(plans.data?.find((p) => p.id === id)?.features ?? [...PLAN_FEATURES]);
   };
   const undo = () => {
     setPlanId(c.planId ?? '');
     setExtraBranches(null);
     setExtraStaff(null);
+    setExtraPacks(null);
     setFeatures(c.entitlements.features);
   };
 
@@ -110,6 +138,7 @@ export function ClinicPlanCard({ overview }: { overview: ClinicOverview }) {
         planId: planId || null,
         staffLimitOverride: planId ? staffOverride : null,
         branchLimitOverride: planId ? branchOverride : null,
+        storageLimitOverrideGb: planId ? storageOverride : null,
         extraFeatures: planId ? extra : [],
         removedFeatures: planId ? removed : [],
       }),
@@ -141,6 +170,7 @@ export function ClinicPlanCard({ overview }: { overview: ClinicOverview }) {
         <div className="grid gap-3 rounded-lg surface-flat p-3">
           <UsageBar label="Staff accounts" used={staffUsed} limit={staffLimit} />
           <UsageBar label="Branches" used={branchesUsed} limit={branchLimit} />
+          <StorageBar used={usage?.storageBytes ?? null} limitGb={storageLimit} />
           {(overStaff || overBranches) && (
             <p className="flex items-start gap-2 text-xs text-destructive">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -149,10 +179,13 @@ export function ClinicPlanCard({ overview }: { overview: ClinicOverview }) {
           )}
         </div>
 
-        {plan && (plan.maxBranches != null || plan.maxStaff != null) && (
+        {plan && (plan.maxBranches != null || plan.maxStaff != null || plan.storageGb != null) && (
           <div className="grid gap-3 sm:grid-cols-2">
             {plan.maxBranches != null && <Stepper id="x-branches" label="Extra branches" value={xBranches} onChange={setExtraBranches} price={money(plan.extraBranchMinor)} base={plan.maxBranches} />}
             {plan.maxStaff != null && <Stepper id="x-staff" label="Extra staff accounts" value={xStaff} onChange={setExtraStaff} price={money(plan.extraStaffMinor)} base={plan.maxStaff} />}
+            {plan.storageGb != null && (
+              <Stepper id="x-storage" label={`Extra storage (${STORAGE_PACK_GB} GB each)`} value={xPacks} onChange={setExtraPacks} price={money(plan.extraStorageMinor)} base={plan.storageGb} total={`${plan.storageGb + xPacks * STORAGE_PACK_GB} GB`} />
+            )}
           </div>
         )}
 

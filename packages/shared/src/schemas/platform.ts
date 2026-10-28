@@ -207,6 +207,7 @@ export interface PlatformClinic {
   planName: string | null;
   staffLimitOverride: number | null;
   branchLimitOverride: number | null;
+  storageLimitOverrideGb: number | null;
   extraFeatures: PlanFeature[];
   removedFeatures: PlanFeature[];
   /** What the clinic may actually use (plan + exceptions). */
@@ -234,6 +235,8 @@ export interface ClinicUsage {
   /** Staff accounts counted against the plan: active and invited. */
   staffCounted: number;
   branches: number;
+  /** Files kept (documents, photos, X-rays), in bytes; deleted files are not counted. */
+  storageBytes: number;
   clients: number;
   patients: number;
   appointmentsThisMonth: number;

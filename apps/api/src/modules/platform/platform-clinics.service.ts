@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import type { Plan, Tenant } from '@prisma/client';
-import { clinicBill, paymentState, type ClinicBillingInput, type ClinicOverview, type ClinicPlanInput, type ClinicUsage, type CreateClinicInput, type PlanFeature, type PlanRequestView, type PlatformClinic } from '@vcms/shared';
+import { STORAGE_PACK_GB, clinicBill, paymentState, type ClinicBillingInput, type ClinicOverview, type ClinicPlanInput, type ClinicUsage, type CreateClinicInput, type PlanFeature, type PlanRequestView, type PlatformClinic } from '@vcms/shared';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { randomToken, sha256 } from '../../common/crypto/crypto';
@@ -11,6 +11,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { addressFor, multiClinic, RESERVED_SLUGS } from '../../common/tenancy/hosts';
 import { createDatabase, databaseExists, migrateDatabase, tenantDatabaseName } from '../../common/tenancy/tenant-databases';
 import { TenancyService, entitlementsOf, tenantRef } from '../../common/tenancy/tenancy.service';
+import { storageUsedBytes } from '../attachments/attachments.service';
 import { OrgBootstrapService } from '../organizations/org-bootstrap.service';
 import { TEMP_PASSWORD_DAYS } from '../users/users.service';
 import { toPayment } from './platform-payments';
@@ -27,6 +28,10 @@ const LAST_PAYMENT = { where: { voidedAt: null }, orderBy: { paidAt: 'desc' as c
 
 /** Staff accounts (active and invited) and branches a clinic really has — what its extras are billed on. */
 export type Seats = { staff: number; branches: number };
+
+/** "2 extra branch(es)", "100 GB more storage" — what a request for extras asks for. */
+const requestText = (kind: string, n: number) =>
+  kind === 'EXTRA_STORAGE' ? `${n * STORAGE_PACK_GB} GB more storage` : `${n} extra ${kind === 'EXTRA_BRANCH' ? 'branch(es)' : 'staff account(s)'}`;
 
 export function toClinic(t: TenantWithPlan, seats?: Seats | null): PlatformClinic {
   const bill = t.plan ? clinicBill(t.plan, t, new Date(), seats) : null;
@@ -46,6 +51,7 @@ export function toClinic(t: TenantWithPlan, seats?: Seats | null): PlatformClini
     planName: t.plan?.name ?? null,
     staffLimitOverride: t.staffLimitOverride,
     branchLimitOverride: t.branchLimitOverride,
+    storageLimitOverrideGb: t.storageLimitOverrideGb,
     extraFeatures: t.extraFeatures as PlanFeature[],
     removedFeatures: t.removedFeatures as PlanFeature[],
     entitlements: entitlementsOf(t),
@@ -163,7 +169,7 @@ export class PlatformClinicsService implements OnModuleInit, OnModuleDestroy {
         usage = await RequestContext.runInTenant(tenantRef(t), async () => {
           const raw = this.prisma.raw;
           const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
-          const [staff, activeStaff, staffCounted, branches, clients, patients, appointmentsThisMonth, lastSignIn] = await Promise.all([
+          const [staff, activeStaff, staffCounted, branches, clients, patients, appointmentsThisMonth, lastSignIn, storageBytes] = await Promise.all([
             raw.membership.count(),
             raw.membership.count({ where: { status: 'ACTIVE' } }),
             raw.membership.count({ where: { status: { in: ['ACTIVE', 'INVITED'] } } }),
@@ -172,8 +178,9 @@ export class PlatformClinicsService implements OnModuleInit, OnModuleDestroy {
             raw.patient.count({ where: { status: { not: 'MERGED' } } }),
             raw.appointment.count({ where: { startsAt: { gte: monthStart } } }),
             raw.user.findFirst({ where: { lastLoginAt: { not: null } }, orderBy: { lastLoginAt: 'desc' }, select: { lastLoginAt: true } }),
+            storageUsedBytes(raw),
           ]);
-          return { staff, activeStaff, staffCounted, branches, clients, patients, appointmentsThisMonth, lastSignInAt: lastSignIn?.lastLoginAt?.toISOString() ?? null };
+          return { staff, activeStaff, staffCounted, branches, storageBytes, clients, patients, appointmentsThisMonth, lastSignInAt: lastSignIn?.lastLoginAt?.toISOString() ?? null };
         });
       } catch (e) {
         this.log.warn(`Usage for ${t.slug} unavailable: ${(e as Error).message}`);
@@ -258,8 +265,8 @@ export class PlatformClinicsService implements OnModuleInit, OnModuleDestroy {
     if (plan && !plan.isActive && plan.id !== t.planId) throw ruleViolation('PLAN_UNAVAILABLE', 'That plan is switched off. Switch it on first, or choose another plan.');
     // Exceptions only make sense on a plan; "no plan" means no limits at all.
     const o = plan
-      ? { staffLimitOverride: input.staffLimitOverride, branchLimitOverride: input.branchLimitOverride, extraFeatures: input.extraFeatures, removedFeatures: input.removedFeatures }
-      : { staffLimitOverride: null, branchLimitOverride: null, extraFeatures: [], removedFeatures: [] };
+      ? { staffLimitOverride: input.staffLimitOverride, branchLimitOverride: input.branchLimitOverride, storageLimitOverrideGb: input.storageLimitOverrideGb ?? null, extraFeatures: input.extraFeatures, removedFeatures: input.removedFeatures }
+      : { staffLimitOverride: null, branchLimitOverride: null, storageLimitOverrideGb: null, extraFeatures: [], removedFeatures: [] };
     const overlap = o.extraFeatures.filter((f) => o.removedFeatures.includes(f));
     if (overlap.length) throw ruleViolation('FEATURE_CONFLICT', `${overlap.join(', ')} cannot be both added and taken away`);
     const before = entitlementsOf(t);
@@ -277,6 +284,7 @@ export class PlatformClinicsService implements OnModuleInit, OnModuleDestroy {
             `${before.planName ?? 'No plan'} → ${now.planName ?? 'No plan'}`,
             `staff ${before.maxStaff ?? 'no limit'} → ${now.maxStaff ?? 'no limit'}`,
             `branches ${before.maxBranches ?? 'no limit'} → ${now.maxBranches ?? 'no limit'}`,
+            before.maxStorageGb !== now.maxStorageGb && `storage ${before.maxStorageGb == null ? 'no limit' : `${before.maxStorageGb} GB`} → ${now.maxStorageGb == null ? 'no limit' : `${now.maxStorageGb} GB`}`,
             gained.length && `added: ${gained.join(', ')}`,
             lost.length && `removed: ${lost.join(', ')}`,
           ].filter(Boolean).join(' · '),
@@ -330,7 +338,7 @@ export class PlatformClinicsService implements OnModuleInit, OnModuleDestroy {
   private async endTrial(t: TenantWithPlan, now: Date) {
     const then = t.trialThenPlanId ? await this.prisma.control.plan.findUnique({ where: { id: t.trialThenPlanId } }) : null;
     if (then) {
-      await this.setPlan(t, { planId: then.id, staffLimitOverride: t.staffLimitOverride, branchLimitOverride: t.branchLimitOverride, extraFeatures: t.extraFeatures as PlanFeature[], removedFeatures: t.removedFeatures as PlanFeature[] }, { trialEndsAt: null, trialThenPlanId: null });
+      await this.setPlan(t, { planId: then.id, staffLimitOverride: t.staffLimitOverride, branchLimitOverride: t.branchLimitOverride, storageLimitOverrideGb: t.storageLimitOverrideGb, extraFeatures: t.extraFeatures as PlanFeature[], removedFeatures: t.removedFeatures as PlanFeature[] }, { trialEndsAt: null, trialThenPlanId: null });
       await this.notifyOwner(t, `${t.name} is now on the ${then.name} plan`, `Your free period on ${t.plan?.name ?? 'your plan'} has ended and ${t.name} is now on the ${then.name} plan. Everything you entered is kept.`);
     } else {
       await this.prisma.control.$transaction(async (tx) => {
@@ -365,7 +373,9 @@ export class PlatformClinicsService implements OnModuleInit, OnModuleDestroy {
       fromPlanName: r.fromPlanName,
       toPlanId: r.toPlanId,
       toPlanName: r.toPlan?.name ?? null,
-      priceMonthlyMinor: r.toPlan ? r.toPlan.priceMonthlyMinor : r.quantity * ((r.kind === 'EXTRA_BRANCH' ? r.tenant.plan?.extraBranchMinor : r.tenant.plan?.extraStaffMinor) ?? 0),
+      priceMonthlyMinor: r.toPlan
+        ? r.toPlan.priceMonthlyMinor
+        : r.quantity * ((r.kind === 'EXTRA_BRANCH' ? r.tenant.plan?.extraBranchMinor : r.kind === 'EXTRA_STORAGE' ? r.tenant.plan?.extraStorageMinor : r.tenant.plan?.extraStaffMinor) ?? 0),
       currency: (r.toPlan ?? r.tenant.plan)?.currency ?? 'PKR',
       note: r.note,
       requestedByName: r.requestedByName,
@@ -388,12 +398,20 @@ export class PlatformClinicsService implements OnModuleInit, OnModuleDestroy {
   async approvePlanRequest(id: string) {
     const r = await this.openRequest(id);
     const t = r.tenant;
-    const keep = { staffLimitOverride: t.staffLimitOverride, branchLimitOverride: t.branchLimitOverride, extraFeatures: t.extraFeatures as PlanFeature[], removedFeatures: t.removedFeatures as PlanFeature[] };
+    const keep = { staffLimitOverride: t.staffLimitOverride, branchLimitOverride: t.branchLimitOverride, storageLimitOverrideGb: t.storageLimitOverrideGb, extraFeatures: t.extraFeatures as PlanFeature[], removedFeatures: t.removedFeatures as PlanFeature[] };
     let what: string;
     if (r.kind === 'PLAN') {
       if (!r.toPlan) throw ruleViolation('PLAN_UNAVAILABLE', 'That plan no longer exists');
       await this.setPlan(t, { planId: r.toPlan.id, ...keep });
       what = `${t.name} has moved to the ${r.toPlan.name} plan. Everything it includes is ready to use now.`;
+    } else if (r.kind === 'EXTRA_STORAGE') {
+      // More file storage: the clinic's own storage limit goes up by the packs asked for.
+      if (!t.plan) throw ruleViolation('NO_PLAN', 'The clinic has no plan, so it has no limit to raise');
+      const base = t.storageLimitOverrideGb ?? t.plan.storageGb;
+      if (base == null) throw ruleViolation('NO_LIMIT', `The ${t.plan.name} plan has no storage limit to raise`);
+      const gb = base + r.quantity * STORAGE_PACK_GB;
+      await this.setPlan(t, { planId: t.plan.id, ...keep, storageLimitOverrideGb: gb });
+      what = `${t.name} now has ${gb} GB of file storage.`;
     } else {
       // More branches or staff accounts on the current plan: the clinic's own limit goes up by the number asked for.
       if (!t.plan) throw ruleViolation('NO_PLAN', 'The clinic has no plan, so it has no limit to raise');
@@ -405,7 +423,7 @@ export class PlatformClinicsService implements OnModuleInit, OnModuleDestroy {
     }
     await this.prisma.control.$transaction(async (tx) => {
       await tx.planRequest.update({ where: { id }, data: { status: 'APPROVED', resolvedAt: new Date(), resolvedById: RequestContext.get()?.userId ?? null } });
-      await this.audit.record({ action: 'platform.plan_request_approved', entityType: 'Tenant', entityId: t.id, summary: `${t.name}: ${r.kind === 'PLAN' ? `${r.fromPlanName ?? 'No plan'} → ${r.toPlan?.name}` : `${r.quantity} extra ${r.kind === 'EXTRA_BRANCH' ? 'branch(es)' : 'staff account(s)'}`}`, organizationId: null }, tx);
+      await this.audit.record({ action: 'platform.plan_request_approved', entityType: 'Tenant', entityId: t.id, summary: `${t.name}: ${r.kind === 'PLAN' ? `${r.fromPlanName ?? 'No plan'} → ${r.toPlan?.name}` : requestText(r.kind, r.quantity)}`, organizationId: null }, tx);
     });
     await this.notifyOwner(t, r.kind === 'PLAN' ? `${t.name} is now on the ${r.toPlan!.name} plan` : `Your request for ${t.name} is done`, `${what} Thank you for choosing NextCore VCMS.`);
     return this.get(t.id);
@@ -416,7 +434,7 @@ export class PlatformClinicsService implements OnModuleInit, OnModuleDestroy {
     const r = await this.openRequest(id);
     await this.prisma.control.$transaction(async (tx) => {
       await tx.planRequest.update({ where: { id }, data: { status: 'DISMISSED', resolvedAt: new Date(), resolvedById: RequestContext.get()?.userId ?? null } });
-      await this.audit.record({ action: 'platform.plan_request_dismissed', entityType: 'Tenant', entityId: r.tenantId, summary: `${r.tenant.name}: ${r.kind === 'PLAN' ? `${r.fromPlanName ?? 'No plan'} → ${r.toPlan?.name}` : `${r.quantity} extra ${r.kind === 'EXTRA_BRANCH' ? 'branch(es)' : 'staff account(s)'}`}`, organizationId: null }, tx);
+      await this.audit.record({ action: 'platform.plan_request_dismissed', entityType: 'Tenant', entityId: r.tenantId, summary: `${r.tenant.name}: ${r.kind === 'PLAN' ? `${r.fromPlanName ?? 'No plan'} → ${r.toPlan?.name}` : requestText(r.kind, r.quantity)}`, organizationId: null }, tx);
     });
   }
 

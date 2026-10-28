@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { DEFAULT_PLANS, matchesRecommended, planInputSchema, recommendedPlanMapping, yearlyMonthsFree, yearlyPriceFor, type PlanInput, type PlatformPlan } from '@vcms/shared';
+import { DEFAULT_PLANS, STORAGE_PACK_GB, matchesRecommended, planInputSchema, recommendedPlanMapping, yearlyMonthsFree, yearlyPriceFor, type PlanInput, type PlatformPlan } from '@vcms/shared';
 import { ArrowRight, Building2, Edit, Gift, LayoutList, Plus, Power, Sparkles, Star, Trash2, Users } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -29,6 +29,8 @@ const EMPTY: PlanInput = {
   maxCustomAutomations: null,
   extraBranchMinor: null,
   extraStaffMinor: null,
+  storageGb: 10,
+  extraStorageMinor: null,
   trialDays: 0,
   supportResponse: null,
   whatsappSupport: false,
@@ -43,13 +45,14 @@ const toMajor = (minor: number | null) => (minor == null ? '' : String(minor / 1
 const toMinor = (major: string) => (major.trim() === '' ? null : Math.round(Number(major) * 100));
 
 /** A number box where empty means "no limit". */
-function LimitField({ id, label, value, onChange, error, unit }: { id: string; label: string; value: number | null; onChange: (v: number | null) => void; error?: string; unit: string }) {
+function LimitField({ id, label, value, onChange, error, unit, suffix, fallback = 5 }: { id: string; label: string; value: number | null; onChange: (v: number | null) => void; error?: string; unit: string; suffix?: string; fallback?: number }) {
   return (
     <Field label={label} htmlFor={id} error={error} hint={value === null ? `No limit on ${unit}` : undefined}>
       <div className="flex items-center gap-3">
         <Input id={id} type="number" min={1} className="w-28" disabled={value === null} value={value ?? ''} onChange={(e) => onChange(e.target.value === '' ? 1 : Number(e.target.value))} />
+        {suffix && <span className="-ml-1 text-sm text-muted-foreground">{suffix}</span>}
         <label className="flex items-center gap-2 text-sm">
-          <Checkbox checked={value === null} onCheckedChange={(c) => onChange(c === true ? null : 5)} /> No limit
+          <Checkbox checked={value === null} onCheckedChange={(c) => onChange(c === true ? null : fallback)} /> No limit
         </label>
       </div>
     </Field>
@@ -128,7 +131,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function PlanDialog({ plan, open, onOpenChange }: { plan: PlatformPlan | null; open: boolean; onOpenChange: (o: boolean) => void }) {
   const qc = useQueryClient();
   const [v, setV] = useState<PlanInput>(EMPTY);
-  const [prices, setPrices] = useState({ monthly: '0', yearly: '', branch: '', staff: '' });
+  const [prices, setPrices] = useState({ monthly: '0', yearly: '', branch: '', staff: '', storage: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [lastOpen, setLastOpen] = useState(false);
@@ -148,6 +151,8 @@ function PlanDialog({ plan, open, onOpenChange }: { plan: PlatformPlan | null; o
           maxCustomAutomations: plan.maxCustomAutomations,
           extraBranchMinor: plan.extraBranchMinor,
           extraStaffMinor: plan.extraStaffMinor,
+          storageGb: plan.storageGb,
+          extraStorageMinor: plan.extraStorageMinor,
           trialDays: plan.trialDays,
           supportResponse: plan.supportResponse,
           whatsappSupport: plan.whatsappSupport,
@@ -159,7 +164,7 @@ function PlanDialog({ plan, open, onOpenChange }: { plan: PlatformPlan | null; o
         }
       : EMPTY;
     setV(start);
-    setPrices({ monthly: toMajor(start.priceMonthlyMinor) || '0', yearly: toMajor(start.priceYearlyMinor), branch: toMajor(start.extraBranchMinor), staff: toMajor(start.extraStaffMinor) });
+    setPrices({ monthly: toMajor(start.priceMonthlyMinor) || '0', yearly: toMajor(start.priceYearlyMinor), branch: toMajor(start.extraBranchMinor), staff: toMajor(start.extraStaffMinor), storage: toMajor(start.extraStorageMinor) });
     setErrors({});
     setError(null);
   }
@@ -201,6 +206,7 @@ function PlanDialog({ plan, open, onOpenChange }: { plan: PlatformPlan | null; o
       priceYearlyMinor: toMinor(prices.yearly),
       extraBranchMinor: toMinor(prices.branch),
       extraStaffMinor: toMinor(prices.staff),
+      extraStorageMinor: v.storageGb === null ? null : toMinor(prices.storage),
     });
     if (!parsed.success) {
       setErrors(Object.fromEntries(parsed.error.issues.map((i) => [i.path.join('.'), i.message])));
@@ -259,6 +265,10 @@ function PlanDialog({ plan, open, onOpenChange }: { plan: PlatformPlan | null; o
               <LimitField id="p-branches" label="Branches" unit="branches" value={v.maxBranches} onChange={(x) => set('maxBranches', x)} error={errors.maxBranches} />
               <LimitField id="p-automations" label="Ready-made automations switched on" unit="ready-made automations" value={v.maxAutomations} onChange={(x) => set('maxAutomations', x)} error={errors.maxAutomations} />
               <LimitField id="p-custom" label="Own automations switched on" unit="the clinic’s own automations" value={v.maxCustomAutomations} onChange={(x) => set('maxCustomAutomations', x)} error={errors.maxCustomAutomations} />
+              <LimitField id="p-storage" label="File storage (documents, photos, X-rays)" unit="file storage" suffix="GB" fallback={10} value={v.storageGb} onChange={(x) => set('storageGb', x)} error={errors.storageGb} />
+              {v.storageGb !== null && (
+                <MoneyField id="p-xstorage" label={`Each extra ${STORAGE_PACK_GB} GB of storage, per month`} currency={v.currency} value={prices.storage} onChange={setPrice('storage')} error={errors.extraStorageMinor} hint={prices.storage === '' ? 'Empty: extra storage not offered' : undefined} />
+              )}
             </div>
           </Section>
 
@@ -431,9 +441,11 @@ export default function PlansPage() {
                   <div className="rounded-lg surface-flat p-2"><dt className="text-xs text-muted-foreground">Branches</dt><dd className="font-semibold">{limitText(p.maxBranches)}</dd></div>
                   <div className="rounded-lg surface-flat p-2"><dt className="text-xs text-muted-foreground">Ready-made automations on</dt><dd className="font-semibold">{limitText(p.maxAutomations)}</dd></div>
                   <div className="rounded-lg surface-flat p-2"><dt className="text-xs text-muted-foreground">Own automations on</dt><dd className="font-semibold">{limitText(p.maxCustomAutomations)}</dd></div>
+                  <div className="col-span-2 rounded-lg surface-flat p-2"><dt className="text-xs text-muted-foreground">File storage</dt><dd className="font-semibold">{p.storageGb == null ? 'Unlimited' : `${p.storageGb} GB`}</dd></div>
                 </dl>
                 <ul className="grid gap-1 text-xs text-muted-foreground">
                   <li>Extra branch: {p.extraBranchMinor != null ? `${planPrice({ priceMonthlyMinor: p.extraBranchMinor, currency: p.currency })} / month` : 'not offered'} · Extra staff: {p.extraStaffMinor != null ? `${planPrice({ priceMonthlyMinor: p.extraStaffMinor, currency: p.currency })} / month` : 'not offered'}</li>
+                  {p.storageGb != null && <li>Extra {STORAGE_PACK_GB} GB storage: {p.extraStorageMinor != null ? `${planPrice({ priceMonthlyMinor: p.extraStorageMinor, currency: p.currency })} / month` : 'not offered'}</li>}
                   <li>Free trial: {p.trialDays ? `${p.trialDays} days` : 'none'}</li>
                   <li>
                     Support: {p.supportResponse ? `reply within ${p.supportResponse}` : 'help centre'}

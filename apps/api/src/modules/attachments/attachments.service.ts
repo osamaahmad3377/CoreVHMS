@@ -6,6 +6,7 @@ import { sha256 } from '../../common/crypto/crypto';
 import { forbidden, notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { ALLOWED_MIME_TYPES, StorageService, sniffMatches } from '../../common/storage/storage.service';
+import { assertStorage, currentEntitlements } from '../../common/tenancy/entitlements';
 
 export interface AttachmentTarget {
   read: string;
@@ -102,6 +103,9 @@ export class AttachmentsService {
     }
     if (!sniffMatches(file.mimetype, file.buffer)) throw ruleViolation('FILE_MISMATCH', 'The file content does not match its type');
 
+    // The plan's file storage: what the clinic keeps now (deleted files not counted) plus this file.
+    if (currentEntitlements()?.maxStorageGb != null) assertStorage(await this.usedBytes(), file.size);
+
     const ctx = RequestContext.require();
     const now = new Date();
     const storageKey = `${ctx.organizationId}/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${randomUUID()}.${ext}`;
@@ -134,6 +138,11 @@ export class AttachmentsService {
       await this.storage.remove(storageKey);
       throw e;
     }
+  }
+
+  /** Bytes of files the clinic keeps (documents, photos, X-rays, logos); deleted files are not counted. */
+  usedBytes() {
+    return storageUsedBytes(this.prisma.raw, RequestContext.orgId());
   }
 
   /**
@@ -215,6 +224,17 @@ export class AttachmentsService {
       await this.audit.record({ action: 'attachment.deleted', entityType: a.entityType, entityId: a.entityId, summary: a.fileName }, tx);
     });
   }
+}
+
+/**
+ * Bytes of files kept by an organization (or by everyone in the database, for a hosted clinic's own database).
+ * Summed as bigint: a clinic's files can pass the 2 GB a 32-bit integer holds.
+ */
+export async function storageUsedBytes(db: Pick<PrismaService['raw'], '$queryRaw'>, organizationId?: string): Promise<number> {
+  const rows = organizationId
+    ? await db.$queryRaw<{ n: bigint }[]>`SELECT COALESCE(SUM("sizeBytes"), 0)::bigint AS n FROM "Attachment" WHERE "deletedAt" IS NULL AND "organizationId" = ${organizationId}::uuid`
+    : await db.$queryRaw<{ n: bigint }[]>`SELECT COALESCE(SUM("sizeBytes"), 0)::bigint AS n FROM "Attachment" WHERE "deletedAt" IS NULL`;
+  return Number(rows[0]?.n ?? 0);
 }
 
 function sanitizeFileName(name: string) {

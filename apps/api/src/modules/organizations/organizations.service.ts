@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { Organization, Plan, Tenant } from '@prisma/client';
-import { FULL_ACCESS, clinicBill, formatMoney, paymentState, receiptNumber, type BranchInput, type Branding, type BrandingUpdateInput, type ClinicPlanView, type OrganizationUpdateInput, type PlanFeature, type PlanOffer, type UpgradeRequestInput } from '@vcms/shared';
+import { FULL_ACCESS, STORAGE_PACK_GB, clinicBill, formatMoney, paymentState, receiptNumber, type BranchInput, type Branding, type BrandingUpdateInput, type ClinicPlanView, type OrganizationUpdateInput, type PlanFeature, type PlanOffer, type UpgradeRequestInput } from '@vcms/shared';
 import { AuditService, diff } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { notFound, ruleViolation } from '../../common/http/errors';
@@ -9,6 +9,7 @@ import { MailService } from '../../common/mail/mail.service';
 import { assertWithinLimit, currentEntitlements } from '../../common/tenancy/entitlements';
 import { multiClinic } from '../../common/tenancy/hosts';
 import { planOffer } from '../../common/tenancy/tenancy.service';
+import { storageUsedBytes } from '../attachments/attachments.service';
 
 /**
  * A clinic's branding as the web app uses it. `base` is where the images are served: the signed-in
@@ -95,16 +96,17 @@ export class OrganizationsService {
 
   /** The clinic's plan and how much of it is used (Settings → Your plan). */
   async plan(): Promise<ClinicPlanView> {
-    const [staff, branches, automations, customAutomations] = await Promise.all([
+    const [staff, branches, automations, customAutomations, storageBytes] = await Promise.all([
       this.prisma.raw.membership.count({ where: { status: { in: ['ACTIVE', 'INVITED'] } } }),
       this.prisma.raw.branch.count({ where: { isActive: true } }),
       this.prisma.db.automation.count({ where: { isActive: true, recipeKey: { not: null } } }),
       this.prisma.db.automation.count({ where: { isActive: true, recipeKey: null } }),
+      storageUsedBytes(this.prisma.raw, RequestContext.orgId()),
     ]);
     const tenant = await this.hostedClinic();
     return {
       entitlements: currentEntitlements() ?? FULL_ACCESS,
-      usage: { staff, branches, automations, customAutomations },
+      usage: { staff, branches, automations, customAutomations, storageBytes },
       plans: await this.offers(),
       pendingRequest: await this.pendingRequest(),
       billing: tenant?.plan ? await this.billing(tenant as typeof tenant & { plan: NonNullable<typeof tenant.plan> }, { staff, branches }) : null,
@@ -173,6 +175,11 @@ export class OrganizationsService {
       if (!plan) throw notFound('Plan');
       if (plan.name === current) throw ruleViolation('SAME_PLAN', `You are already on the ${plan.name} plan.`);
       what = `the ${plan.name} plan`;
+    } else if (input.kind === 'EXTRA_STORAGE') {
+      const own = (await this.hostedClinic())?.plan;
+      if (!own || own.storageGb == null || own.extraStorageMinor == null) throw ruleViolation('EXTRA_NOT_OFFERED', 'Your plan does not offer extra storage. Upgrade your plan instead.');
+      const n = input.quantity;
+      what = `${n * STORAGE_PACK_GB} GB more file storage (${formatMoney(n * own.extraStorageMinor, own.currency).replace(/\.00$/, '')} a month)`;
     } else {
       const own = (await this.hostedClinic())?.plan;
       const branch = input.kind === 'EXTRA_BRANCH';

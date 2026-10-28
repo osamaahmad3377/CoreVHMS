@@ -32,6 +32,7 @@ export const planBrief = (p: Plan): PlanBrief => ({
   maxBranches: p.maxBranches,
   maxAutomations: p.maxAutomations,
   maxCustomAutomations: p.maxCustomAutomations,
+  storageGb: p.storageGb,
   features: p.features as PlanFeature[],
 });
 
@@ -43,6 +44,7 @@ export const planOffer = (p: Plan): PlanOffer => ({
   priceYearlyMinor: p.priceYearlyMinor,
   extraBranchMinor: p.extraBranchMinor,
   extraStaffMinor: p.extraStaffMinor,
+  extraStorageMinor: p.extraStorageMinor,
   trialDays: p.trialDays,
   supportResponse: p.supportResponse,
   whatsappSupport: p.whatsappSupport,

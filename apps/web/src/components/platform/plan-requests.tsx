@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { daysLeft, type PlanRequestView, type PlatformClinic, type PlatformPlan } from '@vcms/shared';
+import { STORAGE_PACK_GB, daysLeft, type PlanRequestView, type PlatformClinic, type PlatformPlan } from '@vcms/shared';
 import { ArrowRight, BadgeCheck, Check, Clock, Gift, X } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -15,6 +15,7 @@ import { planPrice } from './plan-ui';
 /** "1 extra branch", "2 extra staff accounts", "Professional plan". */
 export function requestText(r: Pick<PlanRequestView, 'kind' | 'quantity' | 'toPlanName'>) {
   if (r.kind === 'PLAN') return `the ${r.toPlanName} plan`;
+  if (r.kind === 'EXTRA_STORAGE') return `${r.quantity * STORAGE_PACK_GB} GB more file storage`;
   const branch = r.kind === 'EXTRA_BRANCH';
   return `${r.quantity} extra ${branch ? (r.quantity === 1 ? 'branch' : 'branches') : r.quantity === 1 ? 'staff account' : 'staff accounts'}`;
 }

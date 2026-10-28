@@ -348,6 +348,43 @@ describe('Multi-clinic hosting', () => {
       await lc.owner.call('delete', `/automations/${made.body.id}`);
     });
 
+    it('keeps files within the plan’s file storage: uploads stop at the limit, deleting frees space, extra storage raises it', async () => {
+      const GB = 1024 ** 3;
+      expect((await planByName('Starter')).storageGb).toBe(10);
+      expect((await setPlan(lc.id, { planId: starter.id })).body.entitlements.maxStorageGb).toBe(10);
+      const orgId = lc.owner.session.organization.id;
+      const png = { buffer: PNG, name: 'scan.png', type: 'image/png' };
+      const first = await lc.owner.upload('/attachments', { entityType: 'Organization', entityId: orgId }, png);
+      expect(first.status).toBe(201);
+      expect((await lc.owner.get('/organization/plan')).body.usage.storageBytes).toBeGreaterThanOrEqual(PNG.length);
+      // A 1 GB limit for this clinic, almost filled by one large (pretend) X-ray series.
+      expect((await setPlan(lc.id, { planId: starter.id, storageLimitOverrideGb: 1 })).body.entitlements.maxStorageGb).toBe(1);
+      const db = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, `/${PREFIX}limits_vets$1`) } } });
+      try {
+        await db.attachment.create({ data: { organizationId: orgId, entityType: 'Organization', entityId: orgId, fileName: 'xray-series.dcm', mimeType: 'application/dicom', sizeBytes: GB - 100, sha256: 'x', storageKey: `${orgId}/test/big-${Date.now()}.dcm` } });
+      } finally {
+        await db.$disconnect();
+      }
+      const full = await lc.owner.upload('/attachments', { entityType: 'Organization', entityId: orgId }, png);
+      expect(full.status).toBe(422);
+      expect(full.body.error).toMatchObject({ code: 'PLAN_LIMIT', details: { kind: 'storage', limit: 1 } });
+      expect(full.body.error.message).toContain('includes 1 GB of file storage');
+      // The super admin sees it too; nothing already kept is touched.
+      expect((await superAdmin.get(`/platform/clinics/${lc.id}/overview`)).body.usage.storageBytes).toBeGreaterThan(GB - 100);
+      expect((await lc.owner.get(`/attachments/${first.body.id}/download`)).status).toBe(200);
+      // Deleting files frees their space.
+      const big = ((await lc.owner.get(`/attachments?entityType=Organization&entityId=${orgId}`)).body as any[]).find((a) => a.fileName === 'xray-series.dcm');
+      expect((await lc.owner.call('delete', `/attachments/${big.id}`)).status).toBeLessThan(300);
+      expect((await lc.owner.upload('/attachments', { entityType: 'Organization', entityId: orgId }, png)).status).toBe(201);
+      // The owner asks for 50 GB more; approving raises the clinic's own limit, billed as one extra pack.
+      expect((await lc.owner.post('/organization/plan/upgrade-request', { kind: 'EXTRA_STORAGE', quantity: 1 })).body.what).toContain('50 GB more file storage');
+      const req = ((await superAdmin.get('/platform/plan-requests')).body as any[]).find((r) => r.clinicId === lc.id);
+      expect(req).toMatchObject({ kind: 'EXTRA_STORAGE', quantity: 1, priceMonthlyMinor: 100_000 });
+      const approved = await superAdmin.post(`/platform/plan-requests/${req.id}/approve`, {});
+      expect(approved.body).toMatchObject({ storageLimitOverrideGb: 51, entitlements: { maxStorageGb: 51 }, bill: { extraStoragePacks: 1, extraStorageMinor: 100_000 } });
+      expect((await setPlan(lc.id, { planId: starter.id })).body.entitlements.maxStorageGb).toBe(10);
+    });
+
     it('a lowered limit keeps what the clinic has but allows nothing more', async () => {
       const r = await setPlan(lc.id, { planId: starter.id, staffLimitOverride: 2 });
       expect(r.body.entitlements.maxStaff).toBe(2);

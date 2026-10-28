@@ -45,6 +45,9 @@ model Plan {
   /// Monthly price of one branch / staff account above the plan's limit; null = not offered.
   extraBranchMinor     Int?
   extraStaffMinor      Int?
+  /// File storage included, in GB (null = no limit), and the monthly price of each extra 50 GB (null = not offered).
+  storageGb            Int?
+  extraStorageMinor    Int?
   /// Free trial length for new clinics on this plan (0 = none).
   trialDays            Int      @default(0)
   /// Support that comes with the plan.
@@ -67,6 +70,7 @@ enum PlanRequestKind {
   PLAN
   EXTRA_BRANCH
   EXTRA_STAFF
+  EXTRA_STORAGE
 }
 
 enum BillingCycle {
@@ -171,25 +175,27 @@ model Tenant {
   updatedAt         DateTime     @updatedAt @db.Timestamptz(3)
 
   /// The clinic's plan; null = no plan assigned (full access, no limits).
-  planId              String?         @db.Uuid
-  plan                Plan?           @relation(fields: [planId], references: [id], onDelete: Restrict)
+  planId                 String?         @db.Uuid
+  plan                   Plan?           @relation(fields: [planId], references: [id], onDelete: Restrict)
   /// Per-clinic exceptions to the plan (null / empty = follow the plan).
-  staffLimitOverride  Int?
-  branchLimitOverride Int?
-  extraFeatures       String[]        @default([])
-  removedFeatures     String[]        @default([])
-  planChangedAt       DateTime?       @db.Timestamptz(3)
-  planRequests        PlanRequest[]
+  staffLimitOverride     Int?
+  branchLimitOverride    Int?
+  /// The clinic's own file storage limit in GB (null = the plan's).
+  storageLimitOverrideGb Int?
+  extraFeatures          String[]        @default([])
+  removedFeatures        String[]        @default([])
+  planChangedAt          DateTime?       @db.Timestamptz(3)
+  planRequests           PlanRequest[]
   /// How the clinic pays (the yearly price, or the monthly one).
-  billingCycle        BillingCycle    @default(MONTHLY)
+  billingCycle           BillingCycle    @default(MONTHLY)
   /// Free trial (or free period) ends; null = paying. At the end the clinic moves to trialThenPlanId, or is paused.
-  trialEndsAt         DateTime?       @db.Timestamptz(3)
-  trialThenPlanId     String?         @db.Uuid
+  trialEndsAt            DateTime?       @db.Timestamptz(3)
+  trialThenPlanId        String?         @db.Uuid
   /// Why the clinic is paused (e.g. TRIAL_ENDED), shown at its sign-in page.
-  pausedReason        String?
+  pausedReason           String?
   /// The end of the period the clinic has paid for (from its payments); null = nothing recorded.
-  paidUntil           DateTime?       @db.Timestamptz(3)
-  payments            ClinicPayment[]
+  paidUntil              DateTime?       @db.Timestamptz(3)
+  payments               ClinicPayment[]
 
   @@index([status])
   @@index([planId])

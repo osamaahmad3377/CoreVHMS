@@ -46,6 +46,17 @@ export const PLAN_FEATURE_BENEFITS: Record<PlanFeature, string[]> = {
   marketing: ['Birthday messages for pets', 'Recalls for clients who have not visited in a while', 'Promotional messages, with clients able to opt out'],
 };
 
+/** File storage: bytes in a gigabyte, and the size of each extra storage pack a clinic can buy. */
+export const GB = 1024 ** 3;
+export const STORAGE_PACK_GB = 50;
+
+/** "3.4 GB", "820 MB", "12 KB". */
+export function storageText(bytes: number) {
+  if (bytes >= GB) return `${(bytes / GB).toFixed(bytes >= 100 * GB ? 0 : 1).replace(/\.0$/, '')} GB`;
+  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`;
+  return `${Math.max(0, Math.round(bytes / 1024))} KB`;
+}
+
 const isFeature = (x: string): x is PlanFeature => (PLAN_FEATURES as readonly string[]).includes(x);
 
 /** What a clinic is allowed. Null limits mean unlimited. */
@@ -58,6 +69,8 @@ export interface Entitlements {
   maxAutomations: number | null;
   /** The clinic's own automations (easy creator or builder) that may be switched on at once. */
   maxCustomAutomations: number | null;
+  /** File storage for documents, photos and X-rays, in GB. */
+  maxStorageGb: number | null;
   features: PlanFeature[];
   /** When a free trial (or free period) ends; null when the clinic is paying. */
   trialEndsAt?: string | null;
@@ -74,6 +87,7 @@ export interface PlanBrief {
   maxBranches: number | null;
   maxAutomations: number | null;
   maxCustomAutomations: number | null;
+  storageGb: number | null;
   features: PlanFeature[];
 }
 
@@ -84,19 +98,21 @@ export interface PlanLike {
   maxBranches: number | null;
   maxAutomations?: number | null;
   maxCustomAutomations?: number | null;
+  storageGb?: number | null;
   features: readonly string[];
 }
 
 export interface PlanOverrides {
   staffLimitOverride?: number | null;
   branchLimitOverride?: number | null;
+  storageLimitOverrideGb?: number | null;
   extraFeatures?: readonly string[] | null;
   removedFeatures?: readonly string[] | null;
   trialEndsAt?: Date | string | null;
 }
 
 /** Everything allowed: no plan assigned. */
-export const FULL_ACCESS: Entitlements = { planId: null, planName: null, maxStaff: null, maxBranches: null, maxAutomations: null, maxCustomAutomations: null, features: [...PLAN_FEATURES], trialEndsAt: null };
+export const FULL_ACCESS: Entitlements = { planId: null, planName: null, maxStaff: null, maxBranches: null, maxAutomations: null, maxCustomAutomations: null, maxStorageGb: null, features: [...PLAN_FEATURES], trialEndsAt: null };
 
 /**
  * A clinic's effective entitlements: its plan, then the super admin's per-clinic exceptions on top
@@ -114,6 +130,7 @@ export function resolveEntitlements(plan: PlanLike | null | undefined, o: PlanOv
     maxBranches: o.branchLimitOverride ?? plan.maxBranches,
     maxAutomations: plan.maxAutomations ?? null,
     maxCustomAutomations: plan.maxCustomAutomations ?? null,
+    maxStorageGb: o.storageLimitOverrideGb ?? plan.storageGb ?? null,
     features: PLAN_FEATURES.filter((f) => features.has(f)),
     trialEndsAt: o.trialEndsAt ? new Date(o.trialEndsAt).toISOString() : null,
   };
@@ -127,8 +144,9 @@ export function plansWithFeature(e: Entitlements | null | undefined, f: PlanFeat
 }
 
 /** The other plans that allow at least `needed` of something, cheapest first. */
-export function plansAllowing(e: Entitlements | null | undefined, kind: 'staff' | 'branches' | 'automations' | 'customAutomations', needed: number): PlanBrief[] {
-  const max = (p: PlanBrief) => (kind === 'staff' ? p.maxStaff : kind === 'branches' ? p.maxBranches : kind === 'automations' ? p.maxAutomations : p.maxCustomAutomations);
+export function plansAllowing(e: Entitlements | null | undefined, kind: 'staff' | 'branches' | 'automations' | 'customAutomations' | 'storage', needed: number): PlanBrief[] {
+  const max = (p: PlanBrief) =>
+    kind === 'staff' ? p.maxStaff : kind === 'branches' ? p.maxBranches : kind === 'automations' ? p.maxAutomations : kind === 'storage' ? p.storageGb : p.maxCustomAutomations;
   return (e?.offers ?? []).filter((p) => p.name !== e?.planName && (max(p) === null || max(p)! >= needed)).sort((a, b) => a.priceMonthlyMinor - b.priceMonthlyMinor);
 }
 
@@ -189,6 +207,9 @@ export const planInputSchema = z.object({
   /** Monthly price of each branch / staff account above the plan's limit; null = not offered. */
   extraBranchMinor: money.nullable().default(null),
   extraStaffMinor: money.nullable().default(null),
+  /** File storage included, in GB (null = no limit), and the monthly price of each extra STORAGE_PACK_GB. */
+  storageGb: z.number().int().min(1, 'At least 1 GB').max(100_000).nullable().default(null),
+  extraStorageMinor: money.nullable().default(null),
   trialDays: z.number().int().min(0).max(365).default(0),
   supportResponse: optText(60),
   whatsappSupport: z.boolean().default(false),
@@ -205,6 +226,7 @@ export const clinicPlanSchema = z.object({
   planId: z.string().uuid().nullable(),
   staffLimitOverride: limit.default(null),
   branchLimitOverride: limit.default(null),
+  storageLimitOverrideGb: z.number().int().min(1, 'At least 1 GB').max(100_000).nullable().default(null),
   extraFeatures: featureList.default([]),
   removedFeatures: featureList.default([]),
 });
@@ -223,6 +245,8 @@ export interface PlatformPlan {
   priceYearlyMinor: number | null;
   extraBranchMinor: number | null;
   extraStaffMinor: number | null;
+  storageGb: number | null;
+  extraStorageMinor: number | null;
   trialDays: number;
   supportResponse: string | null;
   whatsappSupport: boolean;
@@ -238,7 +262,7 @@ export interface PlatformPlan {
 export interface ClinicPlanView {
   entitlements: Entitlements;
   /** automations = ready-made switched on; customAutomations = the clinic's own switched on. */
-  usage: { staff: number; branches: number; automations: number; customAutomations: number };
+  usage: { staff: number; branches: number; automations: number; customAutomations: number; storageBytes: number };
   /** The plans on offer, to compare and ask for an upgrade (multi-clinic hosting only). */
   plans: PlanOffer[];
   /** A plan change the owner asked for that NextCore has not handled yet. */
@@ -256,7 +280,8 @@ export interface ClinicPlanView {
   currentPlan: PlanOffer | null;
 }
 
-export const PLAN_REQUEST_KINDS = ['PLAN', 'EXTRA_BRANCH', 'EXTRA_STAFF'] as const;
+/** EXTRA_STORAGE: `quantity` packs of STORAGE_PACK_GB. */
+export const PLAN_REQUEST_KINDS = ['PLAN', 'EXTRA_BRANCH', 'EXTRA_STAFF', 'EXTRA_STORAGE'] as const;
 export type PlanRequestKind = (typeof PLAN_REQUEST_KINDS)[number];
 export const BILLING_CYCLES = ['MONTHLY', 'YEARLY'] as const;
 export type BillingCycle = (typeof BILLING_CYCLES)[number];
@@ -294,6 +319,8 @@ export type PlanOffer = Pick<
   | 'maxCustomAutomations'
   | 'extraBranchMinor'
   | 'extraStaffMinor'
+  | 'storageGb'
+  | 'extraStorageMinor'
   | 'trialDays'
   | 'supportResponse'
   | 'whatsappSupport'
@@ -326,6 +353,8 @@ export const DEFAULT_PLANS: Omit<PlanInput, 'currency' | 'isActive'>[] = [
     maxCustomAutomations: 3,
     extraBranchMinor: 500_000,
     extraStaffMinor: 50_000,
+    storageGb: 10,
+    extraStorageMinor: 100_000,
     trialDays: 14,
     supportResponse: '2 working days',
     whatsappSupport: true,
@@ -345,6 +374,8 @@ export const DEFAULT_PLANS: Omit<PlanInput, 'currency' | 'isActive'>[] = [
     maxCustomAutomations: 15,
     extraBranchMinor: 500_000,
     extraStaffMinor: 50_000,
+    storageGb: 50,
+    extraStorageMinor: 100_000,
     trialDays: 30,
     supportResponse: '1 working day',
     whatsappSupport: true,
@@ -364,6 +395,8 @@ export const DEFAULT_PLANS: Omit<PlanInput, 'currency' | 'isActive'>[] = [
     maxCustomAutomations: null,
     extraBranchMinor: 500_000,
     extraStaffMinor: null,
+    storageGb: 200,
+    extraStorageMinor: 100_000,
     trialDays: 30,
     supportResponse: '4 hours',
     whatsappSupport: true,
@@ -394,7 +427,10 @@ export interface ClinicBill {
   /** Price of each extra branch / staff account a month (null: not offered on this plan). */
   extraBranchMinor: number | null;
   extraStaffMinor: number | null;
-  /** Extras a month (staff and branches above the plan). */
+  /** Extra storage packs (STORAGE_PACK_GB each) above the plan's storage, and the price of each a month. */
+  extraStoragePacks: number;
+  extraStorageMinor: number | null;
+  /** Extras a month (staff, branches and storage above the plan). */
   extrasMinor: number;
   /** Paying monthly: the plan's monthly price + extras. */
   monthlyFeeMinor: number;
@@ -416,8 +452,8 @@ export interface ClinicBill {
  * pays for 3 extra. Nothing is charged during a free trial.
  */
 export function clinicBill(
-  plan: Pick<PlatformPlan, 'priceMonthlyMinor' | 'priceYearlyMinor' | 'currency' | 'maxStaff' | 'maxBranches' | 'extraBranchMinor' | 'extraStaffMinor'>,
-  c: { billingCycle: BillingCycle; staffLimitOverride: number | null; branchLimitOverride: number | null; trialEndsAt: Date | string | null },
+  plan: Pick<PlatformPlan, 'priceMonthlyMinor' | 'priceYearlyMinor' | 'currency' | 'maxStaff' | 'maxBranches' | 'extraBranchMinor' | 'extraStaffMinor'> & { storageGb?: number | null; extraStorageMinor?: number | null },
+  c: { billingCycle: BillingCycle; staffLimitOverride: number | null; branchLimitOverride: number | null; storageLimitOverrideGb?: number | null; trialEndsAt: Date | string | null },
   now = new Date(),
   used?: { staff: number; branches: number } | null,
 ): ClinicBill {
@@ -425,8 +461,10 @@ export function clinicBill(
     base == null ? 0 : Math.max(0, Math.max(override ?? 0, inUse ?? 0) - base);
   const extraBranches = extra(c.branchLimitOverride, used?.branches, plan.maxBranches);
   const extraStaff = extra(c.staffLimitOverride, used?.staff, plan.maxStaff);
+  // Storage above the plan is the extra space NextCore gave the clinic, in whole packs (uploads stop at the limit).
+  const extraStoragePacks = plan.storageGb == null || c.storageLimitOverrideGb == null ? 0 : Math.ceil(Math.max(0, c.storageLimitOverrideGb - plan.storageGb) / STORAGE_PACK_GB);
   const planMinor = monthlyPrice(plan, c.billingCycle);
-  const extrasMinor = extraBranches * (plan.extraBranchMinor ?? 0) + extraStaff * (plan.extraStaffMinor ?? 0);
+  const extrasMinor = extraBranches * (plan.extraBranchMinor ?? 0) + extraStaff * (plan.extraStaffMinor ?? 0) + extraStoragePacks * (plan.extraStorageMinor ?? 0);
   const inTrial = !!c.trialEndsAt && new Date(c.trialEndsAt) > now;
   const monthlyFeeMinor = plan.priceMonthlyMinor + extrasMinor;
   const yearlyFeeMinor = plan.priceYearlyMinor != null ? plan.priceYearlyMinor + 12 * extrasMinor : null;
@@ -442,6 +480,8 @@ export function clinicBill(
     extraStaff,
     extraBranchMinor: plan.extraBranchMinor,
     extraStaffMinor: plan.extraStaffMinor,
+    extraStoragePacks,
+    extraStorageMinor: plan.extraStorageMinor ?? null,
     extrasMinor,
     totalMinor: inTrial ? 0 : planMinor + extrasMinor,
     inTrial,
@@ -482,7 +522,7 @@ export function recommendedPlanMapping<T extends { id: string; name: string; isA
 /** Whether a plan already matches its recommended version (name, price, limits and features). */
 export function matchesRecommended(p: Omit<PlatformPlan, 'id' | 'clinicCount' | 'description' | 'sortOrder' | 'currency'>) {
   const rec = DEFAULT_PLANS.find((d) => d.name === p.name);
-  const keys = ['priceMonthlyMinor', 'priceYearlyMinor', 'maxStaff', 'maxBranches', 'maxAutomations', 'maxCustomAutomations', 'extraBranchMinor', 'extraStaffMinor', 'trialDays', 'whatsappSupport', 'phoneSupport', 'trainingSessions'] as const;
+  const keys = ['priceMonthlyMinor', 'priceYearlyMinor', 'maxStaff', 'maxBranches', 'maxAutomations', 'maxCustomAutomations', 'extraBranchMinor', 'extraStaffMinor', 'storageGb', 'extraStorageMinor', 'trialDays', 'whatsappSupport', 'phoneSupport', 'trainingSessions'] as const;
   return (
     !!rec &&
     p.isActive &&

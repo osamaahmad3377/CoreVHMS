@@ -17,7 +17,7 @@ const toPlan = (p: Plan, clinicCount: number): PlatformPlan => ({
 });
 
 /** The fields whose before/after the history keeps when a plan changes. */
-const TRACKED = ['name', 'priceMonthlyMinor', 'priceYearlyMinor', 'maxStaff', 'maxBranches', 'maxAutomations', 'maxCustomAutomations', 'extraBranchMinor', 'extraStaffMinor', 'trialDays', 'supportResponse', 'whatsappSupport', 'phoneSupport', 'trainingSessions', 'features', 'isActive'] as const;
+const TRACKED = ['name', 'priceMonthlyMinor', 'priceYearlyMinor', 'maxStaff', 'maxBranches', 'maxAutomations', 'maxCustomAutomations', 'extraBranchMinor', 'extraStaffMinor', 'storageGb', 'extraStorageMinor', 'trialDays', 'supportResponse', 'whatsappSupport', 'phoneSupport', 'trainingSessions', 'features', 'isActive'] as const;
 const changesOf = (before: Partial<Plan>, after: Partial<Plan>) =>
   Object.fromEntries(TRACKED.filter((k) => JSON.stringify(before[k] ?? null) !== JSON.stringify(after[k] ?? null)).map((k) => [k, { from: before[k] ?? null, to: after[k] ?? null }]));
 

@@ -1,6 +1,6 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
-import { COUNTRIES, yearlyMonthsFree, type ClinicOverview, type PlatformPlan } from '@vcms/shared';
+import { COUNTRIES, STORAGE_PACK_GB, storageText, yearlyMonthsFree, type ClinicOverview, type PlatformPlan } from '@vcms/shared';
 import {
   AlertTriangle,
   Building2,
@@ -202,7 +202,7 @@ function ClinicPage({ id }: { id: string }) {
 
       {/* The clinic at a glance: what it pays, where it stands, and how much of its plan it uses. */}
       {live && (
-        <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
           <Tile label="Fee (extras included)">
             {c.bill ? <FeeLines bill={c.bill} /> : <p className="text-sm text-muted-foreground">No plan — not charged</p>}
           </Tile>
@@ -223,6 +223,10 @@ function ClinicPage({ id }: { id: string }) {
           <Tile label="Branches">
             <p className="text-lg font-semibold leading-tight tabular-nums">{usage?.branches ?? '—'}<span className="text-sm font-normal text-muted-foreground"> of {branchLimit ?? 'unlimited'}</span></p>
             {c.bill?.extraBranches ? <p className="text-xs text-muted-foreground">{c.bill.extraBranches} extra billed</p> : null}
+          </Tile>
+          <Tile label="File storage">
+            <p className="text-lg font-semibold leading-tight tabular-nums">{usage ? storageText(usage.storageBytes) : '—'}<span className="text-sm font-normal text-muted-foreground"> of {c.entitlements.maxStorageGb == null ? 'unlimited' : `${c.entitlements.maxStorageGb} GB`}</span></p>
+            {c.bill?.extraStoragePacks ? <p className="text-xs text-muted-foreground">{c.bill.extraStoragePacks * STORAGE_PACK_GB} GB extra billed</p> : null}
           </Tile>
         </div>
       )}
@@ -245,7 +249,7 @@ function ClinicPage({ id }: { id: string }) {
                   <Detail label="Clinic name">{c.name}</Detail>
                   <Detail label="Web address"><span className="inline-flex items-center gap-1"><a href={c.address} target="_blank" rel="noreferrer" className="break-all text-primary hover:underline">{shortAddress(c.address)}</a><CopyButton text={c.address} what="Address" /></span></Detail>
                   <Detail label="Country">{country}</Detail>
-                  <Detail label="Plan">{c.planName ? `${c.planName}${c.extraFeatures.length || c.removedFeatures.length || c.staffLimitOverride != null || c.branchLimitOverride != null ? ' (with changes for this clinic)' : ''}` : 'No plan — no limits'}</Detail>
+                  <Detail label="Plan">{c.planName ? `${c.planName}${c.extraFeatures.length || c.removedFeatures.length || c.staffLimitOverride != null || c.branchLimitOverride != null || c.storageLimitOverrideGb != null ? ' (with changes for this clinic)' : ''}` : 'No plan — no limits'}</Detail>
                   {c.bill && <Detail narrow label="Pays">{c.bill.cycle === 'YEARLY' ? `${amount(c.bill.yearlyFeeMinor ?? 0, c.bill.currency)} a year, upfront` : `${amount(c.bill.monthlyFeeMinor, c.bill.currency)} a month`}</Detail>}
                   {c.planId && <Detail narrow label="Paid until">{c.paidUntil ? fmtDate(c.paidUntil) : c.trialEndsAt ? `Free trial until ${fmtDate(c.trialEndsAt)}` : 'No payment recorded'}</Detail>}
                   {c.lastPaymentAt && <Detail label="Last payment">{fmtDate(c.lastPaymentAt)}</Detail>}
@@ -363,7 +367,7 @@ function ClinicPage({ id }: { id: string }) {
           {live ? (
             <div className="max-w-3xl">
               {/* Keyed on the saved plan, so the form restarts from what was saved. */}
-              <ClinicPlanCard key={JSON.stringify([c.planId, c.staffLimitOverride, c.branchLimitOverride, c.extraFeatures, c.removedFeatures])} overview={q.data} />
+              <ClinicPlanCard key={JSON.stringify([c.planId, c.staffLimitOverride, c.branchLimitOverride, c.storageLimitOverrideGb, c.extraFeatures, c.removedFeatures])} overview={q.data} />
             </div>
           ) : (
             <Card><CardContent className="pt-6 text-sm text-muted-foreground">The plan can be chosen once the clinic is set up.</CardContent></Card>
