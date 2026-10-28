@@ -4,22 +4,29 @@ import { Automation, AutomationRun, MessageChannel, Prisma } from '@prisma/clien
 import {
   AUTOMATION_RECIPES,
   BASIC_AUTOMATION_KEYS,
+  OFFER_CATCH_UP_DAYS,
   fitsWithoutBuilder,
+  nextOfferDay,
+  offerDayOnOrBefore,
   recipeKeyOf,
   sameAutomationShape,
   CHECK_INFO,
   TRIGGER_INFO,
+  automationSchema,
   conditionsMet,
   waitMs,
   type AutomationCondition,
   type AutomationInput,
   type AutomationStep,
   type AutomationTrigger,
+  type OfferRepeat,
+  type AutomationTemplateInput,
 } from '@vcms/shared';
+import { formatInTimeZone } from 'date-fns-tz';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { ClientEvent, ClientEvents } from '../../common/events/client-events';
-import { notFound, ruleViolation } from '../../common/http/errors';
+import { conflict, forbidden, notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { assertFeature, assertWithinLimit, currentEntitlements, featureAllowed } from '../../common/tenancy/entitlements';
 import { appUrl } from '../../common/tenancy/hosts';
@@ -29,12 +36,35 @@ import { renderTemplate } from '../comms/templates.service';
 import { MessagesService } from '../comms/messages.service';
 import { EmailIntegrationService } from '../integrations/email-integration.service';
 import { WhatsAppService } from '../integrations/whatsapp.service';
-import { buildContext, OrgInfo, RunContext, SOURCE_OF } from './automation-context';
+import { buildContext, factNeeds, marketingFacts, OrgInfo, reach, RunContext, SOURCE_OF } from './automation-context';
+import { unsubscribeLink } from './unsubscribe';
 import { nextAt } from './automation-time';
 
 const SCAN_EVERY_MS = 5 * 60_000;
 const STUCK_MS = 10 * 60_000;
-const TIMED: AutomationTrigger[] = ['APPOINTMENT_UPCOMING', 'CARE_DUE', 'PET_BIRTHDAY', 'SURGERY_UPCOMING', 'INVOICE_OVERDUE', 'PATIENT_LAPSED'];
+const TIMED: AutomationTrigger[] = ['APPOINTMENT_UPCOMING', 'CARE_DUE', 'PET_BIRTHDAY', 'SURGERY_UPCOMING', 'INVOICE_OVERDUE', 'PATIENT_LAPSED', 'SCHEDULED_OFFER'];
+/** Offers started per automation per scan (the rest follow on the next scans, a few minutes apart). */
+const OFFER_BATCH = 300;
+
+const dayOf = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : null);
+const asDate = (day: string | null | undefined) => (day ? new Date(`${day}T00:00:00Z`) : null);
+const plusDays = (day: string, n: number) => new Date(Date.parse(`${day}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+const daysBetween = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
+const offerOf = (a: Pick<Automation, 'sendOn' | 'repeat' | 'endsOn'>) => ({ sendOn: dayOf(a.sendOn), repeat: (a.repeat ?? 'NONE') as OfferRepeat, endsOn: dayOf(a.endsOn) });
+
+/**
+ * The last day of an offer that went out on `day`: its end date for a one-off offer, else the day before it goes
+ * out again (never after the end date). Shown in messages as {{offerEnds}}.
+ */
+export function offerEndsOn(o: { sendOn: string | null; repeat: OfferRepeat; endsOn: string | null }, day: string): string | null {
+  if (o.repeat === 'NONE') return o.endsOn;
+  const next = nextOfferDay({ ...o, endsOn: null }, plusDays(day, 1));
+  const end = next ? plusDays(next, -1) : null;
+  return end && o.endsOn && o.endsOn < end ? o.endsOn : (end ?? o.endsOn);
+}
+
+/** An automation as the app shows it: offer dates as plain days. */
+const view = <T extends Pick<Automation, 'sendOn' | 'endsOn'>>(a: T) => ({ ...a, sendOn: dayOf(a.sendOn), endsOn: dayOf(a.endsOn) });
 
 interface LogEntry {
   step: number;
@@ -145,13 +175,17 @@ export class AutomationsService implements OnModuleInit {
       db.automationRun.groupBy({ by: ['automationId', 'status'], where: { createdAt: { gte: new Date(Date.now() - 30 * 86400_000) } }, _count: true }),
     ]);
     return rows.map((a) => ({
-      ...a,
+      ...view(a),
       waiting: waiting.find((w) => w.automationId === a.id)?._count ?? 0,
       last30Days: Object.fromEntries(recent.filter((r) => r.automationId === a.id).map((r) => [r.status, r._count])),
     }));
   }
 
   async get(id: string) {
+    return view(await this.find(id));
+  }
+
+  private async find(id: string) {
     const a = await this.prisma.db.automation.findUnique({ where: { id } });
     if (!a) throw notFound('Automation');
     return a;
@@ -161,16 +195,19 @@ export class AutomationsService implements OnModuleInit {
   async options() {
     const db = this.prisma.db;
     const orgId = RequestContext.orgId();
-    const [species, branches, types, staff, wa, mailbox] = await Promise.all([
+    const [species, branches, types, staff, wa, mailbox, services] = await Promise.all([
       db.species.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
       db.branch.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
       db.appointmentType.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
       db.membership.findMany({ where: { status: 'ACTIVE' }, orderBy: { user: { name: 'asc' } }, select: { id: true, jobTitle: true, user: { select: { name: true } } } }),
       this.whatsapp.sending(orgId),
       this.mailbox.usable(orgId),
+      db.service.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
     ]);
     return {
       species,
+      services,
+      marketing: await this.marketingState(),
       branches,
       appointmentTypes: types,
       staff: staff.map((m) => ({ id: m.id, name: m.user.name, jobTitle: m.jobTitle })),
@@ -193,6 +230,9 @@ export class AutomationsService implements OnModuleInit {
       sendFromHour: input.sendFromHour != null && input.sendToHour != null ? input.sendFromHour : null,
       sendToHour: input.sendFromHour != null && input.sendToHour != null ? input.sendToHour : null,
       cooldownDays: input.cooldownDays ?? null,
+      sendOn: timed === 'ON_DATE' ? asDate(input.sendOn) : null,
+      repeat: timed === 'ON_DATE' ? (input.repeat ?? 'NONE') : null,
+      endsOn: timed === 'ON_DATE' ? asDate(input.endsOn) : null,
       conditions: input.conditions as unknown as Prisma.InputJsonValue,
       steps: input.steps as unknown as Prisma.InputJsonValue,
     };
@@ -234,50 +274,141 @@ export class AutomationsService implements OnModuleInit {
     assertFeature('automationBuilder');
   }
 
+  /** The clinic's marketing switches: the limit per client, everything paused, and approval before sending. */
+  async marketingState() {
+    const o = await this.prisma.raw.organization.findUnique({ where: { id: RequestContext.orgId() }, select: { marketingCapDays: true, marketingPaused: true, marketingApproval: true } });
+    return { capDays: o?.marketingCapDays ?? null, paused: !!o?.marketingPaused, approval: !!o?.marketingApproval };
+  }
+
+  /** Records a saved state of the automation (to see what changed, and restore it). */
+  private async recordVersion(tx: { automationVersion: { create: (args: { data: Prisma.AutomationVersionUncheckedCreateInput }) => Promise<unknown> } }, a: Automation, action: string) {
+    const snapshot = {
+      name: a.name,
+      description: a.description,
+      isActive: a.isActive,
+      marketing: a.marketing,
+      trigger: a.trigger,
+      offset: a.offset,
+      atHour: a.atHour,
+      sendFromHour: a.sendFromHour,
+      sendToHour: a.sendToHour,
+      cooldownDays: a.cooldownDays,
+      sendOn: dayOf(a.sendOn),
+      repeat: a.repeat,
+      endsOn: dayOf(a.endsOn),
+      conditions: a.conditions,
+      steps: a.steps,
+      recipeKey: a.recipeKey,
+    };
+    await tx.automationVersion.create({ data: { organizationId: a.organizationId, automationId: a.id, version: a.version, action, snapshot: snapshot as Prisma.InputJsonValue, changedByName: RequestContext.get()?.userName ?? null } });
+  }
+
+  /**
+   * When the clinic requires approval for marketing, a new or changed promotional automation is held (switched off)
+   * until another manager approves it.
+   */
+  private async approvalFields(marketing: boolean, isActive: boolean) {
+    if (!marketing || !(await this.marketingState()).approval) return { isActive, approvalStatus: null, approvalNote: null, approvedByName: null, approvedAt: null };
+    return { isActive: false, approvalStatus: 'PENDING', approvalNote: null, approvedByName: null, approvedAt: null };
+  }
+
   async create(input: AutomationInput) {
     await this.validateRefs(input);
     this.assertPlanAllows(input);
     const recipeKey = recipeKeyOf(input, input.recipeKey);
-    if (input.isActive) await this.assertRoomToSwitchOn(recipeKey);
+    const approval = await this.approvalFields(input.marketing, input.isActive);
+    if (approval.isActive) await this.assertRoomToSwitchOn(recipeKey);
     const ctx = RequestContext.require();
     return this.prisma.db.$transaction(async (tx) => {
-      const a = await tx.automation.create({ data: { ...this.data(input, recipeKey), organizationId: ctx.organizationId!, createdByName: ctx.userName ?? null, updatedByName: ctx.userName ?? null } });
-      await this.audit.record({ action: 'automation.created', entityType: 'Organization', entityId: ctx.organizationId!, summary: `${a.name} (${TRIGGER_INFO[input.trigger].label})` }, tx);
-      return a;
+      const a = await tx.automation.create({ data: { ...this.data(input, recipeKey), ...approval, organizationId: ctx.organizationId!, createdByName: ctx.userName ?? null, updatedByName: ctx.userName ?? null, updatedById: ctx.userId ?? null } });
+      await this.recordVersion(tx, a, approval.approvalStatus ? 'created — sent for approval' : 'created');
+      await this.audit.record({ action: 'automation.created', entityType: 'Organization', entityId: ctx.organizationId!, summary: `${a.name} (${TRIGGER_INFO[input.trigger].label})${approval.approvalStatus ? ' · waiting for approval' : ''}` }, tx);
+      return view(a);
     });
   }
 
-  async update(id: string, input: AutomationInput) {
-    const current = await this.get(id);
+  async update(id: string, input: AutomationInput, action = 'edited') {
+    const current = await this.find(id);
     await this.validateRefs(input);
     this.assertPlanAllows(input, current);
     const recipeKey = recipeKeyOf(input, current.recipeKey ?? input.recipeKey);
+    const approval = await this.approvalFields(input.marketing, input.isActive);
     // Switching on, or turning a switched-on ready-made automation into one of the clinic's own, needs room.
-    if (input.isActive && (!current.isActive || (!!current.recipeKey && !recipeKey))) await this.assertRoomToSwitchOn(recipeKey);
+    if (approval.isActive && (!current.isActive || (!!current.recipeKey && !recipeKey))) await this.assertRoomToSwitchOn(recipeKey);
     const ctx = RequestContext.require();
     return this.prisma.db.$transaction(async (tx) => {
-      const a = await tx.automation.update({ where: { id }, data: { ...this.data(input, recipeKey), updatedByName: ctx.userName ?? null } });
-      await this.audit.record({ action: 'automation.updated', entityType: 'Organization', entityId: ctx.organizationId!, summary: `${a.name}${a.isActive ? '' : ' (off)'}` }, tx);
-      return a;
+      const a = await tx.automation.update({ where: { id }, data: { ...this.data(input, recipeKey), ...approval, version: { increment: 1 }, updatedByName: ctx.userName ?? null, updatedById: ctx.userId ?? null } });
+      await this.recordVersion(tx, a, approval.approvalStatus ? `${action} — sent for approval` : action);
+      await this.audit.record({ action: 'automation.updated', entityType: 'Organization', entityId: ctx.organizationId!, summary: `${a.name}${approval.approvalStatus ? ' · waiting for approval' : a.isActive ? '' : ' (off)'}` }, tx);
+      return view(a);
     });
   }
 
   async setActive(id: string, isActive: boolean) {
-    const before = await this.get(id);
+    const before = await this.find(id);
     if (isActive && !before.isActive) {
-      if (before.marketing) assertFeature('marketing');
+      if (before.marketing) {
+        assertFeature('marketing');
+        if ((await this.marketingState()).approval && before.approvalStatus !== 'APPROVED') {
+          throw ruleViolation('NEEDS_APPROVAL', before.approvalStatus === 'REJECTED' ? 'This campaign was not approved. Change it and send it for approval again.' : 'This campaign is waiting for approval by a manager before it can go out.');
+        }
+      }
       await this.assertRoomToSwitchOn(before.recipeKey);
     }
     const ctx = RequestContext.require();
     return this.prisma.db.$transaction(async (tx) => {
-      const a = await tx.automation.update({ where: { id }, data: { isActive, updatedByName: ctx.userName ?? null } });
+      const a = await tx.automation.update({ where: { id }, data: { isActive, version: { increment: 1 }, updatedByName: ctx.userName ?? null } });
+      await this.recordVersion(tx, a, isActive ? 'switched on' : 'switched off');
       await this.audit.record({ action: isActive ? 'automation.switched_on' : 'automation.switched_off', entityType: 'Organization', entityId: ctx.organizationId!, summary: before.name }, tx);
-      return a;
+      return view(a);
     });
   }
 
+  /** A manager (not the person who made the last change) approves a promotional automation: it switches on. */
+  async approve(id: string) {
+    const a = await this.find(id);
+    if (a.approvalStatus !== 'PENDING') throw ruleViolation('NOT_PENDING', 'Only a campaign waiting for approval can be approved');
+    const ctx = RequestContext.require();
+    if (a.updatedById && a.updatedById === ctx.userId) throw ruleViolation('SAME_PERSON', 'Someone other than the person who made the last change must approve it');
+    assertFeature('marketing');
+    await this.assertRoomToSwitchOn(a.recipeKey);
+    return this.prisma.db.$transaction(async (tx) => {
+      const after = await tx.automation.update({ where: { id }, data: { approvalStatus: 'APPROVED', approvalNote: null, approvedByName: ctx.userName ?? null, approvedAt: new Date(), isActive: true, version: { increment: 1 } } });
+      await this.recordVersion(tx, after, 'approved and switched on');
+      await this.audit.record({ action: 'automation.approved', entityType: 'Organization', entityId: ctx.organizationId!, summary: a.name }, tx);
+      return view(after);
+    });
+  }
+
+  async reject(id: string, note: string) {
+    const a = await this.find(id);
+    if (a.approvalStatus !== 'PENDING') throw ruleViolation('NOT_PENDING', 'Only a campaign waiting for approval can be sent back');
+    const ctx = RequestContext.require();
+    return this.prisma.db.$transaction(async (tx) => {
+      const after = await tx.automation.update({ where: { id }, data: { approvalStatus: 'REJECTED', approvalNote: note, approvedByName: ctx.userName ?? null, approvedAt: new Date(), isActive: false, version: { increment: 1 } } });
+      await this.recordVersion(tx, after, `sent back: ${note}`);
+      await this.audit.record({ action: 'automation.rejected', entityType: 'Organization', entityId: ctx.organizationId!, summary: `${a.name}: ${note}` }, tx);
+      return view(after);
+    });
+  }
+
+  /** Every saved state, newest first. */
+  async versions(id: string) {
+    await this.find(id);
+    return this.prisma.db.automationVersion.findMany({ where: { automationId: id }, orderBy: { version: 'desc' }, take: 100 });
+  }
+
+  /** Puts an earlier version back (saved as a new version, so nothing is lost). */
+  async restore(id: string, version: number) {
+    const v = await this.prisma.db.automationVersion.findUnique({ where: { automationId_version: { automationId: id, version } } });
+    if (!v) throw notFound('Version');
+    const parsed = automationSchema.safeParse(v.snapshot);
+    if (!parsed.success) throw ruleViolation('VERSION_INVALID', 'This version can no longer be used as it is');
+    return this.update(id, parsed.data, `restored version ${version}`);
+  }
+
   async remove(id: string) {
-    const a = await this.get(id);
+    const a = await this.find(id);
     const ctx = RequestContext.require();
     await this.prisma.db.$transaction(async (tx) => {
       await tx.automation.delete({ where: { id } });
@@ -304,7 +435,7 @@ export class AutomationsService implements OnModuleInit {
 
   /** A copy to adapt (switched off until saved on). */
   async duplicate(id: string) {
-    const a = await this.get(id);
+    const a = await this.find(id);
     const ctx = RequestContext.require();
     return this.prisma.db.$transaction(async (tx) => {
       const copy = await tx.automation.create({
@@ -320,15 +451,64 @@ export class AutomationsService implements OnModuleInit {
           sendFromHour: a.sendFromHour,
           sendToHour: a.sendToHour,
           cooldownDays: a.cooldownDays,
+          sendOn: a.sendOn,
+          repeat: a.repeat,
+          endsOn: a.endsOn,
           conditions: a.conditions as Prisma.InputJsonValue,
           steps: a.steps as Prisma.InputJsonValue,
           createdByName: ctx.userName ?? null,
           updatedByName: ctx.userName ?? null,
         },
       });
+      await this.recordVersion(tx, copy, `created as a copy of “${a.name}”`);
       await this.audit.record({ action: 'automation.created', entityType: 'Organization', entityId: ctx.organizationId!, summary: `${copy.name} (copy of ${a.name})` }, tx);
       return copy;
     });
+  }
+
+  // ── The clinic's own templates ──
+
+  /** Templates the clinic saved from its own automations and campaigns, most used first. */
+  async templates() {
+    return this.prisma.db.automationTemplate.findMany({ orderBy: [{ timesUsed: 'desc' }, { createdAt: 'desc' }] });
+  }
+
+  async template(id: string) {
+    const t = await this.prisma.db.automationTemplate.findUnique({ where: { id } });
+    if (!t) throw notFound('Template');
+    return t;
+  }
+
+  /** Saves an automation or campaign as a template to start new ones from (nothing is switched on or sent). */
+  async saveTemplate(input: AutomationTemplateInput) {
+    await this.validateRefs(input.automation);
+    if (input.automation.marketing) assertFeature('marketing');
+    if (await this.prisma.db.automationTemplate.findFirst({ where: { name: { equals: input.name, mode: 'insensitive' } } })) throw conflict(`There is already a template called “${input.name}”`);
+    const { isActive: _isActive, ...draft } = input.automation;
+    const ctx = RequestContext.require();
+    return this.prisma.db.$transaction(async (tx) => {
+      const t = await tx.automationTemplate.create({
+        data: { organizationId: ctx.organizationId!, name: input.name, description: input.description ?? null, marketing: input.automation.marketing, trigger: input.automation.trigger, draft: draft as Prisma.InputJsonValue, createdByName: ctx.userName ?? null },
+      });
+      await this.audit.record({ action: 'automation.template_saved', entityType: 'Organization', entityId: ctx.organizationId!, summary: `${t.name} (${TRIGGER_INFO[input.automation.trigger].label})` }, tx);
+      return t;
+    });
+  }
+
+  /** Counts a new automation made from the template (shown as "Used N times"). */
+  async templateUsed(id: string) {
+    await this.template(id);
+    return this.prisma.db.automationTemplate.update({ where: { id }, data: { timesUsed: { increment: 1 } }, select: { id: true, timesUsed: true } });
+  }
+
+  async removeTemplate(id: string) {
+    const t = await this.template(id);
+    const ctx = RequestContext.require();
+    await this.prisma.db.$transaction(async (tx) => {
+      await tx.automationTemplate.delete({ where: { id } });
+      await this.audit.record({ action: 'automation.template_deleted', entityType: 'Organization', entityId: ctx.organizationId!, summary: t.name }, tx);
+    });
+    return { ok: true };
   }
 
   /** What automations did lately (or one automation's runs), newest first. */
@@ -359,6 +539,11 @@ export class AutomationsService implements OnModuleInit {
     if (!id) return { example: null, conditionsMet: false, steps: [] as unknown[] };
     const ctx = await buildContext(this.prisma.db, input.trigger, id, org);
     if (!ctx) return { example: null, conditionsMet: false, steps: [] as unknown[] };
+    if (input.trigger === 'SCHEDULED_OFFER') {
+      const o = { sendOn: input.sendOn ?? null, repeat: (input.repeat ?? 'NONE') as OfferRepeat, endsOn: input.endsOn ?? null };
+      const day = nextOfferDay(o, localParts(new Date(), org.timezone).date) ?? o.sendOn;
+      ctx.vars.offerEnds = this.offerEndsText(o, day, org.timezone);
+    }
     const met = conditionsMet(input.conditions, ctx.facts);
     let delayMs = 0;
     const steps = [];
@@ -465,13 +650,17 @@ export class AutomationsService implements OnModuleInit {
 
   /** Starts one automation for one record (once — the dedupe key guards repeats). */
   async start(a: Automation, sourceId: string, extraKey?: string) {
-    // Promotional automations rest while the clinic's plan does not include marketing.
-    if (a.marketing && !featureAllowed('marketing')) return null;
+    // Promotional automations rest while the clinic's plan does not include marketing, or while marketing is paused.
+    if (a.marketing && (!featureAllowed('marketing') || (await this.marketingState()).paused)) return null;
     const org = await this.orgInfo();
     const trigger = a.trigger as AutomationTrigger;
     const ctx = await buildContext(this.prisma.db, trigger, sourceId, org);
     if (!ctx || !ctx.live) return null;
     if (!conditionsMet(a.conditions as unknown as AutomationCondition[], ctx.facts)) return null;
+    // An offer: its end date for this send ({{offerEnds}}), kept with the run.
+    if (trigger === 'SCHEDULED_OFFER') ctx.vars.offerEnds = this.offerEndsText(offerOf(a), extraKey ?? null, org.timezone);
+    // Marketing: at most one promotional message per client in the clinic's chosen number of days (all offers together).
+    if (a.marketing && ctx.client && (await this.cappedRecently(ctx.client.id))) return null;
     // Not again for the same client within the cooling-off period.
     if (a.cooldownDays && ctx.client) {
       const recent = await this.prisma.db.automationRun.count({ where: { automationId: a.id, clientId: ctx.client.id, createdAt: { gte: new Date(Date.now() - a.cooldownDays * 86_400_000) } } });
@@ -507,6 +696,270 @@ export class AutomationsService implements OnModuleInit {
     return this.process(run.id, ctx);
   }
 
+  private offerEndsText(o: { sendOn: string | null; repeat: OfferRepeat; endsOn: string | null }, day: string | null, tz: string) {
+    const end = day ? offerEndsOn(o, day) : o.endsOn;
+    return end ? formatInTimeZone(new Date(`${end}T12:00:00Z`), tz, 'd MMM yyyy') : '';
+  }
+
+  /**
+   * Who an offer goes to: active clients who agreed to marketing (and to messages at all) and meet its conditions —
+   * their animals' species, branch, last visit and how they can be reached. Counted for the editor, listed for sending.
+   */
+  async audience(conditions: AutomationCondition[]) {
+    const db = this.prisma.db;
+    const org = await this.orgInfo();
+    const clients = await db.client.findMany({ where: { status: 'ACTIVE' }, select: { id: true, createdAt: true, email: true, mobilePhone: true, primaryBranchId: true, remindersConsent: true, marketingConsent: true } });
+    const consented = clients.filter((c) => c.remindersConsent && c.marketingConsent);
+    const known = await marketingFacts(db, consented, factNeeds(conditions));
+    const ids: string[] = [];
+    const reachBy = { whatsapp: 0, email: 0, none: 0 };
+    for (const c of consented) {
+      const r = reach(c, org);
+      const facts = { ...known.get(c.id), branchId: c.primaryBranchId, ...r };
+      if (!conditionsMet(conditions, facts)) continue;
+      ids.push(c.id);
+      if (r.hasWhatsApp) reachBy.whatsapp++;
+      else if (r.hasEmail) reachBy.email++;
+      else reachBy.none++;
+    }
+    return { ids, counts: { clients: clients.length, consented: consented.length, matching: ids.length, reach: reachBy } };
+  }
+
+  /** How many clients an offer with these conditions would reach (nothing is sent). */
+  async audienceCounts(conditions: AutomationCondition[]) {
+    return (await this.audience(conditions)).counts;
+  }
+
+  /** True when the client already had a promotional message within the clinic's marketing limit. */
+  private async cappedRecently(clientId: string) {
+    const org = await this.prisma.raw.organization.findUnique({ where: { id: RequestContext.orgId() }, select: { marketingCapDays: true } });
+    if (!org?.marketingCapDays) return false;
+    const since = new Date(Date.now() - org.marketingCapDays * 86_400_000);
+    return (await this.prisma.db.automationRun.count({ where: { clientId, createdAt: { gte: since }, automation: { marketing: true } } })) > 0;
+  }
+
+  /** The signed-in person's email (where test messages go). */
+  async myEmail() {
+    const userId = RequestContext.require().userId;
+    const u = userId ? await this.prisma.raw.user.findUnique({ where: { id: userId }, select: { email: true } }) : null;
+    if (!u?.email) throw ruleViolation('NO_EMAIL', 'Your account has no email address to send the test to');
+    return u.email;
+  }
+
+  /**
+   * Marketing settings: at most one promotional message per client every N days, pause everything promotional, and
+   * require another manager's approval before a campaign goes out.
+   */
+  async setMarketingSettings(input: { capDays?: number | null; paused?: boolean; approval?: boolean }) {
+    const ctx = RequestContext.require();
+    // Marketing is a plan feature (Professional and Premium, or switched on for the clinic by the platform admin).
+    assertFeature('marketing');
+    // Pausing marketing and the approval rule are for those who manage the clinic (nobody switches off their own check).
+    if ((input.approval !== undefined || input.paused !== undefined) && !ctx.permissions.has('org.manage')) throw forbidden('Only the clinic’s managers can pause marketing or change the approval rule');
+    const before = await this.marketingState();
+    const data = { ...(input.capDays !== undefined ? { marketingCapDays: input.capDays } : {}), ...(input.paused !== undefined ? { marketingPaused: input.paused } : {}), ...(input.approval !== undefined ? { marketingApproval: input.approval } : {}) };
+    await this.prisma.raw.$transaction(async (tx) => {
+      await tx.organization.update({ where: { id: ctx.organizationId! }, data });
+      // Approval switched on: campaigns already running count as approved (they keep running).
+      if (input.approval && !before.approval) {
+        await tx.automation.updateMany({ where: { organizationId: ctx.organizationId!, marketing: true, isActive: true }, data: { approvalStatus: 'APPROVED', approvedByName: 'Running before approval was required', approvedAt: new Date() } });
+      }
+      const said = [
+        input.capDays !== undefined ? (input.capDays ? `at most one offer per client every ${input.capDays} days` : 'no limit on offers per client') : null,
+        input.paused !== undefined ? (input.paused ? 'all marketing paused' : 'marketing resumed') : null,
+        input.approval !== undefined ? (input.approval ? 'campaigns need approval' : 'no approval needed') : null,
+      ].filter(Boolean);
+      await this.audit.record({ action: 'automation.marketing_settings_changed', entityType: 'Organization', entityId: ctx.organizationId!, summary: said.join(' · ') }, tx);
+    });
+    return this.marketingState();
+  }
+
+  /** Problems in the last days, grouped by automation and reason (with the latest time). */
+  async problems(days = 7) {
+    const since = new Date(Date.now() - days * 86_400_000);
+    const rows = await this.prisma.db.automationRun.groupBy({ by: ['automationId', 'status', 'error'], where: { status: { in: ['FAILED', 'SKIPPED'] }, updatedAt: { gte: since } }, _count: true, _max: { updatedAt: true } });
+    const autos = await this.prisma.db.automation.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.automationId))] } }, select: { id: true, name: true, trigger: true } });
+    return rows
+      .map((r) => ({ automationId: r.automationId, name: autos.find((x) => x.id === r.automationId)?.name ?? '—', trigger: autos.find((x) => x.id === r.automationId)?.trigger ?? null, status: r.status, reason: r.error ?? 'No reason recorded', count: r._count, lastAt: r._max.updatedAt }))
+      .sort((a, b) => b.count - a.count);
+  }
+
+  /** Tries a failed run again from the step where it stopped. */
+  async retryRun(id: string) {
+    const r = await this.prisma.db.automationRun.findUnique({ where: { id } });
+    if (!r) throw notFound('Run');
+    if (r.status !== 'FAILED') throw ruleViolation('NOT_FAILED', 'Only a failed run can be tried again');
+    await this.prisma.db.automationRun.update({ where: { id }, data: { status: 'WAITING', runAt: new Date(), error: null } });
+    return { ok: true };
+  }
+
+  /**
+   * Marketing at a glance for a period: campaigns, who can be reached, messages sent / delivered / read, bookings
+   * within 14 days and payments within 30 days of a campaign reaching a client, opt-outs, a weekly trend and each
+   * campaign side by side.
+   */
+  async marketingOverview(days: number) {
+    const orgId = RequestContext.orgId();
+    const since = new Date(Date.now() - days * 86_400_000);
+    const raw = this.prisma.raw;
+    const db = this.prisma.db;
+    const [autos, clients, consented, perAuto, booked, revenue, weekly, optOuts] = await Promise.all([
+      db.automation.findMany({ where: { marketing: true }, select: { id: true, name: true, isActive: true, approvalStatus: true, trigger: true } }),
+      db.client.count({ where: { status: 'ACTIVE' } }),
+      db.client.count({ where: { status: 'ACTIVE', marketingConsent: true, remindersConsent: true } }),
+      raw.$queryRaw<{ automationId: string; status: string; n: bigint; delivered: bigint; read: bigint }[]>`
+        SELECT r."automationId", m."status", count(*) AS n, count(m."deliveredAt") AS delivered, count(m."readAt") AS read
+        FROM "OutboundMessage" m
+        JOIN "AutomationRun" r ON r."id"::text = split_part(m."dedupeKey", ':', 2)
+        JOIN "Automation" a ON a."id" = r."automationId"
+        WHERE m."organizationId" = ${orgId}::uuid AND m."dedupeKey" LIKE 'automation:%' AND a."marketing" = true AND m."createdAt" >= ${since}
+        GROUP BY r."automationId", m."status"`,
+      raw.$queryRaw<{ automationId: string; n: bigint }[]>`
+        SELECT r."automationId", count(DISTINCT r."clientId") AS n FROM "AutomationRun" r JOIN "Automation" a ON a."id" = r."automationId"
+        WHERE r."organizationId" = ${orgId}::uuid AND a."marketing" = true AND r."status" = 'DONE' AND r."clientId" IS NOT NULL AND r."createdAt" >= ${since} AND EXISTS (
+          SELECT 1 FROM "Appointment" ap WHERE ap."clientId" = r."clientId" AND ap."organizationId" = ${orgId}::uuid
+            AND ap."createdAt" >= r."createdAt" AND ap."createdAt" < r."createdAt" + interval '14 days' AND ap."status" <> 'CANCELLED')
+        GROUP BY r."automationId"`,
+      raw.$queryRaw<{ automationId: string; total: bigint | null }[]>`
+        SELECT x."automationId", sum(p."amountMinor" - p."refundedMinor") AS total FROM "Payment" p JOIN (
+          SELECT r."automationId", r."clientId", min(r."createdAt") AS at FROM "AutomationRun" r JOIN "Automation" a ON a."id" = r."automationId"
+          WHERE r."organizationId" = ${orgId}::uuid AND a."marketing" = true AND r."status" = 'DONE' AND r."clientId" IS NOT NULL AND r."createdAt" >= ${since}
+          GROUP BY r."automationId", r."clientId"
+        ) x ON x."clientId" = p."clientId"
+        WHERE p."organizationId" = ${orgId}::uuid AND p."receivedAt" >= x.at AND p."receivedAt" < x.at + interval '30 days'
+        GROUP BY x."automationId"`,
+      raw.$queryRaw<{ week: Date; n: bigint }[]>`
+        SELECT date_trunc('week', m."createdAt") AS week, count(*) AS n
+        FROM "OutboundMessage" m
+        JOIN "AutomationRun" r ON r."id"::text = split_part(m."dedupeKey", ':', 2)
+        JOIN "Automation" a ON a."id" = r."automationId"
+        WHERE m."organizationId" = ${orgId}::uuid AND m."dedupeKey" LIKE 'automation:%' AND a."marketing" = true AND m."createdAt" >= ${since}
+          AND m."status" = 'SENT'
+        GROUP BY 1 ORDER BY 1`,
+      raw.auditEvent.count({ where: { organizationId: orgId, action: 'client.marketing_stopped', createdAt: { gte: since } } }),
+    ]);
+    const sentStatuses = ['SENT'];
+    const sum = <T>(rows: T[], f: (r: T) => number) => rows.reduce((n, r) => n + f(r), 0);
+    const byCampaign = autos.map((a) => {
+      const m = perAuto.filter((x) => x.automationId === a.id);
+      return {
+        id: a.id,
+        name: a.name,
+        isActive: a.isActive,
+        approvalStatus: a.approvalStatus,
+        trigger: a.trigger,
+        sent: sum(m.filter((x) => sentStatuses.includes(x.status)), (x) => Number(x.n)),
+        read: sum(m, (x) => Number(x.read)),
+        failed: sum(m.filter((x) => x.status === 'FAILED'), (x) => Number(x.n)),
+        booked: Number(booked.find((b) => b.automationId === a.id)?.n ?? 0),
+        revenueMinor: Number(revenue.find((r) => r.automationId === a.id)?.total ?? 0),
+      };
+    });
+    const total = (k: 'sent' | 'read' | 'failed' | 'booked' | 'revenueMinor') => sum(byCampaign, (c) => c[k]);
+    return {
+      days,
+      campaigns: { total: autos.length, active: autos.filter((a) => a.isActive).length, pendingApproval: autos.filter((a) => a.approvalStatus === 'PENDING').length },
+      audience: { clients, consented },
+      messages: { sent: total('sent'), delivered: sum(perAuto, (x) => Number(x.delivered)), read: total('read'), failed: total('failed') },
+      booked: total('booked'),
+      revenueMinor: total('revenueMinor'),
+      optOuts,
+      weekly: weekly.map((w) => ({ week: w.week.toISOString().slice(0, 10), sent: Number(w.n) })),
+      byCampaign: byCampaign.sort((a, b) => b.sent - a.sent || a.name.localeCompare(b.name)),
+      settings: await this.marketingState(),
+    };
+  }
+
+  /** Clients who stopped offers themselves (link or STOP), newest first. */
+  async optOuts() {
+    const rows = await this.prisma.raw.auditEvent.findMany({ where: { organizationId: RequestContext.orgId(), action: 'client.marketing_stopped' }, orderBy: { createdAt: 'desc' }, take: 500, select: { entityId: true, summary: true, createdAt: true } });
+    const clients = await this.prisma.db.client.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.entityId).filter((x): x is string => !!x))] } }, select: { id: true, displayName: true, email: true, mobilePhone: true, marketingConsent: true } });
+    return rows.map((r) => {
+      const c = clients.find((x) => x.id === r.entityId);
+      return { clientId: r.entityId, name: c?.displayName ?? 'Removed client', email: c?.email ?? null, phone: c?.mobilePhone ?? null, how: r.summary?.replace(/^Stopped offers \((.*)\)$/, '$1') ?? '', at: r.createdAt, offersOnAgain: !!c?.marketingConsent };
+    });
+  }
+
+  /**
+   * Sends the automation's first message to the person trying it (their own email), filled in from a real client
+   * in its audience when there is one — so they see exactly what clients get.
+   */
+  async testSend(input: AutomationInput, to: string) {
+    const step = input.steps.find((x): x is Extract<AutomationStep, { type: 'SEND_MESSAGE' }> => x.type === 'SEND_MESSAGE');
+    if (!step) throw ruleViolation('NO_MESSAGE', 'Add a message to send a test');
+    const org = await this.orgInfo();
+    const sampleId = input.trigger === 'SCHEDULED_OFFER' ? (await this.audience(input.conditions)).ids[0] : await this.recentExample(input.trigger);
+    const ctx = sampleId ? await buildContext(this.prisma.db, input.trigger, sampleId, org) : null;
+    const vars = ctx?.vars ?? Object.fromEntries(TRIGGER_INFO[input.trigger].variables.map((v) => [v, `[${v}]`]));
+    if (input.trigger === 'SCHEDULED_OFFER') {
+      const o = { sendOn: input.sendOn ?? null, repeat: (input.repeat ?? 'NONE') as OfferRepeat, endsOn: input.endsOn ?? null };
+      vars.offerEnds = this.offerEndsText(o, nextOfferDay(o, localParts(new Date(), org.timezone).date) ?? o.sendOn, org.timezone);
+    }
+    const body = renderTemplate(step.body, vars) + (input.marketing && ctx?.client ? this.optOutFooter('EMAIL', ctx.client.id) : '');
+    await this.messages.enqueue(this.prisma.db, {
+      channel: 'EMAIL',
+      recipient: to,
+      subject: `[Test] ${renderTemplate(step.subject || 'Message from {{clinicName}}', vars)}`,
+      body,
+      purpose: 'AUTOMATION_TEST',
+      dedupeKey: `automation-test:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+    });
+    return { ok: true, to, example: ctx?.client?.displayName ?? null };
+  }
+
+  /**
+   * How an automation did: runs, messages delivered and read, and — for offers — how many of the clients it reached
+   * booked within 14 days and what they paid within 30 days.
+   */
+  async results(id: string) {
+    const a = await this.find(id);
+    const orgId = RequestContext.orgId();
+    const raw = this.prisma.raw;
+    const [runs, messages, booked, revenue] = await Promise.all([
+      this.prisma.db.automationRun.groupBy({ by: ['status'], where: { automationId: id }, _count: true }),
+      raw.$queryRaw<{ status: string; n: bigint; delivered: bigint; read: bigint }[]>`
+        SELECT m."status", count(*) AS n, count(m."deliveredAt") AS delivered, count(m."readAt") AS read
+        FROM "OutboundMessage" m JOIN "AutomationRun" r ON r."id"::text = split_part(m."dedupeKey", ':', 2)
+        WHERE m."organizationId" = ${orgId}::uuid AND m."dedupeKey" LIKE 'automation:%' AND r."automationId" = ${id}::uuid
+        GROUP BY m."status"`,
+      raw.$queryRaw<{ n: bigint }[]>`
+        SELECT count(DISTINCT r."clientId") AS n FROM "AutomationRun" r
+        WHERE r."automationId" = ${id}::uuid AND r."status" = 'DONE' AND r."clientId" IS NOT NULL AND EXISTS (
+          SELECT 1 FROM "Appointment" ap WHERE ap."clientId" = r."clientId" AND ap."organizationId" = ${orgId}::uuid
+            AND ap."createdAt" >= r."createdAt" AND ap."createdAt" < r."createdAt" + interval '14 days' AND ap."status" <> 'CANCELLED')`,
+      raw.$queryRaw<{ total: bigint | null }[]>`
+        SELECT sum(p."amountMinor" - p."refundedMinor") AS total FROM "Payment" p JOIN (
+          SELECT r."clientId", min(r."createdAt") AS at FROM "AutomationRun" r
+          WHERE r."automationId" = ${id}::uuid AND r."status" = 'DONE' AND r."clientId" IS NOT NULL GROUP BY r."clientId"
+        ) x ON x."clientId" = p."clientId"
+        WHERE p."organizationId" = ${orgId}::uuid AND p."receivedAt" >= x.at AND p."receivedAt" < x.at + interval '30 days'`,
+    ]);
+    const count = (st: string) => runs.find((r) => r.status === st)?._count ?? 0;
+    const msg = (st: string[]) => messages.filter((m) => st.includes(m.status)).reduce((n, m) => n + Number(m.n), 0);
+    return {
+      automation: { id: a.id, name: a.name, marketing: a.marketing },
+      runs: { total: runs.reduce((n, r) => n + r._count, 0), done: count('DONE'), waiting: count('WAITING') + count('RUNNING'), notSent: count('SKIPPED') + count('FAILED'), stopped: count('STOPPED') },
+      messages: {
+        sent: msg(['SENT']),
+        delivered: messages.reduce((n, m) => n + Number(m.delivered), 0),
+        read: messages.reduce((n, m) => n + Number(m.read), 0),
+        failed: msg(['FAILED']),
+        waiting: msg(['QUEUED', 'SENDING']),
+      },
+      booked: Number(booked[0]?.n ?? 0),
+      revenueMinor: Number(revenue[0]?.total ?? 0),
+    };
+  }
+
+  /** The line added to every promotional message: how to stop offers. */
+  private optOutFooter(channel: MessageChannel, clientId: string) {
+    return channel === 'EMAIL'
+      ? `\n\n—\nDon’t want offers from us? Stop them here: ${unsubscribeLink(RequestContext.orgId(), clientId)}`
+      : channel === 'WHATSAPP'
+        ? '\n\nReply STOP to stop offers.'
+        : '';
+  }
+
   private consentProblem(ctx: RunContext, marketing: boolean) {
     if (!ctx.client) return null;
     if (ctx.client.status !== 'ACTIVE') return 'The client is not active';
@@ -525,10 +978,15 @@ export class AutomationsService implements OnModuleInit {
     const finish = (status: string, error?: string | null, extra: Partial<AutomationRun> = {}) =>
       db.automationRun.update({ where: { id: run.id }, data: { status, error: error ?? null, log: log as unknown as Prisma.InputJsonValue, ...extra } as Prisma.AutomationRunUpdateInput });
     if (!a.isActive) return finish('STOPPED', 'The automation was switched off');
+    // Marketing paused by the clinic: the run waits (checked again in half an hour) — nothing is sent meanwhile.
+    if (a.marketing && (await this.marketingState()).paused) return finish('WAITING', null, { runAt: new Date(Date.now() + 30 * 60_000) });
     // Fresh facts each time it wakes up: the appointment may have moved or been cancelled meanwhile.
     const ctx = fresh ?? (await buildContext(db, a.trigger as AutomationTrigger, run.sourceId, await this.orgInfo()));
     if (!ctx) return finish('STOPPED', 'The record was removed');
     if (!ctx.live) return finish('STOPPED', ctx.why ?? 'No longer applies');
+    // Values fixed when the run started (an offer's end date) stay the same after a wait.
+    const kept = (run.vars ?? {}) as Record<string, string>;
+    if (kept.offerEnds !== undefined) ctx.vars.offerEnds = kept.offerEnds;
     const steps = a.steps as unknown as AutomationStep[];
     for (let i = run.nextStep; i < steps.length; i++) {
       const s = steps[i];
@@ -608,7 +1066,8 @@ export class AutomationsService implements OnModuleInit {
     const problem = !ctx.client ? 'No client to write to' : this.consentProblem(ctx, a.marketing);
     if (problem || !ctx.client) return { step: i, type: s.type, at, ok: false, note: problem ?? 'No client to write to' };
     const channel: MessageChannel = s.channel === 'BEST' ? await this.messages.chooseChannel(ctx.client) : s.channel;
-    const body = renderTemplate(s.body, ctx.vars);
+    // Promotional messages always say how to stop offers (an unsubscribe link by email, "reply STOP" on WhatsApp).
+    const body = renderTemplate(s.body, ctx.vars) + (a.marketing ? this.optOutFooter(channel, ctx.client.id) : '');
     const m = await this.messages.enqueue(this.prisma.db, {
       clientId: ctx.client.id,
       patientId: ctx.patientId,
@@ -702,7 +1161,33 @@ export class AutomationsService implements OnModuleInit {
     return claimed.length;
   }
 
-  /** Date-based triggers: appointments coming up, care falling due, pets' birthdays. */
+  /**
+   * An offer whose day has come (at its hour, clinic time; a day or two late if the server was down): one run per
+   * client in its audience, a batch per scan. Each client gets each send once.
+   */
+  private async sendOffer(a: Automation, today: string, minuteOfDay: number) {
+    const day = offerDayOnOrBefore(offerOf(a), today);
+    if (!day || daysBetween(day, today) > OFFER_CATCH_UP_DAYS) return 0;
+    if (day === today && a.atHour != null && minuteOfDay < a.atHour * 60) return 0;
+    if (a.marketing && (!featureAllowed('marketing') || (await this.marketingState()).paused)) return 0;
+    const { ids } = await this.audience(a.conditions as unknown as AutomationCondition[]);
+    const done = new Set((await this.prisma.db.automationRun.findMany({ where: { automationId: a.id, dedupeKey: { endsWith: `:${day}` } }, select: { clientId: true } })).map((r) => r.clientId));
+    // Clients who had another offer within the clinic's marketing limit wait for the next send.
+    const cap = (await this.prisma.raw.organization.findUnique({ where: { id: RequestContext.orgId() }, select: { marketingCapDays: true } }))?.marketingCapDays;
+    if (cap) {
+      const recent = await this.prisma.db.automationRun.findMany({ where: { createdAt: { gte: new Date(Date.now() - cap * 86_400_000) }, automation: { marketing: true }, clientId: { not: null } }, select: { clientId: true }, distinct: ['clientId'] });
+      for (const r of recent) done.add(r.clientId);
+    }
+    let started = 0;
+    for (const id of ids) {
+      if (done.has(id)) continue;
+      if (started >= OFFER_BATCH) break;
+      if (await this.start(a, id, day)) started++;
+    }
+    return started;
+  }
+
+  /** Date-based triggers: appointments coming up, care falling due, pets' birthdays, offers. */
   async scanTimed(now = new Date()) {
     const autos = await this.prisma.raw.automation.findMany({ where: { isActive: true, trigger: { in: TIMED } } });
     const byOrg = new Map<string, Automation[]>();
@@ -714,6 +1199,10 @@ export class AutomationsService implements OnModuleInit {
         const tz = (await this.orgInfo()).timezone;
         const local = localParts(now, tz);
         for (const a of list) {
+          if (a.trigger === 'SCHEDULED_OFFER') {
+            started += await this.sendOffer(a, local.date, local.minuteOfDay);
+            continue;
+          }
           // "At 10:00": not before that hour, clinic time.
           if (a.atHour != null && local.minuteOfDay < a.atHour * 60) continue;
           if (a.trigger === 'APPOINTMENT_UPCOMING') {

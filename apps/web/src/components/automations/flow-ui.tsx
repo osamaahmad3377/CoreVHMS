@@ -24,6 +24,7 @@ import {
   Send,
   Stethoscope,
   Syringe,
+  Tag,
   Ticket,
   UserPlus,
   Users,
@@ -56,6 +57,7 @@ export const TRIGGER_ICONS: Record<AutomationTrigger, Icon> = {
   INVOICE_OVERDUE: Receipt,
   ESTIMATE_SENT: FileText,
   PATIENT_LAPSED: Repeat,
+  SCHEDULED_OFFER: Tag,
 };
 
 /** One colour family per group of triggers, used for icon tiles and chips. */
@@ -64,6 +66,7 @@ export const GROUP_TONE: Record<TriggerGroup, { tile: string; chip: string; dot:
   Clinical: { tile: 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white', chip: 'bg-success/10 text-success ring-success/20', dot: 'bg-success' },
   Money: { tile: 'bg-gradient-to-br from-amber-500 to-orange-600 text-white', chip: 'bg-warning/10 text-warning ring-warning/25', dot: 'bg-warning' },
   'Clients & pets': { tile: 'bg-gradient-to-br from-sky-500 to-indigo-600 text-white', chip: 'bg-info/10 text-info ring-info/20', dot: 'bg-info' },
+  Marketing: { tile: 'bg-gradient-to-br from-pink-500 to-rose-600 text-white', chip: 'bg-rose-500/10 text-rose-600 ring-rose-500/20 dark:text-rose-400', dot: 'bg-rose-500' },
 };
 
 export const STEP_META: Record<AutomationStep['type'], { label: string; short: string; icon: Icon; tile: string; text: string }> = {

@@ -29,10 +29,11 @@ export const AUTOMATION_TRIGGERS = [
   'PRESCRIPTION_DISPENSED',
   'SURGERY_COMPLETED',
   'ESTIMATE_SENT',
+  'SCHEDULED_OFFER',
 ] as const;
 export type AutomationTrigger = (typeof AUTOMATION_TRIGGERS)[number];
 
-export type TriggerGroup = 'Appointments' | 'Clinical' | 'Money' | 'Clients & pets';
+export type TriggerGroup = 'Appointments' | 'Clinical' | 'Money' | 'Clients & pets' | 'Marketing';
 
 export interface TriggerInfo {
   label: string;
@@ -40,7 +41,7 @@ export interface TriggerInfo {
   when: string;
   group: TriggerGroup;
   /** Happens at a time worked out from a date (checked every few minutes), not at a moment in the app. */
-  timed?: 'HOURS_BEFORE' | 'DAYS_BEFORE' | 'DAYS_AFTER' | 'MONTHS_SINCE' | 'ON_DAY';
+  timed?: 'HOURS_BEFORE' | 'DAYS_BEFORE' | 'DAYS_AFTER' | 'MONTHS_SINCE' | 'ON_DAY' | 'ON_DATE';
   /** "Check" steps that make sense for this trigger. */
   checks: AutomationCheck[];
   variables: string[];
@@ -74,6 +75,15 @@ export const TRIGGER_INFO: Record<AutomationTrigger, TriggerInfo> = {
   INVOICE_OVERDUE: { label: 'Invoice overdue', when: 'an invoice is overdue', group: 'Money', timed: 'DAYS_AFTER', variables: [...CLIENT_VARS, 'invoiceNumber', 'amountDue', 'invoiceTotal', 'dueDate'], conditions: ['amountAtLeast', 'branch', 'contact'], checks: ['STILL_UNPAID'] },
   CLIENT_REGISTERED: { label: 'New client', when: 'a new client is registered', group: 'Clients & pets', variables: CLIENT_VARS, conditions: ['branch', 'contact'], checks: ['NOT_BOOKED'] },
   PET_BIRTHDAY: { label: 'Pet’s birthday', when: 'it is a pet’s birthday', group: 'Clients & pets', timed: 'ON_DAY', variables: [...CLIENT_VARS, 'petName', 'species', 'age'], conditions: ['contact', ...PET_CONDS], checks: [] },
+  SCHEDULED_OFFER: {
+    label: 'Offer on a date',
+    when: 'the date you choose comes round (sent to a group of clients)',
+    group: 'Marketing',
+    timed: 'ON_DATE',
+    variables: [...CLIENT_VARS, 'petNames', 'offerEnds'],
+    conditions: ['species', 'patientSex', 'ageAtLeast', 'ageUnder', 'branch', 'lastVisit', 'newClient', 'visitsAtLeast', 'spentAtLeast', 'boughtService', 'careDue', 'contact'],
+    checks: ['NOT_BOOKED'],
+  },
   PATIENT_LAPSED: { label: 'Not seen for a while', when: 'an animal has not been seen for a while', group: 'Clients & pets', timed: 'MONTHS_SINCE', variables: [...CLIENT_VARS, 'petName', 'species', 'lastVisitDate', 'monthsSince'], conditions: ['branch', 'contact', ...PET_CONDS], checks: ['NOT_BOOKED'] },
 };
 
@@ -116,6 +126,8 @@ export const AUTOMATION_VARIABLES: Record<string, { label: string; example: stri
   estimateNumber: { label: 'Estimate number', example: 'EST-000045' },
   estimateTotal: { label: 'Estimate total', example: 'Rs 35,000' },
   validUntil: { label: 'Valid until', example: '9 Nov 2026' },
+  petNames: { label: 'Pet names', example: 'Tiger and Bella' },
+  offerEnds: { label: 'Offer ends', example: '30 Nov 2026' },
 };
 
 // ───────────────────────────── Checks ─────────────────────────────
@@ -136,7 +148,7 @@ export function sampleVars(trigger: AutomationTrigger) {
 
 // ───────────────────────────── Conditions ─────────────────────────────
 
-export const AUTOMATION_CONDITION_FIELDS = ['species', 'branch', 'appointmentType', 'contact', 'amountAtLeast', 'source', 'patientSex', 'ageAtLeast', 'ageUnder', 'firstVisit'] as const;
+export const AUTOMATION_CONDITION_FIELDS = ['species', 'branch', 'appointmentType', 'contact', 'amountAtLeast', 'source', 'patientSex', 'ageAtLeast', 'ageUnder', 'firstVisit', 'lastVisit', 'newClient', 'visitsAtLeast', 'spentAtLeast', 'boughtService', 'careDue'] as const;
 export type AutomationConditionField = (typeof AUTOMATION_CONDITION_FIELDS)[number];
 
 export const CONDITION_INFO: Record<AutomationConditionField, { label: string }> = {
@@ -150,13 +162,33 @@ export const CONDITION_INFO: Record<AutomationConditionField, { label: string }>
   ageAtLeast: { label: 'Age at least (years)' },
   ageUnder: { label: 'Age under (years)' },
   firstVisit: { label: 'First visit' },
+  lastVisit: { label: 'Last visit' },
+  newClient: { label: 'Became a client' },
+  visitsAtLeast: { label: 'Visits in the last 12 months' },
+  spentAtLeast: { label: 'Spent in the last 12 months' },
+  boughtService: { label: 'Had a service (last 12 months)' },
+  careDue: { label: 'Vaccination or care due' },
+};
+
+/** Conditions that describe a client for marketing, and the facts each needs (worked out only when used). */
+export const MARKETING_FACT_NEEDS: Partial<Record<AutomationConditionField, 'pets' | 'visits' | 'spend' | 'services' | 'care' | 'joined'>> = {
+  species: 'pets',
+  patientSex: 'pets',
+  ageAtLeast: 'pets',
+  ageUnder: 'pets',
+  lastVisit: 'visits',
+  visitsAtLeast: 'visits',
+  spentAtLeast: 'spend',
+  boughtService: 'services',
+  careDue: 'care',
+  newClient: 'joined',
 };
 
 export const automationConditionSchema = z.object({
   field: z.enum(AUTOMATION_CONDITION_FIELDS),
   /** is / is not (one of the values). */
   op: z.enum(['IS', 'IS_NOT']).default('IS'),
-  /** Ids (species, branch, appointment type), "WHATSAPP"/"EMAIL" for contact, "ONLINE"/"STAFF" for source, or an amount in minor units. */
+  /** Ids (species, branch, appointment type), "WHATSAPP"/"EMAIL" for contact, "ONLINE"/"STAFF" for source, an amount in minor units, or months (last visit: IS = within, IS_NOT = not within). */
   values: z.array(z.string().trim().min(1).max(80)).min(1).max(30),
 });
 export type AutomationCondition = z.infer<typeof automationConditionSchema>;
@@ -175,6 +207,22 @@ export interface AutomationFacts {
   ageYears?: number | null;
   /** The client's first visit to the clinic. */
   firstVisit?: boolean;
+  /** A client's animals' species (offers to a group of clients: "has a dog"). */
+  speciesIds?: string[];
+  /** Whole months since the client's last finished visit (null = never visited). */
+  monthsSinceVisit?: number | null;
+  /** A client's animals (offers): their sexes and ages in whole years. */
+  petSexes?: ('MALE' | 'FEMALE')[];
+  petAges?: number[];
+  /** Finished visits and money paid (less refunds) in the last 12 months. */
+  visits12m?: number;
+  spent12mMinor?: number;
+  /** Services on the client's invoices in the last 12 months. */
+  serviceIds12m?: string[];
+  /** Days until the soonest vaccination or care due for one of the client's animals (negative = overdue; null = none due). */
+  careDueInDays?: number | null;
+  /** Days since the client was registered. */
+  daysAsClient?: number;
 }
 
 /** True when every condition holds. A condition about something the trigger does not have is not met. */
@@ -183,7 +231,7 @@ export function conditionsMet(conditions: AutomationCondition[], f: AutomationFa
     const is = (hit: boolean) => (c.op === 'IS' ? hit : !hit);
     switch (c.field) {
       case 'species':
-        return is(!!f.speciesId && c.values.includes(f.speciesId));
+        return is((!!f.speciesId && c.values.includes(f.speciesId)) || (f.speciesIds ?? []).some((x) => c.values.includes(x)));
       case 'branch':
         return is(!!f.branchId && c.values.includes(f.branchId));
       case 'appointmentType':
@@ -195,13 +243,25 @@ export function conditionsMet(conditions: AutomationCondition[], f: AutomationFa
       case 'source':
         return is(!!f.source && c.values.includes(f.source));
       case 'patientSex':
-        return is(!!f.patientSex && c.values.includes(f.patientSex));
+        return is((!!f.patientSex && c.values.includes(f.patientSex)) || (f.petSexes ?? []).some((x) => c.values.includes(x)));
       case 'ageAtLeast':
-        return is(f.ageYears != null && f.ageYears >= Number(c.values[0]));
+        return is((f.ageYears != null && f.ageYears >= Number(c.values[0])) || (f.petAges ?? []).some((x) => x >= Number(c.values[0])));
       case 'ageUnder':
-        return is(f.ageYears != null && f.ageYears < Number(c.values[0]));
+        return is((f.ageYears != null && f.ageYears < Number(c.values[0])) || (f.petAges ?? []).some((x) => x < Number(c.values[0])));
       case 'firstVisit':
         return is(c.values.includes(f.firstVisit ? 'FIRST' : 'RETURNING'));
+      case 'lastVisit':
+        return is(f.monthsSinceVisit != null && f.monthsSinceVisit < Number(c.values[0]));
+      case 'newClient':
+        return is(f.daysAsClient != null && f.daysAsClient <= Number(c.values[0]));
+      case 'visitsAtLeast':
+        return is((f.visits12m ?? 0) >= Number(c.values[0]));
+      case 'spentAtLeast':
+        return is((f.spent12mMinor ?? 0) >= Number(c.values[0]));
+      case 'boughtService':
+        return is((f.serviceIds12m ?? []).some((x) => c.values.includes(x)));
+      case 'careDue':
+        return is(f.careDueInDays != null && f.careDueInDays <= Number(c.values[0]));
     }
   });
 }
@@ -209,6 +269,11 @@ export function conditionsMet(conditions: AutomationCondition[], f: AutomationFa
 // ───────────────────────────── Steps ─────────────────────────────
 
 export const AUTOMATION_CHANNELS = ['BEST', 'WHATSAPP', 'EMAIL', 'SMS'] as const;
+
+/** How often an offer on a date goes out again. */
+export const OFFER_REPEATS = ['NONE', 'WEEKLY', 'MONTHLY'] as const;
+export type OfferRepeat = (typeof OFFER_REPEATS)[number];
+export const OFFER_REPEAT_LABELS: Record<OfferRepeat, string> = { NONE: 'Once', WEEKLY: 'Every week', MONTHLY: 'Every month' };
 export type AutomationChannel = (typeof AUTOMATION_CHANNELS)[number];
 
 export const automationStepSchema = z.discriminatedUnion('type', [
@@ -271,6 +336,10 @@ export const automationSchema = z
     sendToHour: z.coerce.number().int().min(1).max(24).nullish(),
     /** Not again for the same client within this many days (any record). */
     cooldownDays: z.coerce.number().int().min(1).max(365).nullish(),
+    /** Offer on a date: the first (or only) day it goes out, how often it repeats, and the day the offer ends. */
+    sendOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Choose a date').nullish(),
+    repeat: z.enum(OFFER_REPEATS).nullish(),
+    endsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Choose a date').nullish(),
     conditions: z.array(automationConditionSchema).max(10).default([]),
     steps: z.array(automationStepSchema).min(1, 'Add at least one step').max(12),
     /** The ready-made recipe it was made from (kept while it keeps the recipe's shape). */
@@ -285,18 +354,86 @@ export const automationSchema = z
       if (s.type === 'CHECK' && !TRIGGER_INFO[a.trigger].checks.includes(s.check)) ctx.addIssue({ code: 'custom', path: ['steps', i], message: `“Only continue if ${CHECK_INFO[s.check].label}” does not apply to ${TRIGGER_INFO[a.trigger].label.toLowerCase()}` });
     });
     const timed = TRIGGER_INFO[a.trigger].timed;
+    if (timed === 'ON_DATE') {
+      if (!a.sendOn) ctx.addIssue({ code: 'custom', path: ['sendOn'], message: 'Choose the date to send it' });
+      if (a.sendOn && a.endsOn && a.endsOn < a.sendOn) ctx.addIssue({ code: 'custom', path: ['endsOn'], message: 'The offer must end on or after the day it is sent' });
+      if (!a.marketing) ctx.addIssue({ code: 'custom', path: ['marketing'], message: 'An offer is promotional: it only goes to clients who agreed to marketing' });
+      return;
+    }
     if (timed && timed !== 'ON_DAY' && a.offset == null) ctx.addIssue({ code: 'custom', path: ['offset'], message: timed === 'HOURS_BEFORE' ? 'Say how many hours before' : timed === 'MONTHS_SINCE' ? 'Say after how many months' : 'Say how many days' });
   });
 export type AutomationInput = z.infer<typeof automationSchema>;
 /** As typed by a person or a recipe (defaults not yet applied). */
 export type AutomationDraft = z.input<typeof automationSchema>;
 
+/** A clinic's own template: an automation or campaign it made, saved to start new ones from. */
+export const automationTemplateSchema = z.object({
+  name: z.string().trim().min(1, 'Give the template a name').max(120),
+  description: z.string().trim().max(300).nullish(),
+  automation: automationSchema,
+});
+export type AutomationTemplateInput = z.infer<typeof automationTemplateSchema>;
+
 export const waitMs = (s: { amount: number; unit: 'MINUTES' | 'HOURS' | 'DAYS' }) => s.amount * (s.unit === 'MINUTES' ? 60_000 : s.unit === 'HOURS' ? 3_600_000 : 86_400_000);
+
+// ───────────────────────────── Offers on a date ─────────────────────────────
+
+const ymd = (d: Date) => d.toISOString().slice(0, 10);
+const utc = (day: string) => new Date(`${day}T00:00:00Z`);
+const DAY_MS = 86_400_000;
+
+/** The k-th day an offer goes out: once, every 7 days, or the same day each month (the month's last day when shorter). */
+function offerDay(sendOn: string, repeat: OfferRepeat, k: number) {
+  const start = utc(sendOn);
+  if (repeat === 'WEEKLY') return ymd(new Date(start.getTime() + k * 7 * DAY_MS));
+  if (repeat === 'MONTHLY') {
+    const y = start.getUTCFullYear();
+    const m = start.getUTCMonth() + k;
+    const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    return ymd(new Date(Date.UTC(y, m, Math.min(start.getUTCDate(), last))));
+  }
+  return sendOn;
+}
+
+/** The latest day the offer was due on or before `day` (clinic calendar, YYYY-MM-DD), within its end date; null if none yet. */
+export function offerDayOnOrBefore(o: { sendOn?: string | null; repeat?: OfferRepeat | null; endsOn?: string | null }, day: string): string | null {
+  if (!o.sendOn || day < o.sendOn) return null;
+  const repeat = o.repeat ?? 'NONE';
+  const limit = o.endsOn && o.endsOn < day ? o.endsOn : day;
+  if (limit < o.sendOn) return null;
+  if (repeat === 'NONE') return o.sendOn;
+  if (repeat === 'WEEKLY') return offerDay(o.sendOn, repeat, Math.floor((utc(limit).getTime() - utc(o.sendOn).getTime()) / (7 * DAY_MS)));
+  const a = utc(o.sendOn);
+  const b = utc(limit);
+  let k = (b.getUTCFullYear() - a.getUTCFullYear()) * 12 + (b.getUTCMonth() - a.getUTCMonth());
+  while (k > 0 && offerDay(o.sendOn, repeat, k) > limit) k--;
+  return offerDay(o.sendOn, repeat, k);
+}
+
+/** The next day the offer goes out on or after `day` (null when it will not go out again). */
+export function nextOfferDay(o: { sendOn?: string | null; repeat?: OfferRepeat | null; endsOn?: string | null }, day: string): string | null {
+  if (!o.sendOn) return null;
+  const repeat = o.repeat ?? 'NONE';
+  for (let k = 0; k < 600; k++) {
+    const d = offerDay(o.sendOn, repeat, k);
+    if (o.endsOn && d > o.endsOn) return null;
+    if (d >= day) return d;
+    if (repeat === 'NONE') return null;
+  }
+  return null;
+}
+
+/** How late an offer may still go out after its day (e.g. the server was down): a couple of days, then it is skipped. */
+export const OFFER_CATCH_UP_DAYS = 2;
 
 // ───────────────────────────── Recipes ─────────────────────────────
 
 /** Ready-made automations the clinic starts from (switched off until saved). */
-export const AUTOMATION_RECIPES: { key: string; icon: string; automation: AutomationDraft }[] = [
+/** Themes of the ready-made marketing campaigns (Settings → Automations → Marketing). */
+export const MARKETING_THEMES = ['Seasonal', 'Health campaigns', 'Loyalty & win-back', 'New clients'] as const;
+export type MarketingTheme = (typeof MARKETING_THEMES)[number];
+
+export const AUTOMATION_RECIPES: { key: string; icon: string; theme?: MarketingTheme; automation: AutomationDraft }[] = [
   {
     key: 'rescheduled',
     icon: 'calendar',
@@ -457,6 +594,7 @@ export const AUTOMATION_RECIPES: { key: string; icon: string; automation: Automa
   },
   {
     key: 'birthday',
+    theme: 'Loyalty & win-back',
     icon: 'cake',
     automation: {
       name: 'Pet birthday wishes',
@@ -624,6 +762,192 @@ export const AUTOMATION_RECIPES: { key: string; icon: string; automation: Automa
       ],
     },
   },
+  {
+    key: 'offer-of-the-month',
+    icon: 'tag',
+    theme: 'Seasonal',
+    automation: {
+      name: 'Offer of the month',
+      description: 'Every month on the day you choose, at 10:00: this month’s offer to clients who agreed to marketing.',
+      isActive: true,
+      marketing: true,
+      trigger: 'SCHEDULED_OFFER',
+      repeat: 'MONTHLY',
+      atHour: 10,
+      conditions: [],
+      steps: [{ type: 'SEND_MESSAGE', channel: 'BEST', subject: 'This month at {{clinicName}}', body: 'Hello {{clientName}}, this month at {{clinicName}}: 10% off grooming and dental cleaning for {{petNames}}. Book before {{offerEnds}} — reply here or call {{clinicPhone}}.\n{{bookingLine}}' }],
+    },
+  },
+  {
+    key: 'vaccination-offer',
+    icon: 'percent',
+    theme: 'Health campaigns',
+    automation: {
+      name: 'Vaccination discount',
+      description: 'A discount on vaccinations on the day you choose; five days later a reminder to those who have not booked yet.',
+      isActive: true,
+      marketing: true,
+      trigger: 'SCHEDULED_OFFER',
+      repeat: 'NONE',
+      atHour: 10,
+      sendFromHour: 9,
+      sendToHour: 20,
+      conditions: [],
+      steps: [
+        { type: 'SEND_MESSAGE', channel: 'BEST', subject: '15% off vaccinations at {{clinicName}}', body: 'Hello {{clientName}}, keep {{petNames}} protected: 15% off all vaccinations at {{clinicName}} until {{offerEnds}}. Reply here or call {{clinicPhone}} to book.\n{{bookingLine}}' },
+        { type: 'WAIT', amount: 5, unit: 'DAYS' },
+        { type: 'CHECK', check: 'NOT_BOOKED' },
+        { type: 'SEND_MESSAGE', channel: 'BEST', subject: 'Last days: 15% off vaccinations', body: 'Hello {{clientName}}, a reminder that 15% off vaccinations at {{clinicName}} ends on {{offerEnds}}. Reply here or call {{clinicPhone}} to book for {{petNames}}.' },
+      ],
+    },
+  },
+  {
+    key: 'win-back',
+    icon: 'gift',
+    theme: 'Loyalty & win-back',
+    automation: {
+      name: 'We miss you — welcome back offer',
+      description: 'For clients not seen in a year: a welcome-back discount on the day you choose.',
+      isActive: true,
+      marketing: true,
+      trigger: 'SCHEDULED_OFFER',
+      repeat: 'NONE',
+      atHour: 11,
+      conditions: [{ field: 'lastVisit', op: 'IS_NOT', values: ['12'] }],
+      steps: [{ type: 'SEND_MESSAGE', channel: 'BEST', subject: 'We miss {{petNames}} at {{clinicName}}', body: 'Hello {{clientName}}, it has been a while since we saw {{petNames}}. Come back for a check-up before {{offerEnds}} and get 20% off the consultation. Reply here or call {{clinicPhone}}.\n{{bookingLine}}' }],
+    },
+  },
+  {
+    key: 'eid-offer',
+    icon: 'sparkles',
+    theme: 'Seasonal',
+    automation: {
+      name: 'Eid greetings and offer',
+      description: 'Eid Mubarak to every client who agreed to marketing, with a festive offer — on the day you choose.',
+      isActive: true,
+      marketing: true,
+      trigger: 'SCHEDULED_OFFER',
+      repeat: 'NONE',
+      atHour: 10,
+      conditions: [],
+      steps: [{ type: 'SEND_MESSAGE', channel: 'BEST', subject: 'Eid Mubarak from {{clinicName}}', body: 'Eid Mubarak, {{clientName}}! From all of us at {{clinicName}}: 10% off grooming for {{petNames}} until {{offerEnds}}. Reply here or call {{clinicPhone}} to book.\n{{bookingLine}}' }],
+    },
+  },
+  {
+    key: 'tick-season',
+    icon: 'shield',
+    theme: 'Seasonal',
+    automation: {
+      name: 'Tick and flea season',
+      description: 'Before the warm months: tick and flea protection with a discount.',
+      isActive: true,
+      marketing: true,
+      trigger: 'SCHEDULED_OFFER',
+      repeat: 'NONE',
+      atHour: 10,
+      conditions: [],
+      steps: [{ type: 'SEND_MESSAGE', channel: 'BEST', subject: 'Protect {{petNames}} from ticks and fleas', body: 'Hello {{clientName}}, tick and flea season is starting. Protect {{petNames}} with 15% off tick and flea treatments at {{clinicName}} until {{offerEnds}}. Reply here or call {{clinicPhone}}.\n{{bookingLine}}' }],
+    },
+  },
+  {
+    key: 'puppy-kitten',
+    icon: 'heart',
+    theme: 'Health campaigns',
+    automation: {
+      name: 'Puppy and kitten starter pack',
+      description: 'For animals under one year old: first vaccinations, deworming and a microchip in one package.',
+      isActive: true,
+      marketing: true,
+      trigger: 'SCHEDULED_OFFER',
+      repeat: 'MONTHLY',
+      atHour: 11,
+      cooldownDays: 180,
+      conditions: [{ field: 'ageUnder', op: 'IS', values: ['1'] }],
+      steps: [{ type: 'SEND_MESSAGE', channel: 'BEST', subject: 'A healthy start for {{petNames}}', body: 'Hello {{clientName}}, give {{petNames}} a healthy start: first vaccinations, deworming and a microchip in one starter pack at {{clinicName}}, with 15% off until {{offerEnds}}. Reply here or call {{clinicPhone}}.\n{{bookingLine}}' }],
+    },
+  },
+  {
+    key: 'senior-check',
+    icon: 'stethoscope',
+    theme: 'Health campaigns',
+    automation: {
+      name: 'Senior pet health check',
+      description: 'For animals seven years and older: a senior check-up with blood tests at a special price.',
+      isActive: true,
+      marketing: true,
+      trigger: 'SCHEDULED_OFFER',
+      repeat: 'NONE',
+      atHour: 11,
+      conditions: [{ field: 'ageAtLeast', op: 'IS', values: ['7'] }],
+      steps: [{ type: 'SEND_MESSAGE', channel: 'BEST', subject: 'A senior health check for {{petNames}}', body: 'Hello {{clientName}}, older animals hide illness well. Book {{petNames}} a senior health check with blood tests at {{clinicName}} — 20% off until {{offerEnds}}. Reply here or call {{clinicPhone}}.\n{{bookingLine}}' }],
+    },
+  },
+  {
+    key: 'care-due-offer',
+    icon: 'syringe',
+    theme: 'Health campaigns',
+    automation: {
+      name: 'Vaccinations due — book with a discount',
+      description: 'Every week, to clients whose animals have vaccinations or care due in the next 30 days (once every two months at most).',
+      isActive: true,
+      marketing: true,
+      trigger: 'SCHEDULED_OFFER',
+      repeat: 'WEEKLY',
+      atHour: 10,
+      cooldownDays: 60,
+      conditions: [{ field: 'careDue', op: 'IS', values: ['30'] }],
+      steps: [{ type: 'SEND_MESSAGE', channel: 'BEST', subject: '{{petNames}}: vaccinations due soon', body: 'Hello {{clientName}}, {{petNames}} has vaccinations or care due soon. Book this week at {{clinicName}} and get 10% off. Reply here or call {{clinicPhone}}.\n{{bookingLine}}' }],
+    },
+  },
+  {
+    key: 'loyal-thanks',
+    icon: 'star',
+    theme: 'Loyalty & win-back',
+    automation: {
+      name: 'Thank you, loyal clients',
+      description: 'For clients who visited four times or more in the last year: a thank-you gift on their next visit.',
+      isActive: true,
+      marketing: true,
+      trigger: 'SCHEDULED_OFFER',
+      repeat: 'NONE',
+      atHour: 11,
+      conditions: [{ field: 'visitsAtLeast', op: 'IS', values: ['4'] }],
+      steps: [{ type: 'SEND_MESSAGE', channel: 'BEST', subject: 'Thank you from {{clinicName}}', body: 'Hello {{clientName}}, thank you for trusting {{clinicName}} with {{petNames}} this year. As a thank-you, your next nail trim is free — just mention this message before {{offerEnds}}.' }],
+    },
+  },
+  {
+    key: 'refer-friend',
+    icon: 'users',
+    theme: 'Loyalty & win-back',
+    automation: {
+      name: 'Refer a friend',
+      description: 'Ask regular clients to recommend you: a discount for them and their friend.',
+      isActive: true,
+      marketing: true,
+      trigger: 'SCHEDULED_OFFER',
+      repeat: 'NONE',
+      atHour: 11,
+      conditions: [{ field: 'visitsAtLeast', op: 'IS', values: ['2'] }],
+      steps: [{ type: 'SEND_MESSAGE', channel: 'BEST', subject: 'Share {{clinicName}} with a friend', body: 'Hello {{clientName}}, know someone with a pet? When a friend books their first visit at {{clinicName}} and mentions your name before {{offerEnds}}, you both get 10% off. Thank you for recommending us!' }],
+    },
+  },
+  {
+    key: 'new-client-offer',
+    icon: 'user-plus',
+    theme: 'New clients',
+    automation: {
+      name: 'Welcome offer for new clients',
+      description: 'Every week, to clients who joined in the last seven days: a welcome discount on their next visit (once each).',
+      isActive: true,
+      marketing: true,
+      trigger: 'SCHEDULED_OFFER',
+      repeat: 'WEEKLY',
+      atHour: 11,
+      cooldownDays: 365,
+      conditions: [{ field: 'newClient', op: 'IS', values: ['7'] }],
+      steps: [{ type: 'SEND_MESSAGE', channel: 'BEST', subject: 'Welcome to {{clinicName}} — a gift for you', body: 'Hello {{clientName}}, welcome to {{clinicName}}! Enjoy 10% off grooming or a check-up for {{petNames}} until {{offerEnds}}. Reply here or call {{clinicPhone}} to book.\n{{bookingLine}}' }],
+    },
+  },
 ];
 
 // ───────────────────────────── Email connection ─────────────────────────────
@@ -694,6 +1018,7 @@ export const TRIGGER_DEFAULTS: Record<AutomationTrigger, TriggerDefaults> = {
   SURGERY_UPCOMING: { subject: '{{petName}}’s {{procedureName}} on {{surgeryTime}}', body: `${hi}{{petName}}’s {{procedureName}} at {{clinicName}} is on {{surgeryTime}}. Please follow the food and water instructions your vet gave you.${help}`, taskTitle: 'Confirm {{petName}}’s surgery with {{clientName}}', delay: null },
   SURGERY_COMPLETED: { subject: 'How is {{petName}} after the {{procedureName}}?', body: `${hi}we hope {{petName}} is resting well after the {{procedureName}}. If anything worries you, please let us know.${help}`, taskTitle: 'Post-op call for {{petName}} ({{procedureName}})', delay: { amount: 1, unit: 'DAYS' } },
   PRESCRIPTION_DISPENSED: { subject: 'How is {{petName}} doing?', body: `${hi}how is {{petName}} getting on with the medicine ({{medicines}})? If you have any trouble giving it, let us know.${help}`, taskTitle: 'Check {{petName}}’s medicine with {{clientName}}', delay: { amount: 2, unit: 'DAYS' } },
+  SCHEDULED_OFFER: { subject: 'A special offer from {{clinicName}}', body: `${hi}this month at {{clinicName}}: 15% off for {{petNames}}. The offer ends on {{offerEnds}} — reply here or call {{clinicPhone}} to book.\n{{bookingLine}}`, taskTitle: 'Call {{clientName}} about the offer', delay: null },
   PATIENT_LAPSED: { subject: 'Time for {{petName}}’s check-up', body: `${hi}it has been {{monthsSince}} months since we last saw {{petName}}. A yearly check-up keeps problems small.\n{{bookingLine}}`, taskTitle: 'Call {{clientName}} to book {{petName}}’s check-up', delay: null },
 };
 

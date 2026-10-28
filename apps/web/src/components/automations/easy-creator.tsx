@@ -105,7 +105,8 @@ export function EasyCreator() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const list = AUTOMATION_TRIGGERS.filter((t) => (group === 'ALL' || TRIGGER_INFO[t].group === group) && (!q || `${TRIGGER_INFO[t].label} ${TRIGGER_INFO[t].when}`.toLowerCase().includes(q.toLowerCase())));
+  // Offers on a date (a group of clients, a date to choose) are made in the full editor, from the Marketing tab.
+  const list = AUTOMATION_TRIGGERS.filter((t) => TRIGGER_INFO[t].group !== 'Marketing' && (group === 'ALL' || TRIGGER_INFO[t].group === group) && (!q || `${TRIGGER_INFO[t].label} ${TRIGGER_INFO[t].when}`.toLowerCase().includes(q.toLowerCase())));
   const sample = trigger ? sampleVars(trigger) : {};
   const insert = (v: string) => {
     const el = bodyRef.current;

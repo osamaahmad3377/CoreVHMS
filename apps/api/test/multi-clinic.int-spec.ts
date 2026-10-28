@@ -330,6 +330,22 @@ describe('Multi-clinic hosting', () => {
       expect((await lc.owner.get('/surgeries')).body.error.code).toBe('PLAN_FEATURE');
       expect((await lc.owner.get('/admissions')).status).toBe(200);
       expect((await setPlan(lc.id, { planId: hospital.id, extraFeatures: ['lab'], removedFeatures: ['lab'] })).body.error.code).toBe('FEATURE_CONFLICT');
+      // Marketing: only Professional and Premium have it; the admin can give it to one clinic or take it away.
+      expect((await planByName('Starter')).features).not.toContain('marketing');
+      expect((await planByName('Professional')).features).toContain('marketing');
+      expect((await planByName('Premium')).features).toContain('marketing');
+      const promo = { name: 'Admin-switched offer', isActive: false, marketing: true, trigger: 'PAYMENT_RECEIVED', conditions: [], steps: [{ type: 'SEND_MESSAGE', channel: 'BEST', subject: 'Offer', body: 'Hi {{clientName}}' }] };
+      expect((await setPlan(lc.id, { planId: starter.id })).body.entitlements.features).not.toContain('marketing');
+      expect((await lc.owner.post('/automations', promo)).body.error).toMatchObject({ code: 'PLAN_FEATURE', details: { feature: 'marketing' } });
+      expect((await setPlan(lc.id, { planId: starter.id, extraFeatures: ['marketing'] })).body.entitlements.features).toContain('marketing');
+      const made = await lc.owner.post('/automations', promo);
+      expect(made.status).toBe(201);
+      expect((await lc.owner.get('/automations/options')).status).toBe(200);
+      const off = await setPlan(lc.id, { planId: hospital.id, removedFeatures: ['marketing'] });
+      expect(off.body.entitlements.features).not.toContain('marketing');
+      expect((await lc.owner.post('/automations', { ...promo, name: 'Another offer' })).body.error).toMatchObject({ code: 'PLAN_FEATURE', details: { feature: 'marketing' } });
+      expect((await lc.owner.call('put', '/automations/marketing-settings', { approval: true })).body.error?.code).toBe('PLAN_FEATURE');
+      await lc.owner.call('delete', `/automations/${made.body.id}`);
     });
 
     it('a lowered limit keeps what the clinic has but allows nothing more', async () => {

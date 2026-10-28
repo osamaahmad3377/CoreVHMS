@@ -285,6 +285,12 @@ model Organization {
   brandName                   String?
   /// Set once the basic automations (thank you, reminders…) were added and switched on for this clinic.
   automationsSeededAt         DateTime?          @db.Timestamptz(3)
+  /// Marketing: at most one promotional message per client in this many days (null = no limit).
+  marketingCapDays            Int?
+  /// Marketing: everything promotional is held (nothing goes out) until switched back on.
+  marketingPaused             Boolean            @default(false)
+  /// Marketing: a promotional automation goes out only after another manager approves it.
+  marketingApproval           Boolean            @default(false)
   sidebarColor                String?
   /// Square icon for the browser tab; falls back to the logo.
   iconAttachmentId            String?            @db.Uuid
@@ -478,6 +484,8 @@ model Organization {
   emailIntegration       EmailIntegration?
   automations            Automation[]
   automationRuns         AutomationRun[]
+  automationVersions     AutomationVersion[]
+  automationTemplates    AutomationTemplate[]
   whatsAppTemplateLinks  WhatsAppTemplateLink[]
   ClientNotificationRule ClientNotificationRule[]
   OnlineBookingSettings  OnlineBookingSettings?
@@ -4986,10 +4994,22 @@ model Automation {
   sendToHour     Int?
   /// Not again for the same client within this many days.
   cooldownDays   Int?
+  /// Offer on a date: first (or only) day it goes out, NONE / WEEKLY / MONTHLY, and the day the offer ends.
+  sendOn         DateTime? @db.Date
+  repeat         String?
+  endsOn         DateTime? @db.Date
   conditions     Json      @default("[]")
   steps          Json
   /// The ready-made recipe this automation is (null = the clinic's own); plans limit the two separately.
   recipeKey      String?
+  /// Approval (when the clinic requires it for marketing): PENDING, APPROVED or REJECTED; null = not needed.
+  approvalStatus String?
+  approvalNote   String?
+  approvedByName String?
+  approvedAt     DateTime? @db.Timestamptz(3)
+  /// Who last changed it (an approver must be someone else).
+  updatedById    String?   @db.Uuid
+  version        Int       @default(1)
   runCount       Int       @default(0)
   lastRunAt      DateTime? @db.Timestamptz(3)
   createdByName  String?
@@ -4997,13 +5017,54 @@ model Automation {
   createdAt      DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
 
-  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   runs         AutomationRun[]
+  versions     AutomationVersion[]
 
   @@index([organizationId, trigger, isActive])
 }
 
 /// One automation working through one record (an appointment, a payment…), step by step; waits park it until runAt.
+/// Every saved state of an automation (created, edited, switched on/off, approved, restored), to see and restore.
+/// A clinic's own starting point for new automations or marketing campaigns (saved from one it made).
+model AutomationTemplate {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  name           String
+  description    String?
+  /// Promotional templates are shown in Marketing, the others in Automations.
+  marketing      Boolean  @default(false)
+  trigger        String
+  /// The automation as saved (trigger, timing, conditions, steps) — checked again when a new one is made from it.
+  draft          Json
+  timesUsed      Int      @default(0)
+  createdByName  String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, name])
+}
+
+model AutomationVersion {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  automationId   String   @db.Uuid
+  version        Int
+  /// What happened: created, edited, switched on, switched off, approved, rejected, restored.
+  action         String
+  /// The automation as it was saved (name, trigger, conditions, steps, settings).
+  snapshot       Json
+  changedByName  String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  automation   Automation   @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  @@unique([automationId, version])
+}
+
 model AutomationRun {
   id             String   @id @default(uuid()) @db.Uuid
   organizationId String   @db.Uuid

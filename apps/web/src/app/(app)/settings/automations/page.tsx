@@ -1,74 +1,28 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AUTOMATION_RECIPES, TRIGGER_INFO, type AutomationDraft, type AutomationStep, type AutomationTrigger, type TriggerGroup } from '@vcms/shared';
-import {
-  Activity,
-  AlertTriangle,
-  BedDouble,
-  Bell,
-  Cake,
-  CalendarX,
-  CheckCircle2,
-  ClipboardList,
-  Clock,
-  Copy,
-  FileText,
-  Heart,
-  Home,
-  Mail,
-  MessageCircle,
-  MoreHorizontal,
-  Pencil,
-  Pill,
-  Plus,
-  Receipt,
-  Repeat,
-  Scissors,
-  Search,
-  Send,
-  Sparkles,
-  Square,
-  Syringe,
-  Ticket,
-  Trash2,
-  UserPlus,
-  Workflow,
-  XCircle,
-  Zap,
-} from 'lucide-react';
+import type { AutomationTrigger } from '@vcms/shared';
+import { Activity, AlertTriangle, ArrowRight, CheckCircle2, ClipboardList, Clock, HeartPulse, Mail, Megaphone, MessageCircle, RotateCcw, Send, Sparkles, Square, Workflow, XCircle, Zap } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import { toast } from 'sonner';
-import { conditionText, type AutomationOptions } from '@/components/automations/describe';
-import { FlowChips, GROUP_TONE, TRIGGER_ICONS } from '@/components/automations/flow-ui';
-import { useConfirm } from '@/components/confirm';
+import { AutomationCard, CARE_RECIPES, Kpi, RecipeGallery, type AutomationRow } from '@/components/automations/automation-cards';
+import { CreateChooser } from '@/components/automations/create-chooser';
+import { type AutomationOptions } from '@/components/automations/describe';
+import { TemplateGallery, useTemplates } from '@/components/automations/templates';
+import { TRIGGER_ICONS } from '@/components/automations/flow-ui';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/page';
 import { RequirePermission } from '@/components/require';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Switch } from '@/components/ui/checkbox';
-import { PlanLockBadge, usePlanFeature } from '@/components/plan/upgrade';
 import { usePlanUsage } from '@/hooks/use-plan-usage';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Input } from '@/components/ui/input';
+import { NativeSelect } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useUrlState } from '@/hooks/use-url-state';
 import { api } from '@/lib/api';
 import { fmtDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
-interface AutomationRow extends AutomationDraft {
-  id: string;
-  runCount: number;
-  lastRunAt: string | null;
-  waiting: number;
-  last30Days: Record<string, number>;
-  updatedByName: string | null;
-  /** The ready-made recipe it is (null = the clinic's own); plans limit the two separately. */
-  recipeKey?: string | null;
-}
 interface Stats {
   total: number;
   active: number;
@@ -89,8 +43,6 @@ interface Run {
   automation: { name: string; trigger: string };
 }
 
-const RECIPE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = { heart: Heart, bell: Bell, home: Home, 'calendar-x': CalendarX, 'user-plus': UserPlus, cake: Cake, syringe: Syringe, mail: Mail, receipt: Receipt, scissors: Scissors, bed: BedDouble, repeat: Repeat, ticket: Ticket, pill: Pill, 'file-text': FileText };
-const GROUPS: TriggerGroup[] = ['Appointments', 'Clinical', 'Money', 'Clients & pets'];
 
 const RUN_STATUS: Record<Run['status'], { label: string; dot: string; badge: 'success' | 'warning' | 'destructive' | 'secondary' | 'default' }> = {
   WAITING: { label: 'Waiting', dot: 'bg-primary', badge: 'default' },
@@ -101,23 +53,6 @@ const RUN_STATUS: Record<Run['status'], { label: string; dot: string; badge: 'su
   STOPPED: { label: 'Stopped', dot: 'bg-muted-foreground', badge: 'secondary' },
 };
 
-function Kpi({ icon: Icon, label, value, hint, tone }: { icon: React.ComponentType<{ className?: string }>; label: string; value: React.ReactNode; hint?: string; tone: string }) {
-  return (
-    <Card className="relative overflow-hidden p-4 sm:p-5">
-      <span aria-hidden className={cn('pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full opacity-25 blur-2xl', tone)} />
-      <div className="relative flex items-center gap-3">
-        <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-white shadow-sm', tone)}>
-          <Icon className="h-5 w-5" />
-        </span>
-        <div className="min-w-0">
-          <p className="text-xs font-medium text-muted-foreground">{label}</p>
-          <p className="text-2xl font-semibold tabular tracking-tight">{value}</p>
-        </div>
-      </div>
-      {hint && <p className="relative mt-2 text-xs text-muted-foreground">{hint}</p>}
-    </Card>
-  );
-}
 
 function Channels({ o }: { o?: AutomationOptions }) {
   if (!o) return null;
@@ -143,166 +78,32 @@ function Channels({ o }: { o?: AutomationOptions }) {
   );
 }
 
-function RecipeGallery({ existing, compact = false }: { existing: AutomationRow[]; compact?: boolean }) {
-  const marketingOk = usePlanFeature('marketing');
-  const [group, setGroup] = useState<TriggerGroup | 'ALL'>('ALL');
-  const [q, setQ] = useState('');
-  const used = new Set(existing.map((a) => a.name));
-  const list = AUTOMATION_RECIPES.filter((r) => (group === 'ALL' || TRIGGER_INFO[r.automation.trigger].group === group) && (!q || `${r.automation.name} ${r.automation.description}`.toLowerCase().includes(q.toLowerCase())));
-  return (
-    <div className="grid gap-4">
-      {!compact && (
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="inline-flex flex-wrap gap-1 rounded-pill bg-foreground/[0.04] p-1" role="radiogroup" aria-label="Category">
-            {(['ALL', ...GROUPS] as const).map((g) => (
-              <button key={g} type="button" role="radio" aria-checked={group === g} onClick={() => setGroup(g)} className={cn('rounded-pill px-3 py-1.5 text-sm font-medium transition-all', group === g ? 'bg-card text-foreground shadow-sm ring-1 ring-foreground/10' : 'text-muted-foreground hover:text-foreground')}>
-                {g === 'ALL' ? `All (${AUTOMATION_RECIPES.length})` : g}
-              </button>
-            ))}
-          </div>
-          <div className="relative w-full sm:ml-auto sm:w-64">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="pl-9" placeholder="Search recipes" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search recipes" />
-          </div>
-        </div>
-      )}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {(compact ? list.slice(0, 6) : list).map((r) => {
-          const Icon = RECIPE_ICONS[r.icon] ?? Workflow;
-          const g = TRIGGER_INFO[r.automation.trigger].group;
-          return (
-            <Link key={r.key} href={`/settings/automations/new?recipe=${r.key}`} className="group">
-              <Card className="flex h-full flex-col gap-3 p-5 transition-all group-hover:-translate-y-0.5 group-hover:shadow-lg group-hover:ring-1 group-hover:ring-primary/25">
-                <div className="flex items-start justify-between gap-2">
-                  <span className={cn('flex h-11 w-11 items-center justify-center rounded-2xl shadow-sm', GROUP_TONE[g].tile)}>
-                    <Icon className="h-5 w-5" />
-                  </span>
-                  {used.has(r.automation.name) ? <Badge variant="secondary">Added</Badge> : r.automation.marketing && !marketingOk ? <PlanLockBadge /> : <Badge variant="outline">{g}</Badge>}
-                </div>
-                <div className="grid gap-1">
-                  <p className="font-semibold leading-snug">{r.automation.name}</p>
-                  <p className="text-sm text-muted-foreground">{r.automation.description}</p>
-                </div>
-                <FlowChips trigger={r.automation.trigger} steps={r.automation.steps as AutomationStep[]} className="mt-auto" />
-                <span className="text-sm font-semibold text-primary opacity-0 transition-opacity group-hover:opacity-100">Use this recipe →</span>
-              </Card>
-            </Link>
-          );
-        })}
-      </div>
-      {!list.length && <p className="py-6 text-center text-sm text-muted-foreground">No recipe matches.</p>}
-    </div>
-  );
-}
-
-function AutomationCard({ a, options, full }: { a: AutomationRow; options?: AutomationOptions; full?: boolean }) {
-  const qc = useQueryClient();
-  const confirm = useConfirm();
-  const router = useRouter();
-  const info = TRIGGER_INFO[a.trigger];
-  const TIcon = TRIGGER_ICONS[a.trigger] ?? Zap;
-  const refresh = () => ['automations', 'automation-stats', 'automation-runs', 'clinic-plan'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
-  const toggle = useMutation({
-    mutationFn: (isActive: boolean) => api.patch(`/automations/${a.id}/active`, { isActive }),
-    onSuccess: (_r, v) => {
-      refresh();
-      toast.success(v ? `“${a.name}” is on` : `“${a.name}” is off — runs already waiting will stop`);
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-  const duplicate = useMutation({
-    mutationFn: () => api.post<{ id: string }>(`/automations/${a.id}/duplicate`),
-    onSuccess: (r) => {
-      refresh();
-      toast.success('Copy made (off) — adjust it and switch it on');
-      router.push(`/settings/automations/${r.id}`);
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-  const remove = useMutation({
-    mutationFn: () => api.del(`/automations/${a.id}`),
-    onSuccess: () => {
-      refresh();
-      toast.success('Automation deleted');
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-  const done = a.last30Days.DONE ?? 0;
-  const problems = (a.last30Days.FAILED ?? 0) + (a.last30Days.SKIPPED ?? 0);
-  const total = Object.values(a.last30Days).reduce((n, x) => n + x, 0);
-  const conds = (a.conditions ?? []).map((c) => conditionText(c as never, options));
-  return (
-    <Card className={cn('group relative overflow-hidden transition-shadow hover:shadow-lg', !a.isActive && 'opacity-75')}>
-      <span aria-hidden className={cn('absolute inset-y-0 left-0 w-1', a.isActive ? GROUP_TONE[info.group].dot : 'bg-foreground/10')} />
-      <div className="grid gap-4 p-5 pl-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-        <Link href={`/settings/automations/${a.id}`} className="flex min-w-0 gap-4">
-          <span className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl shadow-sm', a.isActive ? GROUP_TONE[info.group].tile : 'bg-foreground/[0.06] text-muted-foreground')}>
-            <TIcon className="h-5 w-5" />
-          </span>
-          <div className="grid min-w-0 gap-2">
-            <p className="flex flex-wrap items-center gap-2 font-semibold group-hover:underline">
-              {a.name}
-              {a.isActive ? <Badge variant="success">On</Badge> : <Badge variant="secondary">Off</Badge>}
-              {a.marketing && <Badge variant="info">Promotional</Badge>}
-            </p>
-            <FlowChips trigger={a.trigger} steps={a.steps as AutomationStep[]} />
-            {conds.length > 0 && <p className="text-xs text-muted-foreground">Only if: {conds.join(' · ')}</p>}
-          </div>
-        </Link>
-        <div className="flex flex-wrap items-center gap-4 lg:justify-end">
-          <div className="grid min-w-[160px] gap-1.5">
-            <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-              <span>{total} in 30 days</span>
-              {a.waiting > 0 && (
-                <span className="flex items-center gap-1 font-medium text-primary">
-                  <Clock className="h-3 w-3" /> {a.waiting} waiting
-                </span>
-              )}
-            </div>
-            <div className="flex h-1.5 overflow-hidden rounded-full bg-foreground/[0.07]" aria-label={`${done} done, ${problems} not sent`}>
-              {total > 0 && <span className="bg-success" style={{ width: `${(done / total) * 100}%` }} />}
-              {total > 0 && <span className="bg-warning" style={{ width: `${(problems / total) * 100}%` }} />}
-            </div>
-            <p className="text-xs text-muted-foreground">{a.lastRunAt ? `Last ${fmtDateTime(a.lastRunAt)}` : 'Not run yet'}</p>
-          </div>
-          <Switch checked={!!a.isActive} disabled={toggle.isPending || (!!full && !a.isActive)} title={full && !a.isActive ? `Your plan’s ${a.recipeKey ? 'ready-made' : 'own'} automations are all switched on. Switch one off, or upgrade your plan.` : undefined} onCheckedChange={(v) => toggle.mutate(v)} aria-label={`${a.name} on or off`} />
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="icon-sm" variant="ghost" aria-label={`More for ${a.name}`}>
-                <MoreHorizontal />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => router.push(`/settings/automations/${a.id}`)}>
-                <Pencil /> Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => duplicate.mutate()}>
-                <Copy /> Duplicate
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => router.push(`/settings/automations?tab=activity&automation=${a.id}`)}>
-                <Activity /> Activity
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-destructive"
-                onSelect={async () => {
-                  const r = await confirm({ title: `Delete “${a.name}”?`, description: 'Runs waiting to continue are stopped. Messages already sent stay in the message log.', confirmLabel: 'Delete', destructive: true });
-                  if (r.confirmed) remove.mutate();
-                }}
-              >
-                <Trash2 /> Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
 function ActivityList({ automationId }: { automationId?: string }) {
   const qc = useQueryClient();
-  const q = useQuery({ queryKey: ['automation-runs', automationId], queryFn: () => api.get<{ data: Run[]; meta: { total: number } }>(`/automations/runs${automationId ? `?automationId=${automationId}` : ''}`), refetchInterval: 30_000 });
+  const [status, setStatus] = useState<'' | Run['status']>('');
+  const qs = new URLSearchParams({ ...(automationId ? { automationId } : {}), ...(status ? { status } : {}) }).toString();
+  const q = useQuery({ queryKey: ['automation-runs', automationId, status], queryFn: () => api.get<{ data: Run[]; meta: { total: number } }>(`/automations/runs${qs ? `?${qs}` : ''}`), refetchInterval: 30_000 });
+  const retry = useMutation({
+    mutationFn: (id: string) => api.post(`/automations/runs/${id}/retry`),
+    onSuccess: () => {
+      ['automation-runs', 'automation-problems', 'automation-stats'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      toast.success('Trying again — it continues from the step where it stopped');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const filter = (
+    <div className="mb-3 flex items-center gap-2">
+      <NativeSelect aria-label="Show" className="h-9 w-auto" value={status} onChange={(e) => setStatus(e.target.value as '' | Run['status'])}>
+        <option value="">Everything</option>
+        <option value="WAITING">Waiting</option>
+        <option value="DONE">Done</option>
+        <option value="SKIPPED">Not sent</option>
+        <option value="FAILED">Failed</option>
+        <option value="STOPPED">Stopped</option>
+      </NativeSelect>
+      {q.data && <span className="text-xs text-muted-foreground">{q.data.meta.total} in total</span>}
+    </div>
+  );
   const stop = useMutation({
     mutationFn: (id: string) => api.post(`/automations/runs/${id}/stop`),
     onSuccess: () => {
@@ -316,11 +117,16 @@ function ActivityList({ automationId }: { automationId?: string }) {
   const runs = q.data!.data;
   if (!runs.length)
     return (
-      <Card>
-        <EmptyState icon={Activity} title="Nothing yet" description="Each time an automation starts for a client, it appears here with every step it took." />
-      </Card>
+      <>
+        {filter}
+        <Card>
+          <EmptyState icon={Activity} title="Nothing here" description="Each time an automation starts for a client, it appears here with every step it took." />
+        </Card>
+      </>
     );
   return (
+    <>
+    {filter}
     <Card className="overflow-hidden">
       <ol>
         {runs.map((r, idx) => {
@@ -363,11 +169,81 @@ function ActivityList({ automationId }: { automationId?: string }) {
                     </Button>
                   </div>
                 )}
+                {r.status === 'FAILED' && (
+                  <div>
+                    <Button size="sm" variant="outline" loading={retry.isPending && retry.variables === r.id} onClick={() => retry.mutate(r.id)}>
+                      <RotateCcw /> Try again
+                    </Button>
+                  </div>
+                )}
               </div>
             </li>
           );
         })}
       </ol>
+    </Card>
+    </>
+  );
+}
+
+interface Problem {
+  automationId: string;
+  name: string;
+  trigger: AutomationTrigger | null;
+  status: 'FAILED' | 'SKIPPED';
+  reason: string;
+  count: number;
+  lastAt: string;
+}
+
+/** Health: what went wrong in the last 7 days, grouped by automation and reason, with what to do about it. */
+function HealthPanel({ onShow }: { onShow: (automationId: string) => void }) {
+  const q = useQuery({ queryKey: ['automation-problems'], queryFn: () => api.get<Problem[]>('/automations/problems?days=7'), refetchInterval: 60_000 });
+  if (q.isLoading) return <LoadingRows rows={4} />;
+  if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
+  const rows = q.data!;
+  if (!rows.length)
+    return (
+      <Card className="flex items-center gap-4 p-6">
+        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-success/10 text-success"><CheckCircle2 className="h-6 w-6" /></span>
+        <div>
+          <p className="font-semibold">Everything is running smoothly</p>
+          <p className="text-sm text-muted-foreground">No failed or unsent messages in the last 7 days.</p>
+        </div>
+      </Card>
+    );
+  const hint = (r: Problem) =>
+    /agreed to marketing/.test(r.reason) ? 'Expected: these clients did not agree to offers.'
+    : /asked not to receive/.test(r.reason) ? 'Expected: these clients asked for no messages.'
+    : /template/i.test(r.reason) ? 'Link an approved WhatsApp template in Settings → WhatsApp.'
+    : /not connected|switched off|not included/i.test(r.reason) ? 'Check Settings → WhatsApp or Email.'
+    : r.status === 'FAILED' ? 'Fix the cause, then use “Try again” in Activity.'
+    : '';
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex items-center gap-2 border-b bg-warning/[0.07] px-5 py-3">
+        <AlertTriangle className="h-4 w-4 text-warning" />
+        <p className="text-sm font-semibold">{rows.reduce((n, r) => n + r.count, 0)} not sent or failed in the last 7 days</p>
+      </div>
+      <ul className="divide-y">
+        {rows.map((r) => {
+          const Icon = (r.trigger && TRIGGER_ICONS[r.trigger]) || Zap;
+          return (
+            <li key={`${r.automationId}${r.reason}${r.status}`} className="flex flex-wrap items-center gap-3 px-5 py-3.5">
+              <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', r.status === 'FAILED' ? 'bg-destructive/10 text-destructive' : 'bg-warning/10 text-warning')}>
+                {r.status === 'FAILED' ? <XCircle className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
+              </span>
+              <div className="min-w-0 flex-1 basis-64">
+                <p className="font-medium">{r.name} <Badge variant={r.status === 'FAILED' ? 'destructive' : 'warning'} className="ml-1">{r.count} {r.status === 'FAILED' ? 'failed' : 'not sent'}</Badge></p>
+                <p className="text-sm text-muted-foreground">{r.reason}</p>
+                {hint(r) && <p className="text-xs text-muted-foreground">{hint(r)}</p>}
+              </div>
+              <span className="text-xs text-muted-foreground">Last {fmtDateTime(r.lastAt)}</span>
+              <Button size="sm" variant="ghost" onClick={() => onShow(r.automationId)}>See runs <ArrowRight /></Button>
+            </li>
+          );
+        })}
+      </ul>
     </Card>
   );
 }
@@ -378,10 +254,15 @@ function AutomationsPage() {
   const q = useQuery({ queryKey: ['automations'], queryFn: () => api.get<AutomationRow[]>('/automations') });
   const stats = useQuery({ queryKey: ['automation-stats'], queryFn: () => api.get<Stats>('/automations/stats'), refetchInterval: 60_000 });
   const options = useQuery({ queryKey: ['automation-options'], queryFn: () => api.get<AutomationOptions>('/automations/options'), staleTime: 60_000 });
+  const problems = useQuery({ queryKey: ['automation-problems'], queryFn: () => api.get<Problem[]>('/automations/problems?days=7'), staleTime: 60_000 });
   const plan = usePlanUsage();
+  const templates = useTemplates();
+  const myTemplates = (templates.data ?? []).filter((t) => !t.marketing).length;
   if (q.isLoading) return <LoadingRows rows={6} />;
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
   const rows = q.data!;
+  const marketing = rows.filter((a) => a.marketing);
+  const care = rows.filter((a) => !a.marketing);
   const s = stats.data;
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
@@ -402,11 +283,7 @@ function AutomationsPage() {
             <Button variant="outline" onClick={() => url.set({ tab: 'recipes' })}>
               <Sparkles /> Recipes
             </Button>
-            <Button asChild>
-              <Link href="/settings/automations/new">
-                <Plus /> New automation
-              </Link>
-            </Button>
+            <CreateChooser kind="automation" />
           </div>
         </div>
       </div>
@@ -454,16 +331,27 @@ function AutomationsPage() {
       <Tabs value={tab} onValueChange={(v) => url.set({ tab: v === 'mine' ? null : v, automation: null })}>
         <TabsList className="mb-4">
           <TabsTrigger value="mine">
-            Your automations {rows.length > 0 && <Badge variant="secondary">{rows.length}</Badge>}
+            Your automations {care.length > 0 && <Badge variant="secondary">{care.length}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="recipes">
-            Recipes <Badge variant="secondary">{AUTOMATION_RECIPES.length}</Badge>
+            Recipes <Badge variant="secondary">{CARE_RECIPES.length}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="templates">
+            Your templates {myTemplates > 0 && <Badge variant="secondary">{myTemplates}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
+          <TabsTrigger value="health">
+            <HeartPulse className="h-4 w-4" /> Health {problems.data && problems.data.length > 0 && <Badge variant="warning">{problems.data.reduce((n, r) => n + r.count, 0)}</Badge>}
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="mine" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
-          {rows.length ? (
-            rows.map((a) => <AutomationCard key={a.id} a={a} options={options.data} full={a.recipeKey ? !plan.automations.canAdd : !plan.customAutomations.canAdd} />)
+          <Link href="/marketing" className="flex flex-wrap items-center gap-2 rounded-2xl bg-rose-500/[0.06] px-4 py-3 text-sm ring-1 ring-inset ring-rose-500/15 hover:bg-rose-500/10">
+            <Megaphone className="h-4 w-4 text-rose-500" />
+            {marketing.length ? <>{marketing.length} offer{marketing.length === 1 ? '' : 's'} and promotional automation{marketing.length === 1 ? '' : 's'} are managed in <b className="text-primary">Marketing</b>.</> : <>Offers, discounts and campaigns are in <b className="text-primary">Marketing</b>.</>}
+            <ArrowRight className="ml-auto h-4 w-4 text-primary" />
+          </Link>
+          {care.length ? (
+            care.map((a) => <AutomationCard key={a.id} a={a} options={options.data} full={a.recipeKey ? !plan.automations.canAdd : !plan.customAutomations.canAdd} />)
           ) : (
             <Card className="grid gap-5 p-6">
               <div>
@@ -473,7 +361,7 @@ function AutomationsPage() {
               <RecipeGallery existing={rows} compact />
               <div>
                 <Button variant="outline" onClick={() => url.set({ tab: 'recipes' })}>
-                  See all {AUTOMATION_RECIPES.length} recipes
+                  See all {CARE_RECIPES.length} recipes
                 </Button>
               </div>
             </Card>
@@ -482,8 +370,15 @@ function AutomationsPage() {
         <TabsContent value="recipes">
           <RecipeGallery existing={rows} />
         </TabsContent>
+        <TabsContent value="templates" className="grid gap-4">
+          <p className="text-sm text-muted-foreground">Your clinic’s own automations, saved to reuse. Save any automation as a template from its ⋯ menu or the editor; making a new one from it never changes the template.</p>
+          <TemplateGallery marketing={false} />
+        </TabsContent>
         <TabsContent value="activity">
           <ActivityList automationId={url.get('automation') || undefined} />
+        </TabsContent>
+        <TabsContent value="health">
+          <HealthPanel onShow={(id) => url.set({ tab: 'activity', automation: id })} />
         </TabsContent>
       </Tabs>
     </div>

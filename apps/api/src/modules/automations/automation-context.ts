@@ -1,4 +1,4 @@
-import { formatMoney, toWhatsAppNumber, type AutomationFacts, type AutomationTrigger } from '@vcms/shared';
+import { MARKETING_FACT_NEEDS, formatMoney, toWhatsAppNumber, type AutomationCondition, type AutomationFacts, type AutomationTrigger } from '@vcms/shared';
 import { formatInTimeZone } from 'date-fns-tz';
 import type { PrismaService } from '../../common/prisma/prisma.service';
 import { formatNumber } from '../../common/counter/counter.service';
@@ -71,9 +71,84 @@ export const SOURCE_OF: Record<AutomationTrigger, string> = {
   PRESCRIPTION_DISPENSED: 'Prescription',
   SURGERY_COMPLETED: 'Surgery',
   ESTIMATE_SENT: 'Estimate',
+  SCHEDULED_OFFER: 'Client',
 };
 
-const reach = (c: RunClient | null, org: OrgInfo) => ({ hasWhatsApp: !!c && org.whatsappActive && !!toWhatsAppNumber(c.mobilePhone, org.country), hasEmail: !!c?.email });
+/** "Tiger", "Tiger and Bella", "Tiger, Bella and Max" ("your pets" when none). */
+export function petNamesText(names: string[]) {
+  if (!names.length) return 'your pets';
+  return names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+export type FactNeed = NonNullable<(typeof MARKETING_FACT_NEEDS)[keyof typeof MARKETING_FACT_NEEDS]>;
+
+/** Which client facts these conditions need (so a big audience only loads what it uses). */
+export function factNeeds(conditions: AutomationCondition[]): Set<FactNeed> {
+  return new Set(conditions.map((c) => MARKETING_FACT_NEEDS[c.field]).filter((x): x is FactNeed => !!x));
+}
+
+const yearsSince = (d: Date | null, now: Date) => (d ? Math.floor((now.getTime() - d.getTime()) / (365.25 * 86_400_000)) : null);
+
+/**
+ * Marketing facts for many clients at once: their animals (species, sex, age), visits and money paid in the last
+ * 12 months, services they had, vaccinations or care coming due, and how long they have been clients.
+ */
+export async function marketingFacts(db: PrismaService['db'], clients: { id: string; createdAt: Date }[], needs: Set<FactNeed>, now = new Date()) {
+  const ids = clients.map((c) => c.id);
+  const out = new Map<string, AutomationFacts>(clients.map((c) => [c.id, { daysAsClient: Math.floor((now.getTime() - c.createdAt.getTime()) / 86_400_000) }]));
+  if (!ids.length) return out;
+  const yearAgo = new Date(now.getTime() - 365 * 86_400_000);
+  const get = (id: string) => out.get(id)!;
+  // Animals: always (their names and species are cheap and used by most offers).
+  const owned = await db.patientOwnership.findMany({ where: { clientId: { in: ids }, endedAt: null, patient: { status: 'ACTIVE' } }, select: { clientId: true, patientId: true, patient: { select: { speciesId: true, sex: true, dateOfBirth: true } } } });
+  const ownerOf = new Map<string, string>();
+  for (const o of owned) {
+    ownerOf.set(o.patientId, o.clientId);
+    const f = get(o.clientId);
+    f.speciesIds = [...new Set([...(f.speciesIds ?? []), o.patient.speciesId])];
+    const sex = o.patient.sex.startsWith('FEMALE') ? 'FEMALE' : o.patient.sex.startsWith('MALE') ? 'MALE' : null;
+    if (sex) f.petSexes = [...new Set([...(f.petSexes ?? []), sex])] as ('MALE' | 'FEMALE')[];
+    const age = yearsSince(o.patient.dateOfBirth, now);
+    if (age != null) f.petAges = [...(f.petAges ?? []), age];
+  }
+  if (needs.has('visits')) {
+    const [last, recent] = await Promise.all([
+      db.appointment.groupBy({ by: ['clientId'], where: { clientId: { in: ids }, status: 'COMPLETED' }, _max: { startsAt: true } }),
+      db.appointment.groupBy({ by: ['clientId'], where: { clientId: { in: ids }, status: 'COMPLETED', startsAt: { gte: yearAgo } }, _count: true }),
+    ]);
+    for (const v of last) get(v.clientId).monthsSinceVisit = monthsSince(v._max.startsAt, now);
+    for (const v of recent) get(v.clientId).visits12m = v._count;
+  }
+  if (needs.has('spend')) {
+    const paid = await db.payment.groupBy({ by: ['clientId'], where: { clientId: { in: ids }, receivedAt: { gte: yearAgo } }, _sum: { amountMinor: true, refundedMinor: true } });
+    for (const p of paid) if (p.clientId) get(p.clientId).spent12mMinor = (p._sum.amountMinor ?? 0) - (p._sum.refundedMinor ?? 0);
+  }
+  if (needs.has('services')) {
+    const lines = await db.invoiceLine.findMany({ where: { serviceId: { not: null }, invoice: { clientId: { in: ids }, status: { not: 'VOID' }, createdAt: { gte: yearAgo } } }, select: { serviceId: true, invoice: { select: { clientId: true } } } });
+    for (const l of lines) {
+      if (!l.invoice.clientId || !l.serviceId) continue;
+      const f = get(l.invoice.clientId);
+      f.serviceIds12m = [...new Set([...(f.serviceIds12m ?? []), l.serviceId])];
+    }
+  }
+  if (needs.has('care') && ownerOf.size) {
+    const due = await db.careItem.groupBy({ by: ['patientId'], where: { patientId: { in: [...ownerOf.keys()] }, status: 'DUE' }, _min: { dueDate: true } });
+    const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    for (const d of due) {
+      const client = ownerOf.get(d.patientId);
+      if (!client || !d._min.dueDate) continue;
+      const days = Math.round((d._min.dueDate.getTime() - today) / 86_400_000);
+      const f = get(client);
+      f.careDueInDays = f.careDueInDays == null ? days : Math.min(f.careDueInDays, days);
+    }
+  }
+  return out;
+}
+
+/** Whole months between a past moment and now. */
+export const monthsSince = (d: Date | null | undefined, now = new Date()) => (d ? Math.max(0, Math.floor((now.getTime() - d.getTime()) / (30.44 * 86_400_000))) : null);
+
+export const reach = (c: Pick<RunClient, 'mobilePhone' | 'email'> | null, org: OrgInfo) => ({ hasWhatsApp: !!c && org.whatsappActive && !!toWhatsAppNumber(c.mobilePhone, org.country), hasEmail: !!c?.email });
 const base = (org: OrgInfo, c: RunClient | null) => ({ clientName: c?.displayName ?? '', clinicName: org.name, clinicPhone: org.phone ?? '', bookingLine: org.bookingLine });
 const day = (d: Date, tz: string) => formatInTimeZone(d, tz, 'd MMM yyyy');
 const dateOnly = (d: Date) => formatInTimeZone(d, 'UTC', 'd MMM yyyy');
@@ -318,6 +393,27 @@ export async function buildContext(db: PrismaService['db'], trigger: AutomationT
     case 'Client': {
       const c = await db.client.findUnique({ where: { id: sourceId }, select: { ...CLIENT.select, primaryBranchId: true } });
       if (!c) return null;
+      if (trigger === 'SCHEDULED_OFFER') {
+        // An offer to the client: their animals (for "has a dog" and {{petNames}}) and their last visit.
+        const [pets, full] = await Promise.all([
+          db.patientOwnership.findMany({ where: { clientId: c.id, endedAt: null, patient: { status: 'ACTIVE' } }, select: { patient: { select: { name: true } } }, orderBy: { startedAt: 'asc' } }),
+          db.client.findUniqueOrThrow({ where: { id: c.id }, select: { id: true, createdAt: true } }),
+        ]);
+        const facts = (await marketingFacts(db, [full], new Set<FactNeed>(['pets', 'visits', 'spend', 'services', 'care', 'joined']))).get(c.id)!;
+        return {
+          sourceType: 'Client',
+          sourceId: c.id,
+          client: c,
+          patientId: null,
+          branchId: c.primaryBranchId,
+          vetMembershipId: null,
+          vars: { ...base(org, c), petNames: petNamesText(pets.map((o) => o.patient.name)), offerEnds: '' },
+          facts: { ...facts, branchId: c.primaryBranchId, ...reach(c, org) },
+          label: `${c.displayName} · offer`,
+          live: c.status === 'ACTIVE',
+          why: c.status === 'ACTIVE' ? undefined : 'The client is no longer active',
+        };
+      }
       return { sourceType: 'Client', sourceId: c.id, client: c, patientId: null, branchId: c.primaryBranchId, vetMembershipId: null, vars: base(org, c), facts: { branchId: c.primaryBranchId, ...reach(c, org) }, label: c.displayName, live: c.status === 'ACTIVE' };
     }
     case 'Patient': {

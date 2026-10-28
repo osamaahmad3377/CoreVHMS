@@ -1,4 +1,5 @@
 import { CHECK_INFO, CONDITION_INFO, TRIGGER_INFO, type AutomationCondition, type AutomationDraft, type AutomationStep } from '@vcms/shared';
+import { fmtDateOnly } from '@/lib/format';
 
 export interface AutomationOptions {
   species: { id: string; name: string }[];
@@ -6,6 +7,9 @@ export interface AutomationOptions {
   appointmentTypes: { id: string; name: string }[];
   staff: { id: string; name: string; jobTitle: string | null }[];
   channels: { whatsapp: boolean; email: { own: boolean; address: string | null } };
+  services?: { id: string; name: string }[];
+  /** Marketing: at most one offer per client every N days (null = no limit), everything paused, approval needed. */
+  marketing?: { capDays: number | null; paused: boolean; approval: boolean };
 }
 
 const CHANNEL_WORD: Record<string, string> = { BEST: 'a message', WHATSAPP: 'a WhatsApp', EMAIL: 'an email', SMS: 'an SMS' };
@@ -13,9 +17,19 @@ const CHANNEL_WORD: Record<string, string> = { BEST: 'a message', WHATSAPP: 'a W
 export const hourLabel = (h: number) => `${String(h).padStart(2, '0')}:00`;
 
 /** "When a visit is finished" / "24 hours before an appointment" / "On a pet's birthday at 10:00". */
-export function whenText(a: Pick<AutomationDraft, 'trigger' | 'offset' | 'atHour'>) {
+/** "Once on 1 Nov 2026", "Every month from 1 Nov 2026 until 30 Jun 2027". */
+export function offerScheduleText(a: Pick<AutomationDraft, 'sendOn' | 'repeat' | 'endsOn' | 'atHour'>) {
+  if (!a.sendOn) return 'Date not chosen yet';
+  const from = fmtDateOnly(a.sendOn);
+  const at = a.atHour != null ? ` at ${hourLabel(Number(a.atHour))}` : '';
+  if (!a.repeat || a.repeat === 'NONE') return `Once on ${from}${at}${a.endsOn ? ` · offer ends ${fmtDateOnly(a.endsOn)}` : ''}`;
+  return `${a.repeat === 'WEEKLY' ? 'Every week' : 'Every month'} from ${from}${at}${a.endsOn ? ` until ${fmtDateOnly(a.endsOn)}` : ''}`;
+}
+
+export function whenText(a: Pick<AutomationDraft, 'trigger' | 'offset' | 'atHour' | 'sendOn' | 'repeat' | 'endsOn'>) {
   const t = TRIGGER_INFO[a.trigger];
   const at = a.atHour != null ? ` at ${hourLabel(Number(a.atHour))}` : '';
+  if (t.timed === 'ON_DATE') return `${offerScheduleText(a)}, to clients who agreed to marketing`;
   if (t.timed === 'HOURS_BEFORE') return `${a.offset ?? 24} hours before ${a.trigger === 'SURGERY_UPCOMING' ? 'a surgery' : 'an appointment'}`;
   if (t.timed === 'DAYS_AFTER') return `${a.offset ?? 7} days after an invoice was due (still unpaid)${at}`;
   if (t.timed === 'MONTHS_SINCE') return `${a.offset ?? 12} months after an animal’s last visit (nothing booked)${at}`;
@@ -48,6 +62,18 @@ export function conditionText(c: AutomationCondition, o?: AutomationOptions | nu
       return `under ${c.values[0]} years old`;
     case 'firstVisit':
       return c.values.includes('FIRST') ? 'first visit' : 'returning client';
+    case 'lastVisit':
+      return c.op === 'IS_NOT' ? `not seen in the last ${c.values[0]} months` : `seen in the last ${c.values[0]} months`;
+    case 'newClient':
+      return c.op === 'IS_NOT' ? `clients for more than ${c.values[0]} days` : `joined in the last ${c.values[0]} days`;
+    case 'visitsAtLeast':
+      return `${not ? 'fewer than' : 'at least'} ${c.values[0]} visits in 12 months`;
+    case 'spentAtLeast':
+      return `${not ? 'spent less than' : 'spent at least'} ${Number(c.values[0]) / 100} in 12 months`;
+    case 'boughtService':
+      return `${not ? 'did not have' : 'had'} ${names(o?.services)} (12 months)`;
+    case 'careDue':
+      return c.op === 'IS_NOT' ? `no care due in the next ${c.values[0]} days` : `care due in the next ${c.values[0]} days (or overdue)`;
   }
   return CONDITION_INFO[c.field as keyof typeof CONDITION_INFO]?.label ?? '';
 }

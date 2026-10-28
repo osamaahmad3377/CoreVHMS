@@ -8,6 +8,7 @@ import { decryptSecret, encryptSecret, randomToken, safeEqual } from '../../comm
 import { forbidden, notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { featureAllowed } from '../../common/tenancy/entitlements';
+import { STOP_WORDS } from '../automations/unsubscribe';
 import { friendlyWhatsAppError, graph, GraphError, GraphPhoneNumber, GraphTemplate, PERMANENT_ERRORS } from './whatsapp-graph';
 
 const DAY = 86_400_000;
@@ -386,6 +387,13 @@ export class WhatsAppService {
     await db.clientMessage.create({
       data: { organizationId: RequestContext.orgId(), clientId: client.id, direction: 'INBOUND', kind: 'WHATSAPP', subject: null, body: text.slice(0, 4000) || '[empty message]', authorName: name ? `${name} (WhatsApp)` : 'Client (WhatsApp)', createdAt: msg.timestamp ? new Date(Number(msg.timestamp) * 1000) : new Date() },
     });
+    // "STOP": the client no longer wants offers (reminders about their animals carry on).
+    if (STOP_WORDS.has(text.trim().toUpperCase().replace(/[.!]+$/, ''))) {
+      await db.$transaction(async (tx) => {
+        const r = await tx.client.updateMany({ where: { id: client.id, marketingConsent: true }, data: { marketingConsent: false, consentUpdatedAt: new Date() } });
+        if (r.count) await this.audit.record({ action: 'client.marketing_stopped', entityType: 'Client', entityId: client.id, summary: 'Stopped offers (replied STOP on WhatsApp)', actorUserId: null, actorName: name ? `${name} (WhatsApp)` : 'Client (WhatsApp)' }, tx);
+      });
+    }
     return 1;
   }
 

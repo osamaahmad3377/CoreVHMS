@@ -108,6 +108,13 @@ export const NAV: NavSection[] = [
     ],
   },
   {
+    label: 'Engagement',
+    items: [
+      { label: 'Automations', href: '/settings/automations', icon: Workflow, anyOf: ['settings.manage', 'integrations.manage'], ready: true },
+      { label: 'Marketing', href: '/marketing', icon: Megaphone, anyOf: ['settings.manage', 'integrations.manage'], feature: 'marketing', ready: true },
+    ],
+  },
+  {
     label: 'Team',
     items: [
       { label: 'Staff', href: '/staff', icon: UserCog, anyOf: ['staff.read', 'users.read'], ready: true },

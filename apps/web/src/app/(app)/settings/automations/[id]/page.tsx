@@ -5,23 +5,27 @@ import {
   AUTOMATION_TRIGGERS,
   AUTOMATION_VARIABLES,
   CHECK_INFO,
-  CONDITION_INFO,
+  OFFER_REPEAT_LABELS,
   TRIGGER_DEFAULTS,
   TRIGGER_INFO,
   sampleVars,
   type AutomationCondition,
-  type AutomationConditionField,
   type AutomationStep,
   type AutomationTrigger,
+  type OfferRepeat,
   type TriggerGroup,
+  nextOfferDay,
 } from '@vcms/shared';
-import { ArrowDown, ArrowLeft, ArrowUp, CheckCircle2, ChevronDown, Clock, Copy, Filter, Mail, MessageCircle, MoreHorizontal, Play, Plus, Save, Search, Settings2, Sparkles, Trash2, Workflow, X, Zap } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, BookmarkPlus, CheckCircle2, ChevronDown, Clock, Copy, Filter, FlaskConical, History, ShieldCheck, Mail, MessageCircle, MoreHorizontal, Play, Plus, Save, Search, Send, Settings2, Sparkles, Trash2, Workflow, X, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { conditionText, describeAutomation, hourLabel, type AutomationOptions } from '@/components/automations/describe';
+import { VersionHistory } from '@/components/automations/automation-cards';
+import { AudienceCard, ConditionRow } from '@/components/automations/conditions';
+import { conditionText, describeAutomation, hourLabel, offerScheduleText, type AutomationOptions } from '@/components/automations/describe';
 import { EasyCreator } from '@/components/automations/easy-creator';
+import { SaveTemplateDialog, type AutomationTemplate } from '@/components/automations/templates';
 import { GROUP_TONE, STEP_META, TRIGGER_ICONS } from '@/components/automations/flow-ui';
 import { Field } from '@/components/forms/field';
 import { FormError } from '@/components/forms/form-error';
@@ -30,7 +34,7 @@ import { RequirePermission } from '@/components/require';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Checkbox, Switch } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input, NativeSelect, Textarea } from '@/components/ui/input';
@@ -52,6 +56,10 @@ interface Draft {
   sendFromHour: number | null;
   sendToHour: number | null;
   cooldownDays: number | null;
+  /** Offer on a date (YYYY-MM-DD). */
+  sendOn: string | null;
+  repeat: OfferRepeat | null;
+  endsOn: string | null;
   conditions: AutomationCondition[];
   steps: Step[];
 }
@@ -63,7 +71,8 @@ interface PreviewResult {
 
 const newKey = () => Math.random().toString(36).slice(2);
 const withKeys = (steps: AutomationStep[]): Step[] => steps.map((s) => ({ ...s, key: newKey() }) as Step);
-const GROUPS: TriggerGroup[] = ['Appointments', 'Clinical', 'Money', 'Clients & pets'];
+const GROUPS: TriggerGroup[] = ['Appointments', 'Clinical', 'Money', 'Clients & pets', 'Marketing'];
+const localDay = (offset = 0) => new Date(Date.now() + offset * 86_400_000).toLocaleDateString('en-CA');
 const HOURS_BEFORE = [1, 2, 3, 6, 12, 24, 48, 72];
 const DAYS_BEFORE = [0, 1, 2, 3, 7, 14, 30];
 const DAYS_AFTER = [1, 3, 7, 14, 30, 60];
@@ -89,7 +98,10 @@ function makeStep(type: AutomationStep['type'], trigger: AutomationTrigger): Aut
   }
 }
 
-const blankDraft = (): Draft => ({ name: '', description: '', isActive: true, marketing: false, trigger: 'APPOINTMENT_COMPLETED', offset: null, atHour: null, sendFromHour: null, sendToHour: null, cooldownDays: null, conditions: [], steps: withKeys([makeStep('SEND_MESSAGE', 'APPOINTMENT_COMPLETED')]) });
+const NO_OFFER = { sendOn: null, repeat: null, endsOn: null };
+const blankDraft = (): Draft => ({ name: '', description: '', isActive: true, marketing: false, trigger: 'APPOINTMENT_COMPLETED', offset: null, atHour: null, sendFromHour: null, sendToHour: null, cooldownDays: null, ...NO_OFFER, conditions: [], steps: withKeys([makeStep('SEND_MESSAGE', 'APPOINTMENT_COMPLETED')]) });
+/** A new offer: tomorrow at 10:00, valid for two weeks, to everyone who agreed to marketing. */
+const offerDraft = (): Draft => ({ ...blankDraft(), marketing: true, trigger: 'SCHEDULED_OFFER', atHour: 10, sendFromHour: 9, sendToHour: 20, sendOn: localDay(1), repeat: 'NONE', endsOn: localDay(15), steps: withKeys([makeStep('SEND_MESSAGE', 'SCHEDULED_OFFER')]) });
 const render = (text: string, vars: Record<string, string>) => text.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => vars[k] ?? '');
 
 // ───────────────────────────── Small pieces ─────────────────────────────
@@ -324,88 +336,6 @@ function stepSummary(s: AutomationStep, staff?: AutomationOptions['staff']) {
 
 // ───────────────────────────── Conditions ─────────────────────────────
 
-function ValuesPicker({ list, values, onChange, label }: { list: { id: string; name: string }[]; values: string[]; onChange: (v: string[]) => void; label: string }) {
-  const names = values.map((v) => list.find((x) => x.id === v)?.name).filter(Boolean);
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button type="button" variant="outline" className="min-w-0 flex-1 justify-between font-normal" aria-label={label}>
-          <span className="truncate">{names.length ? names.join(', ') : <span className="text-muted-foreground">Choose…</span>}</span>
-          <ChevronDown className="opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="max-h-72 w-64 overflow-y-auto p-2">
-        {list.map((x) => (
-          <label key={x.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-foreground/[0.04]">
-            <Checkbox checked={values.includes(x.id)} onCheckedChange={(v) => onChange(v ? [...values, x.id] : values.filter((y) => y !== x.id))} /> {x.name}
-          </label>
-        ))}
-        {!list.length && <p className="px-2 py-3 text-sm text-muted-foreground">Nothing to choose yet.</p>}
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-function Pills({ options, values, onToggle }: { options: { value: string; label: string }[]; values: string[]; onToggle: (v: string) => void }) {
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {options.map((o) => (
-        <button key={o.value} type="button" aria-pressed={values.includes(o.value)} onClick={() => onToggle(o.value)} className={cn('rounded-pill px-3 py-1.5 text-sm font-medium ring-1 ring-inset transition-colors', values.includes(o.value) ? 'bg-primary text-primary-foreground ring-primary' : 'ring-foreground/15 hover:bg-foreground/[0.04]')}>
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function ConditionRow({ c, trigger, options, onChange, onRemove, currency }: { c: AutomationCondition; trigger: AutomationTrigger; options?: AutomationOptions; onChange: (c: AutomationCondition) => void; onRemove: () => void; currency: string }) {
-  const toggle = (v: string, single = false) => onChange({ ...c, values: single ? [v] : c.values.includes(v) ? c.values.filter((x) => x !== v) : [...c.values, v] });
-  const numberField = c.field === 'amountAtLeast' || c.field === 'ageAtLeast' || c.field === 'ageUnder';
-  return (
-    <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-foreground/[0.025] p-2.5 ring-1 ring-inset ring-foreground/[0.06]">
-      <NativeSelect aria-label="Condition" className="h-9 w-auto font-medium" value={c.field} onChange={(e) => onChange({ field: e.target.value as AutomationConditionField, op: 'IS', values: [] })}>
-        {TRIGGER_INFO[trigger].conditions.map((f) => (
-          <option key={f} value={f}>
-            {CONDITION_INFO[f].label}
-          </option>
-        ))}
-      </NativeSelect>
-      {['species', 'branch', 'appointmentType', 'source', 'patientSex'].includes(c.field) && (
-        <NativeSelect aria-label="Is or is not" className="h-9 w-auto" value={c.op} onChange={(e) => onChange({ ...c, op: e.target.value as 'IS' | 'IS_NOT' })}>
-          <option value="IS">is</option>
-          <option value="IS_NOT">is not</option>
-        </NativeSelect>
-      )}
-      {c.field === 'species' && <ValuesPicker label="Species" list={options?.species ?? []} values={c.values} onChange={(values) => onChange({ ...c, values })} />}
-      {c.field === 'branch' && <ValuesPicker label="Branches" list={options?.branches ?? []} values={c.values} onChange={(values) => onChange({ ...c, values })} />}
-      {c.field === 'appointmentType' && <ValuesPicker label="Appointment types" list={options?.appointmentTypes ?? []} values={c.values} onChange={(values) => onChange({ ...c, values })} />}
-      {c.field === 'contact' && <Pills options={[{ value: 'WHATSAPP', label: 'WhatsApp' }, { value: 'EMAIL', label: 'Email' }]} values={c.values} onToggle={(v) => toggle(v)} />}
-      {c.field === 'source' && <Pills options={[{ value: 'ONLINE', label: 'Online' }, { value: 'STAFF', label: 'By staff' }]} values={c.values} onToggle={(v) => toggle(v)} />}
-      {c.field === 'patientSex' && <Pills options={[{ value: 'MALE', label: 'Male' }, { value: 'FEMALE', label: 'Female' }]} values={c.values} onToggle={(v) => toggle(v)} />}
-      {c.field === 'firstVisit' && <Pills options={[{ value: 'FIRST', label: 'First visit' }, { value: 'RETURNING', label: 'Returning client' }]} values={c.values} onToggle={(v) => toggle(v, true)} />}
-      {numberField && (
-        <div className="flex items-center gap-2">
-          {c.field === 'amountAtLeast' && <span className="text-sm text-muted-foreground">{currency}</span>}
-          <Input
-            aria-label={CONDITION_INFO[c.field].label}
-            inputMode="decimal"
-            className="h-9 w-28"
-            value={c.values[0] ? (c.field === 'amountAtLeast' ? String(Number(c.values[0]) / 100) : c.values[0]) : ''}
-            onChange={(e) => {
-              const n = e.target.value.replace(/[^\d.]/g, '');
-              onChange({ ...c, values: n ? [c.field === 'amountAtLeast' ? String(Math.round(Number(n) * 100)) : String(Math.floor(Number(n)))] : [] });
-            }}
-          />
-          {c.field !== 'amountAtLeast' && <span className="text-sm text-muted-foreground">years</span>}
-        </div>
-      )}
-      <Button type="button" size="icon-sm" variant="ghost" className="ml-auto" aria-label="Remove condition" onClick={onRemove}>
-        <X />
-      </Button>
-    </div>
-  );
-}
-
 // ───────────────────────────── Flow nodes ─────────────────────────────
 
 function Node({ kicker, title, subtitle, icon: Icon, tile, open, onToggle, actions, children, highlight }: { kicker: string; title: React.ReactNode; subtitle?: React.ReactNode; icon: React.ComponentType<{ className?: string }>; tile: string; open: boolean; onToggle: () => void; actions?: React.ReactNode; children?: React.ReactNode; highlight?: boolean }) {
@@ -477,6 +407,7 @@ function Connector({ onAdd, trigger, label }: { onAdd?: (t: AutomationStep['type
 }
 
 function TriggerDialog({ value, onPick, onClose }: { value: AutomationTrigger; onPick: (t: AutomationTrigger) => void; onClose: () => void }) {
+  const marketingOk = usePlanFeature('marketing');
   const [q, setQ] = useState('');
   const [group, setGroup] = useState<TriggerGroup | 'ALL'>('ALL');
   const list = AUTOMATION_TRIGGERS.filter((t) => (group === 'ALL' || TRIGGER_INFO[t].group === group) && (!q || `${TRIGGER_INFO[t].label} ${TRIGGER_INFO[t].when}`.toLowerCase().includes(q.toLowerCase())));
@@ -497,6 +428,7 @@ function TriggerDialog({ value, onPick, onClose }: { value: AutomationTrigger; o
             {list.map((t) => {
               const info = TRIGGER_INFO[t];
               const Icon = TRIGGER_ICONS[t];
+              const locked = info.group === 'Marketing' && !marketingOk;
               return (
                 <button key={t} type="button" onClick={() => onPick(t)} className={cn('flex items-start gap-3 rounded-2xl p-3 text-left ring-1 ring-inset transition-all hover:-translate-y-0.5 hover:shadow-md', value === t ? 'bg-primary/[0.06] ring-primary' : 'bg-card ring-foreground/10')}>
                   <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', GROUP_TONE[info.group].tile)}>
@@ -506,6 +438,7 @@ function TriggerDialog({ value, onPick, onClose }: { value: AutomationTrigger; o
                     <span className="flex items-center gap-1.5 font-semibold">
                       {info.label}
                       {info.timed && <Clock className="h-3.5 w-3.5 text-muted-foreground" aria-label="At a set time" />}
+                      {locked && <PlanLockBadge />}
                     </span>
                     <span className="block text-xs text-muted-foreground">When {info.when}</span>
                   </span>
@@ -573,6 +506,41 @@ function TimingControls({ d, set }: { d: Draft; set: (p: Partial<Draft>) => void
         </>
       )}
       {t === 'ON_DAY' && <>On the day, {hourSelect}</>}
+      {t === 'ON_DATE' && <OfferSchedule d={d} set={set} hourSelect={hourSelect} />}
+    </div>
+  );
+}
+
+/** When an offer goes out: the day, how often, the time, and when the offer ends. */
+function OfferSchedule({ d, set, hourSelect }: { d: Draft; set: (p: Partial<Draft>) => void; hourSelect: React.ReactNode }) {
+  const repeat = d.repeat ?? 'NONE';
+  const next = nextOfferDay({ sendOn: d.sendOn, repeat, endsOn: d.endsOn }, localDay());
+  return (
+    <div className="grid w-full gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        Send on
+        <Input type="date" aria-label="Send on" className="h-10 w-auto font-semibold" min={d.sendOn && d.sendOn < localDay() ? undefined : localDay()} value={d.sendOn ?? ''} onChange={(e) => set({ sendOn: e.target.value || null })} />
+        {hourSelect}
+        <Button type="button" size="sm" variant="outline" onClick={() => set({ sendOn: localDay(), atHour: new Date().getHours(), repeat: 'NONE' })}>
+          <Send /> Send now
+        </Button>
+      </div>
+      {d.sendOn === localDay() && d.atHour != null && d.atHour <= new Date().getHours() && (
+        <p className="rounded-xl bg-rose-500/[0.07] px-3 py-2 text-xs text-rose-700 ring-1 ring-inset ring-rose-500/15 dark:text-rose-300">Goes out within a few minutes of saving (switched on), within your sending hours.</p>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <span>Repeat</span>
+        <Segmented label="Repeat" value={repeat} onChange={(v) => set({ repeat: v })} options={(['NONE', 'WEEKLY', 'MONTHLY'] as const).map((r) => ({ value: r, label: OFFER_REPEAT_LABELS[r] }))} />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {repeat === 'NONE' ? 'The offer ends on' : 'Stop after'}
+        <Input type="date" aria-label={repeat === 'NONE' ? 'Offer ends on' : 'Stop after'} className="h-10 w-auto font-semibold" min={d.sendOn ?? undefined} value={d.endsOn ?? ''} onChange={(e) => set({ endsOn: e.target.value || null })} />
+        {d.endsOn && <button type="button" className="text-xs text-primary hover:underline" onClick={() => set({ endsOn: null })}>{repeat === 'NONE' ? 'No end date' : 'Keep repeating'}</button>}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {repeat === 'NONE' ? '“Offer ends” in the message shows this date.' : '“Offer ends” in the message shows the day before the next send (e.g. the end of that month’s offer).'}{' '}
+        {next ? `Next send: ${offerScheduleText({ sendOn: next, repeat: 'NONE', endsOn: null }).replace('Once on ', '')}.` : d.sendOn ? 'It will not go out again.' : ''}
+      </p>
     </div>
   );
 }
@@ -651,7 +619,11 @@ function Builder() {
   const qc = useQueryClient();
   const { currency } = useSession();
   const isNew = id === 'new';
-  const existing = useQuery({ queryKey: ['automation', id], queryFn: () => api.get<Omit<Draft, 'steps' | 'description'> & { description: string | null; steps: AutomationStep[] }>(`/automations/${id}`), enabled: !isNew });
+  const existing = useQuery({ queryKey: ['automation', id], queryFn: () => api.get<Omit<Draft, 'steps' | 'description'> & { description: string | null; steps: AutomationStep[]; approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED' | null; approvalNote?: string | null; approvedByName?: string | null; version?: number }>(`/automations/${id}`), enabled: !isNew });
+  const [history, setHistory] = useState(false);
+  const [asTemplate, setAsTemplate] = useState(false);
+  const templateId = isNew ? params.get('template') : null;
+  const tpl = useQuery({ queryKey: ['automation-template', templateId], queryFn: () => api.get<AutomationTemplate>(`/automations/templates/${templateId}`), enabled: !!templateId });
   const options = useQuery({ queryKey: ['automation-options'], queryFn: () => api.get<AutomationOptions>('/automations/options'), staleTime: 60_000 });
   const [d, setD] = useState<Draft | null>(null);
   const [open, setOpen] = useState<string | null>(null);
@@ -665,18 +637,38 @@ function Builder() {
     if (d) return;
     if (isNew) {
       const r = AUTOMATION_RECIPES.find((x) => x.key === params.get('recipe'));
-      if (r) {
+      if (templateId) {
+        if (!tpl.data) return;
+        // From the clinic's own template: an offer whose day has passed moves to tomorrow, keeping its length.
+        const a = tpl.data.draft;
+        const offer = TRIGGER_INFO[a.trigger].timed === 'ON_DATE';
+        let sendOn = offer ? (a.sendOn ?? localDay(1)) : null;
+        let endsOn = offer ? (a.endsOn ?? null) : null;
+        if (sendOn && sendOn < localDay()) {
+          const days = endsOn ? Math.round((Date.parse(endsOn) - Date.parse(sendOn)) / 86_400_000) : null;
+          sendOn = localDay(1);
+          endsOn = days != null ? localDay(1 + days) : null;
+        }
+        setD({ name: a.name, description: a.description ?? '', isActive: true, marketing: !!a.marketing, trigger: a.trigger, offset: a.offset ?? null, atHour: a.atHour ?? null, sendFromHour: a.sendFromHour ?? null, sendToHour: a.sendToHour ?? null, cooldownDays: a.cooldownDays ?? null, sendOn, repeat: offer ? (a.repeat ?? 'NONE') : null, endsOn, conditions: (a.conditions ?? []) as AutomationCondition[], steps: withKeys(a.steps as AutomationStep[]) });
+        if (offer) setOpen('trigger');
+      } else if (r) {
         const a = r.automation;
-        setD({ name: a.name, description: a.description ?? '', isActive: true, marketing: !!a.marketing, trigger: a.trigger, offset: a.offset ?? null, atHour: a.atHour ?? null, sendFromHour: a.sendFromHour ?? null, sendToHour: a.sendToHour ?? null, cooldownDays: a.cooldownDays ?? null, conditions: (a.conditions ?? []) as AutomationCondition[], steps: withKeys(a.steps as AutomationStep[]) });
+        const offer = TRIGGER_INFO[a.trigger].timed === 'ON_DATE';
+        setD({ name: a.name, description: a.description ?? '', isActive: true, marketing: !!a.marketing, trigger: a.trigger, offset: a.offset ?? null, atHour: a.atHour ?? null, sendFromHour: a.sendFromHour ?? null, sendToHour: a.sendToHour ?? null, cooldownDays: a.cooldownDays ?? null, sendOn: offer ? (a.sendOn ?? localDay(1)) : null, repeat: offer ? (a.repeat ?? 'NONE') : null, endsOn: offer ? (a.endsOn ?? (a.repeat && a.repeat !== 'NONE' ? null : localDay(15))) : null, conditions: (a.conditions ?? []) as AutomationCondition[], steps: withKeys(a.steps as AutomationStep[]) });
+        if (offer) setOpen('trigger');
+      } else if (params.get('trigger') === 'SCHEDULED_OFFER') {
+        setD(offerDraft());
+        setOpen('trigger');
       } else {
-        setD(blankDraft());
+        // "Build from scratch" from Marketing starts promotional.
+        setD({ ...blankDraft(), marketing: params.get('marketing') === '1' && planMarketing });
         setPicking(true);
       }
     } else if (existing.data) {
       const a = existing.data;
-      setD({ name: a.name, description: a.description ?? '', isActive: a.isActive, marketing: a.marketing, trigger: a.trigger, offset: a.offset, atHour: a.atHour, sendFromHour: a.sendFromHour, sendToHour: a.sendToHour, cooldownDays: a.cooldownDays, conditions: a.conditions, steps: withKeys(a.steps) });
+      setD({ name: a.name, description: a.description ?? '', isActive: a.isActive, marketing: a.marketing, trigger: a.trigger, offset: a.offset, atHour: a.atHour, sendFromHour: a.sendFromHour, sendToHour: a.sendToHour, cooldownDays: a.cooldownDays, sendOn: a.sendOn ?? null, repeat: a.repeat ?? null, endsOn: a.endsOn ?? null, conditions: a.conditions, steps: withKeys(a.steps) });
     }
-  }, [isNew, params, existing.data, d]);
+  }, [isNew, params, existing.data, d, templateId, tpl.data, planMarketing]);
 
   const payload = useMemo(
     () =>
@@ -691,6 +683,9 @@ function Builder() {
         sendFromHour: d.sendFromHour,
         sendToHour: d.sendToHour,
         cooldownDays: d.cooldownDays,
+        sendOn: d.sendOn,
+        repeat: d.repeat,
+        endsOn: d.endsOn,
         conditions: d.conditions.filter((c) => c.values.length),
         steps: d.steps.map((s) => {
           const copy: Partial<Step> = { ...s };
@@ -698,9 +693,9 @@ function Builder() {
           return copy as AutomationStep;
         }),
         // Made from a recipe: counts as ready-made while it keeps the recipe's shape (the API checks).
-        ...(isNew && params.get('recipe') ? { recipeKey: params.get('recipe') } : {}),
+        ...(isNew && params.get('recipe') ? { recipeKey: params.get('recipe') } : isNew && tpl.data?.draft.recipeKey ? { recipeKey: tpl.data.draft.recipeKey } : {}),
       },
-    [d, isNew, params],
+    [d, isNew, params, tpl.data],
   );
   const save = useMutation({
     mutationFn: () => (isNew ? api.post<{ id: string }>('/automations', payload) : api.put<{ id: string }>(`/automations/${id}`, payload)),
@@ -708,8 +703,9 @@ function Builder() {
       qc.invalidateQueries({ queryKey: ['automations'] });
       qc.invalidateQueries({ queryKey: ['automation-stats'] });
       qc.invalidateQueries({ queryKey: ['automation', id] });
-      toast.success(d!.isActive ? `“${d!.name}” is on` : `“${d!.name}” saved (off)`);
-      router.push('/settings/automations');
+      toast.success(d!.marketing && options.data?.marketing?.approval ? `“${d!.name}” sent for approval — a manager switches it on` : d!.isActive ? `“${d!.name}” is on` : `“${d!.name}” saved (off)`);
+      if (templateId) api.post(`/automations/templates/${templateId}/used`).then(() => qc.invalidateQueries({ queryKey: ['automation-templates'] }), () => undefined);
+      router.push(d!.marketing ? '/marketing?tab=campaigns' : '/settings/automations');
     },
     onError: (e: Error) => {
       setError(e.message);
@@ -717,9 +713,15 @@ function Builder() {
     },
   });
   const tryIt = useMutation({ mutationFn: () => api.post<PreviewResult>('/automations/preview', { automation: payload }), onSuccess: setPreview, onError: (e: Error) => toast.error(e.message) });
+  const testSend = useMutation({
+    mutationFn: () => api.post<{ to: string; example: string | null }>('/automations/test-send', { automation: payload }),
+    onSuccess: (r) => toast.success(`Test email sent to ${r.to}${r.example ? ` — filled in as for ${r.example}` : ''}. No client gets anything.`),
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   if (!isNew && existing.isLoading) return <LoadingRows rows={8} />;
   if (existing.error) return <ErrorState error={existing.error} onRetry={() => existing.refetch()} />;
+  if (tpl.error) return <ErrorState error={tpl.error} onRetry={() => tpl.refetch()} />;
   if (!d || !payload) return <LoadingRows rows={8} />;
 
   const info = TRIGGER_INFO[d.trigger];
@@ -741,10 +743,13 @@ function Builder() {
     const allowed = new Set(TRIGGER_INFO[t].conditions);
     const checks = TRIGGER_INFO[t].checks;
     const offset = timed === 'HOURS_BEFORE' ? 24 : timed === 'DAYS_BEFORE' || timed === 'DAYS_AFTER' ? 7 : timed === 'MONTHS_SINCE' ? 12 : null;
+    const offer = timed === 'ON_DATE';
     set({
       trigger: t,
       offset: timed && TRIGGER_INFO[d.trigger].timed === timed ? d.offset : offset,
       atHour: timed && timed !== 'HOURS_BEFORE' ? (d.atHour ?? 10) : null,
+      // An offer is always promotional, and needs its day.
+      ...(offer ? { marketing: true, sendOn: d.sendOn ?? localDay(1), repeat: d.repeat ?? 'NONE', endsOn: d.endsOn ?? localDay(15) } : NO_OFFER),
       conditions: d.conditions.filter((c) => allowed.has(c.field)),
       steps: d.steps.filter((s) => s.type !== 'CHECK' || checks.includes(s.check)),
     });
@@ -753,8 +758,13 @@ function Builder() {
   };
   const stepMissing = (s: Step) => (s.type === 'SEND_MESSAGE' && !s.body.trim()) || (s.type === 'CREATE_TASK' && !s.title.trim()) || (s.type === 'EMAIL_TEAM' && (!s.to.trim() || !s.subject.trim() || !s.body.trim()));
   const lastType = d.steps[d.steps.length - 1]?.type;
+  const isOffer = info.timed === 'ON_DATE';
   const missing = !d.name.trim()
     ? 'Give the automation a name (at the top)'
+    : isOffer && !d.sendOn
+      ? 'Choose the day to send the offer'
+      : isOffer && d.endsOn && d.sendOn && d.endsOn < d.sendOn
+        ? 'The offer must end on or after the day it is sent'
     : d.steps.some(stepMissing)
       ? 'Fill in every step (marked in amber)'
       : !d.steps.some((s) => !PAUSES.includes(s.type))
@@ -767,6 +777,7 @@ function Builder() {
               ? 'The sending hours must end after they start'
               : null;
   const builder = planBuilder;
+  const needsApproval = d.marketing && !!options.data?.marketing?.approval;
   const marketingOk = planMarketing;
   const sentence = describeAutomation(payload, options.data);
   const conditionsText = d.conditions.filter((c) => c.values.length).map((c) => conditionText(c, options.data)).join(' · ') || null;
@@ -775,15 +786,36 @@ function Builder() {
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
       <div className="flex flex-wrap items-center gap-3">
         <Button variant="ghost" size="sm" asChild>
-          <Link href="/settings/automations">
-            <ArrowLeft /> Automations
+          <Link href={d.marketing ? '/marketing?tab=campaigns' : '/settings/automations'}>
+            <ArrowLeft /> {d.marketing ? 'Marketing' : 'Automations'}
           </Link>
         </Button>
-        <Badge variant={d.isActive ? 'success' : 'secondary'} className="ml-auto">
-          {d.isActive ? 'On' : 'Off'}
-        </Badge>
+        {tpl.data && <Badge variant="outline">From your template “{tpl.data.name}”</Badge>}
+        <div className="ml-auto flex items-center gap-2">
+          {!isNew && (
+            <Button variant="ghost" size="sm" onClick={() => setHistory(true)}>
+              <History /> Version history{existing.data?.version ? ` (v${existing.data.version})` : ''}
+            </Button>
+          )}
+          <Badge variant={d.isActive ? 'success' : 'secondary'}>{d.isActive ? 'On' : 'Off'}</Badge>
+        </div>
       </div>
       {error && <FormError message={error} />}
+      {existing.data?.approvalStatus === 'PENDING' && (
+        <div className="flex items-start gap-3 rounded-2xl bg-warning/10 p-4 text-sm ring-1 ring-inset ring-warning/25">
+          <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+          <span><b>Waiting for approval.</b> A manager (not the last person who changed it) approves it in Marketing → Campaigns; it switches on then.</span>
+        </div>
+      )}
+      {existing.data?.approvalStatus === 'REJECTED' && (
+        <div className="flex items-start gap-3 rounded-2xl bg-destructive/[0.07] p-4 text-sm ring-1 ring-inset ring-destructive/20">
+          <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+          <span><b>Sent back by {existing.data.approvedByName}:</b> “{existing.data.approvalNote}”. Change it and save to send it for approval again.</span>
+        </div>
+      )}
+      {isOffer && !marketingOk && (
+        <UpgradeCard feature="marketing" compact text="Offers and discounts for your clients are part of marketing automations. You can prepare one now and save it once your plan includes marketing." />
+      )}
       {!builder && (
         <UpgradeCard
           feature="automationBuilder"
@@ -814,11 +846,11 @@ function Builder() {
                 </Button>
               }
             >
-              <p className="text-sm text-muted-foreground">Starts {info.timed ? 'at the time you choose' : `the moment ${info.when}`}. Each record starts it once.</p>
+              <p className="text-sm text-muted-foreground">{isOffer ? 'On the day, it goes to every client in the group (see below) who agreed to marketing — once each.' : `Starts ${info.timed ? 'at the time you choose' : `the moment ${info.when}`}. Each record starts it once.`}</p>
               <TimingControls d={d} set={set} />
             </Node>
             <Connector trigger={d.trigger} />
-            <Node kicker="Only if" title={d.conditions.length ? `${d.conditions.length} ${d.conditions.length === 1 ? 'condition' : 'conditions'}` : 'Everyone'} subtitle={conditionsText ?? 'No conditions — runs for every client'} icon={Filter} tile="bg-foreground/[0.07] text-foreground" open={open === 'conditions'} onToggle={() => setOpen(open === 'conditions' ? null : 'conditions')}>
+            <Node kicker={isOffer ? 'To' : 'Only if'} title={d.conditions.length ? `${d.conditions.length} ${d.conditions.length === 1 ? 'condition' : 'conditions'}` : isOffer ? 'Every client who agreed to marketing' : 'Everyone'} subtitle={conditionsText ?? (isOffer ? 'Narrow it: dog owners, one branch, clients not seen for a while…' : 'No conditions — runs for every client')} icon={Filter} tile="bg-foreground/[0.07] text-foreground" open={open === 'conditions'} onToggle={() => setOpen(open === 'conditions' ? null : 'conditions')}>
               <div className="grid gap-2.5">
                 {d.conditions.map((c, i) => (
                   <ConditionRow key={i} c={c} trigger={d.trigger} options={options.data} currency={currency} onChange={(nc) => set({ conditions: d.conditions.map((x, j) => (j === i ? nc : x)) })} onRemove={() => set({ conditions: d.conditions.filter((_, j) => j !== i) })} />
@@ -918,8 +950,16 @@ function Builder() {
                 </NativeSelect>
               </div>
             </SettingToggle>
-            <SettingToggle title="Promotional" text="Only to clients who agreed to marketing. Clients who asked for no messages never get any." checked={d.marketing} locked={!marketingOk} onChange={(v) => set({ marketing: v })} />
+            {isOffer ? (
+              <div className="grid gap-1">
+                <span className="flex flex-wrap items-center gap-2 text-sm font-semibold">Promotional {!marketingOk && <PlanLockBadge />}</span>
+                <span className="text-xs text-muted-foreground">An offer always goes only to clients who agreed to marketing. Clients who asked for no messages never get any.</span>
+              </div>
+            ) : (
+              <SettingToggle title="Promotional" text="Only to clients who agreed to marketing. Clients who asked for no messages never get any." checked={d.marketing} locked={!marketingOk} onChange={(v) => set({ marketing: v })} />
+            )}
           </Card>
+          {isOffer && <AudienceCard conditions={d.conditions} />}
           <Card className="grid gap-3 p-5">
             <p className="flex items-center gap-2 font-semibold">
               <Workflow className="h-4 w-4 text-primary" /> In one sentence
@@ -931,16 +971,26 @@ function Builder() {
 
       <div className="action-bar -mx-4 flex flex-wrap items-center gap-3 rounded-t-2xl px-4 py-3 sm:-mx-6 sm:px-6">
         <p className={cn('mr-auto text-sm', missing ? 'text-muted-foreground' : 'font-medium text-success')}>{missing ?? 'Ready to save'}</p>
+        {d.steps.some((s) => s.type === 'SEND_MESSAGE') && (
+          <Button variant="outline" disabled={!!missing} loading={testSend.isPending} onClick={() => testSend.mutate()} title="Email the first message to yourself">
+            <FlaskConical /> Send me a test
+          </Button>
+        )}
+        <Button variant="ghost" disabled={!!missing} onClick={() => setAsTemplate(true)} title="Keep it as your clinic’s own starting point">
+          <BookmarkPlus /> Save as template
+        </Button>
         <Button variant="outline" disabled={!!missing} loading={tryIt.isPending} onClick={() => tryIt.mutate()}>
           <Play /> Try it
         </Button>
         <Button disabled={!!missing} loading={save.isPending} onClick={() => { setError(null); save.mutate(); }}>
-          <Save /> {isNew ? 'Save automation' : 'Save changes'}
+          {needsApproval ? <><ShieldCheck /> Send for approval</> : <><Save /> {isNew ? 'Save automation' : 'Save changes'}</>}
         </Button>
       </div>
 
       {picking && <TriggerDialog value={d.trigger} onPick={pickTrigger} onClose={() => setPicking(false)} />}
       {preview && <PreviewDialog result={preview} onClose={() => setPreview(null)} />}
+      {asTemplate && <SaveTemplateDialog automation={payload} onClose={() => setAsTemplate(false)} />}
+      {history && <VersionHistory automationId={id} name={d.name} onClose={() => { setHistory(false); setD(null); existing.refetch(); }} />}
     </div>
   );
 }
@@ -949,7 +999,7 @@ function Builder() {
 function Entry() {
   const { id } = useParams<{ id: string }>();
   const params = useSearchParams();
-  if (id === 'new' && !params.get('recipe') && params.get('mode') !== 'advanced') return <EasyCreator />;
+  if (id === 'new' && !params.get('recipe') && !params.get('template') && params.get('mode') !== 'advanced') return <EasyCreator />;
   return <Builder />;
 }
 
