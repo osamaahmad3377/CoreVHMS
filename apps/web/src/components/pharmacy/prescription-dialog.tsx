@@ -22,6 +22,10 @@ import { cn } from '@/lib/utils';
 interface Line {
   key: number;
   product: Product | null;
+  /** A medicine the clinic does not stock: written by name, the client buys it from another pharmacy. */
+  outside: boolean;
+  /** Name and strength of the outside medicine ("Amoxicillin 250 mg tablets"). */
+  outsideName: string;
   route: string;
   doseValue: string;
   doseUnit: string;
@@ -36,7 +40,13 @@ interface Line {
   confirmedLarge: boolean;
 }
 
-const blankLine = (key: number): Line => ({ key, product: null, route: 'PO', doseValue: '', doseUnit: 'mg/kg', frequencyCode: 'BID', durationDays: '7', quantity: '', repeats: '0', instructions: null, overrideReason: '', confirmedLarge: false });
+const blankLine = (key: number): Line => ({ key, product: null, outside: false, outsideName: '', route: 'PO', doseValue: '', doseUnit: 'mg/kg', frequencyCode: 'BID', durationDays: '7', quantity: '', repeats: '0', instructions: null, overrideReason: '', confirmedLarge: false });
+
+/** Units for the amount given each time of a medicine bought outside. */
+const OUTSIDE_UNITS = ['tablet', 'capsule', 'mL', 'drop', 'sachet', 'puff', 'application', 'injection'];
+
+/** The line names a medicine: picked from the pharmacy, or written in for buying outside. */
+const hasMedicine = (l: Line) => (l.outside ? !!l.outsideName.trim() : !!l.product);
 
 function doseUnits(p: Product | null) {
   const base = p?.strengthUnit ? [`${p.strengthUnit}/kg`, p.strengthUnit] : [];
@@ -46,12 +56,14 @@ function doseUnits(p: Product | null) {
 
 /** "Give 1 tablet by mouth 2 times a day for 7 days." — plain words, no Latin abbreviations (printed on the label). */
 function autoInstructions(l: Line, ev?: DoseEvaluation | null) {
+  if (l.outside) return ownerInstructions({ amount: Number(l.doseValue) || null, unit: l.doseUnit, route: l.route, frequencyCode: l.frequencyCode, durationDays: l.durationDays ? Number(l.durationDays) : null });
   return ownerInstructions({ amount: ev?.calculation.amount, unit: ev?.calculation.dispensingUnit ?? l.product?.dispensingUnit, route: l.route, frequencyCode: l.frequencyCode, durationDays: l.durationDays ? Number(l.durationDays) : null });
 }
 
 function lineBody(l: Line, ev?: DoseEvaluation | null) {
   return {
-    productId: l.product!.id,
+    productId: l.outside ? null : l.product!.id,
+    outsideName: l.outside ? l.outsideName.trim() : null,
     route: l.route,
     doseValue: Number(l.doseValue),
     doseUnit: l.doseUnit,
@@ -85,7 +97,7 @@ export function AllergyStrip({ alerts }: { alerts: AlertSummary[] }) {
 }
 
 function LineEditor({ line, patientId, weightKg, alerts, onChange, onRemove, onEvaluated }: { line: Line; patientId: string; weightKg: number | null; alerts: AlertSummary[]; onChange: (l: Line) => void; onRemove?: () => void; onEvaluated: (e: DoseEvaluation | null) => void }) {
-  const ready = !!line.product && Number(line.doseValue) > 0;
+  const ready = hasMedicine(line) && Number(line.doseValue) > 0 && !!line.doseUnit.trim();
   const key = useDebounce(JSON.stringify({ ...line, overrideReason: '', instructions: null, confirmedLarge: false, weightKg }), 350);
   const ev = useQuery({
     queryKey: ['rx-evaluate', patientId, key],
@@ -99,7 +111,9 @@ function LineEditor({ line, patientId, weightKg, alerts, onChange, onRemove, onE
   const e = ready ? ev.data : undefined;
   const err = ev.error instanceof ApiError ? ev.error.message : null;
   // Warn as soon as the product is picked; the full check (with override) runs once a dose is entered.
-  const conflicts = line.product ? allergyConflicts(alerts, line.product) : [];
+  const allergyTarget = line.outside ? (line.outsideName.trim().length >= 3 ? { name: line.outsideName.trim() } : null) : line.product;
+  const conflicts = allergyTarget ? allergyConflicts(alerts, allergyTarget) : [];
+  const medicineName = line.outside ? line.outsideName.trim() : line.product?.name ?? '';
   const noReference = e?.warnings.find((w) => w.code === 'NO_REFERENCE');
   const otherWarnings = e?.warnings.filter((w) => w.code !== 'ALLERGY' && w.code !== 'NO_REFERENCE') ?? [];
   const auto = autoInstructions(line, e);
@@ -107,8 +121,21 @@ function LineEditor({ line, patientId, weightKg, alerts, onChange, onRemove, onE
   return (
     <div className="grid gap-3 rounded-lg surface-flat p-3">
       <div className="flex items-start gap-2">
-        <div className="flex-1">
-          <ProductPicker value={line.product} prescribable alerts={alerts} onChange={(p) => set({ product: p, doseUnit: p?.strengthUnit ? `${p.strengthUnit}/kg` : p?.dispensingUnit ?? 'mg/kg', route: p?.form === 'INJECTION' ? 'SC' : p?.form === 'TOPICAL' ? 'TOPICAL' : 'PO' })} />
+        <div className="grid flex-1 gap-1">
+          {line.outside ? (
+            <Field label="Medicine to buy outside (name and strength)" htmlFor={`out-${line.key}`} hint="Not stocked in our pharmacy. The client buys it elsewhere; it is printed on a prescription for them.">
+              <Input id={`out-${line.key}`} autoFocus placeholder="e.g. Amoxicillin 250 mg tablets" maxLength={200} value={line.outsideName} onChange={(ev) => set({ outsideName: ev.target.value })} />
+            </Field>
+          ) : (
+            <ProductPicker value={line.product} prescribable alerts={alerts} onChange={(p) => set({ product: p, doseUnit: p?.strengthUnit ? `${p.strengthUnit}/kg` : p?.dispensingUnit ?? 'mg/kg', route: p?.form === 'INJECTION' ? 'SC' : p?.form === 'TOPICAL' ? 'TOPICAL' : 'PO' })} />
+          )}
+          <button
+            type="button"
+            className="w-fit text-xs text-primary hover:underline"
+            onClick={() => onChange({ ...blankLine(line.key), outside: !line.outside, doseUnit: line.outside ? 'mg/kg' : 'tablet', doseValue: line.outside ? '' : '1' })}
+          >
+            {line.outside ? 'Choose from our pharmacy instead' : 'Not in our pharmacy? Write in a medicine to buy outside'}
+          </button>
         </div>
         {onRemove && (
           <Button type="button" size="icon" variant="ghost" aria-label="Remove medicine" onClick={onRemove}>
@@ -116,7 +143,81 @@ function LineEditor({ line, patientId, weightKg, alerts, onChange, onRemove, onE
           </Button>
         )}
       </div>
-      {line.product && (
+      {line.outside && hasMedicine(line) && (
+        <>
+          {!!conflicts.length && (
+            <div role="alert" className="grid gap-1 rounded-md border-2 border-destructive bg-destructive/10 p-3 text-sm text-destructive">
+              <p className="flex items-center gap-2 font-semibold"><ShieldAlert className="h-4 w-4 shrink-0" /> Allergy warning — do not give unless you are sure</p>
+              {conflicts.map((c) => (
+                <p key={c.alert.id}>{allergyConflictText(c, medicineName)}{c.alert.reaction ? ` (reaction: ${c.alert.reaction})` : ''}.</p>
+              ))}
+              <p className="text-xs">Choose a different medicine, or write why it is safe in “Reason for overriding the safety warning” below.</p>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-6">
+            <div className="grid gap-1">
+              <Label className="text-xs">Amount each time</Label>
+              <Input inputMode="decimal" className="h-8" value={line.doseValue} onChange={(ev) => set({ doseValue: ev.target.value })} aria-label="Amount each time" />
+            </div>
+            <div className="grid gap-1">
+              <Label className="text-xs">Unit</Label>
+              <Input className="h-8 text-xs" list={`units-${line.key}`} maxLength={30} value={line.doseUnit} onChange={(ev) => set({ doseUnit: ev.target.value })} aria-label="Unit" />
+              <datalist id={`units-${line.key}`}>{OUTSIDE_UNITS.map((u) => <option key={u} value={u} />)}</datalist>
+            </div>
+            <div className="grid gap-1">
+              <Label className="text-xs">Route</Label>
+              <NativeSelect className="h-8 text-xs" value={line.route} onChange={(ev) => set({ route: ev.target.value })} aria-label="Route">
+                {ROUTES.map((r) => <option key={r} value={r}>{routeLabel(r)}</option>)}
+              </NativeSelect>
+            </div>
+            <div className="grid gap-1 sm:col-span-2">
+              <Label className="text-xs">How often</Label>
+              <NativeSelect className="h-8 text-xs" value={line.frequencyCode} onChange={(ev) => set({ frequencyCode: ev.target.value })} aria-label="Frequency">
+                {FREQUENCIES.map((f) => <option key={f.code} value={f.code}>{f.label}</option>)}
+              </NativeSelect>
+            </div>
+            <div className="grid gap-1">
+              <Label className="text-xs">Days</Label>
+              <Input type="number" min={1} className="h-8" value={line.durationDays} onChange={(ev) => set({ durationDays: ev.target.value })} aria-label="Duration days" />
+            </div>
+          </div>
+          {err ? (
+            <p className="flex items-center gap-1.5 text-xs font-medium text-destructive"><AlertTriangle className="h-3.5 w-3.5" /> {err}</p>
+          ) : e ? (
+            <p className="text-xs text-muted-foreground">To buy: {qtyUnit(e.quantity, line.doseUnit.trim())}. No dose check is done for medicines bought outside — please double-check the amount.</p>
+          ) : null}
+          {e?.requiresOverride && (
+            <Field label="Reason for overriding the safety warning" htmlFor={`ovr-${line.key}`} required hint="Recorded on the prescription and in the audit log.">
+              <Input id={`ovr-${line.key}`} value={line.overrideReason} onChange={(ev) => set({ overrideReason: ev.target.value })} />
+            </Field>
+          )}
+          <div className="grid gap-2 sm:grid-cols-[1fr_110px_90px]">
+            <Field
+              label="Instructions for the client"
+              htmlFor={`ins-${line.key}`}
+              hint={
+                <>
+                  Printed on the prescription.
+                  {line.instructions !== null && (
+                    <button type="button" className="ml-1 text-primary hover:underline" onClick={() => set({ instructions: null })}>
+                      Use the automatic text
+                    </button>
+                  )}
+                </>
+              }
+            >
+              <Textarea id={`ins-${line.key}`} rows={2} value={line.instructions ?? auto} onChange={(ev) => set({ instructions: ev.target.value })} />
+            </Field>
+            <Field label={`Quantity (${line.doseUnit.trim() || 'units'})`} htmlFor={`qty-${line.key}`}>
+              <Input id={`qty-${line.key}`} inputMode="decimal" placeholder={e ? String(e.quantity) : ''} value={line.quantity} onChange={(ev) => set({ quantity: ev.target.value })} />
+            </Field>
+            <Field label="Repeats" htmlFor={`rep-${line.key}`} help="How many extra times the client can buy this medicine on this prescription. 0 means a single supply.">
+              <Input id={`rep-${line.key}`} type="number" min={0} max={12} value={line.repeats} onChange={(ev) => set({ repeats: ev.target.value })} />
+            </Field>
+          </div>
+        </>
+      )}
+      {!line.outside && line.product && (
         <>
           {!!conflicts.length && (
             <div role="alert" className="grid gap-1 rounded-md border-2 border-destructive bg-destructive/10 p-3 text-sm text-destructive">
@@ -268,7 +369,7 @@ export function PrescriptionDialog({
 
   const save = useMutation({
     mutationFn: (authorize: boolean) =>
-      api.post<Prescription>('/prescriptions', { patientId: patient.id, encounterId, weightKg, notes, authorize, items: lines.filter((l) => l.product).map((l) => lineBody(l, evals[l.key])) }),
+      api.post<Prescription>('/prescriptions', { patientId: patient.id, encounterId, weightKg, notes, authorize, items: lines.filter(hasMedicine).map((l) => lineBody(l, evals[l.key])) }),
     onSuccess: (rx) => {
       toast.success(`${rx.prescriptionNo} ${rx.status === 'AUTHORIZED' ? 'authorised' : 'saved as draft'}`);
       qc.invalidateQueries({ queryKey: ['prescriptions'] });
@@ -282,7 +383,7 @@ export function PrescriptionDialog({
   const blocked = useMemo(
     () =>
       lines.some(
-        (l) => l.product && (!Number(l.doseValue) || !evals[l.key] || (evals[l.key]!.requiresOverride && !l.overrideReason.trim()) || (!!evals[l.key]!.largeDose && !l.confirmedLarge)),
+        (l) => hasMedicine(l) && (!Number(l.doseValue) || !evals[l.key] || (evals[l.key]!.requiresOverride && !l.overrideReason.trim()) || (!!evals[l.key]!.largeDose && !l.confirmedLarge)),
       ),
     [lines, evals],
   );
@@ -293,7 +394,7 @@ export function PrescriptionDialog({
         <DialogHeader>
           <DialogTitle>Prescribe for {patient.name}</DialogTitle>
           <DialogDescription>
-            Doses are calculated from the body weight and the medicine’s strength. Checked against allergies by medicine name, ingredient and drug family, and against the species and dose ranges your clinic has approved.
+            Doses are calculated from the body weight and the medicine’s strength. Checked against allergies by medicine name, ingredient and drug family, and against the species and dose ranges your clinic has approved. A medicine not in our pharmacy can be written in for the client to buy outside.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
@@ -325,11 +426,11 @@ export function PrescriptionDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="outline" disabled={blocked || !lines.some((l) => l.product)} loading={save.isPending && save.variables === false} onClick={() => { setError(null); save.mutate(false); }}>
+          <Button variant="outline" disabled={blocked || !lines.some(hasMedicine)} loading={save.isPending && save.variables === false} onClick={() => { setError(null); save.mutate(false); }}>
             Save draft
           </Button>
           {can('prescriptions.authorize') && (
-            <Button disabled={blocked || !lines.some((l) => l.product)} loading={save.isPending && save.variables === true} onClick={() => { setError(null); save.mutate(true); }}>
+            <Button disabled={blocked || !lines.some(hasMedicine)} loading={save.isPending && save.variables === true} onClick={() => { setError(null); save.mutate(true); }}>
               Authorise prescription
             </Button>
           )}

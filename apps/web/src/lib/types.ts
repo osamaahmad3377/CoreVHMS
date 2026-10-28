@@ -490,7 +490,8 @@ export interface SafetyWarning {
 }
 
 export interface DoseEvaluation {
-  product: { id: string; name: string; dispensingUnit: string; isControlled: boolean };
+  product: { id: string | null; name: string; dispensingUnit: string; isControlled: boolean };
+  outside?: boolean;
   calculation: { rawAmount: number; amount: number; dispensingUnit: string; deliveredDose: number | null; deliveredUnit: string | null; deliveredPerKg: number | null; roundingPercent: number; steps: string[] };
   frequency: { code: string; label: string; perDay: number | null };
   quantity: number;
@@ -503,8 +504,17 @@ export interface DoseEvaluation {
 
 export interface PrescriptionItem {
   id: string;
-  productId: string;
-  product: Product;
+  /** Null for a medicine the client buys outside the clinic. */
+  productId: string | null;
+  product: Product | null;
+  /** Name and strength written for a medicine bought outside. */
+  outsideName: string | null;
+  /** True when the client buys this medicine outside: nothing to hand out or bill here. */
+  outside: boolean;
+  /** The medicine's name, from the pharmacy or as written. */
+  name: string;
+  /** The unit amounts are counted in (tablet, mL…). */
+  unit: string;
   route: string;
   doseValue: number;
   doseUnit: string;

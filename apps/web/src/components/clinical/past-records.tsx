@@ -389,7 +389,7 @@ function PrescriptionsTab({ data, encounterId }: { data: PastData; encounterId: 
           <ul className="grid gap-1.5">
             {(p.items ?? []).map((i: Row) => (
               <li key={i.id} className="text-sm">
-                <span className="font-medium">{i.product?.name}</span>
+                <span className="font-medium">{i.product?.name ?? i.outsideName}{i.productId ? '' : ' (buy outside)'}</span>
                 <span className="text-xs text-muted-foreground"> — {i.doseValue} {i.doseUnit} {enumLabel(i.route).toLowerCase()}, {i.frequencyText}{i.durationDays ? `, ${i.durationDays} days` : ''}</span>
               </li>
             ))}

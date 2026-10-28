@@ -71,13 +71,22 @@ export function shapePrescription(p: Row) {
       frequencyPerDay: n(i.frequencyPerDay),
       quantity: Number(i.quantity),
       quantityDispensed: Number(i.quantityDispensed),
-      remaining: Number(i.quantity) * (1 + i.repeats) - Number(i.quantityDispensed),
-      product: { ...i.product, strengthValue: n(i.product.strengthValue), minDispenseIncrement: Number(i.product.minDispenseIncrement) },
+      /** Bought outside the clinic: nothing to hand out or bill here. */
+      outside: !i.productId,
+      name: rxItemName(i),
+      unit: rxItemUnit(i),
+      remaining: i.productId ? Number(i.quantity) * (1 + i.repeats) - Number(i.quantityDispensed) : 0,
+      product: i.product ? { ...i.product, strengthValue: n(i.product.strengthValue), minDispenseIncrement: Number(i.product.minDispenseIncrement) } : null,
       doseReference: i.doseReference ? { ...i.doseReference, doseMin: Number(i.doseReference.doseMin), doseMax: Number(i.doseReference.doseMax) } : null,
       dispensations: i.dispensations.map((d) => ({ ...d, quantity: Number(d.quantity) })),
     })),
   };
 }
+
+/** The medicine's name: the pharmacy product, or the name written for a medicine bought outside. */
+export const rxItemName = (i: { product?: { name: string } | null; outsideName?: string | null }) => i.product?.name ?? i.outsideName ?? 'Medicine';
+/** The unit the amounts are counted in (tablet, mL…). For a medicine bought outside it is the dose unit written by the vet. */
+export const rxItemUnit = (i: { product?: { dispensingUnit: string } | null; doseUnit: string }) => i.product?.dispensingUnit ?? i.doseUnit;
 
 /** Allergy alerts matched against a product's name, ingredients and drug family (shared with the web). */
 export { allergyMatches };
@@ -114,6 +123,7 @@ export class PrescriptionsService {
               { patient: { name: { contains: q.q, mode: 'insensitive' } } },
               { client: { displayName: { contains: q.q, mode: 'insensitive' } } },
               { items: { some: { product: { name: { contains: q.q, mode: 'insensitive' } } } } },
+              { items: { some: { outsideName: { contains: q.q, mode: 'insensitive' } } } },
             ],
           }
         : {}),
@@ -142,6 +152,7 @@ export class PrescriptionsService {
     });
     if (!patient) throw notFound('Patient');
     weightKg = weightKg ?? (patient.latestWeightKg ? Number(patient.latestWeightKg) : null);
+    if (!item.productId) return this.evaluateOutside(patient, item);
     const product = await this.prisma.db.product.findUnique({ where: { id: item.productId } });
     if (!product || !product.isActive) throw ruleViolation('INVALID_PRODUCT', 'Product not found or inactive');
     if (!PRESCRIBABLE_TYPES.includes(product.type)) throw ruleViolation('NOT_PRESCRIBABLE', `${product.name} is not a prescribable medicine`);
@@ -217,10 +228,40 @@ export class PrescriptionsService {
     };
   }
 
-  private hash(items: { id: string; productId: string; doseValue: unknown; doseUnit: string; amountPerDose: unknown; route: string; frequencyText: string; quantity: unknown; instructions: string; repeats: number }[], at: Date, by: string) {
+  /**
+   * A medicine the clinic does not stock. The vet writes the amount per dose directly ("1 tablet"), so there is
+   * no strength-based calculation or dose-range check; the allergy check still runs on the name written.
+   */
+  private evaluateOutside(patient: { alerts: { id: string; type: string; title: string; substance: string | null; reaction: string | null }[] }, item: PrescriptionItemInput) {
+    const name = item.outsideName!.trim();
+    const unit = item.doseUnit.trim();
+    const freq = FREQUENCIES.find((f) => f.code === item.frequencyCode);
+    if (!freq) throw ruleViolation('INVALID_FREQUENCY', 'Unknown frequency');
+    const amount = item.doseValue;
+    // Whole units for the course (half tablets round the total up), unless the vet typed a quantity.
+    const quantity = item.quantity ?? (freq.perDay && item.durationDays ? Math.ceil(amount * freq.perDay * item.durationDays - 1e-9) : amount);
+    const warnings: SafetyWarning[] = [];
+    for (const c of allergyConflicts(patient.alerts, { name })) {
+      warnings.push({ code: 'ALLERGY', message: `${allergyConflictText(c, name)}${c.alert.reaction ? ` (reaction: ${c.alert.reaction})` : ''}`, blocking: true });
+    }
+    const calculation = { ok: true as const, rawAmount: amount, amount, dispensingUnit: unit, deliveredDose: null, deliveredUnit: null, deliveredPerKg: null, roundingPercent: 0, steps: [`${amount} ${unit} each time, as written (bought outside the clinic)`] };
+    return {
+      product: { id: null, name, dispensingUnit: unit, isControlled: false },
+      outside: true,
+      calculation,
+      frequency: freq,
+      quantity,
+      warnings,
+      doseReferenceId: null,
+      requiresOverride: warnings.some((w) => w.blocking),
+      largeDose: null,
+    };
+  }
+
+  private hash(items: { id: string; productId: string | null; outsideName: string | null; doseValue: unknown; doseUnit: string; amountPerDose: unknown; route: string; frequencyText: string; quantity: unknown; instructions: string; repeats: number }[], at: Date, by: string) {
     return sha256(
       JSON.stringify({
-        items: [...items].sort((a, b) => a.id.localeCompare(b.id)).map((i) => [i.productId, String(i.doseValue), i.doseUnit, String(i.amountPerDose), i.route, i.frequencyText, String(i.quantity), i.instructions, i.repeats]),
+        items: [...items].sort((a, b) => a.id.localeCompare(b.id)).map((i) => [i.productId ?? `outside:${i.outsideName}`, String(i.doseValue), i.doseUnit, String(i.amountPerDose), i.route, i.frequencyText, String(i.quantity), i.instructions, i.repeats]),
         at: at.toISOString(),
         by,
       }),
@@ -282,11 +323,12 @@ export class PrescriptionsService {
       const rows = evaluated.map(({ item, ev }) => ({
         organizationId: ctx.organizationId!,
         prescriptionId: rx.id,
-        productId: item.productId,
+        productId: item.productId ?? null,
+        outsideName: item.productId ? null : item.outsideName!.trim(),
         route: item.route,
         doseValue: item.doseValue,
-        doseUnit: item.doseUnit,
-        weightKgUsed: /\/kg$/i.test(item.doseUnit) ? weightKg : null,
+        doseUnit: item.productId ? item.doseUnit : item.doseUnit.trim(),
+        weightKgUsed: item.productId && /\/kg$/i.test(item.doseUnit) ? weightKg : null,
         amountPerDose: ev.calculation.amount,
         frequencyPerDay: ev.frequency.perDay,
         frequencyText: ev.frequency.label,
@@ -304,7 +346,7 @@ export class PrescriptionsService {
           action: 'prescription.created',
           entityType: 'Prescription',
           entityId: rx.id,
-          summary: `${prescriptionNo(number)}: ${evaluated.map(({ ev, item }) => `${ev.product.name} ${ev.calculation.amount} ${ev.product.dispensingUnit} ${item.frequencyCode}`).join('; ')}`,
+          summary: `${prescriptionNo(number)}: ${evaluated.map(({ ev, item }) => `${ev.product.name}${item.productId ? '' : ' (buy outside)'} ${ev.calculation.amount} ${ev.product.dispensingUnit} ${item.frequencyCode}`).join('; ')}`,
           changes: evaluated.some(({ ev }) => ev.requiresOverride)
             ? { overrides: { from: null, to: evaluated.filter(({ ev }) => ev.requiresOverride).map(({ ev, item }) => `${ev.product.name}: ${item.overrideReason}`) } }
             : undefined,
@@ -325,10 +367,10 @@ export class PrescriptionsService {
     // Allergy alerts may have been added (or a draft repeated) since the draft was written: check again at authorisation.
     const [alerts, products] = await Promise.all([
       tx.patientAlert.findMany({ where: { patientId: rx.patientId, isActive: true } }),
-      tx.product.findMany({ where: { id: { in: rx.items.map((i) => i.productId) } } }),
+      tx.product.findMany({ where: { id: { in: rx.items.flatMap((i) => (i.productId ? [i.productId] : [])) } } }),
     ]);
     for (const i of rx.items) {
-      const product = products.find((p) => p.id === i.productId);
+      const product = i.productId ? products.find((p) => p.id === i.productId) : { name: i.outsideName ?? '' };
       const conflicts = product ? allergyConflicts(alerts, product) : [];
       if (conflicts.length && !i.overrideReason?.trim()) {
         throw ruleViolation('SAFETY_OVERRIDE_REQUIRED', `${allergyConflictText(conflicts[0], product!.name)}. Write a reason for overriding the allergy warning before authorising.`, {
@@ -338,10 +380,12 @@ export class PrescriptionsService {
       }
     }
     const prescriber = ctx.membershipId ? await tx.membership.findUnique({ where: { id: ctx.membershipId } }) : null;
+    // Only medicines bought outside: nothing for the pharmacy to hand out, so it is complete once authorised.
+    const nothingToHandOut = rx.items.every((i) => !i.productId);
     await tx.prescription.update({
       where: { id },
       data: {
-        status: 'AUTHORIZED',
+        status: nothingToHandOut ? 'DISPENSED' : 'AUTHORIZED',
         authorizedById: ctx.userId,
         authorizedByName: ctx.userName,
         authorizedAt: at,
@@ -358,9 +402,11 @@ export class PrescriptionsService {
   }
 
   async cancel(id: string, reason: string) {
-    const rx = await this.prisma.db.prescription.findUnique({ where: { id } });
+    const rx = await this.prisma.db.prescription.findUnique({ where: { id }, include: { items: { select: { productId: true } } } });
     if (!rx) throw notFound('Prescription');
-    if (rx.status === 'CANCELLED' || rx.status === 'DISPENSED') throw ruleViolation('INVALID_TRANSITION', `A ${rx.status.toLowerCase()} prescription cannot be cancelled`);
+    // Only medicines bought outside: nothing was handed out here, so it can still be cancelled.
+    const outsideOnly = rx.items.length > 0 && rx.items.every((i) => !i.productId);
+    if (rx.status === 'CANCELLED' || (rx.status === 'DISPENSED' && !outsideOnly)) throw ruleViolation('INVALID_TRANSITION', `A ${rx.status.toLowerCase()} prescription cannot be cancelled`);
     await this.prisma.db.$transaction(async (tx) => {
       await tx.prescription.update({ where: { id }, data: { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: reason } });
       await this.audit.record({ action: 'prescription.cancelled', entityType: 'Prescription', entityId: id, summary: `${prescriptionNo(rx.number)}: ${reason}` }, tx);
@@ -381,12 +427,14 @@ export class PrescriptionsService {
       for (const line of input.lines) {
         const item = rx.items.find((i) => i.id === line.itemId);
         if (!item) throw ruleViolation('INVALID_ITEM', 'Item does not belong to this prescription');
+        if (!item.product) throw ruleViolation('OUTSIDE_MEDICINE', `${item.outsideName} is bought outside the clinic and is not handed out here`);
+        const product = item.product;
         const remaining = Number(item.quantity) * (1 + item.repeats) - Number(item.quantityDispensed);
         if (line.quantity > remaining + 1e-9) {
-          throw ruleViolation('OVER_DISPENSE', `Only ${remaining} ${item.product.dispensingUnit} of ${item.product.name} remain on this prescription`);
+          throw ruleViolation('OVER_DISPENSE', `Only ${remaining} ${product.dispensingUnit} of ${product.name} remain on this prescription`);
         }
         if (line.expiryDate && line.expiryDate < new Date(new Date().toDateString())) {
-          throw ruleViolation('EXPIRED_BATCH', `Batch ${line.batchNumber ?? ''} of ${item.product.name} has expired`);
+          throw ruleViolation('EXPIRED_BATCH', `Batch ${line.batchNumber ?? ''} of ${product.name} has expired`);
         }
         const d = await tx.dispensation.create({
           data: {
@@ -401,20 +449,21 @@ export class PrescriptionsService {
           },
         });
         await tx.prescriptionItem.update({ where: { id: item.id }, data: { quantityDispensed: { increment: line.quantity } } });
-        for (const hook of this.dispenseHooks) await hook(tx, { dispensationId: d.id, product: item.product, quantity: line.quantity, batchNumber: line.batchNumber, branchId: ctx.branchId ?? rx.branchId });
+        for (const hook of this.dispenseHooks) await hook(tx, { dispensationId: d.id, product, quantity: line.quantity, batchNumber: line.batchNumber, branchId: ctx.branchId ?? rx.branchId });
         // Course is assumed to finish after the prescribed duration; withdrawal runs from the last dose.
         const lastDose = new Date(Date.now() + (item.durationDays ?? 0) * 86400_000);
-        await this.withdrawals.record(tx, { patientId: rx.patientId, speciesId: rx.patient.speciesId, productId: item.productId, sourceType: 'DISPENSATION', sourceId: d.id, treatedAt: lastDose });
+        await this.withdrawals.record(tx, { patientId: rx.patientId, speciesId: rx.patient.speciesId, productId: product.id, sourceType: 'DISPENSATION', sourceId: d.id, treatedAt: lastDose });
       }
       const items = await tx.prescriptionItem.findMany({ where: { prescriptionId: id } });
-      const complete = items.every((i) => Number(i.quantityDispensed) + 1e-9 >= Number(i.quantity) * (1 + i.repeats));
+      // Medicines bought outside are never handed out here, so only pharmacy lines count.
+      const complete = items.every((i) => !i.productId || Number(i.quantityDispensed) + 1e-9 >= Number(i.quantity) * (1 + i.repeats));
       await tx.prescription.update({ where: { id }, data: { status: complete ? 'DISPENSED' : 'PARTIALLY_DISPENSED' } });
       await this.audit.record(
         {
           action: 'prescription.dispensed',
           entityType: 'Prescription',
           entityId: id,
-          summary: `${prescriptionNo(rx.number)}: ${input.lines.map((l) => `${rx.items.find((i) => i.id === l.itemId)!.product.name} × ${l.quantity}${l.batchNumber ? ` (batch ${l.batchNumber})` : ''}`).join('; ')}`,
+          summary: `${prescriptionNo(rx.number)}: ${input.lines.map((l) => `${rxItemName(rx.items.find((i) => i.id === l.itemId)!)} × ${l.quantity}${l.batchNumber ? ` (batch ${l.batchNumber})` : ''}`).join('; ')}`,
         },
         tx,
       );
@@ -455,6 +504,7 @@ export class PrescriptionsService {
           organizationId: ctx.organizationId!,
           prescriptionId: rx.id,
           productId: i.productId,
+          outsideName: i.outsideName,
           route: i.route,
           doseValue: i.doseValue,
           doseUnit: i.doseUnit,

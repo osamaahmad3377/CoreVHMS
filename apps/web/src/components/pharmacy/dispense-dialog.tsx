@@ -18,7 +18,7 @@ type Line = { quantity: string } & BatchChoice;
 
 /** "14 tablets left to dispense · 14 tablets prescribed + 1 repeat (28 in all)" */
 function remainingText(i: Prescription['items'][number]) {
-  const unit = i.product.dispensingUnit;
+  const unit = i.unit;
   const prescribed = i.repeats ? `${qtyUnit(i.quantity, unit)} prescribed + ${i.repeats} repeat${i.repeats === 1 ? '' : 's'} (${i.quantity * (1 + i.repeats)} in all)` : `${qtyUnit(i.quantity, unit)} prescribed`;
   return i.remaining > 0 ? `${qtyUnit(i.remaining, unit)} left to dispense · ${prescribed}` : `Fully dispensed · ${prescribed}`;
 }
@@ -29,7 +29,7 @@ export function DispenseDialog({ rx, open, onOpenChange, onDispensed }: { rx: Pr
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     if (open) {
-      setLines(Object.fromEntries(rx.items.map((i) => [i.id, { quantity: i.remaining > 0 ? String(Math.min(i.remaining, i.quantity)) : '0', batchNumber: '', expiryDate: '' }])));
+      setLines(Object.fromEntries(rx.items.filter((i) => !i.outside).map((i) => [i.id, { quantity: i.remaining > 0 ? String(Math.min(i.remaining, i.quantity)) : '0', batchNumber: '', expiryDate: '' }])));
       setError(null);
     }
   }, [open, rx]);
@@ -69,14 +69,19 @@ export function DispenseDialog({ rx, open, onOpenChange, onDispensed }: { rx: Pr
             <p><span className="font-medium text-destructive">Check before handing over — {rx.patient.name} has {allergies.length === 1 ? 'an alert' : 'alerts'}:</span> {allergies.map((a) => `${a.substance || a.title}${a.reaction ? ` (${a.reaction})` : ''}`).join('; ')}</p>
           </div>
         )}
+        {rx.items.some((i) => i.outside) && (
+          <p className="rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+            Bought outside the clinic, not handed out here: {rx.items.filter((i) => i.outside).map((i) => i.name).join(', ')}.
+          </p>
+        )}
         <div className="grid gap-3">
-          {rx.items.map((i) => {
-            const matches = allergyMatches(allergies, i.product);
+          {rx.items.filter((i) => !i.outside).map((i) => {
+            const matches = allergyMatches(allergies, i.product ?? { name: i.name });
             const l = lines[i.id];
             return (
               <div key={i.id} className="grid gap-2 rounded-lg surface-flat p-3">
                 <div>
-                  <p className="text-sm font-medium">{i.product.name}</p>
+                  <p className="text-sm font-medium">{i.name}</p>
                   <p className="text-xs text-muted-foreground">{remainingText(i)}</p>
                   {!!matches.length && (
                     <p className="mt-1 rounded border border-destructive/40 bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive">
@@ -86,10 +91,10 @@ export function DispenseDialog({ rx, open, onOpenChange, onDispensed }: { rx: Pr
                 </div>
                 {i.remaining > 0 && l && (
                   <div className="grid gap-2 sm:grid-cols-[140px_1fr]">
-                    <Field label={`Quantity (${i.product.dispensingUnit})`} htmlFor={`dq-${i.id}`}>
+                    <Field label={`Quantity (${i.unit})`} htmlFor={`dq-${i.id}`}>
                       <Input id={`dq-${i.id}`} inputMode="decimal" value={l.quantity} onChange={(e) => setLine(i.id, { quantity: e.target.value })} />
                     </Field>
-                    <BatchPicker id={`db-${i.id}`} productId={i.product.id} quantity={Number(l.quantity) || undefined} value={l} onChange={(v) => setLine(i.id, v)} />
+                    <BatchPicker id={`db-${i.id}`} productId={i.productId!} quantity={Number(l.quantity) || undefined} value={l} onChange={(v) => setLine(i.id, v)} />
                   </div>
                 )}
               </div>

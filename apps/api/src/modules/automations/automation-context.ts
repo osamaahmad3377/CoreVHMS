@@ -354,9 +354,9 @@ export async function buildContext(db: PrismaService['db'], trigger: AutomationT
       };
     }
     case 'Prescription': {
-      const rx = await db.prescription.findUnique({ where: { id: sourceId }, include: { client: CLIENT, patient: PATIENT, items: { select: { product: { select: { name: true } } } } } });
+      const rx = await db.prescription.findUnique({ where: { id: sourceId }, include: { client: CLIENT, patient: PATIENT, items: { select: { outsideName: true, product: { select: { name: true } } } } } });
       if (!rx) return null;
-      const meds = [...new Set(rx.items.map((it) => it.product.name))].join(', ');
+      const meds = [...new Set(rx.items.map((it) => it.product?.name ?? it.outsideName ?? 'Medicine'))].join(', ');
       return {
         sourceType: 'Prescription',
         sourceId: rx.id,

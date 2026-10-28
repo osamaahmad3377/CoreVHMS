@@ -106,8 +106,8 @@ export function CollectPrescriptionDialog({
                     <ul className="mt-2 grid gap-0.5 text-sm">
                       {p.items.filter((i) => i.remaining > 0).map((i) => (
                         <li key={i.id}>
-                          <span className="font-medium">{i.product.name}</span>
-                          <span className="text-xs text-muted-foreground"> — {qtyUnit(i.remaining, i.product.dispensingUnit)} left to hand out</span>
+                          <span className="font-medium">{i.name}</span>
+                          <span className="text-xs text-muted-foreground"> — {qtyUnit(i.remaining, i.unit)} left to hand out</span>
                         </li>
                       ))}
                     </ul>

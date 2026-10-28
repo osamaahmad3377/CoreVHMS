@@ -75,7 +75,14 @@ export const doseReferenceSchema = z
   .refine((v) => v.doseMax >= v.doseMin, { path: ['doseMax'], message: 'Maximum must be ≥ minimum' });
 
 export const prescriptionItemSchema = z.object({
-  productId: z.string().uuid(),
+  /** A medicine from the clinic's pharmacy. Leave empty for a medicine the client buys outside (`outsideName`). */
+  productId: optUuid(),
+  /**
+   * A medicine the clinic does not stock, written by name and strength ("Amoxicillin 250 mg tablets").
+   * The client buys it from another pharmacy, so it is never handed out or billed here. For these lines
+   * `doseValue` is the amount per dose and `doseUnit` its unit ("1" "tablet").
+   */
+  outsideName: optText(200),
   route: reqText(30),
   doseValue: z.coerce.number().positive(),
   doseUnit: reqText(30),
@@ -92,13 +99,17 @@ export const prescriptionItemSchema = z.object({
 });
 export type PrescriptionItemInput = z.infer<typeof prescriptionItemSchema>;
 
+/** Each line is either a pharmacy medicine or a medicine bought outside — exactly one of the two. */
+export const oneMedicine = (i: { productId?: string | null; outsideName?: string | null }) => !!i.productId !== !!i.outsideName?.trim();
+export const ONE_MEDICINE = { message: 'Choose a medicine from the pharmacy, or write the name of one to buy outside', path: ['productId'] };
+
 export const createPrescriptionSchema = z.object({
   patientId: z.string().uuid(),
   encounterId: optUuid(),
   weightKg: optDec(0.001),
   notes: optText(2000),
   validUntil: optDate(),
-  items: z.array(prescriptionItemSchema).min(1).max(20),
+  items: z.array(prescriptionItemSchema.refine(oneMedicine, ONE_MEDICINE)).min(1).max(20),
   authorize: z.boolean().default(false),
 });
 export type CreatePrescriptionInput = z.infer<typeof createPrescriptionSchema>;

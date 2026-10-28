@@ -1,7 +1,7 @@
 'use client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { enumLabel, type Paginated } from '@vcms/shared';
-import { Activity, AlertTriangle, ArrowRight, MoreHorizontal, BedDouble, CalendarPlus, CheckCircle2, ChevronDown, ClipboardList, FilePlus, FlaskConical, History, Paperclip, Pill, Printer, Receipt, Scissors, Stethoscope, Syringe, Upload, XCircle } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowRight, MoreHorizontal, BedDouble, CalendarPlus, CheckCircle2, ChevronDown, ClipboardList, FileText, FilePlus, FlaskConical, History, Paperclip, Pill, Printer, Receipt, Scissors, Stethoscope, Syringe, Upload, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
@@ -29,6 +29,7 @@ import { AttachmentsPanel } from '@/components/shared/attachments-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useAppointmentTypes } from '@/hooks/use-catalog';
 import { api, qs } from '@/lib/api';
@@ -76,6 +77,7 @@ function Workspace() {
   const [rxOpen, setRxOpen] = useState(false);
   const [giveOpen, setGiveOpen] = useState(false);
   const [labOpen, setLabOpen] = useState(false);
+  const [recordOpen, setRecordOpen] = useState(false);
   const [booked, setBooked] = useState<Appointment | null>(null);
   const vitalsRef = useRef<VitalsPanelHandle>(null);
   const org = useQuery({ queryKey: ['organization'], queryFn: () => api.get<ClinicHeader>('/organization'), staleTime: 300_000 });
@@ -206,19 +208,20 @@ function Workspace() {
     { id: 'exam', title: 'Examination', hint: 'What you find when you examine', fields: ['objective'], exam: true },
     {
       id: 'diagnosis',
-      title: 'Diagnosis & tests',
-      hint: 'What you think is wrong, and tests to confirm it',
-      fields: ['assessment'],
-      extra: (
+      title: 'Tests & diagnosis',
+      hint: 'Order tests first, then record what you think is wrong',
+      // Tests come first: the vet orders them, then writes the assessment and diagnoses with the results in view.
+      lead: (
         <>
           <PastRow>
-            <PastButton tab="diagnoses" label="Past diagnoses" />
             <PastButton tab="tests" label="Past tests" />
+            <PastButton tab="diagnoses" label="Past diagnoses" />
           </PastRow>
-          <DiagnosesPanel encounterId={enc.id} diagnoses={enc.diagnoses} editable={writable} onSaved={refresh} />
           <LabOrdersPanel patient={enc.patient} encounterId={enc.id} editable={active} dialogOpen={labOpen} onDialogOpenChange={setLabOpen} />
         </>
       ),
+      fields: ['assessment'],
+      extra: <DiagnosesPanel encounterId={enc.id} diagnoses={enc.diagnoses} editable={writable} onSaved={refresh} />,
       badge: enc.diagnoses.length ? plural(enc.diagnoses.length, 'diagnosis', 'diagnoses') : null,
       done: enc.diagnoses.length > 0,
     },
@@ -317,9 +320,14 @@ function Workspace() {
         </span>
         <div className="ml-auto flex gap-2">
           {enc.status === 'COMPLETED' && (
-            <Button size="sm" variant="outline" onClick={() => window.print()}>
-              <Printer /> Print consultation
-            </Button>
+            <>
+              <Button size="sm" variant="outline" onClick={() => setRecordOpen(true)}>
+                <FileText /> Consultation record
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => window.print()}>
+                <Printer /> Print
+              </Button>
+            </>
           )}
           {enc.status === 'OPEN' && can('clinical.write') && (
             <>
@@ -383,6 +391,7 @@ function Workspace() {
         <NextSteps
           steps={[
             can('billing.write') && { icon: Receipt, title: 'Bill this visit', text: 'Charges from this consultation are ready to invoice', href: `/billing/invoices/new?clientId=${enc.client.id}`, primary: true },
+            { icon: FileText, title: 'Consultation record', text: 'View or print the full record of this visit', onClick: () => setRecordOpen(true) },
             can('appointments.write') &&
               (recheck
                 ? { icon: CheckCircle2, done: true, title: `✔ Recheck booked — ${when(recheck.startsAt, tz).replace(',', '')}`, text: recheck.clinician ? `with ${recheck.clinician.name}` : 'Any free vet', href: `/calendar?date=${localDate(recheck.startsAt, tz)}`, linkLabel: '(change)' }
@@ -459,10 +468,10 @@ function Workspace() {
 
         <div className="grid min-w-0 grid-cols-1 content-start gap-4 [&>*]:min-w-0">
           <VitalsPanel ref={vitalsRef} encounterId={enc.id} vitals={enc.vitals} editable={writable} onSaved={refresh} />
+          <LabOrdersPanel patient={enc.patient} encounterId={enc.id} editable={active} dialogOpen={labOpen} onDialogOpenChange={setLabOpen} />
           <DiagnosesPanel encounterId={enc.id} diagnoses={enc.diagnoses} editable={writable} onSaved={refresh} />
           <PrescriptionsPanel patient={enc.patient} encounterId={enc.id} editable={active} dialogOpen={rxOpen} onDialogOpenChange={setRxOpen} />
           <AdministrationsPanel patient={enc.patient} encounterId={enc.id} editable={active} dialogOpen={giveOpen} onDialogOpenChange={setGiveOpen} />
-          <LabOrdersPanel patient={enc.patient} encounterId={enc.id} editable={active} dialogOpen={labOpen} onDialogOpenChange={setLabOpen} />
           <ConsultationCharges encounterId={enc.id} hasPrescriptions={hasPrescriptions} />
           <ProblemsPanel patientId={enc.patient.id} editable={writable} />
           <TasksPanel
@@ -485,6 +494,31 @@ function Workspace() {
           </Card>
         </div>
       </div>
+      )}
+      {enc.status === 'COMPLETED' && (
+        <Dialog open={recordOpen} onOpenChange={setRecordOpen}>
+          <DialogContent size="xl" className="bg-muted/60">
+            <DialogHeader>
+              <DialogTitle>Consultation record — {enc.encounterNo}</DialogTitle>
+              <DialogDescription>The clinical record of this visit, ready to print or save as PDF. Charges are on the invoice, not here.</DialogDescription>
+            </DialogHeader>
+            <div className="overflow-x-auto rounded-lg border bg-white shadow-sm">
+              <ConsultationRecord encounter={enc} clinic={org.data ?? null} />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setRecordOpen(false)}>Close</Button>
+              <Button
+                onClick={() => {
+                  // Close the window first so only the record itself goes to the printer.
+                  setRecordOpen(false);
+                  setTimeout(() => window.print(), 350);
+                }}
+              >
+                <Printer /> Print
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
       <PatientHistoryDialog patientId={enc.patient.id} patientName={enc.patient.name} currentId={enc.id} open={historyOpen} onOpenChange={setHistoryOpen} initialVisitId={historyVisit} />
       <FinishConsultationDialog
@@ -564,7 +598,7 @@ function NextSteps({ steps }: { steps: (Step | false)[] }) {
   return (
     <section aria-label="Next steps" className="mb-4 rounded-lg border border-success/30 bg-success/5 p-3">
       <p className="mb-2 flex items-center gap-2 text-sm font-medium"><CheckCircle2 className="h-4 w-4 text-success" /> Consultation finished — next steps</p>
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className={`grid gap-2 sm:grid-cols-2 ${list.length >= 4 ? 'xl:grid-cols-4' : 'lg:grid-cols-3'}`}>
         {list.map((st) => {
           if (st.done) {
             return (

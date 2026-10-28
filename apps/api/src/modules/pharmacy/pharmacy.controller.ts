@@ -6,6 +6,8 @@ import {
   dispenseSchema,
   pharmacySettingsSchema,
   doseReferenceSchema,
+  ONE_MEDICINE,
+  oneMedicine,
   prescriptionItemSchema,
   prescriptionListQuery,
   productCategorySchema,
@@ -24,7 +26,7 @@ import { PrescriptionsService } from './prescriptions.service';
 import { WithdrawalService } from './withdrawal.service';
 
 const UUID = new ParseUUIDPipe();
-const evaluateSchema = z.object({ patientId: z.string().uuid(), weightKg: z.coerce.number().positive().nullish(), item: prescriptionItemSchema });
+const evaluateSchema = z.object({ patientId: z.string().uuid(), weightKg: z.coerce.number().positive().nullish(), item: prescriptionItemSchema.refine(oneMedicine, ONE_MEDICINE) });
 const reasonSchema = z.object({ reason: z.string().trim().min(1).max(500) });
 
 @ApiTags('pharmacy')

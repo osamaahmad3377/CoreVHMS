@@ -89,6 +89,8 @@ export interface WorkflowStep {
   title: string;
   hint: string;
   fields?: (keyof Content)[];
+  /** Content shown before the step's note fields, e.g. the tests ordered before writing the diagnosis. */
+  lead?: React.ReactNode;
   /** Show the physical-examination checklist in this step. */
   exam?: boolean;
   /** The step's other content, e.g. the vital-signs form or the prescriptions list. A function gets the note as written so far. */
@@ -459,6 +461,7 @@ export function NoteEditor({
           <span className="text-xs text-muted-foreground">Step {n + 1} of {steps.length} · {st.hint}</span>
         </div>
       )}
+      {st.lead}
       {st.fields?.map((k) => renderField(FIELDS.find((f) => f.key === k)!))}
       {st.exam && examBlock}
       {typeof st.extra === 'function' ? st.extra({ content, done: Object.fromEntries(steps.map((x) => [x.id, stepDone(x)])), goStep }) : st.extra}

@@ -79,7 +79,7 @@ export class PortalService {
       labReports: labs.map((o) => ({ id: o.id, orderNo: formatNumber('LAB', o.number), releasedAt: o.releasedAt, tests: o.items.map((i) => i.test.name) })),
       discharges: discharges.map((d) => ({ ...d, admissionNo: formatNumber('HOSP', d.number) })),
       surgeries: surgeries.map((s) => ({ ...s, surgeryNo: formatNumber('SURG', s.number) })),
-      prescriptions: prescriptions.map((p) => ({ id: p.id, prescriptionNo: formatNumber('RX', p.number), date: p.authorizedAt, items: p.items.map((i) => ({ product: i.product.name, instructions: i.instructions, quantity: dec(i.quantity), unit: i.product.dispensingUnit })) })),
+      prescriptions: prescriptions.map((p) => ({ id: p.id, prescriptionNo: formatNumber('RX', p.number), date: p.authorizedAt, items: p.items.map((i) => ({ product: i.product?.name ?? i.outsideName ?? 'Medicine', instructions: i.instructions, quantity: dec(i.quantity), unit: i.product?.dispensingUnit ?? i.doseUnit, outside: !i.productId })) })),
       weights: weights.map((w) => ({ measuredAt: w.measuredAt, weightKg: dec(w.weightKg) })),
       documents: docs,
     };

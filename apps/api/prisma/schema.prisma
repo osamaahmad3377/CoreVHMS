@@ -2034,7 +2034,10 @@ model PrescriptionItem {
   id                String   @id @default(uuid()) @db.Uuid
   organizationId    String   @db.Uuid
   prescriptionId    String   @db.Uuid
-  productId         String   @db.Uuid
+  /// Null for a medicine the client buys outside the clinic (`outsideName`); such lines are never dispensed or billed.
+  productId         String?  @db.Uuid
+  /// Name and strength of a medicine the clinic does not stock, e.g. "Amoxicillin 250 mg tablets".
+  outsideName       String?
   route             String
   doseValue         Decimal  @db.Decimal(14, 4)
   doseUnit          String
@@ -2056,7 +2059,7 @@ model PrescriptionItem {
 
   organization    Organization               @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   prescription    Prescription               @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
-  product         Product                    @relation(fields: [productId], references: [id], onDelete: Restrict)
+  product         Product?                   @relation(fields: [productId], references: [id], onDelete: Restrict)
   doseReference   DoseReference?             @relation(fields: [doseReferenceId], references: [id], onDelete: SetNull)
   dispensations   Dispensation[]
   administrations MedicationAdministration[]

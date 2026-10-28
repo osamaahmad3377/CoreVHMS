@@ -144,11 +144,11 @@ function Prescriptions({ rows }: { rows: Row[] }) {
           <MiniTable
             head={['Medicine', 'How to give', 'For', 'Qty', 'Supplied']}
             rows={(p.items ?? []).map((i: Row) => [
-              i.product?.name,
+              i.product?.name ?? `${i.outsideName} (bought outside)`,
               `${i.doseValue} ${i.doseUnit} ${label(i.route).toLowerCase()}, ${i.frequencyText}${i.instructions ? ` — ${i.instructions}` : ''}`,
               i.durationDays ? `${i.durationDays} days` : '—',
               i.quantity,
-              (i.dispensations ?? []).map((d: Row) => `${d.quantity} on ${fmtDate(d.dispensedAt)}${d.batchNumber ? ` (batch ${d.batchNumber})` : ''}`).join('; ') || 'Not yet',
+              (i.dispensations ?? []).map((d: Row) => `${d.quantity} on ${fmtDate(d.dispensedAt)}${d.batchNumber ? ` (batch ${d.batchNumber})` : ''}`).join('; ') || (i.productId ? 'Not yet' : 'Outside'),
             ])}
           />
           {p.notes && <p className="text-[9.5pt]">{p.notes}</p>}

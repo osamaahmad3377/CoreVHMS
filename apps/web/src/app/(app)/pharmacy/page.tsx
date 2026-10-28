@@ -13,7 +13,7 @@ import { EmptyState, PageHeader } from '@/components/page';
 import { RequirePermission } from '@/components/require';
 import { SearchInput } from '@/components/search-input';
 import { AlertChip } from '@/components/status';
-import { AllergyConflictChip, RxStatusBadge, allergyItems } from '@/components/pharmacy/rx-status';
+import { AllergyConflictChip, RxStatusBadge, allergyItems, outsideOnly } from '@/components/pharmacy/rx-status';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useUrlState } from '@/hooks/use-url-state';
@@ -91,7 +91,7 @@ function Worklist() {
               header: 'Medicines',
               cell: (r) => (
                 <div className="grid gap-1">
-                  <span className="text-sm">{r.items.map((i) => i.product.name).join(', ')}</span>
+                  <span className="text-sm">{r.items.map((i) => i.name).join(', ')}</span>
                   {allergyItems(r).length > 0 && r.status !== 'CANCELLED' && <AllergyConflictChip className="w-fit" />}
                 </div>
               ),
@@ -99,7 +99,7 @@ function Worklist() {
             { key: 'alerts', header: '', cell: (r) => <div className="flex gap-1">{r.patient.alerts.filter((a) => a.type === 'ALLERGY').slice(0, 1).map((a) => <AlertChip key={a.id} alert={a} />)}</div> },
             { key: 'by', header: 'Prescriber', cell: (r) => <span className="text-sm">{r.prescriber?.name ?? r.createdByName}</span> },
             { key: 'when', header: 'Created', cell: (r) => <span className="whitespace-nowrap text-xs">{fmtDateTime(r.createdAt)}</span> },
-            { key: 'st', header: 'Status', cell: (r) => <RxStatusBadge status={r.status} /> },
+            { key: 'st', header: 'Status', cell: (r) => <RxStatusBadge status={r.status} outsideOnly={outsideOnly(r)} /> },
             {
               key: 'act',
               header: '',

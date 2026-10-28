@@ -10,7 +10,7 @@ import { LabOrderDialog } from '../lab/order-dialog';
 import { LabStatusBadge } from '../lab/lab-status';
 import { AdministerDialog } from '../pharmacy/administer-dialog';
 import { PrescriptionDialog } from '../pharmacy/prescription-dialog';
-import { RxStatusBadge } from '../pharmacy/rx-status';
+import { RxStatusBadge, outsideOnly } from '../pharmacy/rx-status';
 import { Button } from '../ui/button';
 import { Card, CardHeader, CardTitle } from '../ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog';
@@ -57,10 +57,10 @@ export function PrescriptionsPanel(props: Ctx) {
             <li key={rx.id}>
               <Link href={`/pharmacy/prescriptions/${rx.id}`} className="flex items-center gap-2 px-3 py-2 hover:bg-muted/50">
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm">{rx.items.map((i) => `${i.product.name} — ${qtyUnit(i.amountPerDose, i.product.dispensingUnit)}, ${frequencyLabel(i.frequencyText).replace(/^./, (c) => c.toLowerCase())}`).join('; ')}</span>
+                  <span className="block truncate text-sm">{rx.items.map((i) => `${i.name}${i.outside ? ' (buy outside)' : ''} — ${qtyUnit(i.amountPerDose, i.unit)}, ${frequencyLabel(i.frequencyText).replace(/^./, (c) => c.toLowerCase())}`).join('; ')}</span>
                   <span className="block text-2xs text-muted-foreground">{rx.prescriptionNo} · {fmtDateTime(rx.createdAt)}</span>
                 </span>
-                <RxStatusBadge status={rx.status} />
+                <RxStatusBadge status={rx.status} outsideOnly={outsideOnly(rx)} />
               </Link>
             </li>
           ))}

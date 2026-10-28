@@ -5,7 +5,7 @@ import { ClientMergeService } from '../clients/client-merge.service';
 import { DashboardService } from '../dashboard/dashboard.service';
 import { PatientMergeService } from '../patients/patient-merge.service';
 import { PatientTimelineService } from '../patients/patient-timeline.service';
-import { prescriptionNo } from './prescriptions.service';
+import { prescriptionNo, rxItemName } from './prescriptions.service';
 import { ClientPrivacyService } from '../clients/client-privacy.service';
 import { SearchService } from '../search/search.service';
 import { AttachmentsService } from '../attachments/attachments.service';
@@ -37,7 +37,7 @@ export class PharmacyIntegrations implements OnModuleInit {
         include: { patient: { select: { name: true } }, items: { include: { product: { select: { name: true } } } } },
       });
       return p
-        ? [{ type: 'prescription', id: p.id, title: `Prescription ${prescriptionNo(n)}`, subtitle: `${p.patient.name} · ${p.items.map((i) => i.product.name).join(', ')}`, href: `/pharmacy/prescriptions/${p.id}`, badge: p.status.replace('_', ' ') }]
+        ? [{ type: 'prescription', id: p.id, title: `Prescription ${prescriptionNo(n)}`, subtitle: `${p.patient.name} · ${p.items.map(rxItemName).join(', ')}`, href: `/pharmacy/prescriptions/${p.id}`, badge: p.status.replace('_', ' ') }]
         : [];
     });
     this.timeline.register('prescription', async (id) =>
@@ -52,7 +52,7 @@ export class PharmacyIntegrations implements OnModuleInit {
         id: p.id,
         at: p.createdAt,
         kind: 'prescription',
-        title: `Prescription: ${p.items.map((i) => i.product.name).join(', ')}`,
+        title: `Prescription: ${p.items.map(rxItemName).join(', ')}`,
         detail: `${prescriptionNo(p.number)} · ${p.status.toLowerCase().replace('_', ' ')}${p.cancelReason ? ` — ${p.cancelReason}` : ''}`,
         actor: p.authorizedByName ?? p.createdByName,
         href: `/pharmacy/prescriptions/${p.id}`,

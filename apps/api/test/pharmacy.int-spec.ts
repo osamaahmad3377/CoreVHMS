@@ -215,6 +215,51 @@ describe('Prescriptions & pharmacy', () => {
     expect((await vet.client.post(`/prescriptions/${draft.body.id}/repeat`, { encounterId: '00000000-0000-4000-8000-000000000000' })).body.error.code).toBe('INVALID_ENCOUNTER');
   });
 
+  it('prescribes a medicine the clinic does not stock, to buy outside: never dispensed or billed here', async () => {
+    const { org, vet, patient, product } = await setup();
+    const pharm = await staff(org, 'pharmacy');
+    const outside = { outsideName: 'Outsidomycin 250 mg tablets', route: 'PO', doseValue: 1, doseUnit: 'tablet', frequencyCode: 'BID', durationDays: 5, instructions: 'Give 1 tablet by mouth 2 times a day for 5 days.' };
+    // Exactly one of: a pharmacy product, or a name written in.
+    expect((await vet.client.post('/prescriptions', { patientId: patient.id, items: [{ ...outside, outsideName: undefined }] })).status).toBe(400);
+    expect((await vet.client.post('/prescriptions', { patientId: patient.id, items: [{ ...outside, productId: product.id }] })).status).toBe(400);
+    const ev = await vet.client.post('/prescriptions/evaluate', { patientId: patient.id, item: { ...outside, durationDays: 3, doseValue: 0.5 } });
+    expect(ev.status).toBe(200);
+    expect(ev.body).toMatchObject({ outside: true, quantity: 3, requiresOverride: false, calculation: { amount: 0.5, dispensingUnit: 'tablet' } });
+
+    // Allergy checked on the name written.
+    await org.owner.post(`/patients/${patient.id}/alerts`, { type: 'ALLERGY', severity: 'CRITICAL', title: 'Outsidomycin reaction', substance: 'outsidomycin' });
+    const blocked = await vet.client.post('/prescriptions', { patientId: patient.id, items: [outside] });
+    expect(blocked.body.error.code).toBe('SAFETY_OVERRIDE_REQUIRED');
+
+    // Only outside medicines: nothing for the pharmacy, so it is complete once authorised.
+    const only = await vet.client.post('/prescriptions', { patientId: patient.id, items: [{ ...outside, overrideReason: 'Reaction was mild; owner consents' }], authorize: true });
+    expect(only.status).toBe(201);
+    expect(only.body.status).toBe('DISPENSED');
+    expect(only.body.items[0]).toMatchObject({ outside: true, productId: null, product: null, name: 'Outsidomycin 250 mg tablets', unit: 'tablet', quantity: 10, remaining: 0 });
+    expect((await vet.client.get(`/prescriptions/${only.body.id}/verify`)).body).toEqual({ authorized: true, valid: true });
+    expect((await vet.client.get(`/prescriptions?q=outsidomycin&patientId=${patient.id}`)).body.data.map((r: any) => r.id)).toContain(only.body.id);
+    await expect(prisma().prescriptionItem.update({ where: { id: only.body.items[0].id }, data: { outsideName: 'Something else' } })).rejects.toThrow(/immutable/);
+
+    // Mixed: the pharmacy hands out its own medicine; the outside one is refused and does not hold the prescription open.
+    const mixed = await vet.client.post('/prescriptions', { patientId: patient.id, items: [item(product.id, { quantity: 4 }), { ...outside, outsideName: 'Elsewhere drops', doseUnit: 'drop', doseValue: 2 }], authorize: true });
+    expect(mixed.body.status).toBe('AUTHORIZED');
+    const [ours, theirs] = mixed.body.items;
+    expect(theirs).toMatchObject({ outside: true, name: 'Elsewhere drops', unit: 'drop' });
+    expect((await pharm.client.post(`/prescriptions/${mixed.body.id}/dispense`, { lines: [{ itemId: theirs.id, quantity: 1 }] })).body.error.code).toBe('OUTSIDE_MEDICINE');
+    const done = await pharm.client.post(`/prescriptions/${mixed.body.id}/dispense`, { lines: [{ itemId: ours.id, quantity: 4 }] });
+    expect(done.body.status).toBe('DISPENSED');
+    const charges = (await vet.client.get(`/charges?clientId=${mixed.body.client.id}&status=PENDING&pageSize=50`)).body.data.filter((c: any) => c.sourceType === 'Dispensation');
+    expect(charges).toHaveLength(1);
+    expect(charges[0].description).toContain('Testamycin');
+
+    // Repeating copies the outside medicine as written.
+    const rep = await vet.client.post(`/prescriptions/${only.body.id}/repeat`);
+    expect(rep.body.items[0]).toMatchObject({ outside: true, outsideName: 'Outsidomycin 250 mg tablets' });
+    // Nothing was handed out, so a prescription of only outside medicines can still be cancelled; a dispensed one cannot.
+    expect((await vet.client.post(`/prescriptions/${only.body.id}/cancel`, { reason: 'Wrong strength' })).body.status).toBe('CANCELLED');
+    expect((await vet.client.post(`/prescriptions/${mixed.body.id}/cancel`, { reason: 'x' })).status).toBe(422);
+  });
+
   it('freezes authorised prescription items at the database level', async () => {
     const { vet, patient, product } = await setup();
     const rx = await vet.client.post('/prescriptions', { patientId: patient.id, items: [item(product.id)], authorize: true });

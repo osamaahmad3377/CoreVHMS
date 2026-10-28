@@ -302,9 +302,12 @@ export const GUIDES: HelpGuide[] = [
       'Read any warnings. Blocking warnings (for example an allergy) need a written reason to continue.',
       'Click Authorise (vets) — or save as a draft for a vet to authorise later (nurses).',
     ],
-    tips: ['The system ships with no dose values. Your vets add approved dose references, with their source, in the Formulary.'],
+    tips: [
+      'The system ships with no dose values. Your vets add approved dose references, with their source, in the Formulary.',
+      'Medicine not in your pharmacy? Click “Not in our pharmacy? Write in a medicine to buy outside”, type its name and strength, and how much to give. It prints on a prescription for the client to take to another pharmacy, and is never handed out or billed here.',
+    ],
     links: [{ label: 'Pharmacy', href: '/pharmacy' }],
-    keywords: ['medicine', 'drug', 'script', 'rx', 'medication'],
+    keywords: ['medicine', 'drug', 'script', 'rx', 'medication', 'outside', 'not in stock', 'external'],
   },
   {
     id: 'dispense',

@@ -12,7 +12,7 @@ import { DescriptionList, ErrorState, LoadingRows } from '@/components/page';
 import { DispenseDialog } from '@/components/pharmacy/dispense-dialog';
 import { PrescriptionLabels } from '@/components/pharmacy/prescription-label';
 import { productStrength } from '@/components/pharmacy/product-picker';
-import { AllergyConflictChip, RxStatusBadge } from '@/components/pharmacy/rx-status';
+import { AllergyConflictChip, RxStatusBadge, outsideOnly } from '@/components/pharmacy/rx-status';
 import { RequirePermission } from '@/components/require';
 import { AlertChip } from '@/components/status';
 import { Badge } from '@/components/ui/badge';
@@ -23,6 +23,14 @@ import { fmtDate, fmtDateTime, fmtWeight } from '@/lib/format';
 import { frequencyLabel, routeLabel, qtyUnit } from '@/lib/labels';
 import { useSession } from '@/lib/session';
 import type { Prescription } from '@/lib/types';
+
+/** "Print labels", "Print prescription", or both when some medicines are handed out and some bought outside. */
+function printLabel(rx: Prescription) {
+  const inHouse = rx.items.filter((i) => !i.outside).length;
+  const outside = rx.items.length - inHouse;
+  const labels = inHouse === 1 ? 'label' : 'labels';
+  return !outside ? `Print ${labels}` : !inHouse ? 'Print prescription' : `Print ${labels} and prescription`;
+}
 
 function Detail() {
   const { id } = useParams<{ id: string }>();
@@ -59,7 +67,7 @@ function Detail() {
         </nav>
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <h1 className="text-xl font-semibold">{rx.prescriptionNo}</h1>
-          <RxStatusBadge status={rx.status} />
+          <RxStatusBadge status={rx.status} outsideOnly={outsideOnly(rx)} />
           {verify.data?.valid === true && <span className="flex items-center gap-1 text-xs text-success" title="The prescription has not changed since it was approved"><ShieldCheck className="h-3.5 w-3.5" /> Approved by {rx.authorizedByName ?? 'the vet'}</span>}
           {verify.data?.valid === false && <span className="flex items-center gap-1 text-xs font-medium text-destructive"><ShieldAlert className="h-3.5 w-3.5" /> Content does not match authorisation</span>}
           <div className="ml-auto flex flex-wrap gap-2">
@@ -68,10 +76,10 @@ function Detail() {
                 <CheckCircle2 /> Authorise
               </Button>
             )}
-            {dispensable && can('pharmacy.dispense') && <Button size="sm" onClick={() => setDispense(true)}><PackageCheck /> Dispense</Button>}
-            {rx.status !== 'DRAFT' && rx.status !== 'CANCELLED' && <Button size="sm" variant="outline" onClick={() => window.print()}><Printer /> {rx.items.length === 1 ? 'Print label' : 'Print labels'}</Button>}
+            {dispensable && can('pharmacy.dispense') && rx.items.some((i) => !i.outside) && <Button size="sm" onClick={() => setDispense(true)}><PackageCheck /> Dispense</Button>}
+            {rx.status !== 'DRAFT' && rx.status !== 'CANCELLED' && <Button size="sm" variant="outline" onClick={() => window.print()}><Printer /> {printLabel(rx)}</Button>}
             {can('prescriptions.write') && rx.status !== 'DRAFT' && <Button size="sm" variant="outline" loading={act.isPending && act.variables?.path === 'repeat'} onClick={() => act.mutate({ path: 'repeat' })}><Copy /> Repeat</Button>}
-            {['DRAFT', 'AUTHORIZED', 'PARTIALLY_DISPENSED'].includes(rx.status) && (can('prescriptions.write') || can('prescriptions.authorize')) && (
+            {(['DRAFT', 'AUTHORIZED', 'PARTIALLY_DISPENSED'].includes(rx.status) || (rx.status === 'DISPENSED' && outsideOnly(rx))) && (can('prescriptions.write') || can('prescriptions.authorize')) && (
               <Button size="sm" variant="ghost" className="text-destructive" onClick={async () => { const r = await confirm({ title: `Cancel ${rx.prescriptionNo}?`, requireReason: true, destructive: true, confirmLabel: 'Cancel prescription' }); if (r.confirmed) act.mutate({ path: 'cancel', body: { reason: r.reason } }); }}>
                 <XCircle /> Cancel
               </Button>
@@ -85,22 +93,24 @@ function Detail() {
               <Card key={i.id}>
                 <CardHeader>
                   <CardTitle className="flex flex-wrap items-center gap-2">
-                    {i.product.name}
-                    <span className="text-xs font-normal text-muted-foreground">{productStrength(i.product)}</span>
-                    {i.product.isControlled && <Badge variant="warning">Controlled</Badge>}
-                    {rx.status !== 'CANCELLED' && allergyMatches(rx.patient.alerts, i.product).length > 0 && <AllergyConflictChip />}
+                    {i.name}
+                    {i.product ? <span className="text-xs font-normal text-muted-foreground">{productStrength(i.product)}</span> : <Badge variant="info">Buy outside</Badge>}
+                    {i.product?.isControlled && <Badge variant="warning">Controlled</Badge>}
+                    {rx.status !== 'CANCELLED' && allergyMatches(rx.patient.alerts, i.product ?? { name: i.name }).length > 0 && <AllergyConflictChip />}
                   </CardTitle>
-                  <span className="text-xs text-muted-foreground">{i.quantityDispensed} of {qtyUnit(i.quantity * (1 + i.repeats), i.product.dispensingUnit)} handed over</span>
+                  <span className="text-xs text-muted-foreground">
+                    {i.outside ? 'Not stocked here: the client buys it from another pharmacy' : `${i.quantityDispensed} of ${qtyUnit(i.quantity * (1 + i.repeats), i.unit)} handed over`}
+                  </span>
                 </CardHeader>
                 <CardContent className="grid gap-3">
                   <p className="text-sm font-medium">{i.instructions}</p>
                   <DescriptionList
                     items={[
-                      { label: 'Dose', value: `${i.doseValue} ${i.doseUnit}${i.weightKgUsed ? ` × ${i.weightKgUsed} kg` : ''}` },
-                      { label: 'Per administration', value: `${i.amountPerDose} ${i.product.dispensingUnit} · ${routeLabel(i.route)}` },
+                      ...(i.outside ? [] : [{ label: 'Dose', value: `${i.doseValue} ${i.doseUnit}${i.weightKgUsed ? ` × ${i.weightKgUsed} kg` : ''}` }]),
+                      { label: 'Per administration', value: `${qtyUnit(i.amountPerDose, i.unit)} · ${routeLabel(i.route)}` },
                       { label: 'How often', value: `${frequencyLabel(i.frequencyText)}${i.durationDays ? ` for ${i.durationDays} days` : ''}` },
-                      { label: 'Quantity', value: `${qtyUnit(i.quantity, i.product.dispensingUnit)}${i.repeats ? ` + ${i.repeats} ${i.repeats === 1 ? 'repeat' : 'repeats'}` : ''}` },
-                      { label: 'Dose reference', value: i.doseReference ? `${i.doseReference.doseMin}–${i.doseReference.doseMax} ${i.doseReference.doseUnit} (${i.doseReference.source})` : 'None approved for this species' },
+                      { label: 'Quantity', value: `${qtyUnit(i.quantity, i.unit)}${i.repeats ? ` + ${i.repeats} ${i.repeats === 1 ? 'repeat' : 'repeats'}` : ''}` },
+                      ...(i.outside ? [] : [{ label: 'Dose reference', value: i.doseReference ? `${i.doseReference.doseMin}–${i.doseReference.doseMax} ${i.doseReference.doseUnit} (${i.doseReference.source})` : 'None approved for this species' }]),
                     ]}
                   />
                   {!!i.warnings?.length && (
@@ -113,7 +123,7 @@ function Detail() {
                     <ul className="divide-y rounded-md border text-xs">
                       {i.dispensations.map((d) => (
                         <li key={d.id} className="flex flex-wrap justify-between gap-2 px-3 py-1.5">
-                          <span>{d.quantity} {i.product.dispensingUnit}{d.batchNumber && ` · batch ${d.batchNumber}`}{d.expiryDate && ` · exp ${fmtDate(d.expiryDate)}`}</span>
+                          <span>{d.quantity} {i.unit}{d.batchNumber && ` · batch ${d.batchNumber}`}{d.expiryDate && ` · exp ${fmtDate(d.expiryDate)}`}</span>
                           <span className="text-muted-foreground">{d.dispensedByName} · {fmtDateTime(d.dispensedAt)}</span>
                         </li>
                       ))}
