@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, TreatmentOrder } from '@prisma/client';
-import type { TreatmentOrderInput } from '@vcms/shared';
+import { allergyConflictText, allergyConflicts, type TreatmentOrderInput } from '@vcms/shared';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { conflict, notFound, ruleViolation } from '../../common/http/errors';
@@ -13,7 +13,8 @@ export const TASK_HORIZON_HOURS = 36;
 const HOUR = 3600_000;
 
 const dec = (v: Prisma.Decimal | null) => (v === null ? null : Number(v));
-export const shapeOrder = <T extends TreatmentOrder>(o: T) => ({ ...o, dose: dec(o.dose), fluidRateMlPerHour: dec(o.fluidRateMlPerHour) });
+/** `outside`: a medicine the clinic does not stock (e.g. brought in by the owner) — no stock used, nothing charged. */
+export const shapeOrder = <T extends TreatmentOrder>(o: T) => ({ ...o, dose: dec(o.dose), fluidRateMlPerHour: dec(o.fluidRateMlPerHour), outside: o.kind === 'MEDICATION' && !o.productId });
 
 /**
  * The hospital treatment sheet. Orders are written by clinicians; each scheduled occurrence becomes a
@@ -67,7 +68,7 @@ export class TreatmentsService {
           admissionId,
           kind: input.kind,
           schedule: input.schedule,
-          description: input.description,
+          description: input.description.trim(),
           productId: input.productId ?? null,
           dose: input.dose ?? null,
           doseUnit: input.doseUnit ?? null,
@@ -82,7 +83,8 @@ export class TreatmentsService {
         },
       });
       await this.ensureTasks(tx, order);
-      await this.audit.record({ action: 'treatment.ordered', entityType: 'Admission', entityId: admissionId, summary: `${order.kind}: ${order.description}` }, tx);
+      const outside = order.kind === 'MEDICATION' && !order.productId ? ' (not from our pharmacy)' : '';
+      await this.audit.record({ action: 'treatment.ordered', entityType: 'Admission', entityId: admissionId, summary: `${order.kind}: ${order.description}${outside}` }, tx);
       return shapeOrder(order);
     });
   }
@@ -112,6 +114,24 @@ export class TreatmentsService {
     if (task.admission.status !== 'ADMITTED') throw ruleViolation('NOT_ADMITTED', 'This patient is no longer in hospital');
     const at = input.at ?? new Date();
     if (at.getTime() > Date.now() + 5 * 60_000) throw ruleViolation('FUTURE_TIME', 'Time cannot be in the future');
+    const o = task.order;
+    // A medicine the clinic does not stock is not recorded through the pharmacy (no stock, no charge), but the
+    // patient's allergy alerts are still checked against the name written, with a documented override.
+    const outside = o.kind === 'MEDICATION' && !o.productId;
+    let overrideNote: string | null = null;
+    if (outside && input.status === 'DONE') {
+      const alerts = await this.prisma.db.patientAlert.findMany({ where: { patientId: task.admission.patientId, isActive: true } });
+      const conflicts = allergyConflicts(alerts, { name: o.description });
+      if (conflicts.length) {
+        if (!input.overrideReason?.trim()) {
+          throw ruleViolation('SAFETY_OVERRIDE_REQUIRED', `${allergyConflictText(conflicts[0], o.description)}. Write a reason for overriding the allergy warning.`, {
+            warnings: conflicts.map((c) => ({ code: 'ALLERGY', message: allergyConflictText(c, o.description), blocking: true })),
+          });
+        }
+        overrideNote = `Allergy warning overridden: ${input.overrideReason.trim()}`;
+      }
+    }
+    const notes = [input.notes, overrideNote].filter(Boolean).join(' — ') || null;
     const mark = async (tx: ScopedTx, administrationId: string | null) => {
       const r = await tx.treatmentTask.updateMany({
         where: { id: taskId, status: 'DUE' },
@@ -121,18 +141,17 @@ export class TreatmentsService {
           doneById: ctx.userId,
           doneByName: ctx.userName,
           value: input.value ?? null,
-          notes: input.notes ?? null,
+          notes,
           skipReason: input.status === 'SKIPPED' ? input.skipReason : null,
           administrationId,
         },
       });
       if (!r.count) throw conflict('This treatment has already been recorded');
       await this.audit.record(
-        { action: input.status === 'DONE' ? 'treatment.given' : 'treatment.not_given', entityType: 'Admission', entityId: task.admissionId, summary: `${task.order.description}${input.value ? ` — ${input.value}` : ''}${input.skipReason ? ` (not done: ${input.skipReason})` : ''}` },
+        { action: input.status === 'DONE' ? 'treatment.given' : 'treatment.not_given', entityType: 'Admission', entityId: task.admissionId, summary: `${task.order.description}${outside ? ' (not from our pharmacy)' : ''}${input.value ? ` — ${input.value}` : ''}${input.skipReason ? ` (not done: ${input.skipReason})` : ''}${overrideNote ? ` — ${overrideNote}` : ''}` },
         tx,
       );
     };
-    const o = task.order;
     if (o.kind === 'MEDICATION' && o.productId && o.dose && o.doseUnit && o.route) {
       // Through pharmacy: allergy check, stock deduction, charge capture and withdrawal periods.
       await this.administrations.record(

@@ -97,6 +97,31 @@ describe('Hospitalisation', () => {
     expect(future.filter((t) => t.status === 'CANCELLED').length).toBeGreaterThan(0);
   });
 
+  it('gives a medicine the clinic does not stock: no stock, no charge, allergy still checked by name', async () => {
+    const s = await setup();
+    const a = await admit(s);
+    const ward = await staff(s.org, 'ward_staff');
+    const outsideOrder = { kind: 'MEDICATION', schedule: 'INTERVAL', intervalHours: 12, description: 'Owner’s Testamox 250 mg tablets', dose: 1, doseUnit: 'tablet', route: 'PO' };
+    expect((await s.vet.client.post(`/admissions/${a.body.id}/orders`, { ...outsideOrder, dose: null })).status).toBe(400); // dose still required
+    expect((await ward.client.post(`/admissions/${a.body.id}/orders`, outsideOrder)).status).toBe(403); // still a prescribing decision
+    const order = await s.vet.client.post(`/admissions/${a.body.id}/orders`, outsideOrder);
+    expect(order.status).toBe(201);
+    expect(order.body).toMatchObject({ productId: null, outside: true, description: 'Owner’s Testamox 250 mg tablets' });
+    const tasks = (await s.vet.client.get(`/admissions/${a.body.id}/sheet?to=${new Date(Date.now() + 30 * 3600_000).toISOString()}`)).body.orders[0].tasks;
+    expect((await ward.client.post(`/treatment-tasks/${tasks[0].id}/complete`, { status: 'DONE', notes: 'Given with food' })).body).toMatchObject({ status: 'DONE', administrationId: null });
+    expect(await prisma().medicationAdministration.count({ where: { patientId: s.patient.id } })).toBe(0);
+    expect(await prisma().charge.count({ where: { sourceType: 'Administration', patientId: s.patient.id } })).toBe(0);
+
+    await s.vet.client.post(`/patients/${s.patient.id}/alerts`, { type: 'ALLERGY', severity: 'CRITICAL', title: 'Testamox allergy', substance: 'testamox' });
+    const blocked = await ward.client.post(`/treatment-tasks/${tasks[1].id}/complete`, { status: 'DONE' });
+    expect(blocked.body.error.code).toBe('SAFETY_OVERRIDE_REQUIRED');
+    expect((await prisma().treatmentTask.findUniqueOrThrow({ where: { id: tasks[1].id } })).status).toBe('DUE');
+    // Not giving it needs no override.
+    expect((await ward.client.post(`/treatment-tasks/${tasks[2].id}/complete`, { status: 'SKIPPED', skipReason: 'Waiting for vet' })).body.status).toBe('SKIPPED');
+    const given = await ward.client.post(`/treatment-tasks/${tasks[1].id}/complete`, { status: 'DONE', overrideReason: 'Vet confirmed: only a mild past reaction' });
+    expect(given.body.notes).toBe('Allergy warning overridden: Vet confirmed: only a mild past reaction');
+  });
+
   it('records observations against the stay and escalates critical patients to the responsible vet', async () => {
     const s = await setup();
     const a = await admit(s);

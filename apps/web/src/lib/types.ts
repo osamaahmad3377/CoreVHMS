@@ -1122,6 +1122,8 @@ export interface TreatmentOrder {
   description: string;
   productId: string | null;
   product: { id: string; name: string; dispensingUnit: string } | null;
+  /** A medicine the clinic does not stock (e.g. brought in by the owner): no stock used, nothing charged. */
+  outside?: boolean;
   dose: number | null;
   doseUnit: string | null;
   route: string | null;

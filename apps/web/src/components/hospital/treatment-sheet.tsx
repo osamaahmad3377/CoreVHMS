@@ -80,7 +80,9 @@ function TaskDialog({ task, order, onClose }: { task: TreatmentTask | null; orde
           <Field label="Why was it not done?" htmlFor="tk-skip" required><Input id="tk-skip" value={skipReason} maxLength={500} onChange={(e) => setSkipReason(e.target.value)} placeholder="e.g. patient vomiting, refused" /></Field>
         ) : (
           <>
-            {o.kind === 'MEDICATION' ? (
+            {o.kind === 'MEDICATION' && o.outside ? (
+              <p className="rounded-md bg-muted px-3 py-2 text-sm">Not from our pharmacy — no stock is used and nothing is charged. The patient&apos;s allergies are still checked.</p>
+            ) : o.kind === 'MEDICATION' ? (
               <Field label="Batch (optional)" htmlFor="tk-batch" hint="Leave empty to use the batch that expires first."><Input id="tk-batch" value={batch} maxLength={60} onChange={(e) => setBatch(e.target.value)} /></Field>
             ) : (
               <Field label={VALUE_LABEL[o.kind] ?? 'Result'} htmlFor="tk-value"><Input id="tk-value" value={value} maxLength={200} onChange={(e) => setValue(e.target.value)} /></Field>
@@ -106,15 +108,19 @@ function OrderDialog({ admissionId, open, onOpenChange }: { admissionId: string;
   const blank = { kind: 'NURSING', schedule: 'INTERVAL', description: '', dose: '', doseUnit: '', route: '', fluidRateMlPerHour: '', intervalHours: '8', instructions: '', startAt: '', endAt: '' };
   const [f, setF] = useState(blank);
   const [product, setProduct] = useState<Product | null>(null);
+  // A medicine the clinic does not stock (e.g. brought in by the owner), written by name.
+  const [outside, setOutside] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { if (open) { setF(blank); setProduct(null); setError(null); } }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (open) { setF(blank); setProduct(null); setOutside(false); setError(null); } }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const med = f.kind === 'MEDICATION';
+  const missingMedicine = med && (outside ? !f.description.trim() : !product);
   const set = (k: keyof typeof blank) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
   const m = useMutation({
     mutationFn: () =>
       api.post(`/admissions/${admissionId}/orders`, {
         ...f,
-        productId: f.kind === 'MEDICATION' ? product?.id : null,
-        description: f.description || product?.name || '',
+        productId: med && !outside ? product?.id : null,
+        description: med && !outside ? (product?.name ?? '') : f.description,
         dose: f.dose || null,
         fluidRateMlPerHour: f.fluidRateMlPerHour || null,
         intervalHours: f.intervalHours || null,
@@ -140,9 +146,22 @@ function OrderDialog({ admissionId, open, onOpenChange }: { admissionId: string;
           <Field label="When" htmlFor="or-sched">
             <NativeSelect id="or-sched" value={f.schedule} onChange={set('schedule')}>{TREATMENT_SCHEDULES.map((k) => <option key={k} value={k}>{enumLabel(k, 'treatment')}</option>)}</NativeSelect>
           </Field>
-          {f.kind === 'MEDICATION' && (
+          {med && (
             <>
-              <Field label="Medicine" htmlFor="or-prod" required className="sm:col-span-2"><ProductPicker id="or-prod" value={product} onChange={(p) => { setProduct(p); if (p) setF((s) => ({ ...s, doseUnit: s.doseUnit || p.dispensingUnit })); }} prescribable /></Field>
+              {outside ? (
+                <Field label="Medicine name and strength" htmlFor="or-out" required className="sm:col-span-2" hint="Not from our pharmacy (e.g. brought in by the owner): no stock is used and nothing is charged. Allergies are still checked by name.">
+                  <Input id="or-out" value={f.description} maxLength={200} onChange={set('description')} placeholder="e.g. Amoxicillin 250 mg tablets" autoFocus />
+                </Field>
+              ) : (
+                <Field label="Medicine" htmlFor="or-prod" required className="sm:col-span-2"><ProductPicker id="or-prod" value={product} onChange={(p) => { setProduct(p); if (p) setF((s) => ({ ...s, doseUnit: s.doseUnit || p.dispensingUnit })); }} prescribable /></Field>
+              )}
+              <button
+                type="button"
+                className="-mt-1 w-fit text-left text-sm text-primary underline sm:col-span-2"
+                onClick={() => { setOutside((v) => !v); setProduct(null); setF((s) => ({ ...s, description: '' })); }}
+              >
+                {outside ? 'Choose from our pharmacy instead' : 'Not in our pharmacy? Write in a medicine (e.g. brought by the owner)'}
+              </button>
               <Field label="Dose per administration" htmlFor="or-dose" required><Input id="or-dose" inputMode="decimal" value={f.dose} onChange={set('dose')} /></Field>
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Unit" htmlFor="or-unit" required><Input id="or-unit" value={f.doseUnit} onChange={set('doseUnit')} /></Field>
@@ -150,7 +169,7 @@ function OrderDialog({ admissionId, open, onOpenChange }: { admissionId: string;
               </div>
             </>
           )}
-          {f.kind !== 'MEDICATION' && <Field label="What to do" htmlFor="or-desc" required className="sm:col-span-2"><Input id="or-desc" value={f.description} maxLength={200} onChange={set('description')} placeholder={f.kind === 'FLUID' ? 'e.g. Hartmann’s IV' : f.kind === 'FEEDING' ? 'e.g. Recovery diet' : 'e.g. Walk outside, turn patient'} /></Field>}
+          {!med && <Field label="What to do" htmlFor="or-desc" required className="sm:col-span-2"><Input id="or-desc" value={f.description} maxLength={200} onChange={set('description')} placeholder={f.kind === 'FLUID' ? 'e.g. Hartmann’s IV' : f.kind === 'FEEDING' ? 'e.g. Recovery diet' : 'e.g. Walk outside, turn patient'} /></Field>}
           {f.kind === 'FLUID' && <Field label="Rate (mL/hour)" htmlFor="or-rate" required={f.schedule === 'CONTINUOUS'}><Input id="or-rate" inputMode="decimal" value={f.fluidRateMlPerHour} onChange={set('fluidRateMlPerHour')} /></Field>}
           {(f.schedule === 'INTERVAL' || f.schedule === 'CONTINUOUS') && (
             <Field label={f.schedule === 'CONTINUOUS' ? 'Check every (hours)' : 'Every (hours)'} htmlFor="or-int" required={f.schedule === 'INTERVAL'}><Input id="or-int" inputMode="numeric" value={f.intervalHours} onChange={set('intervalHours')} /></Field>
@@ -161,7 +180,7 @@ function OrderDialog({ admissionId, open, onOpenChange }: { admissionId: string;
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button loading={m.isPending} onClick={() => { setError(null); m.mutate(); }}>Add to sheet</Button>
+          <Button loading={m.isPending} disabled={missingMedicine} onClick={() => { setError(null); m.mutate(); }}>Add to sheet</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -238,7 +257,7 @@ export function TreatmentSheet({ admissionId, active }: { admissionId: string; a
                   <li key={t.id} className="flex items-center gap-3 px-4 py-2">
                     <span className={cn('w-14 text-sm font-semibold tabular', timing === 'OVERDUE' ? 'text-destructive' : timing === 'DUE_NOW' ? 'text-warning' : 'text-muted-foreground')}>{branchTime(t.dueAt, tz)}</span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">{o.description}</span>
+                      <span className="block truncate text-sm font-medium">{o.description}{o.outside && <span className="font-normal text-muted-foreground"> · not from our pharmacy</span>}</span>
                       <span className="block truncate text-xs text-muted-foreground">{orderSummary(o)}{o.instructions ? ` · ${o.instructions}` : ''}</span>
                     </span>
                     {timing === 'OVERDUE' && <Badge variant="destructive">Overdue</Badge>}
@@ -277,6 +296,7 @@ export function TreatmentSheet({ admissionId, active }: { admissionId: string; a
                   <tr key={o.id} className={cn('border-b last:border-0', o.status !== 'ACTIVE' && 'opacity-60')}>
                     <td className="sticky left-0 z-10 bg-card px-3 py-2 align-top">
                       <p className="font-medium">{o.description} <span className="whitespace-nowrap text-2xs font-normal text-muted-foreground">· {enumLabel(o.kind, 'treatment')}</span></p>
+                      {o.outside && <Badge variant="outline" className="mt-0.5 text-2xs">Not from our pharmacy</Badge>}
                       <p className="text-xs text-muted-foreground">{orderSummary(o)}</p>
                       <p className="text-2xs text-muted-foreground">{o.status === 'ACTIVE' ? `by ${o.orderedByName}` : `${enumLabel(o.status)}${o.stopReason ? `: ${o.stopReason}` : ''}`}</p>
                       {writable && o.status === 'ACTIVE' && (

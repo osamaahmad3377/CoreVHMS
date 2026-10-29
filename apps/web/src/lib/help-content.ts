@@ -219,7 +219,7 @@ export const GUIDES: HelpGuide[] = [
       'Write progress notes and a shift handover on the Notes tab. Use Escalate (or set the condition to Critical) to alert the responsible vet straight away.',
       'Click Discharge and write the summary and home-care instructions, then Print discharge summary for the owner.',
     ],
-    tips: ['Daily hospital fees are added to the client’s unbilled charges automatically, once per started 24 hours, at the ward’s rate.', 'The flowboard refreshes itself every 30 seconds and shows overdue treatments in red.'],
+    tips: ['Daily hospital fees are added to the client’s unbilled charges automatically, once per started 24 hours, at the ward’s rate.', 'The flowboard refreshes itself every 30 seconds and shows overdue treatments in red.', 'A medicine you do not stock (for example one the owner brings in) can still go on the treatment sheet: choose Medication, then “Not in our pharmacy? Write in a medicine”. No stock is used and nothing is charged, but allergies are still checked.'],
     links: [{ label: 'Hospital', href: '/hospital' }],
     keywords: ['admission', 'inpatient', 'ward', 'kennel', 'discharge', 'treatment sheet'],
   },

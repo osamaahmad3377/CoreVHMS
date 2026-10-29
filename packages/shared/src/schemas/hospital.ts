@@ -67,7 +67,9 @@ export const treatmentOrderSchema = z
     endAt: optDate(),
   })
   .refine((o) => o.schedule !== 'INTERVAL' || !!o.intervalHours, { path: ['intervalHours'], message: 'How often, in hours' })
-  .refine((o) => o.kind !== 'MEDICATION' || (!!o.productId && !!o.dose && !!o.doseUnit && !!o.route), { path: ['productId'], message: 'Choose the medicine and enter dose, unit and route' })
+  // A medicine is either from the clinic's pharmacy (`productId`) or one the clinic does not stock — e.g. brought
+  // in by the owner — written by name in `description` (no stock used, nothing charged). Both need dose, unit, route.
+  .refine((o) => o.kind !== 'MEDICATION' || (!!o.dose && !!o.doseUnit && !!o.route), { path: ['dose'], message: 'Enter the dose, unit and how it is given' })
   .refine((o) => o.kind !== 'FLUID' || !!o.fluidRateMlPerHour || o.schedule !== 'CONTINUOUS', { path: ['fluidRateMlPerHour'], message: 'Enter the fluid rate' })
   .refine((o) => !o.endAt || !o.startAt || o.endAt > o.startAt, { path: ['endAt'], message: 'End must be after start' });
 export type TreatmentOrderInput = z.infer<typeof treatmentOrderSchema>;
