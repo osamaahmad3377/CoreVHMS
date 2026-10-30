@@ -140,6 +140,8 @@ export const PERMISSION_GROUPS = {
     permissions: {
       'staff.read': 'View staff rosters',
       'staff.manage': 'Manage rosters, working hours and leave',
+      'attendance.clock': 'Clock in and out, and see your own attendance',
+      'attendance.manage': 'See everyone’s attendance and correct clock times',
     },
   },
   reporting: {
@@ -237,7 +239,7 @@ export const SYSTEM_ROLE_TEMPLATES: RoleTemplate[] = [
     permissions: pick(
       ['dashboard', 'clients', 'patients', 'appointments', 'triage', 'billing', 'payments', 'pos', 'cash', 'expenses',
         'inventory', 'procurement', 'reports', 'communications', 'documents', 'staff', 'users', 'boarding', 'insurance',
-        'preventive', 'branches', 'settings', 'audit', 'livestock', 'privacy'],
+        'preventive', 'branches', 'settings', 'audit', 'livestock', 'privacy', 'attendance'],
       ['clinical.read', 'prescriptions.read', 'lab.read', 'hospital.read', 'surgery.read'],
       ['roles.manage' as Permission],
     ),
@@ -251,7 +253,7 @@ export const SYSTEM_ROLE_TEMPLATES: RoleTemplate[] = [
         'appointments', 'livestock', 'documents'],
       ['clients.read', 'clients.write', 'patients.read', 'patients.write', 'patients.archive', 'patients.export', 'billing.read',
         'billing.write', 'inventory.read', 'reports.view', 'communications.read', 'communications.send',
-        'boarding.read', 'insurance.read', 'insurance.write', 'staff.read', 'procurement.request'],
+        'boarding.read', 'insurance.read', 'insurance.write', 'staff.read', 'procurement.request', 'attendance.clock'],
       ['formulary.manage' as Permission],
     ),
   },
@@ -264,7 +266,7 @@ export const SYSTEM_ROLE_TEMPLATES: RoleTemplate[] = [
       ['clients.read', 'clients.write', 'patients.read', 'patients.write', 'clinical.read', 'clinical.write',
         'prescriptions.read', 'prescriptions.write', 'pharmacy.dispense', 'lab.read', 'lab.order', 'lab.result', 'surgery.read',
         'surgery.write', 'inventory.read', 'billing.read', 'documents.read', 'boarding.read', 'boarding.write',
-        'staff.read', 'procurement.request'],
+        'staff.read', 'procurement.request', 'attendance.clock'],
     ),
   },
   {
@@ -275,14 +277,14 @@ export const SYSTEM_ROLE_TEMPLATES: RoleTemplate[] = [
       ['dashboard', 'appointments'],
       ['clients.read', 'clients.write', 'patients.read', 'patients.write', 'billing.read', 'billing.write',
         'payments.take', 'pos.use', 'preventive.read', 'communications.read', 'communications.send',
-        'documents.read', 'boarding.read', 'boarding.write', 'insurance.read', 'staff.read', 'inventory.read'],
+        'documents.read', 'boarding.read', 'boarding.write', 'insurance.read', 'staff.read', 'inventory.read', 'attendance.clock'],
     ),
   },
   {
     key: 'lab_technician',
     name: 'Laboratory technician',
     description: 'Sample handling and result entry.',
-    permissions: pick(['lab'], ['dashboard.view', 'patients.read', 'clients.read', 'clinical.read', 'inventory.read'], [
+    permissions: pick(['lab'], ['dashboard.view', 'patients.read', 'clients.read', 'clinical.read', 'inventory.read', 'attendance.clock'], [
       'lab.approve' as Permission,
     ]),
   },
@@ -291,7 +293,7 @@ export const SYSTEM_ROLE_TEMPLATES: RoleTemplate[] = [
     name: 'Pharmacy / dispensary',
     description: 'Dispensing, stock and retail sales.',
     permissions: pick(['pharmacy', 'inventory', 'formulary'], ['dashboard.view', 'patients.read', 'clients.read',
-      'prescriptions.read', 'pos.use', 'payments.take', 'billing.read', 'procurement.read', 'procurement.write', 'procurement.request']),
+      'prescriptions.read', 'pos.use', 'payments.take', 'billing.read', 'procurement.read', 'procurement.write', 'procurement.request', 'attendance.clock']),
   },
   {
     key: 'surgeon',
@@ -299,20 +301,20 @@ export const SYSTEM_ROLE_TEMPLATES: RoleTemplate[] = [
     description: 'Surgery, anaesthesia and peri-operative care.',
     permissions: pick(['surgery', 'hospital', 'clinical'], ['dashboard.view', 'patients.read', 'clients.read',
       'prescriptions.read', 'prescriptions.write', 'prescriptions.authorize', 'lab.read', 'lab.order',
-      'appointments.read', 'inventory.read', 'procurement.request']),
+      'appointments.read', 'inventory.read', 'procurement.request', 'attendance.clock']),
   },
   {
     key: 'ward_staff',
     name: 'Ward / inpatient staff',
     description: 'Inpatient observations, feeding and treatment administration.',
     permissions: pick(['hospital'], ['dashboard.view', 'patients.read', 'clients.read', 'clinical.read',
-      'prescriptions.read', 'pharmacy.dispense', 'boarding.read', 'boarding.write', 'procurement.request']),
+      'prescriptions.read', 'pharmacy.dispense', 'boarding.read', 'boarding.write', 'procurement.request', 'attendance.clock']),
   },
   {
     key: 'inventory_officer',
     name: 'Inventory & procurement officer',
     description: 'Stock control, suppliers and purchasing.',
-    permissions: pick(['inventory', 'procurement'], ['dashboard.view', 'reports.view'], [
+    permissions: pick(['inventory', 'procurement'], ['dashboard.view', 'reports.view', 'attendance.clock'], [
       'procurement.approve' as Permission,
     ]),
   },
@@ -321,7 +323,7 @@ export const SYSTEM_ROLE_TEMPLATES: RoleTemplate[] = [
     name: 'Accountant / cashier',
     description: 'Invoicing, payments, cash registers and financial reports.',
     permissions: pick(['billing', 'payments', 'pos', 'cash', 'expenses', 'reports'], ['dashboard.view',
-      'clients.read', 'patients.read', 'procurement.read', 'inventory.read', 'insurance.read']),
+      'clients.read', 'patients.read', 'procurement.read', 'inventory.read', 'insurance.read', 'attendance.clock']),
   },
   {
     key: 'field_vet',
@@ -329,7 +331,7 @@ export const SYSTEM_ROLE_TEMPLATES: RoleTemplate[] = [
     description: 'Livestock, herd health and field visits.',
     permissions: pick(['livestock', 'clinical', 'prescriptions', 'preventive', 'lab'], ['dashboard.view',
       'clients.read', 'clients.write', 'patients.read', 'patients.write', 'appointments.read',
-      'appointments.write', 'billing.read', 'billing.write', 'payments.take', 'inventory.read', 'procurement.request'], [
+      'appointments.write', 'billing.read', 'billing.write', 'payments.take', 'inventory.read', 'procurement.request', 'attendance.clock'], [
       'clinical.amend' as Permission,
     ]),
   },

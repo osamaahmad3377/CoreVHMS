@@ -2,12 +2,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LEAVE_TYPES, enumLabel } from '@vcms/shared';
 import { CalendarOff, Clock, Edit, Plus, Trash2, UserCog, UserPlus } from 'lucide-react';
-import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirm } from '@/components/confirm';
 import { Field } from '@/components/forms/field';
 import { FormError } from '@/components/forms/form-error';
 import { MemberDialog, TemporaryPasswordDialog, type TemporaryPassword } from '@/components/staff/member-dialog';
+import { StaffTabs } from '@/components/staff/staff-tabs';
 import { EmptyState, ErrorState, LoadingRows, PageHeader } from '@/components/page';
 import { RequirePermission } from '@/components/require';
 import { Badge } from '@/components/ui/badge';
@@ -193,6 +195,7 @@ function Rosters() {
           </>
         }
       />
+      <StaffTabs />
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <Card className="min-w-0">
           <CardHeader>
@@ -285,6 +288,14 @@ function Rosters() {
 }
 
 export default function StaffPage() {
+  const { canAny } = useSession();
+  const router = useRouter();
+  // Staff who can only clock in and out go straight to their attendance.
+  const attendanceOnly = !canAny('staff.read', 'users.read') && canAny('attendance.clock', 'attendance.manage');
+  useEffect(() => {
+    if (attendanceOnly) router.replace('/staff/attendance');
+  }, [attendanceOnly, router]);
+  if (attendanceOnly) return null;
   return (
     <RequirePermission anyOf={['staff.read', 'users.read']}>
       <Rosters />
