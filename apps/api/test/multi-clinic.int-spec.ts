@@ -537,7 +537,7 @@ describe('Multi-clinic hosting', () => {
       const end = new Date(trialEnds);
       end.setUTCMonth(end.getUTCMonth() + 13);
       expect(yearly.body.periodEnd.slice(0, 10)).toBe(end.toISOString().slice(0, 10));
-      let o = await overview();
+      const o = await overview();
       expect(o.clinic).toMatchObject({ trialEndsAt: null, billingCycle: 'YEARLY', paidUntil: yearly.body.periodEnd, payment: { kind: 'PAID' }, bill: { cycle: 'YEARLY', periodMonths: 12 } });
       expect(o.payments[0]).toMatchObject({ id: yearly.body.id, method: 'JAZZCASH', reference: 'JC-881' });
       expect(o.events.map((e: any) => e.action)).toContain('platform.payment_recorded');

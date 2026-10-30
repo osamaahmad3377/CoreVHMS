@@ -1,0 +1,8 @@
+[
+  {
+    "advisory": "GHSA-mrhx-c7xc-m3w5",
+    "package": "zod",
+    "reason": "Memory use when validating very large arrays/records. Request bodies are capped at 2 MB (app.setup.ts), which bounds the input. The fix needs the Zod 4 upgrade (major), planned as its own change.",
+    "expires": "2026-12-31"
+  }
+]

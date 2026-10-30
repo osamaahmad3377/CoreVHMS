@@ -2,7 +2,6 @@ import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, P
 import { ApiTags } from '@nestjs/swagger';
 import {
   attendanceClockSchema,
-  attendanceDayQuery,
   attendanceEditSchema,
   attendanceRangeQuery,
   attendanceRecordSchema,
