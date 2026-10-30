@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertOctagon, CalendarPlus, ChevronLeft, ChevronRight, Globe } from 'lucide-react';
+import { AlertOctagon, CalendarPlus, Car, ChevronLeft, ChevronRight, Globe, House } from 'lucide-react';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirm } from '@/components/confirm';
@@ -17,7 +17,7 @@ import { Input, NativeSelect } from '@/components/ui/input';
 import { useClinicians } from '@/hooks/use-catalog';
 import { useUrlState } from '@/hooks/use-url-state';
 import { ApiError, api, qs } from '@/lib/api';
-import { useSession } from '@/lib/session';
+import { useModuleOn, useSession } from '@/lib/session';
 import { branchTime, dayLabel, dowOf, hhmm, localDate, minuteOfDay, monthGrid, shiftDate, shiftMonth, todayIn, weekStart, zonedInstant } from '@/lib/time';
 import type { Appointment, PatientRow, RosterEntry } from '@/lib/types';
 import { tabListClass, tabTriggerClass } from '@/components/ui/tabs';
@@ -40,10 +40,13 @@ interface Column {
   appointments: Appointment[];
 }
 
+/** Where an appointment's time on the calendar begins: a home visit's travel time comes first. */
+const blockStart = (a: Appointment) => a.travelStartsAt ?? a.startsAt;
+
 /** Greedy lane assignment so overlapping (overbooked) appointments sit side by side. */
 function layout(appts: Appointment[], tz: string) {
   const items = appts
-    .map((a) => ({ a, start: minuteOfDay(a.startsAt, tz), end: Math.max(minuteOfDay(a.endsAt, tz), minuteOfDay(a.startsAt, tz) + 10) }))
+    .map((a) => ({ a, start: minuteOfDay(blockStart(a), tz), end: Math.max(minuteOfDay(a.endsAt, tz), minuteOfDay(a.startsAt, tz) + 10) }))
     .sort((x, y) => x.start - y.start);
   const lanes: number[] = [];
   const placed = items.map((it) => {
@@ -70,6 +73,8 @@ function CalendarView() {
   const view = url.get('view', 'day') as 'day' | 'week' | 'month';
   const date = url.get('date', todayIn(tz));
   const clinicianFilter = url.get('clinician');
+  const moduleOn = useModuleOn();
+  const homeOnly = moduleOn('homeVisits') && url.get('where') === 'home';
   const [showCancelled, setShowCancelled] = useState(false);
   const [booking, setBooking] = useState<{ open: boolean; defaults?: BookingDefaults }>({ open: false });
   const [selected, setSelected] = useState<string | null>(null);
@@ -120,7 +125,7 @@ function CalendarView() {
   });
   const clinicians = useClinicians(branchId);
 
-  const visible = (appts.data ?? []).filter((a) => showCancelled || (a.status !== 'CANCELLED' && a.status !== 'NO_SHOW'));
+  const visible = (appts.data ?? []).filter((a) => (showCancelled || (a.status !== 'CANCELLED' && a.status !== 'NO_SHOW')) && (!homeOnly || a.location === 'HOME'));
   const rosterById = new Map((roster.data ?? []).map((r) => [r.membershipId, r]));
 
   const leaveMinutes = (r: RosterEntry | undefined, d: string): [number, number][] =>
@@ -167,10 +172,10 @@ function CalendarView() {
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, date, clinicians.data, roster.data, appts.data, showCancelled, clinicianFilter, tz]);
+  }, [view, date, clinicians.data, roster.data, appts.data, showCancelled, clinicianFilter, homeOnly, tz]);
 
   // Visible hours: union of rosters and bookings, padded.
-  const allRanges = columns.flatMap((c) => [...c.available.filter(([s, e]) => !(s === 0 && e === 1440)), ...c.appointments.map((a) => [minuteOfDay(a.startsAt, tz), minuteOfDay(a.endsAt, tz)] as [number, number])]);
+  const allRanges = columns.flatMap((c) => [...c.available.filter(([s, e]) => !(s === 0 && e === 1440)), ...c.appointments.map((a) => [minuteOfDay(blockStart(a), tz), minuteOfDay(a.endsAt, tz)] as [number, number])]);
   const startMin = Math.max(0, Math.min(DEFAULT_START, ...allRanges.map((r) => r[0])) - 30);
   const endMin = Math.min(1440, Math.max(DEFAULT_END, ...allRanges.map((r) => r[1])) + 30);
   const height = (endMin - startMin) * PX_PER_MIN;
@@ -229,7 +234,8 @@ function CalendarView() {
     const a = visible.find((x) => x.id === d.id);
     if (!a) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const raw = startMin + (e.clientY - rect.top) / PX_PER_MIN - d.grabMinutes;
+    // The card starts with a home visit's travel time; the visit itself starts after it.
+    const raw = startMin + (e.clientY - rect.top) / PX_PER_MIN - d.grabMinutes + (a.travelMinutes ?? 0);
     const minute = Math.min(1440 - 15, Math.max(0, Math.round(raw / 15) * 15));
     const startsAt = zonedInstant(col.date, minute, tz).toISOString();
     // Day view columns are clinicians; in week view the clinician only changes when a clinician filter is set.
@@ -248,7 +254,7 @@ function CalendarView() {
     for (const list of m.values()) list.sort((x, y) => x.startsAt.localeCompare(y.startsAt));
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appts.data, showCancelled, clinicianFilter, tz]);
+  }, [appts.data, showCancelled, clinicianFilter, homeOnly, tz]);
 
   return (
     <>
@@ -280,6 +286,11 @@ function CalendarView() {
           <h2 className="min-w-[200px] text-sm font-semibold">{title}</h2>
           <Input type="date" aria-label="Go to date" className="h-8 w-[150px]" value={date} onChange={(e) => e.target.value && url.set({ date: e.target.value })} />
           <div className="ml-auto flex flex-wrap items-center gap-2">
+            {moduleOn('homeVisits') && (
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Checkbox checked={homeOnly} onCheckedChange={(v) => url.set({ where: v === true ? 'home' : null })} /> Home visits only
+              </label>
+            )}
             <label className="flex items-center gap-2 text-xs text-muted-foreground">
               <Checkbox checked={showCancelled} onCheckedChange={(v) => setShowCancelled(v === true)} /> Show cancelled / no-shows
             </label>
@@ -347,6 +358,7 @@ function CalendarView() {
                           title={`${branchTime(a.startsAt, tz)} ${a.patient?.name ?? a.client.displayName} — ${a.appointmentType.name}`}
                         >
                           <span className="tabular text-muted-foreground">{branchTime(a.startsAt, tz)}</span>
+                          {a.location === 'HOME' && <House className="h-3 w-3 shrink-0 text-primary" aria-label="Home visit" />}
                           <span className="truncate">{a.patient?.name ?? a.client.displayName}</span>
                         </button>
                       ))}
@@ -428,6 +440,7 @@ function CalendarView() {
                     {layout(col.appointments, tz).map(({ a, start, end, lane, lanes }) => {
                       const critical = a.patient?.alerts.some((x) => x.severity === 'CRITICAL');
                       const dim = a.status === 'CANCELLED' || a.status === 'NO_SHOW';
+                      const travel = a.location === 'HOME' ? (a.travelMinutes ?? 0) : 0;
                       return (
                         <button
                           key={a.id}
@@ -456,17 +469,28 @@ function CalendarView() {
                             width: `calc(${100 / lanes}% - 4px)`,
                             borderLeftColor: a.appointmentType.color,
                           }}
-                          title={`${branchTime(a.startsAt, tz)} ${a.patient?.name ?? a.client.displayName} — ${a.appointmentType.name} (${a.status.toLowerCase()})`}
+                          title={`${branchTime(a.startsAt, tz)} ${a.patient?.name ?? a.client.displayName} — ${a.appointmentType.name} (${a.status.toLowerCase()})${a.location === 'HOME' ? ` · home visit: ${a.visitAddress}${travel ? ` · leaves ${branchTime(blockStart(a), tz)}` : ''}` : ''}`}
                         >
+                          {/* A home visit's travel time, striped, before the visit itself. */}
+                          {travel > 0 && (
+                            <span
+                              className="-mx-1.5 -mt-0.5 mb-0.5 flex items-center gap-1 overflow-hidden bg-[repeating-linear-gradient(45deg,transparent,transparent_5px,hsl(var(--muted))_5px,hsl(var(--muted))_10px)] px-1.5 text-2xs text-muted-foreground"
+                              style={{ height: Math.max(travel * PX_PER_MIN - 2, 12) }}
+                            >
+                              <Car className="h-3 w-3 shrink-0" aria-hidden /> {travel >= 15 && `Travel ${travel} min`}
+                            </span>
+                          )}
                           <span className="flex items-center gap-1 font-medium">
                             <span className="tabular text-muted-foreground">{branchTime(a.startsAt, tz)}</span>
                             <span className="truncate">{a.patient?.name ?? a.client.displayName}</span>
+                            {a.location === 'HOME' && <House className="h-3 w-3 shrink-0 text-primary" aria-label="Home visit" />}
                             {critical && <AlertOctagon className="h-3 w-3 shrink-0 text-destructive" aria-label="Critical alert" />}
                             {a.source === 'ONLINE' && <Globe className={cn('h-3 w-3 shrink-0', a.status === 'BOOKED' ? 'text-warning' : 'text-primary')} aria-label={a.status === 'BOOKED' ? 'Booked online — to confirm' : 'Booked online'} />}
                             <PriorityDot priority={a.triage?.priority ?? a.priority} />
                           </span>
-                          {end - start >= 25 && (
+                          {end - start - travel >= 25 && (
                             <span className="block truncate text-2xs text-muted-foreground">
+                              {a.location === 'HOME' ? `Home visit · ` : ''}
                               {a.appointmentType.name}
                               {view === 'week' && a.clinician ? ` · ${a.clinician.name}` : ''}
                               {a.reason ? ` · ${a.reason}` : ''}

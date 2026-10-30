@@ -1,5 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
-import { GB, featureLockedMessage, hasFeature, permissionInPlan, planNames, plansAllowing, storageText, type Entitlements, type PlanFeature } from '@vcms/shared';
+import { GB, PLAN_FEATURES, featureLockedMessage, hasFeature, permissionInPlan, planNames, plansAllowing, storageText, type Entitlements, type OptionalModule, type PlanFeature } from '@vcms/shared';
 import { RequestContext } from '../context/request-context';
 import { ruleViolation } from '../http/errors';
 
@@ -17,8 +17,10 @@ export function holds(permissions: ReadonlySet<string>, permission: string): boo
   return permissions.has(permission) || !permissionInPlan(currentEntitlements(), permission);
 }
 
-export function featureAllowed(feature: PlanFeature): boolean {
-  return hasFeature(currentEntitlements(), feature);
+/** Whether the clinic's plan includes a feature. Optional modules that are not plan features (e.g. home visits) are in every plan. */
+export function featureAllowed(feature: PlanFeature | OptionalModule): boolean {
+  if (!(PLAN_FEATURES as readonly string[]).includes(feature)) return true;
+  return hasFeature(currentEntitlements(), feature as PlanFeature);
 }
 
 /** Throws unless the clinic's plan includes the feature. */

@@ -6,6 +6,8 @@ export type ClientEvent =
   | { type: 'APPOINTMENT_BOOKED'; appointmentId: string; online?: { manageLink: string } }
   | { type: 'APPOINTMENT_RESCHEDULED'; appointmentId: string }
   | { type: 'APPOINTMENT_CANCELLED'; appointmentId: string }
+  /** Staff chose to tell the client the vet has set off for a home visit. */
+  | { type: 'HOME_VISIT_ON_THE_WAY'; appointmentId: string }
   | { type: 'LAB_RESULTS_READY'; orderId: string }
   | { type: 'PATIENT_DISCHARGED'; admissionId: string }
   | { type: 'PAYMENT_RECEIVED'; paymentId: string }

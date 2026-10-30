@@ -98,6 +98,30 @@ export const GUIDES: HelpGuide[] = [
     keywords: ['schedule', 'reschedule', 'booking', 'slot', 'no show', 'did not arrive', 'cancel'],
   },
   {
+    id: 'home-visits',
+    title: 'Book and run a home visit',
+    summary: 'A vet goes to the client’s home: the address, travel time, “on the way” message and call-out fee.',
+    area: 'Front desk',
+    anyOf: ['appointments.write', 'appointments.checkin', 'clinical.write'],
+    steps: [
+      'Click Book appointment and choose Home visit. The client’s saved address is filled in; correct it, add how to find the house and paste a map pin link if the client sent one.',
+      'Pick the arrival time. The travel time (Settings → Home visits) is blocked on the vet’s calendar before it, so nobody books the vet while they are on the road.',
+      'On the day, open Home visits. Each visit shows the time to leave, the address with Open in Google Maps, and Call client.',
+      'Press On the way when you set off — tick “Tell the client” to send them a message. Press Arrived at the house; the call-out fee goes on the client’s bill. Enter the km travelled if you charge per km.',
+      'Start consultation and work as in the clinic: notes, vital signs, medicines and vaccinations. The bill is paid the usual way, including cash at the door.',
+    ],
+    tips: [
+      'Set the call-out fee and price per km once in Settings → Home visits (they come from your price list).',
+      'A fee that should not be charged this time can be waived from the client’s unbilled charges.',
+      'On the Calendar, home visits have a house icon and a striped travel block; tick “Home visits only” to see just them.',
+    ],
+    links: [
+      { label: 'Home visits', href: '/home-visits' },
+      { label: 'Home visit settings', href: '/settings/home-visits', anyOf: ['settings.manage'] },
+    ],
+    keywords: ['house call', 'mobile vet', 'visit at home', 'call-out', 'callout', 'travel', 'km', 'address', 'on the way', 'map'],
+  },
+  {
     id: 'front-desk',
     title: 'Check in arrivals, walk-ins and emergencies',
     summary: 'Run the waiting room from the Front desk board.',

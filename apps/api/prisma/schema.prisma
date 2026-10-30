@@ -332,6 +332,11 @@ model Organization {
   /// The clinic prints on paper that already has its letterhead: leave the top blank instead of printing one.
   printPreprinted             Boolean            @default(false)
   printTopSpaceMm             Int                @default(40)
+  /// Home visits (Settings → Home visits): call-out fee and price per km are services from the price list.
+  homeVisitCalloutServiceId   String?            @db.Uuid
+  homeVisitPerKmServiceId     String?            @db.Uuid
+  /// Travel time blocked on the vet's calendar before each home visit (minutes, changeable per booking).
+  homeVisitTravelMinutes      Int                @default(30)
   /// The starter quick note phrases were added once; deleting them all does not bring them back.
   notePhrasesSeeded           Boolean            @default(false)
   // Branding: emails
@@ -1326,6 +1331,11 @@ model StaffLeave {
   @@index([membershipId, startsAt])
 }
 
+enum VisitLocation {
+  CLINIC
+  HOME
+}
+
 enum AppointmentStatus {
   BOOKED
   CONFIRMED
@@ -1389,6 +1399,20 @@ model Appointment {
   callCount         Int               @default(0)
   /// Hash of the private link a client who booked online uses to change or cancel it.
   manageTokenHash   String?           @unique
+  /// Where the visit happens. A home visit keeps the address it was booked for (a copy: editing the
+  /// client's address later does not change past visits).
+  location          VisitLocation     @default(CLINIC)
+  visitAddress      String?
+  /// Landmarks, gate or floor, parking: whatever helps the vet find the house.
+  visitDirections   String?
+  /// A map pin shared by the client (https link only).
+  visitMapUrl       String?
+  /// Home visit: when the vet sets off. The vet's time is blocked from here (travel) until endsAt.
+  travelStartsAt    DateTime?         @db.Timestamptz(3)
+  onTheWayAt        DateTime?         @db.Timestamptz(3)
+  arrivedAt         DateTime?         @db.Timestamptz(3)
+  /// Distance travelled for the visit; billed with the clinic's price per km.
+  distanceKm        Decimal?          @db.Decimal(8, 1)
   createdAt         DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime          @updatedAt @db.Timestamptz(3)
 
@@ -1413,6 +1437,7 @@ model Appointment {
   @@index([clinicianId, startsAt])
   @@index([patientId, startsAt])
   @@index([clientId])
+  @@index([organizationId, location, startsAt])
 }
 
 /// Resource booking. Times are copied from the appointment so the database can reject overlaps.

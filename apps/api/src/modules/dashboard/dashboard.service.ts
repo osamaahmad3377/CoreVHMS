@@ -120,7 +120,8 @@ export class DashboardService {
         const [waitingCount, waiting, arriving] = await Promise.all([
           db.appointment.count({ where: { ...where, status: 'CHECKED_IN' } }),
           db.appointment.findMany({ where: { ...where, status: 'CHECKED_IN' }, include, orderBy: [{ checkedInAt: 'asc' }, { startsAt: 'asc' }], take: 6 }),
-          db.appointment.findMany({ where: { ...where, status: { in: ['BOOKED', 'CONFIRMED'] } }, include, orderBy: { startsAt: 'asc' }, take: 5 }),
+          // Home visits are not "arriving": the vet goes to them.
+          db.appointment.findMany({ where: { ...where, status: { in: ['BOOKED', 'CONFIRMED'] }, location: 'CLINIC' }, include, orderBy: { startsAt: 'asc' }, take: 5 }),
         ]);
         const late = Date.now() - 15 * 60_000;
         const shape = (a: (typeof waiting)[number]) => ({

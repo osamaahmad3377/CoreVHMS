@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { TRIAGE_PRIORITIES, enumLabel } from '@vcms/shared';
-import { AlertOctagon, CalendarPlus, Clock, DoorOpen, Info, LogIn, Phone, Play, Printer, Receipt, Siren, Stethoscope, UserPlus, Users } from 'lucide-react';
+import { AlertOctagon, CalendarPlus, Clock, DoorOpen, House, Info, LogIn, Phone, Play, Printer, Receipt, Siren, Stethoscope, UserPlus, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
@@ -319,7 +319,12 @@ function FrontDesk() {
                     <ul className="grid gap-2 p-2">
                       {items.map((a) => (
                         <QueueCard key={a.id} a={a} tz={tz} onOpen={() => setSelected(a.id)}>
-                          {c.key === 'expected' && can('appointments.checkin') && (
+                          {c.key === 'expected' && a.location === 'HOME' && (
+                            <span className="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                              <House className="h-3.5 w-3.5" /> Home visit{a.arrivedAt ? ' · vet arrived' : a.onTheWayAt ? ' · vet on the way' : ''}
+                            </span>
+                          )}
+                          {c.key === 'expected' && a.location !== 'HOME' && can('appointments.checkin') && (
                             <Button size="sm" onClick={() => act.mutate({ id: a.id, action: 'check-in' })}>
                               <LogIn /> Check in
                             </Button>

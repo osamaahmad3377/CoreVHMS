@@ -86,8 +86,8 @@ describe('Services you offer (optional modules)', () => {
 
   it('switches modules on and off, exposes them in the session and hides their dashboard panels', async () => {
     const org = await registerOrg();
-    expect(org.owner.session.organization.enabledModules).toEqual(['hospital', 'surgery', 'lab', 'livestock', 'boarding', 'insurance']);
-    expect((await org.owner.get('/setup/modules')).body).toMatchObject({ enabled: ['hospital', 'surgery', 'lab', 'livestock', 'boarding', 'insurance'], chosenAt: null });
+    expect(org.owner.session.organization.enabledModules).toEqual(['hospital', 'surgery', 'lab', 'livestock', 'boarding', 'insurance', 'homeVisits']);
+    expect((await org.owner.get('/setup/modules')).body).toMatchObject({ enabled: ['hospital', 'surgery', 'lab', 'livestock', 'boarding', 'insurance', 'homeVisits'], chosenAt: null });
     expect((await org.owner.get('/dashboard')).body.widgets).toHaveProperty('hospital');
 
     expect((await org.owner.call('put', '/setup/modules', { enabled: ['lab', 'nonsense'] })).status).toBe(400);
