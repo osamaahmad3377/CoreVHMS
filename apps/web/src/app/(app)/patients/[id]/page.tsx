@@ -346,6 +346,10 @@ function PatientRecord() {
                   { label: 'Species', value: p.species.name },
                   { label: 'Breed', value: [p.breed?.name, p.breedText].filter(Boolean).join(' — ') },
                   { label: 'Sex', value: enumLabel(p.sex) },
+                  {
+                    label: 'Identification number',
+                    value: p.identifiers.length ? p.identifiers.map((i) => `${i.value} (${enumLabel(i.type)})`).join(', ') : 'Not recorded',
+                  },
                   { label: 'Date of birth', value: p.dateOfBirth && `${fmtDate(p.dateOfBirth)}${p.dobEstimated ? ' (estimated)' : ''}` },
                   { label: 'Colour', value: p.colour },
                   { label: 'Markings', value: p.markings },

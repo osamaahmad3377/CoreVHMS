@@ -7,7 +7,7 @@ import { IDENTIFIER_TYPES, PATIENT_SEXES, createPatientSchema, enumLabel, update
 import { AlertTriangle, ChevronDown, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
-import { useFieldArray, useForm, useWatch } from 'react-hook-form';
+import { useFieldArray, useForm, useWatch, type Resolver } from 'react-hook-form';
 import { z } from 'zod';
 import { ClientPicker, type PickedClient } from '../clients/client-picker';
 import { Field, FormSection, applyServerErrors, errorAt } from '../forms/field';
@@ -26,10 +26,31 @@ import { localToday, localISODate } from '@/lib/time';
 type Values = z.input<typeof createPatientSchema>;
 
 /** Fields under "More details (optional)"; the section opens by itself when one of them has an error. */
-const MORE_FIELDS = ['breedText', 'colour', 'markings', 'bloodType', 'insuranceProvider', 'insurancePolicyNumber', 'notes', 'primaryBranchId', 'identifiers'] as const;
+const MORE_FIELDS = ['breedText', 'colour', 'markings', 'bloodType', 'insuranceProvider', 'insurancePolicyNumber', 'notes', 'primaryBranchId'] as const;
 
 function dateInput(d?: string | null) {
   return d ? d.slice(0, 10) : '';
+}
+
+/**
+ * Validates with the patient schema, but ignores identification rows left blank
+ * (the form shows one ready-to-fill row). Errors are mapped back to the row on screen.
+ */
+function patientResolver(editing: boolean): Resolver<Values> {
+  const base = zodResolver(editing ? (updatePatientSchema as any) : createPatientSchema) as Resolver<Values>;
+  return async (values, ctx, opts) => {
+    const kept = (values.identifiers ?? []).map((row, i) => ({ row, i })).filter(({ row }) => row.value?.trim());
+    const res = await base({ ...values, identifiers: kept.map(({ row }) => row) }, ctx, opts);
+    const idErrors = (res.errors as any)?.identifiers;
+    if (Array.isArray(idErrors)) {
+      const mapped: any[] = [];
+      idErrors.forEach((err, j) => {
+        if (err) mapped[kept[j].i] = err;
+      });
+      (res.errors as any).identifiers = mapped;
+    }
+    return res;
+  };
 }
 
 export function PatientForm({
@@ -53,7 +74,7 @@ export function PatientForm({
 
   const species = useQuery({ queryKey: ['species'], queryFn: () => api.get<Species[]>('/species'), staleTime: 300_000 });
   const form = useForm<Values>({
-    resolver: zodResolver(editing ? (updatePatientSchema as any) : createPatientSchema),
+    resolver: patientResolver(editing),
     defaultValues: {
       ownerId: initialOwner?.id ?? '',
       name: patient?.name ?? '',
@@ -70,7 +91,7 @@ export function PatientForm({
       insurancePolicyNumber: patient?.insurancePolicyNumber ?? '',
       notes: patient?.notes ?? '',
       primaryBranchId: patient?.primaryBranchId ?? session.branch?.id ?? '',
-      identifiers: [],
+      identifiers: editing ? [] : [{ type: 'MICROCHIP', value: '' }],
       initialWeightKg: '' as any,
     },
   });
@@ -124,6 +145,7 @@ export function PatientForm({
         return;
       }
       body.ownerId = owner.id;
+      body.identifiers = (body.identifiers ?? []).filter((i: { value?: string }) => i.value?.trim());
       if (body.initialWeightKg === '' || body.initialWeightKg === undefined) body.initialWeightKg = null;
     } else {
       delete body.ownerId;
@@ -193,7 +215,7 @@ export function PatientForm({
         </FormSection>
       )}
 
-      <FormSection title="Basic details" description="Name, species, breed, sex, age and weight.">
+      <FormSection title="Basic details" description={editing ? 'Name, species, breed, sex and age.' : 'Name, species, breed, sex, age, weight and identification number.'}>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Name" htmlFor="name" error={e.name} required>
             <Input id="name" {...register('name')} />
@@ -263,6 +285,44 @@ export function PatientForm({
             Date of birth is an estimate
           </label>
         )}
+        {!editing && (
+          <div className="grid gap-2">
+            <Label htmlFor="identifier-0">Identification number</Label>
+            {ids.fields.map((f, i) => (
+              <div key={f.id} className="grid grid-cols-[minmax(0,140px)_1fr_auto] items-start gap-2">
+                <NativeSelect aria-label="Identification type" {...register(`identifiers.${i}.type` as const)}>
+                  {IDENTIFIER_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {enumLabel(t)}
+                    </option>
+                  ))}
+                </NativeSelect>
+                <div>
+                  <Input
+                    id={`identifier-${i}`}
+                    placeholder="e.g. microchip or tag number"
+                    maxLength={64}
+                    aria-label={i === 0 ? undefined : 'Identification number'}
+                    {...register(`identifiers.${i}.value` as const)}
+                    aria-invalid={!!errorAt(e, `identifiers.${i}.value`) || undefined}
+                  />
+                  {errorAt(e, `identifiers.${i}.value`) && <p className="mt-1 text-xs text-destructive">{errorAt(e, `identifiers.${i}.value`)?.message}</p>}
+                </div>
+                <Button type="button" variant="ghost" size="icon" onClick={() => ids.remove(i)} aria-label="Remove identification number" disabled={ids.fields.length === 1 && i === 0}>
+                  <Trash2 />
+                </Button>
+              </div>
+            ))}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground">Optional. Microchip, ear tag, RFID, tattoo or registration number — each number can belong to only one patient.</p>
+              {ids.fields.length < 10 && (
+                <Button type="button" variant="outline" size="sm" onClick={() => ids.append({ type: 'MICROCHIP', value: '' })}>
+                  <Plus /> Add another
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
       </FormSection>
 
       <button
@@ -292,32 +352,6 @@ export function PatientForm({
           <Input id="markings" {...register('markings')} />
         </Field>
       </FormSection>
-
-      {!editing && (
-        <FormSection title="Identification" description="Microchip, ear tag, RFID or tattoo number. Each number can belong to only one patient.">
-          {ids.fields.map((f, i) => (
-            <div key={f.id} className="grid grid-cols-[150px_1fr_auto] items-start gap-2">
-              <NativeSelect aria-label="Identifier type" {...register(`identifiers.${i}.type` as const)}>
-                {IDENTIFIER_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {enumLabel(t)}
-                  </option>
-                ))}
-              </NativeSelect>
-              <div>
-                <Input aria-label="Identifier value" {...register(`identifiers.${i}.value` as const)} aria-invalid={!!errorAt(e, `identifiers.${i}.value`) || undefined} />
-                {errorAt(e, `identifiers.${i}.value`) && <p className="mt-1 text-xs text-destructive">{errorAt(e, `identifiers.${i}.value`)?.message}</p>}
-              </div>
-              <Button type="button" variant="ghost" size="icon" onClick={() => ids.remove(i)} aria-label="Remove identifier">
-                <Trash2 />
-              </Button>
-            </div>
-          ))}
-          <Button type="button" variant="outline" size="sm" className="w-fit" onClick={() => ids.append({ type: 'MICROCHIP', value: '' })}>
-            <Plus /> Add identifier
-          </Button>
-        </FormSection>
-      )}
 
       <FormSection title="Other" description="Insurance and internal notes.">
         <div className="grid gap-4 sm:grid-cols-2">
