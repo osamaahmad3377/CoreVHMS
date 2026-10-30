@@ -1,6 +1,7 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
-import { enumLabel, type Paginated } from '@vcms/shared';
+import { dentalFinding, enumLabel, type Paginated } from '@vcms/shared';
+import { useVisitDental } from '../dental/visit-dental';
 import type { ClinicHeader } from '../billing/invoice-document';
 import { LetterFooter, Letterhead } from '../documents/letterhead';
 import { api, qs } from '@/lib/api';
@@ -91,6 +92,7 @@ const dash = <span className="text-gray-500">—</span>;
  */
 export function ConsultationRecord({ encounter: e, clinic }: { encounter: Encounter; clinic: ClinicHeader | null }) {
   const { can } = useSession();
+  const dental = useVisitDental(e.id);
   const rx = useQuery({
     queryKey: ['prescriptions', { patientId: e.patient.id, encounterId: e.id }],
     queryFn: () => api.get<Paginated<Prescription>>(`/prescriptions${qs({ patientId: e.patient.id, encounterId: e.id, pageSize: 50 })}`),
@@ -112,6 +114,7 @@ export function ConsultationRecord({ encounter: e, clinic }: { encounter: Encoun
   const prescriptions = (rx.data?.data ?? []).filter((p) => p.status !== 'CANCELLED');
   const administrations = (given.data ?? []).filter((a) => a.status === 'GIVEN');
   const orders = (labs.data?.data ?? []).filter((o) => o.status !== 'CANCELLED');
+  const dentalCharts = dental.data?.charts ?? [];
   const p = e.patient;
   const breed = typeof p.breed === 'string' ? p.breed : (p.breed?.name ?? p.breedText);
   const open = e.tasks.filter((t) => t.status !== 'COMPLETED' && t.status !== 'CANCELLED');
@@ -280,6 +283,45 @@ export function ConsultationRecord({ encounter: e, clinic }: { encounter: Encoun
                   <td className={td}>{d.notes || dash}</td>
                 </tr>
               ))}
+            </tbody>
+          </table>
+        </Section>
+      )}
+
+      {dentalCharts.length > 0 && (
+        <Section n={next()} title="Dental chart">
+          <table className={table}>
+            <thead>
+              <tr>
+                <th className={`${th} w-[18%]`}>Chart</th>
+                <th className={th}>Findings</th>
+                <th className={`${th} w-[34%]`}>Treatment</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dentalCharts.map((c) => {
+                const stage = c.periodontalStage ?? c.worstToothStage;
+                return (
+                  <tr key={c.id}>
+                    <td className={td}>
+                      {c.chartNo}
+                      <span className="block text-[8.5pt] text-gray-600">{c.status === 'SIGNED' ? `Signed by ${c.signedByName}` : 'Not signed yet'}</span>
+                    </td>
+                    <td className={td}>
+                      {stage != null ? `Periodontal stage ${stage}` : 'Periodontal stage not recorded'}
+                      {c.teeth.some((t) => t.findings.length || t.state !== 'PRESENT') && (
+                        <span className="block text-[8.5pt] text-gray-600">
+                          {c.teeth
+                            .filter((t) => t.findings.length || t.state !== 'PRESENT')
+                            .map((t) => `${t.tooth} ${t.state !== 'PRESENT' ? enumLabel(t.state).toLowerCase() : t.findings.map((f) => (f === 'TR' && t.trStage ? `TR${t.trStage}` : (dentalFinding(f)?.abbr ?? f))).join(' ')}`)
+                            .join('; ')}
+                        </span>
+                      )}
+                    </td>
+                    <td className={td}>{c.procedures.length ? c.procedures.map((p) => `${p.label}${p.tooth ? ` (${p.tooth})` : ''}`).join(', ') : dash}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </Section>

@@ -133,6 +133,25 @@ describe('Dental charts', () => {
     expect(waived.some((c: any) => c.waivedReason.includes('discarded'))).toBe(true);
   });
 
+  it('links a chart to a consultation, reopens its draft and bills on the visit', async () => {
+    const s = await setup();
+    const visit = (await s.vet.client.post('/encounters', { patientId: s.patient.id, chiefComplaint: 'Bad breath' })).body;
+    expect((await s.vet.client.get(`/encounters/${visit.id}/dental`)).body).toEqual({ suggestedDentition: 'CANINE', charts: [] });
+    const first = await s.vet.client.post('/dental/charts', { patientId: s.patient.id, dentition: 'CANINE', encounterId: visit.id });
+    expect(first.body.encounterId).toBe(visit.id);
+    // Starting again from the same visit opens the draft instead of a second chart.
+    const again = await s.vet.client.post('/dental/charts', { patientId: s.patient.id, dentition: 'CANINE', encounterId: visit.id });
+    expect(again.body.id).toBe(first.body.id);
+    await s.vet.client.post(`/dental/charts/${first.body.id}/procedures`, { code: 'SP' });
+    const forVisit = (await s.vet.client.get(`/encounters/${visit.id}/dental`)).body;
+    expect(forVisit.charts.map((c: any) => [c.id, c.procedures.length])).toEqual([[first.body.id, 1]]);
+    // The procedure's charge belongs to the consultation, so it is billed with the visit.
+    expect((await s.org.owner.get(`/charges?encounterId=${visit.id}`)).body.data.map((c: any) => c.sourceType)).toEqual(['DentalProcedure']);
+    // A chart can't be linked to another patient's consultation.
+    const other = await makePatient(s.org.owner, s.client.id, { name: 'Other' });
+    expect((await s.vet.client.post('/dental/charts', { patientId: other.id, dentition: 'CANINE', encounterId: visit.id })).body.error.code).toBe('INVALID_ENCOUNTER');
+  });
+
   it('uses the right teeth for cats and horses, and keeps charts to their clinic', async () => {
     const s = await setup();
     const cat = await makePatient(s.org.owner, s.client.id, { name: 'Misty', speciesId: await speciesId(s.org.owner, 'Cat'), sex: 'FEMALE' });

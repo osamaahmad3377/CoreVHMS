@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DENTITION_LABELS, teethFor, toothInfo } from '@vcms/shared';
-import { BadgeCheck, FileSignature, History, Lock, MousePointerClick, Printer, ShieldAlert, Trash2 } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, FileSignature, History, Lock, MousePointerClick, Printer, ShieldAlert, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
@@ -86,6 +86,7 @@ function ChartPage() {
   const setChart = (c: DentalChart) => {
     qc.setQueryData(key, c);
     qc.invalidateQueries({ queryKey: ['patient-dental', c.patientId] });
+    if (c.encounterId) qc.invalidateQueries({ queryKey: ['encounter-dental', c.encounterId] });
   };
 
   const saveTeeth = useMutation({
@@ -113,6 +114,7 @@ function ChartPage() {
   const discard = useMutation({
     mutationFn: () => api.del(`/dental/charts/${id}`),
     onSuccess: () => {
+      if (q.data!.encounterId) qc.invalidateQueries({ queryKey: ['encounter-dental', q.data!.encounterId] });
       toast.success('Draft discarded');
       router.push(`/patients/${q.data!.patientId}?tab=dental`);
     },
@@ -163,6 +165,11 @@ function ChartPage() {
         help="dental"
         actions={
           <>
+            {chart.encounterId && (
+              <Button size="sm" variant="ghost" asChild>
+                <Link href={`/consultations/${chart.encounterId}`}><ArrowLeft /> Back to consultation</Link>
+              </Button>
+            )}
             <Button size="sm" variant="outline" asChild>
               <Link href={`/dental/${chart.id}/print`}><Printer /> Print report</Link>
             </Button>

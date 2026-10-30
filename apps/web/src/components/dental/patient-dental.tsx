@@ -1,5 +1,5 @@
 'use client';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DENTITION_LABELS, DENTITIONS, PERIODONTAL_STAGES, teethFor, type Dentition } from '@vcms/shared';
 import { ChevronRight, Plus, Smile } from 'lucide-react';
 import Link from 'next/link';
@@ -36,6 +36,7 @@ export function NewDentalChartDialog({
   onOpenChange: (o: boolean) => void;
 }) {
   const router = useRouter();
+  const qc = useQueryClient();
   const [dentition, setDentition] = useState<Dentition | ''>(suggested ?? '');
   const [baby, setBaby] = useState(false);
   const [carry, setCarry] = useState(true);
@@ -50,7 +51,11 @@ export function NewDentalChartDialog({
   }, [open, suggested]);
   const create = useMutation({
     mutationFn: () => api.post<DentalChart>('/dental/charts', { patientId, dentition, showDeciduous: baby, carryForward: carry, encounterId: encounterId ?? null }),
-    onSuccess: (c) => router.push(`/dental/${c.id}`),
+    onSuccess: (c) => {
+      if (encounterId) qc.invalidateQueries({ queryKey: ['encounter-dental', encounterId] });
+      qc.invalidateQueries({ queryKey: ['patient-dental', patientId] });
+      router.push(`/dental/${c.id}`);
+    },
     onError: (e: Error) => setError(e.message),
   });
   return (

@@ -27,6 +27,12 @@ export class DentalController {
     return this.dental.forPatient(id);
   }
 
+  @Get('encounters/:id/dental')
+  @RequirePermissions('clinical.read')
+  forEncounter(@Param('id', UUID) id: string) {
+    return this.dental.forEncounter(id);
+  }
+
   @Post('dental/charts')
   @RequirePermissions('clinical.write')
   @ApiZodBody(dentalChartCreateSchema)

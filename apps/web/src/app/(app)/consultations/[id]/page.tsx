@@ -1,12 +1,14 @@
 'use client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { enumLabel, type Paginated } from '@vcms/shared';
-import { Activity, AlertTriangle, ArrowRight, MoreHorizontal, BedDouble, CalendarPlus, CheckCircle2, ChevronDown, ClipboardList, FileText, FilePlus, FlaskConical, History, Paperclip, Pill, Printer, Receipt, Scissors, Stethoscope, Syringe, Upload, XCircle } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowRight, MoreHorizontal, BedDouble, CalendarPlus, CheckCircle2, ChevronDown, ClipboardList, FileText, FilePlus, FlaskConical, History, Paperclip, Pill, Printer, Receipt, Scissors, Smile, Stethoscope, Syringe, Upload, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { ConsultationRecord } from '@/components/clinical/consultation-record';
+import { NewDentalChartDialog } from '@/components/dental/patient-dental';
+import { useVisitDental, VisitDentalCard } from '@/components/dental/visit-dental';
 import { LastVisitStrip, PatientHistoryDialog, useCanSeeHistory } from '@/components/clinical/patient-history';
 import { ConsultationCharges } from '@/components/clinical/charges-card';
 import { DiagnosesPanel } from '@/components/clinical/diagnoses-panel';
@@ -78,10 +80,12 @@ function Workspace() {
   const [giveOpen, setGiveOpen] = useState(false);
   const [labOpen, setLabOpen] = useState(false);
   const [recordOpen, setRecordOpen] = useState(false);
+  const [dentalOpen, setDentalOpen] = useState(false);
   const [booked, setBooked] = useState<Appointment | null>(null);
   const vitalsRef = useRef<VitalsPanelHandle>(null);
   const org = useQuery({ queryKey: ['organization'], queryFn: () => api.get<ClinicHeader>('/organization'), staleTime: 300_000 });
   const types = useAppointmentTypes();
+  const visitDental = useVisitDental(id);
   const refresh = () => qc.invalidateQueries({ queryKey: key });
   const e = q.data;
   const patientId = e?.patient.id;
@@ -134,6 +138,14 @@ function Workspace() {
     if (then) setTimeout(then, 80);
   };
 
+  // Dental chart for this visit: open the one in progress (or the only one), otherwise start one linked to the visit.
+  const dentalCharts = visitDental.data?.charts ?? [];
+  const openDental = () => {
+    const target = dentalCharts.find((c) => c.status === 'DRAFT') ?? (!writable ? dentalCharts.at(-1) : undefined);
+    if (target) router.push(`/dental/${target.id}`);
+    else setDentalOpen(true);
+  };
+
   /** Shown as buttons; everything else goes under More. */
   const PRIMARY_ACTIONS = ['Prescribe', 'Order test', 'Give medicine now', 'Book recheck'];
   const actions = [
@@ -146,6 +158,7 @@ function Workspace() {
     workspace && moduleOn('hospital') && can('hospital.write') && { label: 'Admit', icon: BedDouble, onClick: () => goStep('outcome', () => setAdmitOpen(true)) },
     workspace && moduleOn('surgery') && can('surgery.write') && { label: 'Surgery', icon: Scissors, onClick: () => goStep('outcome', () => setSurgeryOpen(true)) },
     active && can('appointments.write') && { label: 'Book recheck', icon: CalendarPlus, onClick: () => setFollowUp(true) },
+    moduleOn('dental') && can('clinical.read') && (writable || !!dentalCharts.length) && { label: 'Dental chart', icon: Smile, onClick: openDental },
     writable && { label: 'Upload', icon: Upload, onClick: () => (workspace ? goStep('advice', () => scrollTo('attachments-card')) : scrollTo('attachments-card')) },
   ].filter(Boolean) as { label: string; icon: React.ComponentType<{ className?: string }>; onClick: () => void }[];
 
@@ -218,6 +231,7 @@ function Workspace() {
             <PastButton tab="diagnoses" label="Past diagnoses" />
           </PastRow>
           <LabOrdersPanel patient={enc.patient} encounterId={enc.id} editable={active} dialogOpen={labOpen} onDialogOpenChange={setLabOpen} />
+          <VisitDentalCard encounterId={enc.id} editable={writable} onStart={() => setDentalOpen(true)} />
         </>
       ),
       fields: ['assessment'],
@@ -470,6 +484,7 @@ function Workspace() {
         <div className="grid min-w-0 grid-cols-1 content-start gap-4 [&>*]:min-w-0">
           <VitalsPanel ref={vitalsRef} encounterId={enc.id} vitals={enc.vitals} editable={writable} onSaved={refresh} />
           <LabOrdersPanel patient={enc.patient} encounterId={enc.id} editable={active} dialogOpen={labOpen} onDialogOpenChange={setLabOpen} />
+          <VisitDentalCard encounterId={enc.id} editable={writable} onStart={() => setDentalOpen(true)} />
           <DiagnosesPanel encounterId={enc.id} diagnoses={enc.diagnoses} editable={writable} onSaved={refresh} />
           <PrescriptionsPanel patient={enc.patient} encounterId={enc.id} editable={active} dialogOpen={rxOpen} onDialogOpenChange={setRxOpen} />
           <AdministrationsPanel patient={enc.patient} encounterId={enc.id} editable={active} dialogOpen={giveOpen} onDialogOpenChange={setGiveOpen} />
@@ -521,6 +536,7 @@ function Workspace() {
           </DialogContent>
         </Dialog>
       )}
+      <NewDentalChartDialog patientId={enc.patient.id} patientName={enc.patient.name} suggested={visitDental.data?.suggestedDentition ?? null} encounterId={enc.id} open={dentalOpen} onOpenChange={setDentalOpen} />
       <PatientHistoryDialog patientId={enc.patient.id} patientName={enc.patient.name} currentId={enc.id} open={historyOpen} onOpenChange={setHistoryOpen} initialVisitId={historyVisit} />
       <FinishConsultationDialog
         encounter={enc}
