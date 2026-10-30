@@ -18,12 +18,13 @@ import {
   supplierSchema,
   transferSchema,
 } from '@vcms/shared';
-import { MOVEMENT_TYPES } from '@vcms/shared';
+import { MOVEMENT_TYPES, disposalCandidatesQuery, paginationQuery, stockDisposalSchema } from '@vcms/shared';
 import { z } from 'zod';
 import { RequireAnyPermission, RequirePermissions } from '../../common/auth/decorators';
 import { assertFeature } from '../../common/tenancy/entitlements';
 import { ApiZodBody, ApiZodQuery, zp } from '../../common/http/zod';
 import { RequestContext } from '../../common/context/request-context';
+import { DisposalService } from './disposal.service';
 import { ForecastService } from './forecast.service';
 import { InventoryService } from './inventory.service';
 import { PurchasingService } from './purchasing.service';
@@ -50,11 +51,46 @@ export class InventoryController {
     private readonly procurement: ProcurementService,
     private readonly purchasing: PurchasingService,
     private readonly forecasts: ForecastService,
+    private readonly disposals: DisposalService,
   ) {}
 
   // ── Stock forecast ──
 
   /** What runs out at each branch, ready supplier orders, and transfers between branches. */
+  // ── Disposal of expired, damaged and recalled stock ──
+  @Get('stock/disposals/candidates')
+  @RequirePermissions('inventory.read')
+  @ApiZodQuery(disposalCandidatesQuery)
+  disposalCandidates(@Query(zp(disposalCandidatesQuery)) q: z.infer<typeof disposalCandidatesQuery>) {
+    return this.disposals.candidates(q);
+  }
+
+  @Get('stock/disposals/witnesses')
+  @RequirePermissions('inventory.adjust')
+  disposalWitnesses() {
+    return this.disposals.witnesses();
+  }
+
+  @Get('stock/disposals')
+  @RequirePermissions('inventory.read')
+  @ApiZodQuery(paginationQuery)
+  listDisposals(@Query(zp(paginationQuery)) q: z.infer<typeof paginationQuery>) {
+    return this.disposals.list(q);
+  }
+
+  @Get('stock/disposals/:id')
+  @RequirePermissions('inventory.read')
+  getDisposal(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.disposals.get(id);
+  }
+
+  @Post('stock/disposals')
+  @RequirePermissions('inventory.adjust')
+  @ApiZodBody(stockDisposalSchema)
+  dispose(@Body(zp(stockDisposalSchema)) body: z.infer<typeof stockDisposalSchema>) {
+    return this.disposals.create(body);
+  }
+
   @Get('stock/forecast')
   @RequireAnyPermission('inventory.read', 'procurement.read')
   @ApiZodQuery(stockForecastQuery)

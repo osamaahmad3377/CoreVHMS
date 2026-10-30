@@ -388,6 +388,8 @@ model Organization {
   dentalProcedures         DentalProcedure[]
   dentalChartAddenda       DentalChartAddendum[]
   dentalProcedurePrices    DentalProcedurePrice[]
+  stockDisposals           StockDisposal[]
+  stockDisposalLines       StockDisposalLine[]
   appointments             Appointment[]
   waitlist                 WaitlistEntry[]
   triage                   TriageAssessment[]
@@ -1980,6 +1982,7 @@ model Product {
   supplierReturnLines  SupplierReturnLine[]
   wellnessPlanItems    WellnessPlanItem[]
   wellnessEntitlements WellnessEntitlement[]
+  disposalLines        StockDisposalLine[]
 
   @@unique([organizationId, sku])
   @@index([organizationId, type, name])
@@ -2551,6 +2554,7 @@ model StockLocation {
   levels       StockLevel[]
   movements    StockMovement[]
   counts       StockCount[]
+  disposals    StockDisposal[]
 
   @@unique([branchId, name])
   @@index([organizationId])
@@ -2586,6 +2590,7 @@ model StockBatch {
   countLines   StockCountLine[]
 
   supplierReturnLines SupplierReturnLine[]
+  disposalLines       StockDisposalLine[]
 
   @@unique([productId, batchNumber])
   @@index([organizationId, expiryDate])
@@ -5544,4 +5549,75 @@ model DentalProcedurePrice {
   service      Service      @relation(fields: [serviceId], references: [id], onDelete: Restrict)
 
   @@unique([organizationId, code])
+}
+
+// ───────────────────────────── Stock disposal ─────────────────────────────
+
+enum DisposalReason {
+  EXPIRED
+  SHORT_DATED
+  DAMAGED
+  RECALLED
+  CONTAMINATED
+  OPENED
+  OTHER
+}
+
+enum DisposalMethod {
+  WASTE_CONTRACTOR
+  INCINERATION
+  DENATURED
+  CLINICAL_WASTE
+  RETURNED_FOR_DESTRUCTION
+  OTHER
+}
+
+/// A record of stock destroyed (expired, damaged, recalled…). Each line is a WRITE_OFF movement (referenceType
+/// StockDisposal). Permanent: append-only by trigger. Controlled medicines need a witness.
+model StockDisposal {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @db.Uuid
+  branchId       String         @db.Uuid
+  number         Int
+  locationId     String         @db.Uuid
+  reason         DisposalReason
+  method         DisposalMethod
+  contractor     String?
+  reference      String?
+  notes          String?
+  witnessId      String?        @db.Uuid
+  witnessName    String?
+  hasControlled  Boolean        @default(false)
+  totalMinor     Int
+  disposedAt     DateTime       @db.Timestamptz(3)
+  createdById    String         @db.Uuid
+  createdByName  String
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  location     StockLocation       @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  lines        StockDisposalLine[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, disposedAt])
+}
+
+model StockDisposalLine {
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String  @db.Uuid
+  disposalId     String  @db.Uuid
+  productId      String  @db.Uuid
+  batchId        String  @db.Uuid
+  quantity       Decimal @db.Decimal(14, 4)
+  unitCostMinor  Int
+  totalMinor     Int
+  /// The batch was past its expiry date when it was disposed of.
+  wasExpired     Boolean @default(false)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  disposal     StockDisposal @relation(fields: [disposalId], references: [id], onDelete: Restrict)
+  product      Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  batch        StockBatch    @relation(fields: [batchId], references: [id], onDelete: Restrict)
+
+  @@index([disposalId])
 }

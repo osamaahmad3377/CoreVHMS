@@ -478,12 +478,13 @@ export class InventoryService {
   private async describeReferences(rows: { referenceType: string | null; referenceId: string | null }[]) {
     const ids = (t: string) => [...new Set(rows.filter((r) => r.referenceType === t && r.referenceId).map((r) => r.referenceId!))];
     const db = this.prisma.db;
-    const [lines, receipts, counts, returns, dispensed] = await Promise.all([
+    const [lines, receipts, counts, returns, dispensed, disposals] = await Promise.all([
       ids('InvoiceLine').length ? db.invoiceLine.findMany({ where: { id: { in: ids('InvoiceLine') } }, select: { id: true, invoice: { select: { id: true, number: true, isPos: true, client: { select: { displayName: true } } } } } }) : [],
       ids('GoodsReceipt').length ? db.goodsReceipt.findMany({ where: { id: { in: ids('GoodsReceipt') } }, select: { id: true, number: true, purchaseOrderId: true } }) : [],
       ids('StockCount').length ? db.stockCount.findMany({ where: { id: { in: ids('StockCount') } }, select: { id: true, number: true } }) : [],
       ids('SupplierReturn').length ? db.supplierReturn.findMany({ where: { id: { in: ids('SupplierReturn') } }, select: { id: true, number: true } }) : [],
       ids('Dispensation').length ? db.dispensation.findMany({ where: { id: { in: ids('Dispensation') } }, select: { id: true, prescriptionItemId: true } }) : [],
+      ids('StockDisposal').length ? db.stockDisposal.findMany({ where: { id: { in: ids('StockDisposal') } }, select: { id: true, number: true } }) : [],
     ]);
     const out = new Map<string, { label: string; href: string | null }>();
     for (const l of lines) {
@@ -493,6 +494,7 @@ export class InventoryService {
     for (const g of receipts) out.set(g.id, { label: `Delivery ${grnNo(g.number)}`, href: g.purchaseOrderId ? `/inventory/purchase-orders/${g.purchaseOrderId}` : null });
     for (const c of counts) out.set(c.id, { label: `Stock count ${formatNumber('SC', c.number)}`, href: `/inventory/counts/${c.id}` });
     for (const r of returns) out.set(r.id, { label: `Supplier return ${formatNumber('SRN', r.number)}`, href: '/inventory/returns' });
+    for (const d of disposals) out.set(d.id, { label: `Disposal ${formatNumber('DSP', d.number)}`, href: `/inventory/disposals/${d.id}` });
     const items = dispensed.length ? await db.prescriptionItem.findMany({ where: { id: { in: dispensed.map((d) => d.prescriptionItemId) } }, select: { id: true, prescription: { select: { id: true, number: true } } } }) : [];
     const rxOf = new Map(items.map((i) => [i.id, i.prescription]));
     for (const d of dispensed) {

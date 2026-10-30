@@ -153,3 +153,55 @@ export const branchTransferSchema = z.object({
   batchId: z.string().uuid().nullish(),
   notes: optText(300),
 });
+
+// ── Disposal of expired, damaged or recalled stock ──
+
+export const DISPOSAL_REASONS = ['EXPIRED', 'SHORT_DATED', 'DAMAGED', 'RECALLED', 'CONTAMINATED', 'OPENED', 'OTHER'] as const;
+export type DisposalReason = (typeof DISPOSAL_REASONS)[number];
+export const DISPOSAL_REASON_LABELS: Record<DisposalReason, string> = {
+  EXPIRED: 'Expired',
+  SHORT_DATED: 'Expiring — won’t be used in time',
+  DAMAGED: 'Damaged or broken',
+  RECALLED: 'Recalled by the manufacturer',
+  CONTAMINATED: 'Contaminated or stored wrongly',
+  OPENED: 'Opened — past its use-by after opening',
+  OTHER: 'Other',
+};
+
+export const DISPOSAL_METHODS = ['WASTE_CONTRACTOR', 'INCINERATION', 'DENATURED', 'CLINICAL_WASTE', 'RETURNED_FOR_DESTRUCTION', 'OTHER'] as const;
+export type DisposalMethod = (typeof DISPOSAL_METHODS)[number];
+export const DISPOSAL_METHOD_LABELS: Record<DisposalMethod, string> = {
+  WASTE_CONTRACTOR: 'Collected by a licensed pharmaceutical waste contractor',
+  INCINERATION: 'Incinerated',
+  DENATURED: 'Denatured on site (controlled-drug denaturing kit)',
+  CLINICAL_WASTE: 'Clinical waste / sharps bin',
+  RETURNED_FOR_DESTRUCTION: 'Sent to the manufacturer or wholesaler for destruction',
+  OTHER: 'Other',
+};
+
+/**
+ * Disposing of stock: takes the batches off the shelf (a permanent write-off in the stock history) and keeps a
+ * disposal record. Controlled medicines need a witness — another member of staff.
+ */
+export const stockDisposalSchema = z.object({
+  locationId: z.string().uuid(),
+  reason: z.enum(DISPOSAL_REASONS),
+  method: z.enum(DISPOSAL_METHODS),
+  contractor: optText(160),
+  /** Waste consignment note or collection reference. */
+  reference: optText(120),
+  witnessMembershipId: z.string().uuid().nullish(),
+  notes: optText(1000),
+  disposedAt: z.coerce.date().optional(),
+  lines: z
+    .array(z.object({ batchId: z.string().uuid(), quantity: z.coerce.number().positive('More than 0').max(1_000_000) }))
+    .min(1, 'Choose at least one batch')
+    .max(200),
+}).refine((d) => d.method !== 'WASTE_CONTRACTOR' || !!d.contractor, { path: ['contractor'], message: 'Name the waste contractor' });
+export type StockDisposalInput = z.infer<typeof stockDisposalSchema>;
+
+export const disposalCandidatesQuery = z.object({
+  locationId: z.string().uuid().optional(),
+  /** Stock expiring within this many days is listed too (expired, recalled and quarantined stock always is). */
+  days: z.coerce.number().int().min(0).max(365).default(60),
+});
