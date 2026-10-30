@@ -11,6 +11,7 @@ export * from './schemas/admin';
 export * from './schemas/clients';
 export * from './schemas/patients';
 export * from './schemas/scheduling';
+export * from './schemas/attendance';
 export * from './schemas/clinical';
 export * from './schemas/pharmacy';
 export * from './schemas/lab';

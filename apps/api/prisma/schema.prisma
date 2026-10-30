@@ -337,6 +337,8 @@ model Organization {
   homeVisitPerKmServiceId     String?            @db.Uuid
   /// Travel time blocked on the vet's calendar before each home visit (minutes, changeable per booking).
   homeVisitTravelMinutes      Int                @default(30)
+  /// Attendance: minutes after the rostered start before a clock-in counts as late (and before the end, as leaving early).
+  attendanceGraceMinutes      Int                @default(10)
   /// The starter quick note phrases were added once; deleting them all does not bring them back.
   notePhrasesSeeded           Boolean            @default(false)
   // Branding: emails
@@ -374,6 +376,7 @@ model Organization {
   resources                Resource[]
   workingHours             WorkingHours[]
   staffLeave               StaffLeave[]
+  staffAttendance          StaffAttendance[]
   appointments             Appointment[]
   waitlist                 WaitlistEntry[]
   triage                   TriageAssessment[]
@@ -604,6 +607,7 @@ model Membership {
   branches      MembershipBranch[]
   workingHours  WorkingHours[]
   leave         StaffLeave[]
+  attendance    StaffAttendance[]
   appointments  Appointment[]      @relation("AppointmentClinician")
   encounters    Encounter[]        @relation("EncounterClinician")
   tasks         Task[]             @relation("TaskAssignee")
@@ -1329,6 +1333,41 @@ model StaffLeave {
   membership   Membership   @relation(fields: [membershipId], references: [id], onDelete: Cascade)
 
   @@index([membershipId, startsAt])
+}
+
+enum AttendanceSource {
+  /// The staff member clocked in themselves.
+  SELF
+  /// Added by a manager (forgot to clock in, paper timesheet, …).
+  MANAGER
+  /// Ticked present in the attendance register: the rostered hours, not clocked times.
+  REGISTER
+}
+
+/// One shift actually worked: clock in → clock out, with breaks. Times are UTC; the day is the branch-local date of clock in.
+model StaffAttendance {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  membershipId   String           @db.Uuid
+  branchId       String           @db.Uuid
+  clockInAt      DateTime         @db.Timestamptz(3)
+  clockOutAt     DateTime?        @db.Timestamptz(3)
+  /// Set while the person is on a break; the break's length is added to breakMinutes when it ends.
+  breakStartedAt DateTime?        @db.Timestamptz(3)
+  breakMinutes   Int              @default(0)
+  note           String?
+  source         AttendanceSource @default(SELF)
+  /// Last manager correction and why (the full history is in the audit log).
+  editedById     String?          @db.Uuid
+  editReason     String?
+  createdAt      DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime         @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  membership   Membership   @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, branchId, clockInAt])
+  @@index([membershipId, clockInAt])
 }
 
 enum VisitLocation {

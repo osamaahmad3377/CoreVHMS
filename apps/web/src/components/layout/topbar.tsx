@@ -9,6 +9,7 @@ import { api } from '@/lib/api';
 import { markThemeChosen } from '@/lib/theme-choice';
 import { useSession } from '@/lib/session';
 import { useCreateActions } from './create-actions';
+import { ClockButton } from '../staff/attendance';
 import { useModKey } from '../help/shortcuts';
 import { Button } from '../ui/button';
 import { SuggestionsMenu } from './suggestions-menu';
@@ -69,6 +70,7 @@ export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () 
       </button>
 
       <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
+        <ClockButton />
         <SuggestionsMenu onOpenFinder={onSearch} />
         <Button variant="ghost" size="icon" asChild title="Help centre — guides for every task">
           <Link href="/help" aria-label="Help centre"><CircleHelp /></Link>

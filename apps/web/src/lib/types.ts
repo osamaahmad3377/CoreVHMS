@@ -310,6 +310,61 @@ export interface RosterEntry {
   leave: { id: string; type: string; startsAt: string; endsAt: string; reason: string | null }[];
 }
 
+export type AttendanceStatus = 'IN' | 'ON_BREAK' | 'DONE' | 'NOT_IN_YET' | 'ABSENT' | 'ON_LEAVE' | 'DAY_OFF' | 'UPCOMING' | 'NOT_TRACKED' | 'PRESENT';
+
+export interface AttendanceRecord {
+  id: string;
+  membershipId: string;
+  branchId: string;
+  clockInAt: string;
+  clockOutAt: string | null;
+  breakStartedAt: string | null;
+  breakMinutes: number;
+  note: string | null;
+  source: 'SELF' | 'MANAGER' | 'REGISTER';
+  editReason: string | null;
+  workedMinutes: number;
+}
+
+export interface AttendanceDay {
+  date: string;
+  status: AttendanceStatus;
+  slots: { startMinute: number; endMinute: number }[];
+  rosteredMinutes: number;
+  workedMinutes: number;
+  lateMinutes: number;
+  earlyMinutes: number;
+  onLeave: boolean;
+  leaveType: string | null;
+  records: AttendanceRecord[];
+}
+
+export interface AttendanceMember {
+  membershipId: string;
+  name: string;
+  jobTitle: string | null;
+  isClinician: boolean;
+  days: AttendanceDay[];
+  totals: { rosteredDays: number; presentDays: number; lateDays: number; earlyDays: number; absentDays: number; leaveDays: number; workedMinutes: number; rosteredMinutes: number };
+}
+
+export interface AttendanceRange {
+  from: string;
+  to: string;
+  today: string;
+  /** First day attendance was recorded at the clinic; earlier days are not counted. */
+  trackedFrom: string;
+  graceMinutes: number;
+  branch: { id: string; name: string; timezone: string };
+  members: AttendanceMember[];
+}
+
+export interface AttendanceMe {
+  open: (AttendanceRecord & { branchName: string }) | null;
+  today: AttendanceDay | null;
+  branch: { id: string; name: string };
+}
+
 export interface ExamFinding {
   system: string;
   status: 'NORMAL' | 'ABNORMAL' | 'NOT_EXAMINED';

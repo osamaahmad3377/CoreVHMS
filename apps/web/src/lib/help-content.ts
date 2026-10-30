@@ -122,6 +122,32 @@ export const GUIDES: HelpGuide[] = [
     keywords: ['house call', 'mobile vet', 'visit at home', 'call-out', 'callout', 'travel', 'km', 'address', 'on the way', 'map'],
   },
   {
+    id: 'attendance',
+    title: 'Clock in and out, and check staff attendance',
+    summary: 'Everyone clocks their own shift; managers see who is in, late or absent against the roster.',
+    area: 'Management',
+    anyOf: ['attendance.clock', 'attendance.manage'],
+    steps: [
+      'When you start work, press Clock in at the top of the screen. It clocks you in at the branch you are signed in to.',
+      'Going for lunch or prayers? Press On shift → Start a break, and End break when you are back. Break time is not counted as worked.',
+      'At the end of the day press On shift → Clock out. Your days and hours are under Staff → Attendance → My attendance.',
+      'Managers: Staff → Attendance → Register is the monthly register — staff down the side, days across. Tick a box to mark someone present for their rostered hours; untick to remove it. Days they clocked themselves are ticked already.',
+      'Today & by day shows today — who is in, on a break, late, not in yet, absent or on leave — compared with the weekly roster.',
+      'Someone forgot to clock in or out? Add or correct the shift with a reason; the old times and the reason are kept in the activity log.',
+      'For payroll, open Summary, choose the month and download the CSV: days present, late, absent, on leave and hours worked per person.',
+    ],
+    tips: [
+      'Late and absent are worked out from the roster (Staff → Roster & leave), so keep working hours and leave up to date.',
+      'Set how many minutes after the start count as late with the “Late after … min” button (10 minutes to begin with).',
+      'A custom role needs the “Clock in and out” permission (Settings → Roles) for its staff to see the Clock in button.',
+    ],
+    links: [
+      { label: 'Attendance', href: '/staff/attendance' },
+      { label: 'Roster & leave', href: '/staff', anyOf: ['staff.read'] },
+    ],
+    keywords: ['attendance', 'clock in', 'clock out', 'timesheet', 'time sheet', 'punch', 'late', 'absent', 'hours worked', 'payroll', 'break', 'shift'],
+  },
+  {
     id: 'front-desk',
     title: 'Check in arrivals, walk-ins and emergencies',
     summary: 'Run the waiting room from the Front desk board.',

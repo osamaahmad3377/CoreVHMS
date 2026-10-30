@@ -119,7 +119,7 @@ export const NAV: NavSection[] = [
   {
     label: 'Team',
     items: [
-      { label: 'Staff', href: '/staff', icon: UserCog, anyOf: ['staff.read', 'users.read'], ready: true },
+      { label: 'Staff', href: '/staff', icon: UserCog, anyOf: ['staff.read', 'users.read', 'attendance.clock', 'attendance.manage'], ready: true },
       { label: 'Messages', href: '/communications', icon: MessageSquare, anyOf: ['communications.read'], ready: true },
       { label: 'Documents & templates', href: '/documents', icon: FileText, anyOf: ['documents.read'], ready: false },
       { label: 'Integrations', href: '/integrations', icon: Plug, anyOf: ['integrations.manage'], ready: false },
