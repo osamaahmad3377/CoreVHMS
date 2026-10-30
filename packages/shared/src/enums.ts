@@ -116,6 +116,9 @@ export const LEAVE_TYPES = ['ANNUAL', 'SICK', 'TRAINING', 'PUBLIC_HOLIDAY', 'OTH
 export const APPOINTMENT_STATUSES = ['BOOKED', 'CONFIRMED', 'CHECKED_IN', 'IN_CONSULTATION', 'COMPLETED', 'CANCELLED', 'NO_SHOW'] as const;
 export type AppointmentStatus = (typeof APPOINTMENT_STATUSES)[number];
 export const APPOINTMENT_SOURCES = ['RECEPTION', 'PHONE', 'ONLINE', 'WALK_IN', 'FOLLOW_UP'] as const;
+/** Where a visit happens: at the clinic, or a vet goes to the client's home. */
+export const VISIT_LOCATIONS = ['CLINIC', 'HOME'] as const;
+export type VisitLocation = (typeof VISIT_LOCATIONS)[number];
 /** Five-level triage scale (colour-coded). Staff choose the level; the system never assigns it automatically. */
 export const TRIAGE_PRIORITIES = ['RESUSCITATION', 'EMERGENT', 'URGENT', 'LESS_URGENT', 'NON_URGENT'] as const;
 export type TriagePriority = (typeof TRIAGE_PRIORITIES)[number];
@@ -288,7 +291,7 @@ export const CARE_ITEM_STATUSES = ['DUE', 'COMPLETED', 'CANCELLED', 'DEFERRED'] 
 export const MESSAGE_CHANNELS = ['EMAIL', 'SMS', 'WHATSAPP'] as const;
 export const MESSAGE_STATUSES = ['QUEUED', 'SENDING', 'SENT', 'FAILED', 'CANCELLED', 'SKIPPED'] as const;
 /** Messages sent automatically to the client when something happens (Settings → Client notifications). */
-export const CLIENT_NOTIFICATION_EVENTS = ['APPOINTMENT_BOOKED', 'APPOINTMENT_RESCHEDULED', 'APPOINTMENT_CANCELLED', 'LAB_RESULTS_READY', 'PATIENT_DISCHARGED', 'PAYMENT_RECEIVED', 'VACCINATION_GIVEN'] as const;
+export const CLIENT_NOTIFICATION_EVENTS = ['APPOINTMENT_BOOKED', 'APPOINTMENT_RESCHEDULED', 'APPOINTMENT_CANCELLED', 'HOME_VISIT_ON_THE_WAY', 'LAB_RESULTS_READY', 'PATIENT_DISCHARGED', 'PAYMENT_RECEIVED', 'VACCINATION_GIVEN'] as const;
 export type ClientNotificationEvent = (typeof CLIENT_NOTIFICATION_EVENTS)[number];
 export const MESSAGE_PURPOSES = ['CARE_REMINDER', 'CARE_OVERDUE', 'APPOINTMENT_REMINDER', 'PORTAL_INVITE', 'PORTAL_RESET', 'GENERAL', ...CLIENT_NOTIFICATION_EVENTS] as const;
 export const PREFERRED_TIMES = ['MORNING', 'AFTERNOON', 'EVENING', 'ANY'] as const;
@@ -298,7 +301,7 @@ Object.assign(ENUM_LABELS, {
   DEFERRED: 'Deferred', DUE: 'Due',
   EMAIL: 'Email', SMS: 'SMS', WHATSAPP: 'WhatsApp',
   QUEUED: 'Queued', SENDING: 'Sending', SENT: 'Sent', FAILED: 'Failed', SKIPPED: 'Not sent',
-  CARE_REMINDER: 'Care reminder', CARE_OVERDUE: 'Overdue care reminder', APPOINTMENT_REMINDER: 'Appointment reminder', PORTAL_INVITE: 'Portal invitation', PORTAL_RESET: 'Portal password reset', GENERAL: 'General message', AUTOMATION: 'Automation', AUTOMATION_TEAM: 'Automation (to the team)',
+  CARE_REMINDER: 'Care reminder', CARE_OVERDUE: 'Overdue care reminder', APPOINTMENT_REMINDER: 'Appointment reminder', HOME_VISIT_ON_THE_WAY: 'Vet on the way', PORTAL_INVITE: 'Portal invitation', PORTAL_RESET: 'Portal password reset', GENERAL: 'General message', AUTOMATION: 'Automation', AUTOMATION_TEAM: 'Automation (to the team)',
   MORNING: 'Morning', AFTERNOON: 'Afternoon', EVENING: 'Evening', ANY: 'Any time',
   PENDING: 'Pending', BOOKED: 'Booked', DECLINED: 'Declined',
 });
@@ -344,7 +347,7 @@ Object.assign(ENUM_LABELS, {
   WAITING: 'Waiting', READY: 'Ready for collection',
   EXPIRED: 'Expired',
   APPROVED: 'Approved', PARTIALLY_APPROVED: 'Partly approved', QUERIED: 'Query from insurer', REJECTED: 'Rejected', PAID: 'Paid',
-  CLINIC: 'Clinic', CLIENT: 'Client',
+  CLINIC: 'Clinic', HOME: 'Home visit', CLIENT: 'Client',
   OUTGOING: 'Outgoing', INCOMING: 'Incoming', RECEIVED: 'Received', ACCEPTED: 'Accepted',
   ROUTINE: 'Routine', EMERGENCY: 'Emergency',
   INSURANCE: 'Insurance', REFERRAL: 'Referral letter', NOT_STARTED: 'Not started yet',

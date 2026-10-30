@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { Session, User } from '@prisma/client';
-import { ALL_PLATFORM_PERMISSIONS, enabledModules, hasFeature, permissionInPlan, type SessionContext } from '@vcms/shared';
+import { ALL_PLATFORM_PERMISSIONS, enabledModules, moduleInPlan, permissionInPlan, type SessionContext } from '@vcms/shared';
 import { env } from '../../config/env';
 import { RequestContext, RequestContextStore } from '../../common/context/request-context';
 import { randomToken, sha256 } from '../../common/crypto/crypto';
@@ -143,7 +143,7 @@ export class SessionService {
         currency: org.currency,
         logoUrl: org.logoAttachmentId ? `/api/v1/organization/logo` : null,
         // The clinic's own choices (Services you offer), limited to what its plan includes.
-        enabledModules: enabledModules(org.disabledModules).filter((m) => hasFeature(RequestContext.get()?.tenant?.entitlements, m)),
+        enabledModules: enabledModules(org.disabledModules).filter((m) => moduleInPlan(RequestContext.get()?.tenant?.entitlements, m)),
         branding: brandingOf(org),
       };
       const m = await this.prisma.raw.membership.findUniqueOrThrow({

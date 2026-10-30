@@ -24,6 +24,7 @@ export const WHATSAPP_PURPOSE_LABELS: Record<WhatsAppPurpose, { title: string; t
     APPOINTMENT_BOOKED: { title: 'Appointment booked', text: 'Confirmation as soon as an appointment is booked.' },
     APPOINTMENT_RESCHEDULED: { title: 'Appointment moved', text: 'When the date or time of an appointment changes.' },
     APPOINTMENT_CANCELLED: { title: 'Appointment cancelled', text: 'When the clinic cancels an appointment.' },
+    HOME_VISIT_ON_THE_WAY: { title: 'Vet on the way (home visit)', text: 'When the vet sets off for a home visit and staff choose to tell the client.' },
     LAB_RESULTS_READY: { title: 'Test results ready', text: 'When lab or X-ray results are finalised.' },
     PATIENT_DISCHARGED: { title: 'Discharged from hospital', text: 'When an animal goes home, with home-care instructions.' },
     PAYMENT_RECEIVED: { title: 'Payment received', text: 'A thank-you with the receipt number and anything still owed.' },
@@ -81,6 +82,14 @@ export const WHATSAPP_VARIABLES: Record<WhatsAppPurpose, { key: string; label: s
   APPOINTMENT_BOOKED: [...APPOINTMENT_VARS, { key: 'manageLink', label: 'Change/cancel link (online bookings)', example: 'https://clinic.example/book/manage/…' }],
   APPOINTMENT_RESCHEDULED: APPOINTMENT_VARS,
   APPOINTMENT_CANCELLED: APPOINTMENT_VARS,
+  HOME_VISIT_ON_THE_WAY: [
+    { key: 'clientName', label: 'Client name', example: 'Ahmed Khan' },
+    { key: 'petName', label: 'Animal name', example: 'Bella' },
+    { key: 'vetName', label: 'Vet', example: 'Dr. Sara Ali' },
+    { key: 'arrivalTime', label: 'Expected arrival', example: '10:30' },
+    { key: 'clinicName', label: 'Clinic name', example: 'City Vet Clinic' },
+    { key: 'clinicPhone', label: 'Clinic phone', example: '042 1234567' },
+  ],
   LAB_RESULTS_READY: [
     { key: 'clientName', label: 'Client name', example: 'Ahmed Khan' },
     { key: 'petName', label: 'Animal name', example: 'Bella' },

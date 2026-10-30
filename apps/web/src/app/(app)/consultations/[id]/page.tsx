@@ -317,6 +317,7 @@ function Workspace() {
         <span className="text-xs text-muted-foreground">
           {enc.encounterNo} · {enc.clinician?.name ?? 'No vet assigned'} · started {fmtDateTime(enc.startedAt)}
           {enc.appointment && ` · ${enc.appointment.appointmentType.name} appointment`}
+          {enc.appointment?.location === 'HOME' && ` · home visit: ${enc.appointment.visitAddress ?? ''}`}
         </span>
         <div className="ml-auto flex gap-2">
           {enc.status === 'COMPLETED' && (

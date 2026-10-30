@@ -4,6 +4,7 @@ import { AlertTriangle, CalendarPlus } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { apptSummary } from './appointment-text';
+import { EMPTY_HOME_VISIT, HomeVisitFields, LocationSwitch, useHomeVisitSettings, type HomeVisitValue, type VisitLocation } from './home-visit-fields';
 import { PatientPicker, type PickedPatient } from '../patients/patient-picker';
 import { Field } from '../forms/field';
 import { FormError } from '../forms/form-error';
@@ -15,7 +16,7 @@ import { useAppointmentTypes, useClinicians, useResources } from '@/hooks/use-ca
 import { useDiscardConfirm } from '@/hooks/use-discard-confirm';
 import { ApiError, api, qs } from '@/lib/api';
 import { fmtMoney } from '@/lib/format';
-import { useSession } from '@/lib/session';
+import { useModuleOn, useSession } from '@/lib/session';
 import { branchTime, hhmm, minuteOfDay, parseHhmm, shiftDate, todayIn, zonedInstant } from '@/lib/time';
 import type { Appointment } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -89,6 +90,8 @@ export interface BookingDefaults {
   appointmentTypeId?: string;
   /** Pick the first appointment type of this category (e.g. VACCINATION) when no type id is given. */
   typeCategory?: string;
+  /** Start as a home visit (e.g. from the Home visits page). */
+  location?: VisitLocation;
 }
 
 type Override = { allowOverbook?: boolean; allowOutsideHours?: boolean };
@@ -130,6 +133,12 @@ export function BookingDialog({
   const [repeat, setRepeat] = useState(false);
   const [everyWeeks, setEveryWeeks] = useState(1);
   const [occurrences, setOccurrences] = useState(4);
+  const homeVisitsOn = useModuleOn()('homeVisits');
+  const [location, setLocation] = useState<VisitLocation>('CLINIC');
+  const [visit, setVisit] = useState<HomeVisitValue>(EMPTY_HOME_VISIT);
+  const hvSettings = useHomeVisitSettings(open && homeVisitsOn);
+  const isHome = homeVisitsOn && location === 'HOME';
+  const travelMinutes = isHome ? (visit.travelMinutes === '' ? (hvSettings.data?.travelMinutes ?? 0) : visit.travelMinutes) : 0;
   const [error, setError] = useState<{ message: string; override?: Override; problems?: { startsAt: string; message: string }[] } | null>(null);
 
   useEffect(() => {
@@ -146,6 +155,8 @@ export function BookingDialog({
     setDuration('');
     setResourceIds([]);
     setRepeat(false);
+    setLocation(defaults?.location ?? 'CLINIC');
+    setVisit(EMPTY_HOME_VISIT);
     setError(null);
   }, [open, defaults, tz]);
 
@@ -169,8 +180,9 @@ export function BookingDialog({
   const type = types.data?.find((t) => t.id === typeId);
   const anyVet = clinicianId === ANY_VET;
   const availability = useQuery({
-    queryKey: ['availability', branchId, date, typeId, anyVet ? '' : clinicianId],
-    queryFn: () => api.get<AvailabilityRow[]>(`/appointments/availability${qs({ branchId, date, appointmentTypeId: typeId, clinicianId: anyVet ? undefined : clinicianId || undefined })}`),
+    queryKey: ['availability', branchId, date, typeId, anyVet ? '' : clinicianId, travelMinutes],
+    // A home visit needs the vet free for the travel time too.
+    queryFn: () => api.get<AvailabilityRow[]>(`/appointments/availability${qs({ branchId, date, appointmentTypeId: typeId, clinicianId: anyVet ? undefined : clinicianId || undefined, travelMinutes: travelMinutes || undefined })}`),
     enabled: open && !!typeId && !!date && clinicianId !== '',
   });
   // One vet: their free times. Any vet: every time at least one vet is free.
@@ -201,7 +213,10 @@ export function BookingDialog({
         patientId: patient!.id,
         appointmentTypeId: typeId,
         clinicianId: resolvedClinicianId,
-        resourceIds,
+        resourceIds: isHome ? [] : resourceIds,
+        ...(isHome
+          ? { location: 'HOME', visitAddress: visit.visitAddress, visitDirections: visit.visitDirections, visitMapUrl: visit.visitMapUrl, travelMinutes }
+          : { location: 'CLINIC' }),
         startsAt: zonedInstant(date, parseHhmm(time), tz).toISOString(),
         durationMinutes: duration || undefined,
         reason,
@@ -241,10 +256,13 @@ export function BookingDialog({
   const resolvedClinicianId = anyVet ? (firstFree?.clinicianId ?? null) : clinicianId || null;
   const vetMissing = anyVet ? !firstFree : !!type?.requiresClinician && !clinicianId;
 
-  const canSubmit = !!patient?.owner && !!typeId && !vetMissing && !!date && !!time;
+  const addressMissing = isHome && !visit.visitAddress.trim();
+  const canSubmit = !!patient?.owner && !!typeId && !vetMissing && !!date && !!time && !addressMissing;
   const blockedReason = canSubmit
     ? null
-    : !patient && vetMissing && !anyVet
+    : patient?.owner && !vetMissing && addressMissing
+      ? 'Enter the address the vet should go to'
+      : !patient && vetMissing && !anyVet
       ? 'Choose a patient and a vet to continue'
       : !patient
         ? 'Choose a patient to continue'
@@ -271,7 +289,7 @@ export function BookingDialog({
       <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <CalendarPlus className="h-4 w-4" /> Book appointment
+            <CalendarPlus className="h-4 w-4" /> {isHome ? 'Book a home visit' : 'Book appointment'}
           </DialogTitle>
           <DialogDescription>
             {session.branch?.name}
@@ -319,6 +337,27 @@ export function BookingDialog({
             />
           </Field>
           {patient && !patient.owner && <p className="text-xs text-destructive">This patient has no client linked. Add the client on the patient’s page first.</p>}
+          {homeVisitsOn && (
+            <LocationSwitch
+              value={location}
+              onChange={(v) => {
+                setLocation(v);
+                setDirty(true);
+              }}
+            />
+          )}
+          {isHome && (
+            <HomeVisitFields
+              clientId={patient?.owner?.id}
+              value={visit}
+              onChange={(v) => {
+                setVisit(v);
+                setDirty(true);
+              }}
+              idPrefix="bk-hv"
+              defaultTravelMinutes={hvSettings.data?.travelMinutes}
+            />
+          )}
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Appointment type" htmlFor="bk-type" required>
               <NativeSelect id="bk-type" value={typeId} onChange={(e) => { setTypeId(e.target.value); setDirty(true); }}>
@@ -360,7 +399,7 @@ export function BookingDialog({
               </div>
             </div>
             <div className="grid grid-cols-[1fr_110px] content-start gap-2">
-              <Field label="Start time" htmlFor="bk-time" required>
+              <Field label={isHome ? 'Arrival time' : 'Start time'} htmlFor="bk-time" required>
                 <Input id="bk-time" type="time" step={300} value={time} onChange={(e) => pickTime(e.target.value)} />
               </Field>
               <Field label="Minutes" htmlFor="bk-dur">
@@ -392,9 +431,12 @@ export function BookingDialog({
                 </p>
               )}
               {anyVet && firstFree && <p className="mt-1 text-xs">Vet: <b>{firstFree.name}</b> (first free at {time})</p>}
+              {isHome && travelMinutes > 0 && startInstant && (
+                <p className="mt-1 text-xs text-muted-foreground">The vet leaves at {hhmm(Math.max(0, minuteOfDay(startInstant, tz) - travelMinutes))} ({travelMinutes} min travel is blocked on their calendar).</p>
+              )}
             </div>
           )}
-          {!!resources.data?.length && (
+          {!isHome && !!resources.data?.length && (
             <fieldset>
               <legend className="mb-1 text-sm font-medium">Rooms / equipment</legend>
               <div className="flex flex-wrap gap-3">

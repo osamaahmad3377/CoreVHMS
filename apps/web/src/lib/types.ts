@@ -275,6 +275,30 @@ export interface Appointment {
   callCount?: number;
   effectivePriority?: string | null;
   waitingMinutes?: number | null;
+  /** Home visit: the vet goes to the client. The address is a copy made when booking. */
+  location?: 'CLINIC' | 'HOME';
+  visitAddress?: string | null;
+  visitDirections?: string | null;
+  visitMapUrl?: string | null;
+  /** When the vet sets off; their calendar is blocked from here. */
+  travelStartsAt?: string | null;
+  travelMinutes?: number;
+  onTheWayAt?: string | null;
+  arrivedAt?: string | null;
+  distanceKm?: number | null;
+}
+
+/** A home visit on the vet's day list, with the fees already added to the client's bill. */
+export interface HomeVisit extends Appointment {
+  client: { id: string; displayName: string; mobilePhone: string | null; email: string | null };
+  fees: { id: string; kind: 'CALLOUT' | 'DISTANCE'; description: string; totalMinor: number; status: string }[];
+}
+
+export interface HomeVisitSettings {
+  enabled: boolean;
+  travelMinutes: number;
+  callout: { id: string; name: string; priceMinor: number; isActive: boolean } | null;
+  perKm: { id: string; name: string; priceMinor: number; isActive: boolean } | null;
 }
 
 export interface RosterEntry {
@@ -387,7 +411,7 @@ export interface Encounter {
   patientId: string;
   appointmentId: string | null;
   clinician: { id: string; name: string } | null;
-  appointment: { id: string; number: number; status: string; reason: string | null; appointmentType: { name: string } } | null;
+  appointment: { id: string; number: number; status: string; reason: string | null; location?: 'CLINIC' | 'HOME'; visitAddress?: string | null; appointmentType: { name: string } } | null;
   patient: import('@/components/patients/patient-banner').BannerPatient & { species: { id: string; name: string; category: string } };
   client: { id: string; displayName: string; mobilePhone: string | null };
   notes: ClinicalNote[];

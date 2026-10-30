@@ -117,7 +117,7 @@ export class EncountersService {
         },
         client: { select: { id: true, displayName: true, mobilePhone: true } },
         clinician: { select: { id: true, user: { select: { name: true } } } },
-        appointment: { select: { id: true, number: true, status: true, reason: true, appointmentType: { select: { name: true } } } },
+        appointment: { select: { id: true, number: true, status: true, reason: true, location: true, visitAddress: true, appointmentType: { select: { name: true } } } },
         notes: { orderBy: [{ createdAt: 'asc' }, { version: 'asc' }] },
         vitals: { orderBy: { recordedAt: 'desc' } },
         diagnoses: { orderBy: { createdAt: 'asc' } },

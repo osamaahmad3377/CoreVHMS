@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { enumLabel } from '@vcms/shared';
-import { AlertTriangle, CalendarClock, CalendarPlus, CheckCircle2, ClipboardCheck, LogIn, Play, Scissors, Siren, Stethoscope, Tractor, UserX, XCircle } from 'lucide-react';
+import { AlertTriangle, CalendarClock, CalendarPlus, CheckCircle2, ClipboardCheck, House, LogIn, Play, Scissors, Siren, Stethoscope, Tractor, UserX, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -17,6 +17,8 @@ import { AppointmentStatusBadge, PriorityDot } from './appointment-status';
 import { apptWho, statusChangeMessage } from './appointment-text';
 import { BookingDialog, FreeTimeButtons, type AvailabilityRow, type BookingDefaults } from './booking-dialog';
 import { TriageDialog } from './triage-dialog';
+import { HomeVisitActions, HomeVisitInfo } from './home-visit-actions';
+import { HomeVisitFields, type HomeVisitValue } from './home-visit-fields';
 import { GroomingCheckInDialog } from '../boarding/dialogs';
 import { VisitFromAppointmentDialog } from '../livestock/record-dialogs';
 import { useClinicians } from '@/hooks/use-catalog';
@@ -113,6 +115,7 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [clinicianId, setClinicianId] = useState('');
+  const [visit, setVisit] = useState<HomeVisitValue>({ visitAddress: '', visitDirections: '', visitMapUrl: '', travelMinutes: '' });
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
 
   useEffect(() => {
@@ -124,6 +127,7 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
       setDate(localDate(q.data.startsAt, tz));
       setTime(hhmm(minuteOfDay(q.data.startsAt, tz)));
       setClinicianId(q.data.clinician?.id ?? '');
+      setVisit({ visitAddress: q.data.visitAddress ?? '', visitDirections: q.data.visitDirections ?? '', visitMapUrl: q.data.visitMapUrl ?? '', travelMinutes: q.data.travelMinutes ?? '' });
     }
   }, [q.data, tz]);
 
@@ -147,7 +151,13 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
 
   const reschedule = useMutation({
     mutationFn: (override: { allowOverbook?: boolean; allowOutsideHours?: boolean }) =>
-      api.patch<Appointment>(`/appointments/${id}`, { startsAt: zonedInstant(date, parseHhmm(time), tz).toISOString(), clinicianId: clinicianId || null, ...override }),
+      api.patch<Appointment>(`/appointments/${id}`, {
+        startsAt: zonedInstant(date, parseHhmm(time), tz).toISOString(),
+        clinicianId: clinicianId || null,
+        // A home visit's address can be corrected here too.
+        ...(q.data?.location === 'HOME' ? { visitAddress: visit.visitAddress, visitDirections: visit.visitDirections, visitMapUrl: visit.visitMapUrl, travelMinutes: visit.travelMinutes === '' ? 0 : visit.travelMinutes } : {}),
+        ...override,
+      }),
     onSuccess: (after) => {
       // The API resets a confirmed appointment to Booked when its time changes, so the client should be asked again.
       const when = `${apptWho(after)}, ${branchTime(after.startsAt, tz, 'EEE d MMM')} at ${branchTime(after.startsAt, tz)}${after.clinician ? ` with ${after.clinician.name}` : ''} (${after.appointmentNo})`;
@@ -163,15 +173,16 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
   const s = a?.status;
   // Free start times for the reschedule form: the chosen vet's, or every vet's when none is chosen.
   const availability = useQuery({
-    queryKey: ['availability', a?.branchId, date, a?.appointmentType.id, clinicianId],
-    queryFn: () => api.get<AvailabilityRow[]>(`/appointments/availability${qs({ branchId: a!.branchId, date, appointmentTypeId: a!.appointmentType.id, clinicianId: clinicianId || undefined })}`),
+    queryKey: ['availability', a?.branchId, date, a?.appointmentType.id, clinicianId, a?.travelMinutes],
+    queryFn: () => api.get<AvailabilityRow[]>(`/appointments/availability${qs({ branchId: a!.branchId, date, appointmentTypeId: a!.appointmentType.id, clinicianId: clinicianId || undefined, travelMinutes: a!.travelMinutes || undefined })}`),
     enabled: open && mode === 'reschedule' && !!a && !!date,
   });
   const freeSlots = [...new Set((availability.data ?? []).filter((c) => !clinicianId || c.clinicianId === clinicianId).flatMap((c) => c.slots))].sort();
   const actions: { key: string; label: string; icon: React.ComponentType; show: boolean; variant?: 'outline' | 'default' | 'destructive'; reason?: boolean }[] = a
     ? [
         { key: 'confirm', label: 'Owner confirmed', icon: ClipboardCheck, show: s === 'BOOKED' && (can('appointments.write') || can('appointments.checkin')), variant: 'outline' },
-        { key: 'check-in', label: 'Check in', icon: LogIn, show: (s === 'BOOKED' || s === 'CONFIRMED') && can('appointments.checkin') },
+        // A home visit is not checked in at the desk; the vet marks arrival instead.
+        { key: 'check-in', label: 'Check in', icon: LogIn, show: (s === 'BOOKED' || s === 'CONFIRMED') && a.location !== 'HOME' && can('appointments.checkin') },
         { key: 'start', label: 'Start consultation', icon: Play, show: ['BOOKED', 'CONFIRMED', 'CHECKED_IN'].includes(s!) && !!a.patient && can('clinical.write') },
         { key: 'complete', label: 'Mark finished', icon: CheckCircle2, show: (s === 'CHECKED_IN' || s === 'IN_CONSULTATION') && (can('clinical.write') || can('appointments.checkin')), variant: 'outline' },
         { key: 'no-show', label: 'No-show', icon: UserX, show: (s === 'BOOKED' || s === 'CONFIRMED') && new Date(a.startsAt) < new Date() && (can('appointments.write') || can('appointments.checkin')), variant: 'outline' },
@@ -191,7 +202,8 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
         !a.fieldVisit && a.appointmentType.category === 'FIELD_VISIT' && !['CANCELLED', 'NO_SHOW'].includes(a.status) && can('livestock.write'),
       ].some(Boolean)
     : false;
-  const hasActions = !!a?.encounter || moduleLinks || visibleActions.length > 0 || canTriage || canReschedule || canRebook;
+  const isHome = a?.location === 'HOME';
+  const hasActions = !!a?.encounter || moduleLinks || visibleActions.length > 0 || canTriage || canReschedule || canRebook || isHome;
   const softClash = error?.code === 'CLINICIAN_BUSY' || error?.code === 'OUTSIDE_WORKING_HOURS';
 
   return (
@@ -205,6 +217,7 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
               <DialogHeader>
                 <DialogTitle className="flex flex-wrap items-center gap-2">
                   <span className="h-3 w-3 rounded-full" style={{ backgroundColor: a.appointmentType.color }} />
+                  {isHome && <House className="h-4 w-4 text-primary" aria-label="Home visit" />}
                   {a.appointmentType.name} · {branchTime(a.startsAt, tz, 'EEE d MMM, HH:mm')}–{branchTime(a.endsAt, tz)}
                   <AppointmentStatusBadge status={a.status} />
                   <PriorityDot priority={a.triage?.priority ?? a.priority} withLabel />
@@ -215,16 +228,17 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
               )}
               {mode === 'view' ? (
                 <>
+                  {isHome && <HomeVisitInfo a={a} tz={tz} />}
                   <DescriptionList
                     items={[
                       { label: 'Patient', value: a.patient ? <Link className="text-primary hover:underline" href={`/patients/${a.patient.id}`}>{a.patient.name} ({a.patient.species.name})</Link> : 'Not specified' },
                       { label: 'Client', value: <Link className="text-primary hover:underline" href={`/clients/${a.client.id}`}>{a.client.displayName}</Link> },
                       { label: 'Phone', value: a.client.mobilePhone },
                       { label: 'Vet', value: a.clinician?.name ?? 'No vet yet' },
-                      { label: 'Rooms', value: a.resources.map((r) => r.name).join(', ') },
+                      ...(isHome ? [] : [{ label: 'Rooms', value: a.resources.map((r) => r.name).join(', ') }]),
                       { label: 'Reason', value: a.reason },
                       { label: 'Notes', value: a.notes },
-                      { label: 'Checked in', value: a.checkedInAt && fmtDateTime(a.checkedInAt) },
+                      ...(isHome ? [] : [{ label: 'Checked in', value: a.checkedInAt && fmtDateTime(a.checkedInAt) }]),
                       { label: 'Triage', value: a.triage && `${enumLabel(a.triage.priority)} — ${a.triage.presentingComplaint} (${a.triage.assessedByName})` },
                       ...(a.cancelReason ? [{ label: 'Cancelled', value: `${fmtDateTime(a.cancelledAt)} — ${a.cancelReason}` }] : []),
                     ]}
@@ -270,6 +284,7 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
                         <CalendarPlus /> Book again
                       </Button>
                     )}
+                    {isHome && <HomeVisitActions a={a} />}
                     {visibleActions.map((x) => (
                       <Button
                         key={x.key}
@@ -291,7 +306,7 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
                     )}
                     {canReschedule && (
                       <Button size="sm" variant="outline" onClick={() => setMode('reschedule')}>
-                        <CalendarClock /> Reschedule
+                        <CalendarClock /> {isHome ? 'Change time or address' : 'Reschedule'}
                       </Button>
                     )}
                   </div>
@@ -320,6 +335,7 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
                       </NativeSelect>
                     </Field>
                   </div>
+                  {isHome && <HomeVisitFields clientId={a.client.id} value={visit} onChange={setVisit} idPrefix="rs-hv" />}
                   <div>
                     <p className="mb-1 text-xs font-medium text-muted-foreground">{clinicianId ? 'Free times for this vet' : 'Free times (any vet)'}</p>
                     {availability.isLoading ? (
@@ -332,7 +348,7 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
                   </div>
                   <div className="flex justify-end gap-2">
                     <Button variant="outline" onClick={() => setMode('view')}>Back</Button>
-                    <Button loading={reschedule.isPending} onClick={() => { setError(null); reschedule.mutate({}); }}>Save new time</Button>
+                    <Button loading={reschedule.isPending} disabled={isHome && !visit.visitAddress.trim()} onClick={() => { setError(null); reschedule.mutate({}); }}>{isHome ? 'Save changes' : 'Save new time'}</Button>
                   </div>
                 </div>
               )}

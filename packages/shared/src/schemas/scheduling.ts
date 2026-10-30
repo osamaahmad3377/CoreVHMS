@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { APPOINTMENT_CATEGORIES, APPOINTMENT_SOURCES, LEAVE_TYPES, RESOURCE_TYPES, TRIAGE_PRIORITIES } from '../enums';
+import { APPOINTMENT_CATEGORIES, APPOINTMENT_SOURCES, LEAVE_TYPES, RESOURCE_TYPES, TRIAGE_PRIORITIES, VISIT_LOCATIONS } from '../enums';
 import { optDate, optInt, optText, optUuid, reqText } from './common';
 
 export const appointmentTypeSchema = z.object({
@@ -53,8 +53,28 @@ export const leaveSchema = z
   })
   .refine((v) => v.endsAt > v.startsAt, { path: ['endsAt'], message: 'End must be after start' });
 
+/** A map pin link shared by the client: https only, so it can be opened safely. '' clears. */
+export const optMapUrl = () =>
+  z
+    .union([z.literal(''), z.string().trim().max(500).url('Paste the full map link, starting with https://').refine((v) => /^https:\/\//i.test(v), 'Paste the full map link, starting with https://')])
+    .nullish()
+    .transform((v) => (v === '' ? null : v));
+
+/** Home visit details on a booking. Travel time is blocked on the vet's calendar before the visit. */
+const homeVisitFields = {
+  location: z.enum(VISIT_LOCATIONS).default('CLINIC'),
+  visitAddress: optText(500),
+  visitDirections: optText(500),
+  visitMapUrl: optMapUrl(),
+  travelMinutes: optInt(0, 240),
+};
+
+const needsAddress = (v: { location?: string; visitAddress?: string | null }) => v.location !== 'HOME' || !!v.visitAddress;
+const addressIssue = { path: ['visitAddress'], message: 'Enter the address the vet should go to' };
+
 export const createAppointmentSchema = z
   .object({
+    ...homeVisitFields,
     branchId: z.string().uuid(),
     clientId: z.string().uuid(),
     patientId: optUuid(),
@@ -72,10 +92,17 @@ export const createAppointmentSchema = z
     repeat: z
       .object({ everyWeeks: z.coerce.number().int().min(1).max(52), occurrences: z.coerce.number().int().min(2).max(52) })
       .optional(),
-  });
-export type CreateAppointmentInput = z.infer<typeof createAppointmentSchema>;
+  })
+  .refine(needsAddress, addressIssue);
+/** `location` may be left out by code that books clinic visits (it defaults to the clinic). */
+export type CreateAppointmentInput = Omit<z.infer<typeof createAppointmentSchema>, 'location'> & { location?: z.infer<typeof createAppointmentSchema>['location'] };
 
 export const rescheduleAppointmentSchema = z.object({
+  location: z.enum(VISIT_LOCATIONS).optional(),
+  visitAddress: optText(500),
+  visitDirections: optText(500),
+  visitMapUrl: optMapUrl(),
+  travelMinutes: optInt(0, 240),
   startsAt: z.coerce.date().optional(),
   durationMinutes: z.coerce.number().int().min(5).max(720).optional(),
   clinicianId: optUuid(),
@@ -109,6 +136,41 @@ export const availabilityQuery = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   appointmentTypeId: z.string().uuid(),
   clinicianId: z.string().uuid().optional(),
+  /** Home visit: the vet must also be free for this long before the start (travel). */
+  travelMinutes: z.coerce.number().int().min(0).max(240).optional(),
+});
+
+// ── Home visits ──
+
+export const homeVisitSettingsSchema = z.object({
+  /** Service from the price list charged once per home visit. */
+  calloutServiceId: optUuid(),
+  /** Service whose price is charged per km travelled. */
+  perKmServiceId: optUuid(),
+  travelMinutes: z.coerce.number().int().min(0).max(240),
+});
+export type HomeVisitSettingsInput = z.infer<typeof homeVisitSettingsSchema>;
+
+export const homeVisitDayQuery = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  branchId: z.string().uuid().optional(),
+  clinicianId: z.string().uuid().optional(),
+});
+
+export const homeVisitOnTheWaySchema = z.object({
+  /** Send the client a message that the vet is on the way. */
+  notifyClient: z.boolean().default(true),
+});
+
+const km = z.preprocess((v) => (v === '' ? null : v), z.coerce.number().min(0, 'Enter 0 or more').max(2000, 'That is more than 2000 km').nullish()) as z.ZodType<number | null | undefined, z.ZodTypeDef, unknown>;
+
+export const homeVisitArriveSchema = z.object({
+  /** Distance travelled to the client (km); can also be recorded later. */
+  distanceKm: km,
+});
+
+export const homeVisitDistanceSchema = z.object({
+  distanceKm: z.coerce.number().min(0, 'Enter 0 or more').max(2000, 'That is more than 2000 km'),
 });
 
 export const walkInSchema = z.object({

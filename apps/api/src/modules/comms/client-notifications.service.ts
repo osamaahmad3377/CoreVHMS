@@ -136,6 +136,20 @@ export class ClientNotificationsService implements OnModuleInit {
           sourceId: a.id,
         };
       }
+      case 'HOME_VISIT_ON_THE_WAY': {
+        const a = await db.appointment.findUnique({ where: { id: e.appointmentId }, include: { client: owner, patient: { select: { name: true } }, clinician: { select: { user: { select: { name: true } } } }, branch: { select: { timezone: true } } } });
+        if (!a || !a.onTheWayAt) return null;
+        return {
+          client: a.client,
+          patientId: a.patientId,
+          // Expected arrival: the booked time, or later when the vet set off late (setting-off time + planned travel).
+          vars: { petName: a.patient?.name ?? 'your animal', vetName: a.clinician?.user.name ?? 'Our vet', arrivalTime: formatInTimeZone(new Date(Math.max(a.startsAt.getTime(), a.onTheWayAt.getTime() + (a.travelStartsAt ? a.startsAt.getTime() - a.travelStartsAt.getTime() : 0))), a.branch.timezone, 'HH:mm') },
+          // Once per trip: setting off again later (a new trip) may tell the client again.
+          dedupeKey: `${e.type}:${a.id}:${a.onTheWayAt.toISOString()}`,
+          sourceType: 'Appointment',
+          sourceId: a.id,
+        };
+      }
       case 'LAB_RESULTS_READY': {
         const o = await db.diagnosticOrder.findUnique({ where: { id: e.orderId }, include: { client: owner, patient: { select: { name: true } }, items: { where: { status: { not: 'CANCELLED' } }, select: { test: { select: { name: true } } } } } });
         if (!o) return null;

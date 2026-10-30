@@ -79,7 +79,26 @@ export function shapeAppointment(a: Row) {
     calledAt: a.calledAt,
     calledRoom: a.calledRoom,
     callCount: a.callCount,
+    location: a.location,
+    visitAddress: a.visitAddress,
+    visitDirections: a.visitDirections,
+    visitMapUrl: a.visitMapUrl,
+    travelStartsAt: a.travelStartsAt,
+    travelMinutes: a.travelStartsAt ? Math.round((a.startsAt.getTime() - a.travelStartsAt.getTime()) / 60_000) : 0,
+    onTheWayAt: a.onTheWayAt,
+    arrivedAt: a.arrivedAt,
+    distanceKm: a.distanceKm === null ? null : Number(a.distanceKm),
   };
+}
+
+/** When the vet's time for a visit begins: when they set off for a home visit, else the start. */
+export const blockStart = (a: { startsAt: Date; travelStartsAt?: Date | null }) => a.travelStartsAt ?? a.startsAt;
+
+/** Home visit fields as stored: a clinic visit keeps none of them. */
+function visitFields(location: 'CLINIC' | 'HOME', v: { visitAddress?: string | null; visitDirections?: string | null; visitMapUrl?: string | null }) {
+  return location === 'HOME'
+    ? { location, visitAddress: v.visitAddress ?? null, visitDirections: v.visitDirections ?? null, visitMapUrl: v.visitMapUrl ?? null }
+    : { location, visitAddress: null, visitDirections: null, visitMapUrl: null };
 }
 
 /**
@@ -194,16 +213,18 @@ export class AppointmentsService {
     r: Resolved,
     startsAt: Date,
     endsAt: Date,
-    opts: { allowOverbook: boolean; allowOutsideHours: boolean; excludeId?: string; patientId?: string | null },
+    opts: { allowOverbook: boolean; allowOutsideHours: boolean; excludeId?: string; patientId?: string | null; travelStartsAt?: Date | null },
   ) {
+    // A home visit takes the vet's time from when they set off.
+    const from = opts.travelStartsAt ?? startsAt;
     if (r.clinician) {
       const leave = await this.prisma.db.staffLeave.findFirst({
-        where: { membershipId: r.clinician.id, startsAt: { lt: endsAt }, endsAt: { gt: startsAt } },
+        where: { membershipId: r.clinician.id, startsAt: { lt: endsAt }, endsAt: { gt: from } },
       });
       if (leave) throw ruleViolation('CLINICIAN_ON_LEAVE', `${r.clinician.name} is on leave at that time`);
 
       if (!opts.allowOutsideHours) {
-        const start = localParts(startsAt, r.branch.timezone);
+        const start = localParts(from, r.branch.timezone);
         const end = localParts(new Date(endsAt.getTime() - 1), r.branch.timezone);
         const hours = await this.prisma.db.workingHours.findMany({
           where: { membershipId: r.clinician.id, branchId: r.branch.id, dayOfWeek: start.dayOfWeek },
@@ -223,8 +244,9 @@ export class AppointmentsService {
             clinicianId: r.clinician.id,
             isOverbooked: false,
             status: { in: ACTIVE },
-            startsAt: { lt: endsAt },
-            endsAt: { gt: startsAt },
+            // Another visit's time includes its travel (travel never starts after the visit does).
+            OR: [{ startsAt: { lt: endsAt } }, { travelStartsAt: { lt: endsAt } }],
+            endsAt: { gt: from },
             id: opts.excludeId ? { not: opts.excludeId } : undefined,
           },
           include: { patient: { select: { name: true } } },
@@ -232,9 +254,10 @@ export class AppointmentsService {
         if (clash) {
           // Booking the same animal twice is usually a duplicate, so say so plainly.
           const samePatient = !!opts.patientId && clash.patientId === opts.patientId;
+          const travel = !!opts.travelStartsAt || !!clash.travelStartsAt ? ' (including travel time for a home visit)' : '';
           const message = samePatient
-            ? `${clash.patient!.name} is already booked at this time (${appointmentNo(clash.number)} with ${r.clinician.name})`
-            : `${r.clinician.name} already has ${appointmentNo(clash.number)}${clash.patient ? ` (${clash.patient.name})` : ''} at that time`;
+            ? `${clash.patient!.name} is already booked at this time (${appointmentNo(clash.number)} with ${r.clinician.name})${travel}`
+            : `${r.clinician.name} already has ${appointmentNo(clash.number)}${clash.patient ? ` (${clash.patient.name})` : ''} at that time${travel}`;
           throw conflict(message, { code: 'CLINICIAN_BUSY', appointmentId: clash.id, samePatient, canOverride: true });
         }
       }
@@ -256,8 +279,19 @@ export class AppointmentsService {
 
   // ── Create ──
 
+  /** Home visits must be switched on (Settings → Services you offer); returns the clinic's default travel time. */
+  private async homeVisitDefaults() {
+    const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: RequestContext.orgId() }, select: { disabledModules: true, homeVisitTravelMinutes: true } });
+    if (org.disabledModules.includes('homeVisits')) throw ruleViolation('HOME_VISITS_OFF', 'Home visits are switched off for this clinic (Settings → Services you offer)');
+    return { travelMinutes: org.homeVisitTravelMinutes };
+  }
+
   async create(input: CreateAppointmentInput) {
     const ctx = RequestContext.require();
+    const location = input.location ?? 'CLINIC';
+    if (location === 'HOME' && !input.visitAddress) throw ruleViolation('ADDRESS_REQUIRED', 'Enter the address the vet should go to');
+    const travelMinutes = location === 'HOME' ? (input.travelMinutes ?? (await this.homeVisitDefaults()).travelMinutes) : 0;
+    if (location === 'HOME' && input.travelMinutes != null) await this.homeVisitDefaults();
     const r = await this.resolve(input);
     await this.resolveParties(input.clientId, input.patientId);
     if (input.followUpOfId) {
@@ -269,7 +303,7 @@ export class AppointmentsService {
     const groupId = occurrences > 1 ? randomUUID() : null;
     const slots = Array.from({ length: occurrences }, (_, i) => {
       const startsAt = new Date(input.startsAt.getTime() + i * (input.repeat?.everyWeeks ?? 0) * 7 * 86400_000);
-      return { startsAt, endsAt: new Date(startsAt.getTime() + duration * 60_000) };
+      return { startsAt, endsAt: new Date(startsAt.getTime() + duration * 60_000), travelStartsAt: travelMinutes ? new Date(startsAt.getTime() - travelMinutes * 60_000) : null };
     });
     if (slots[0].startsAt.getTime() < Date.now() - 24 * 3600_000 && input.source !== 'WALK_IN') {
       throw ruleViolation('PAST_DATE', 'Appointments cannot be booked more than a day in the past');
@@ -279,7 +313,7 @@ export class AppointmentsService {
     const problems: { startsAt: Date; message: string }[] = [];
     for (const s of slots) {
       try {
-        await this.checkSlot(r, s.startsAt, s.endsAt, { allowOverbook: input.allowOverbook, allowOutsideHours: input.allowOutsideHours, patientId: input.patientId });
+        await this.checkSlot(r, s.startsAt, s.endsAt, { allowOverbook: input.allowOverbook, allowOutsideHours: input.allowOutsideHours, patientId: input.patientId, travelStartsAt: s.travelStartsAt });
       } catch (e: any) {
         if (occurrences === 1) throw e;
         problems.push({ startsAt: s.startsAt, message: e?.response?.message ?? e.message });
@@ -302,6 +336,8 @@ export class AppointmentsService {
             clinicianId: r.clinician?.id ?? null,
             startsAt: s.startsAt,
             endsAt: s.endsAt,
+            ...visitFields(location, input),
+            travelStartsAt: s.travelStartsAt,
             source: input.source,
             reason: input.reason,
             notes: input.notes,
@@ -320,7 +356,7 @@ export class AppointmentsService {
             action: 'appointment.booked',
             entityType: 'Appointment',
             entityId: a.id,
-            summary: `${appointmentNo(number)} ${r.type.name} ${s.startsAt.toISOString()}${input.allowOverbook ? ' (overbooked)' : ''}${input.allowOutsideHours ? ' (outside working hours)' : ''}`,
+            summary: `${appointmentNo(number)} ${r.type.name} ${s.startsAt.toISOString()}${location === 'HOME' ? ` (home visit: ${input.visitAddress})` : ''}${input.allowOverbook ? ' (overbooked)' : ''}${input.allowOutsideHours ? ' (outside working hours)' : ''}`,
           },
           tx,
         );
@@ -353,9 +389,24 @@ export class AppointmentsService {
     const startsAt = input.startsAt ?? a.startsAt;
     const duration = input.durationMinutes ?? (input.appointmentTypeId ? r.type.durationMinutes : (a.endsAt.getTime() - a.startsAt.getTime()) / 60_000);
     const endsAt = new Date(startsAt.getTime() + duration * 60_000);
+    // Home visit details: changed ones replace the stored ones; the travel time moves with the start.
+    const location = input.location ?? a.location;
+    if (location !== a.location && (a.onTheWayAt || a.arrivedAt)) throw ruleViolation('VISIT_UNDER_WAY', 'The vet has already set off for this home visit, so it cannot become a clinic visit');
+    const visit = visitFields(location, {
+      visitAddress: input.visitAddress !== undefined ? input.visitAddress : a.visitAddress,
+      visitDirections: input.visitDirections !== undefined ? input.visitDirections : a.visitDirections,
+      visitMapUrl: input.visitMapUrl !== undefined ? input.visitMapUrl : a.visitMapUrl,
+    });
+    if (location === 'HOME' && !visit.visitAddress) throw ruleViolation('ADDRESS_REQUIRED', 'Enter the address the vet should go to');
+    const storedTravel = a.travelStartsAt ? Math.round((a.startsAt.getTime() - a.travelStartsAt.getTime()) / 60_000) : null;
+    // Turning a clinic visit into a home visit needs home visits switched on (and takes the clinic's travel time).
+    const defaults = location === 'HOME' && a.location !== 'HOME' ? await this.homeVisitDefaults() : null;
+    const travelMinutes = location !== 'HOME' ? 0 : (input.travelMinutes ?? (a.location === 'HOME' ? storedTravel : null) ?? defaults?.travelMinutes ?? 0);
+    const travelStartsAt = travelMinutes ? new Date(startsAt.getTime() - travelMinutes * 60_000) : null;
     const timeChanged = startsAt.getTime() !== a.startsAt.getTime() || endsAt.getTime() !== a.endsAt.getTime();
-    const overbook = input.allowOverbook || (a.isOverbooked && !timeChanged && r.clinician?.id === a.clinicianId);
-    await this.checkSlot(r, startsAt, endsAt, { allowOverbook: overbook, allowOutsideHours: input.allowOutsideHours, excludeId: id, patientId: input.patientId === undefined ? a.patientId : input.patientId });
+    const blockChanged = timeChanged || (travelStartsAt?.getTime() ?? null) !== (a.travelStartsAt?.getTime() ?? null);
+    const overbook = input.allowOverbook || (a.isOverbooked && !blockChanged && r.clinician?.id === a.clinicianId);
+    await this.checkSlot(r, startsAt, endsAt, { allowOverbook: overbook, allowOutsideHours: input.allowOutsideHours, excludeId: id, patientId: input.patientId === undefined ? a.patientId : input.patientId, travelStartsAt });
 
     await this.prisma.db.$transaction(async (tx) => {
       const after = await tx.appointment.update({
@@ -368,6 +419,8 @@ export class AppointmentsService {
           patientId: input.patientId === undefined ? undefined : input.patientId,
           reason: input.reason,
           notes: input.notes,
+          ...visit,
+          travelStartsAt,
           isOverbooked: overbook,
           // a time change resets confirmation
           status: timeChanged && a.status === 'CONFIRMED' ? 'BOOKED' : undefined,
@@ -385,7 +438,7 @@ export class AppointmentsService {
           entityType: 'Appointment',
           entityId: id,
           summary: appointmentNo(a.number),
-          changes: diff(a, after, ['startsAt', 'endsAt', 'clinicianId', 'appointmentTypeId', 'patientId', 'reason', 'notes', 'isOverbooked']),
+          changes: diff(a, after, ['startsAt', 'endsAt', 'clinicianId', 'appointmentTypeId', 'patientId', 'reason', 'notes', 'isOverbooked', 'location', 'visitAddress', 'visitDirections', 'visitMapUrl', 'travelStartsAt']),
         },
         tx,
       );
@@ -422,6 +475,7 @@ export class AppointmentsService {
       case 'check-in':
         need('appointments.checkin');
         from('BOOKED', 'CONFIRMED');
+        if (a.location === 'HOME') throw ruleViolation('HOME_VISIT', 'A home visit is not checked in at the desk. Mark the vet as arrived instead.');
         data = { status: 'CHECKED_IN', checkedInAt: now };
         break;
       case 'start':
@@ -429,6 +483,8 @@ export class AppointmentsService {
         from('BOOKED', 'CONFIRMED', 'CHECKED_IN');
         if (!a.patientId) throw ruleViolation('NO_PATIENT', 'Add a patient to the appointment before starting a consultation');
         data = { status: 'IN_CONSULTATION', startedAt: now, checkedInAt: a.checkedInAt ?? now };
+        // Starting the consultation at the client's home means the vet is there.
+        if (a.location === 'HOME' && !a.arrivedAt) data.arrivedAt = now;
         // An unassigned appointment (typically a walk-in) is taken by the clinician who starts it.
         if (!a.clinicianId && ctx.membershipId) {
           const me = await this.prisma.db.membership.findUnique({ where: { id: ctx.membershipId }, select: { id: true, status: true, isClinician: true } });
@@ -511,7 +567,7 @@ export class AppointmentsService {
   // ── Availability ──
 
   /** Free start times per clinician for a branch-local date and appointment type. */
-  async availability(q: { branchId: string; date: string; appointmentTypeId: string; clinicianId?: string }) {
+  async availability(q: { branchId: string; date: string; appointmentTypeId: string; clinicianId?: string; travelMinutes?: number }) {
     const branch = await this.prisma.db.branch.findUnique({ where: { id: q.branchId } });
     if (!branch) throw notFound('Branch');
     const type = await this.prisma.db.appointmentType.findUnique({ where: { id: q.appointmentTypeId } });
@@ -534,22 +590,25 @@ export class AppointmentsService {
         leave: { where: { startsAt: { lt: dayEnd }, endsAt: { gt: dayStart } } },
         appointments: {
           where: { status: { in: ACTIVE }, isOverbooked: false, startsAt: { lt: dayEnd }, endsAt: { gt: dayStart } },
-          select: { startsAt: true, endsAt: true },
+          select: { startsAt: true, endsAt: true, travelStartsAt: true },
         },
       },
       orderBy: { user: { name: 'asc' } },
     });
     const now = Date.now();
     const duration = type.durationMinutes * 60_000;
+    // A home visit also needs the vet free (and working) for the travel time before it.
+    const travel = q.travelMinutes ?? 0;
     return clinicians.map((c) => {
-      const busy = [...c.leave, ...c.appointments].map((b) => [b.startsAt.getTime(), b.endsAt.getTime()] as const);
+      const busy = [...c.leave.map((l) => [l.startsAt.getTime(), l.endsAt.getTime()] as const), ...c.appointments.map((b) => [blockStart(b).getTime(), b.endsAt.getTime()] as const)];
       const slots: string[] = [];
       for (const h of c.workingHours) {
-        for (let m = h.startMinute; m + type.durationMinutes <= h.endMinute; m += SLOT_STEP_MIN) {
+        for (let m = h.startMinute + travel; m + type.durationMinutes <= h.endMinute; m += SLOT_STEP_MIN) {
           const start = zonedToUtc(q.date, m, tz).getTime();
           const end = start + duration;
+          const from = start - travel * 60_000;
           if (start < now) continue;
-          if (busy.some(([bs, be]) => bs < end && be > start)) continue;
+          if (busy.some(([bs, be]) => bs < end && be > from)) continue;
           slots.push(new Date(start).toISOString());
         }
       }

@@ -164,6 +164,7 @@ export function ConsultationRecord({ encounter: e, clinic }: { encounter: Encoun
               v: `${enumLabel(e.type)}${e.appointment && e.appointment.appointmentType.name !== enumLabel(e.type) ? ` (${e.appointment.appointmentType.name})` : ''}`,
             },
             { k: 'Veterinarian', v: e.clinician?.name ?? dash },
+            ...(e.appointment?.location === 'HOME' ? [{ k: 'Place', v: `Home visit — ${e.appointment.visitAddress ?? ''}`, wide: true }] : []),
             { k: 'Started', v: fmtDateTime(e.startedAt) },
             { k: 'Finished', v: e.completedAt ? fmtDateTime(e.completedAt) : dash },
             ...(e.chiefComplaint ? [{ k: 'Reason for visit', v: e.chiefComplaint, wide: true }] : []),

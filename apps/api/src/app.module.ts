@@ -16,6 +16,7 @@ import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { ClinicalModule } from './modules/clinical/clinical.module';
 import { SchedulingModule } from './modules/scheduling/scheduling.module';
+import { HomeVisitsModule } from './modules/home-visits/home-visits.module';
 import { PharmacyModule } from './modules/pharmacy/pharmacy.module';
 import { LabModule } from './modules/lab/lab.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
@@ -72,6 +73,7 @@ import { env } from './config/env';
     DashboardModule,
     ClinicalModule,
     SchedulingModule,
+    HomeVisitsModule,
     PharmacyModule,
     LabModule,
     InventoryModule,

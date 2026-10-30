@@ -138,6 +138,9 @@ export function resolveEntitlements(plan: PlanLike | null | undefined, o: PlanOv
 
 export const hasFeature = (e: Entitlements | null | undefined, f: PlanFeature) => !e || e.features.includes(f);
 
+/** Whether an optional module is in the clinic's plan: modules that are not plan features (home visits) are in every plan. */
+export const moduleInPlan = (e: Entitlements | null | undefined, m: string) => !isFeature(m) || hasFeature(e, m);
+
 /** The other plans that include a feature, cheapest first. */
 export function plansWithFeature(e: Entitlements | null | undefined, f: PlanFeature): PlanBrief[] {
   return (e?.offers ?? []).filter((p) => p.name !== e?.planName && p.features.includes(f)).sort((a, b) => a.priceMonthlyMinor - b.priceMonthlyMinor);
