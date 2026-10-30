@@ -4,7 +4,7 @@ import { z } from 'zod';
  * Optional areas a clinic can switch off under Settings → Services you offer.
  * Switching one off only hides its menu items, shortcuts and dashboard panels; no data is ever deleted.
  */
-export const OPTIONAL_MODULES = ['hospital', 'surgery', 'lab', 'livestock', 'boarding', 'insurance', 'homeVisits'] as const;
+export const OPTIONAL_MODULES = ['hospital', 'surgery', 'lab', 'livestock', 'boarding', 'insurance', 'homeVisits', 'wellness', 'dental'] as const;
 export type OptionalModule = (typeof OPTIONAL_MODULES)[number];
 
 export const OPTIONAL_MODULE_INFO: Record<OptionalModule, { label: string; description: string }> = {
@@ -15,6 +15,8 @@ export const OPTIONAL_MODULE_INFO: Record<OptionalModule, { label: string; descr
   boarding: { label: 'Boarding & grooming', description: 'Pets staying in your kennels, and grooming appointments.' },
   insurance: { label: 'Insurance & referrals', description: 'Pet insurance claims and sending patients to other vets.' },
   homeVisits: { label: 'Home visits', description: 'A vet goes to the client’s home: the address, travel time and a call-out fee.' },
+  wellness: { label: 'Wellness plans', description: 'Yearly care packages paid up front or monthly: included check-ups and vaccines, and a member discount.' },
+  dental: { label: 'Dental charts', description: 'A tooth-by-tooth chart for dogs, cats and horses: findings, gum disease stage and dental procedures.' },
 };
 
 /** Enabled optional modules, given the organization's stored list of switched-off ones. */

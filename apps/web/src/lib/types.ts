@@ -917,6 +917,9 @@ export interface Charge {
   quantity: number;
   unitPriceMinor: number;
   taxRateBasisPoints: number;
+  /** Taken off when invoiced (e.g. covered by a wellness plan), with the reason. */
+  discountMinor: number;
+  discountNote: string | null;
   status: 'PENDING' | 'INVOICED' | 'WAIVED';
   waivedReason: string | null;
   sourceType: string;
@@ -1930,4 +1933,236 @@ export interface NotePhraseRow {
   sortOrder: number;
   isActive: boolean;
   isDefault: boolean;
+}
+
+// ── Wellness plans ──
+
+export interface WellnessPlanItem {
+  id: string;
+  kind: 'SERVICE' | 'PRODUCT' | 'LAB';
+  serviceId: string | null;
+  productId: string | null;
+  labTestId: string | null;
+  quantity: number;
+  label: string;
+  unitValueMinor: number;
+  unavailable: boolean;
+}
+
+export interface WellnessPlan {
+  id: string;
+  name: string;
+  description: string | null;
+  speciesId: string | null;
+  species: { id: string; name: string } | null;
+  durationMonths: number;
+  priceMinor: number;
+  monthlyPriceMinor: number | null;
+  joiningFeeMinor: number;
+  taxRateId: string | null;
+  serviceDiscountBp: number;
+  productDiscountBp: number;
+  terms: string | null;
+  status: 'ACTIVE' | 'RETIRED';
+  activeMembers: number;
+  includedValueMinor: number;
+  items: WellnessPlanItem[];
+}
+
+export type WellnessState = 'ACTIVE' | 'UPCOMING' | 'EXPIRED' | 'CANCELLED';
+
+export interface WellnessEntitlement {
+  id: string;
+  kind: 'SERVICE' | 'PRODUCT' | 'LAB';
+  label: string;
+  quantity: number;
+  unitValueMinor: number;
+  used: number;
+  remaining: number;
+}
+
+export interface WellnessInstalment {
+  id: string;
+  seq: number;
+  dueDate: string;
+  amountMinor: number;
+  status: 'SCHEDULED' | 'BILLED' | 'CANCELLED';
+  billedAt: string | null;
+  chargeStatus: 'PENDING' | 'INVOICED' | 'WAIVED' | null;
+  invoice: { id: string; invoiceNo: string; status: string; balanceMinor: number } | null;
+}
+
+export interface WellnessUsage {
+  id: string;
+  kind: 'INCLUDED' | 'DISCOUNT' | 'MANUAL';
+  description: string;
+  quantity: number;
+  savedMinor: number;
+  note: string | null;
+  chargeId: string | null;
+  recordedByName: string | null;
+  usedAt: string;
+  reversedAt: string | null;
+  reversedReason: string | null;
+  reversedByName: string | null;
+}
+
+export interface WellnessEnrolment {
+  id: string;
+  number: number;
+  enrolmentNo: string;
+  planId: string;
+  planName: string;
+  plan: { id: string; name: string; status: string; durationMonths: number; monthlyPriceMinor: number | null; priceMinor: number };
+  patient: { id: string; name: string; number: number; patientNo: string; status: string; species: { name: string } };
+  client: { id: string; displayName: string; number: number; mobilePhone: string | null; email: string | null };
+  branchId: string;
+  startDate: string;
+  endDate: string;
+  state: WellnessState;
+  status: 'ACTIVE' | 'CANCELLED';
+  daysLeft: number | null;
+  billing: 'UPFRONT' | 'MONTHLY';
+  totalMinor: number;
+  joiningFeeMinor: number;
+  serviceDiscountBp: number;
+  productDiscountBp: number;
+  terms: string | null;
+  notes: string | null;
+  autoRenew: boolean;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  cancelledByName: string | null;
+  createdByName: string | null;
+  createdAt: string;
+  renewedTo: { id: string; number: number; enrolmentNo: string; startDate: string; status: string } | null;
+  renewedFrom: { id: string; number: number; enrolmentNo: string; endDate: string } | null;
+  entitlements: WellnessEntitlement[];
+  instalments: WellnessInstalment[];
+  nextPayment: { dueDate: string; amountMinor: number } | null;
+  paidInFullMinor: number;
+  usages: WellnessUsage[];
+  savedMinor: number;
+  includedValueMinor: number;
+}
+
+export type WellnessMember = Omit<WellnessEnrolment, 'usages' | 'instalments' | 'terms'> & { includedTotal: number; includedUsed: number };
+
+export interface WellnessSettlement {
+  billedMinor: number;
+  unbilledChargesMinor: number;
+  scheduledMinor: number;
+  usedValueMinor: number;
+  shortfallMinor: number;
+  unusedMinor: number;
+}
+
+export interface PatientWellness {
+  today: string;
+  current: WellnessEnrolment | null;
+  upcoming: WellnessEnrolment | null;
+  history: WellnessEnrolment[];
+  availablePlans: WellnessPlan[];
+}
+
+export interface WellnessOverview {
+  activeMembers: number;
+  endingSoon: number;
+  paymentsToBill: number;
+  monthlyRecurringMinor: number;
+  savedThisMonthMinor: number;
+  billedThisMonthMinor: number;
+  plans: { id: string; name: string; activeMembers: number }[];
+}
+
+// ── Dental charts ──
+
+export interface DentalTooth {
+  id: string;
+  tooth: string;
+  state: 'PRESENT' | 'MISSING' | 'UNERUPTED' | 'EXTRACTED';
+  findings: string[];
+  trStage: number | null;
+  pdStage: number | null;
+  mobility: number | null;
+  furcation: number | null;
+  calculus: number | null;
+  gingivitis: number | null;
+  probingMm: number | null;
+  recessionMm: number | null;
+  notes: string | null;
+}
+
+export interface DentalProcedureRow {
+  id: string;
+  tooth: string | null;
+  code: string;
+  label: string;
+  serviceId: string | null;
+  service: { id: string; name: string; code: string; priceMinor: number } | null;
+  notes: string | null;
+  recordedByName: string;
+  createdAt: string;
+  charge?: { id: string; status: 'PENDING' | 'INVOICED' | 'WAIVED'; unitPriceMinor: number; discountMinor: number; discountNote: string | null } | null;
+}
+
+export interface DentalChart {
+  id: string;
+  number: number;
+  chartNo: string;
+  branchId: string;
+  patientId: string;
+  clientId: string;
+  encounterId: string | null;
+  dentition: 'CANINE' | 'FELINE' | 'EQUINE';
+  showDeciduous: boolean;
+  examinedAt: string;
+  anaesthetised: boolean;
+  status: 'DRAFT' | 'SIGNED';
+  occlusion: string | null;
+  periodontalStage: number | null;
+  calculusIndex: number | null;
+  gingivalIndex: number | null;
+  oralFindings: string | null;
+  homeCare: string | null;
+  notes: string | null;
+  recheckDate: string | null;
+  previousChartId: string | null;
+  clinicianName: string;
+  signedByName: string | null;
+  signedAt: string | null;
+  contentHash: string | null;
+  createdAt: string;
+  patient: { id: string; name: string; number: number; patientNo: string; sex: string; dateOfBirth: string | null; species: { id: string; name: string; category: string }; breed: { name: string } | null; breedText: string | null };
+  client: { id: string; displayName: string; number: number };
+  teeth: DentalTooth[];
+  procedures: DentalProcedureRow[];
+  addenda: { id: string; text: string; authorName: string; createdAt: string }[];
+  extractedNow: string[];
+  worstToothStage: number | null;
+  previous?: { id: string; chartNo: string; examinedAt: string; periodontalStage: number | null } | null;
+  integrity?: 'VERIFIED' | 'MISMATCH' | null;
+}
+
+export interface DentalChartListItem {
+  id: string;
+  chartNo: string;
+  status: 'DRAFT' | 'SIGNED';
+  dentition: DentalChart['dentition'];
+  examinedAt: string;
+  periodontalStage: number | null;
+  clinicianName: string;
+  signedByName: string | null;
+  patient: { id: string; name: string; patientNo: string; species: { name: string } };
+  client: { id: string; displayName: string };
+  _count: { procedures: number; teeth: number };
+}
+
+export interface DentalPrice {
+  code: string;
+  label: string;
+  abbr: string;
+  scope: 'tooth' | 'mouth' | 'both';
+  dentitions: string[] | null;
+  service: { id: string; name: string; code: string; priceMinor: number; isActive: boolean } | null;
 }

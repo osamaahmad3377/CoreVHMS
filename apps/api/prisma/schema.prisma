@@ -377,6 +377,17 @@ model Organization {
   workingHours             WorkingHours[]
   staffLeave               StaffLeave[]
   staffAttendance          StaffAttendance[]
+  wellnessPlans            WellnessPlan[]
+  wellnessPlanItems        WellnessPlanItem[]
+  wellnessEnrolments       WellnessEnrolment[]
+  wellnessEntitlements     WellnessEntitlement[]
+  wellnessInstalments      WellnessInstalment[]
+  wellnessUsages           WellnessUsage[]
+  dentalCharts             DentalChart[]
+  dentalToothFindings      DentalToothFinding[]
+  dentalProcedures         DentalProcedure[]
+  dentalChartAddenda       DentalChartAddendum[]
+  dentalProcedurePrices    DentalProcedurePrice[]
   appointments             Appointment[]
   waitlist                 WaitlistEntry[]
   triage                   TriageAssessment[]
@@ -786,6 +797,7 @@ model Species {
   referenceIntervals ReferenceInterval[]
 
   careProtocols CareProtocol[]
+  wellnessPlans WellnessPlan[]
 
   gestationDays   Int?
   gestationSource String?
@@ -904,13 +916,15 @@ model Client {
   portalAccesses      PortalAccess[]
   appointmentRequests AppointmentRequest[]
 
-  farms             Farm[]
-  fieldVisits       FieldVisit[]
-  boardingStays     BoardingStay[]
-  groomingJobs      GroomingJob[]
-  insurancePolicies InsurancePolicy[]
-  insuranceClaims   InsuranceClaim[]
-  referrals         Referral[]
+  farms              Farm[]
+  fieldVisits        FieldVisit[]
+  boardingStays      BoardingStay[]
+  groomingJobs       GroomingJob[]
+  insurancePolicies  InsurancePolicy[]
+  insuranceClaims    InsuranceClaim[]
+  referrals          Referral[]
+  wellnessEnrolments WellnessEnrolment[]
+  dentalCharts       DentalChart[]
 
   @@unique([organizationId, number])
   @@index([organizationId, status, displayName])
@@ -1105,6 +1119,8 @@ model Patient {
   insurancePolicies  InsurancePolicy[]
   insuranceClaims    InsuranceClaim[]
   referrals          Referral[]
+  wellnessEnrolments WellnessEnrolment[]
+  dentalCharts       DentalChart[]
 
   @@unique([organizationId, number])
   @@index([organizationId, status, name])
@@ -1960,8 +1976,10 @@ model Product {
   groupTreatments GroupTreatment[]
   fieldVisitItems FieldVisitItem[]
 
-  purchaseRequests    PurchaseRequest[]
-  supplierReturnLines SupplierReturnLine[]
+  purchaseRequests     PurchaseRequest[]
+  supplierReturnLines  SupplierReturnLine[]
+  wellnessPlanItems    WellnessPlanItem[]
+  wellnessEntitlements WellnessEntitlement[]
 
   @@unique([organizationId, sku])
   @@index([organizationId, type, name])
@@ -2264,9 +2282,11 @@ model LabTest {
   createdAt       DateTime    @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime    @updatedAt @db.Timestamptz(3)
 
-  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  analytes     LabAnalyte[]
-  orderItems   DiagnosticOrderItem[]
+  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  analytes             LabAnalyte[]
+  orderItems           DiagnosticOrderItem[]
+  wellnessPlanItems    WellnessPlanItem[]
+  wellnessEntitlements WellnessEntitlement[]
 
   @@unique([organizationId, code])
 }
@@ -2855,9 +2875,13 @@ model Service {
   wards     Ward[]
   surgeries Surgery[]
 
-  fieldVisitItems     FieldVisitItem[]
-  boardingUnits       BoardingUnit[]
-  groomingJobServices GroomingJobService[]
+  fieldVisitItems      FieldVisitItem[]
+  boardingUnits        BoardingUnit[]
+  groomingJobServices  GroomingJobService[]
+  wellnessPlanItems    WellnessPlanItem[]
+  wellnessEntitlements WellnessEntitlement[]
+  dentalProcedures     DentalProcedure[]
+  dentalPrices         DentalProcedurePrice[]
 
   @@unique([organizationId, code])
 }
@@ -2894,6 +2918,9 @@ model Charge {
   quantity           Decimal      @db.Decimal(14, 4)
   unitPriceMinor     Int
   taxRateBasisPoints Int          @default(0)
+  /// Taken off the line when invoiced (e.g. covered by a wellness plan), with the reason shown on the invoice.
+  discountMinor      Int          @default(0)
+  discountNote       String?
   status             ChargeStatus @default(PENDING)
   invoiceLineId      String?      @unique @db.Uuid
   waivedReason       String?
@@ -2901,9 +2928,10 @@ model Charge {
   createdAt          DateTime     @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime     @updatedAt @db.Timestamptz(3)
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  client       Client       @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  invoiceLine  InvoiceLine? @relation(fields: [invoiceLineId], references: [id], onDelete: SetNull)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  client         Client          @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  invoiceLine    InvoiceLine?    @relation(fields: [invoiceLineId], references: [id], onDelete: SetNull)
+  wellnessUsages WellnessUsage[]
 
   @@unique([organizationId, sourceType, sourceId])
   @@index([organizationId, clientId, status])
@@ -5167,4 +5195,353 @@ model AutomationRun {
   @@unique([automationId, dedupeKey])
   @@index([status, runAt])
   @@index([organizationId, createdAt])
+}
+
+// ───────────────────────────── Wellness plans ─────────────────────────────
+
+enum WellnessPlanStatus {
+  ACTIVE
+  RETIRED
+}
+
+enum WellnessItemKind {
+  SERVICE
+  PRODUCT
+  LAB
+}
+
+enum WellnessBilling {
+  UPFRONT
+  MONTHLY
+}
+
+enum WellnessEnrolmentStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum WellnessInstalmentStatus {
+  SCHEDULED
+  BILLED
+  CANCELLED
+}
+
+enum WellnessUsageKind {
+  /// An included item, fully covered.
+  INCLUDED
+  /// The member discount on something not included.
+  DISCOUNT
+  /// An included item used outside billing (recorded by hand).
+  MANUAL
+}
+
+/// A care package the clinic sells for a fixed term. Editing a plan only affects new members: each enrolment keeps
+/// a copy of what it was sold with.
+model WellnessPlan {
+  id                String             @id @default(uuid()) @db.Uuid
+  organizationId    String             @db.Uuid
+  name              String
+  description       String?
+  speciesId         String?            @db.Uuid
+  durationMonths    Int                @default(12)
+  /// Price for the whole term when paid up front.
+  priceMinor        Int
+  /// Price per month when paid monthly; null = monthly payments not offered.
+  monthlyPriceMinor Int?
+  joiningFeeMinor   Int                @default(0)
+  taxRateId         String?            @db.Uuid
+  serviceDiscountBp Int                @default(0)
+  productDiscountBp Int                @default(0)
+  terms             String?
+  status            WellnessPlanStatus @default(ACTIVE)
+  createdByName     String?
+  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime           @updatedAt @db.Timestamptz(3)
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  species      Species?            @relation(fields: [speciesId], references: [id], onDelete: Restrict)
+  items        WellnessPlanItem[]
+  enrolments   WellnessEnrolment[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, status])
+}
+
+model WellnessPlanItem {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  planId         String           @db.Uuid
+  kind           WellnessItemKind
+  serviceId      String?          @db.Uuid
+  productId      String?          @db.Uuid
+  labTestId      String?          @db.Uuid
+  quantity       Int
+  sortOrder      Int              @default(0)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  plan         WellnessPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  service      Service?     @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  product      Product?     @relation(fields: [productId], references: [id], onDelete: Restrict)
+  labTest      LabTest?     @relation(fields: [labTestId], references: [id], onDelete: Restrict)
+
+  @@index([planId])
+}
+
+/// One patient's membership of a plan for one term (a renewal is a new enrolment linked to the last).
+model WellnessEnrolment {
+  id                 String                  @id @default(uuid()) @db.Uuid
+  organizationId     String                  @db.Uuid
+  number             Int
+  planId             String                  @db.Uuid
+  patientId          String                  @db.Uuid
+  clientId           String                  @db.Uuid
+  branchId           String                  @db.Uuid
+  planName           String
+  startDate          DateTime                @db.Date
+  /// Last day of cover (inclusive).
+  endDate            DateTime                @db.Date
+  billing            WellnessBilling
+  /// What the term costs in total (all payments, joining fee included), as sold.
+  totalMinor         Int
+  joiningFeeMinor    Int                     @default(0)
+  taxRateBasisPoints Int                     @default(0)
+  serviceDiscountBp  Int                     @default(0)
+  productDiscountBp  Int                     @default(0)
+  terms              String?
+  notes              String?
+  status             WellnessEnrolmentStatus @default(ACTIVE)
+  autoRenew          Boolean                 @default(false)
+  renewedFromId      String?                 @unique @db.Uuid
+  cancelledAt        DateTime?               @db.Timestamptz(3)
+  cancelReason       String?
+  cancelledByName    String?
+  createdByName      String?
+  createdAt          DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime                @updatedAt @db.Timestamptz(3)
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  plan         WellnessPlan          @relation(fields: [planId], references: [id], onDelete: Restrict)
+  patient      Patient               @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  client       Client                @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  renewedFrom  WellnessEnrolment?    @relation("WellnessRenewal", fields: [renewedFromId], references: [id], onDelete: Restrict)
+  renewedTo    WellnessEnrolment?    @relation("WellnessRenewal")
+  entitlements WellnessEntitlement[]
+  instalments  WellnessInstalment[]
+  usages       WellnessUsage[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status, endDate])
+  @@index([patientId, startDate])
+}
+
+/// What an enrolment includes (copied from the plan when sold), with each item's normal price at the time.
+model WellnessEntitlement {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  enrolmentId    String           @db.Uuid
+  kind           WellnessItemKind
+  serviceId      String?          @db.Uuid
+  productId      String?          @db.Uuid
+  labTestId      String?          @db.Uuid
+  label          String
+  quantity       Int
+  unitValueMinor Int              @default(0)
+  sortOrder      Int              @default(0)
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  enrolment    WellnessEnrolment @relation(fields: [enrolmentId], references: [id], onDelete: Cascade)
+  service      Service?          @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  product      Product?          @relation(fields: [productId], references: [id], onDelete: Restrict)
+  labTest      LabTest?          @relation(fields: [labTestId], references: [id], onDelete: Restrict)
+  usages       WellnessUsage[]
+
+  @@index([enrolmentId])
+}
+
+/// One payment of an enrolment. It becomes an unbilled charge on its due date (sourceType WellnessInstalment).
+model WellnessInstalment {
+  id             String                   @id @default(uuid()) @db.Uuid
+  organizationId String                   @db.Uuid
+  enrolmentId    String                   @db.Uuid
+  seq            Int
+  dueDate        DateTime                 @db.Date
+  amountMinor    Int
+  status         WellnessInstalmentStatus @default(SCHEDULED)
+  billedAt       DateTime?                @db.Timestamptz(3)
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  enrolment    WellnessEnrolment @relation(fields: [enrolmentId], references: [id], onDelete: Cascade)
+
+  @@unique([enrolmentId, seq])
+  @@index([organizationId, status, dueDate])
+}
+
+/// A benefit given: an included item covered or a member discount, usually on a charge. Reversed, never deleted.
+model WellnessUsage {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @db.Uuid
+  enrolmentId    String            @db.Uuid
+  entitlementId  String?           @db.Uuid
+  chargeId       String?           @db.Uuid
+  kind           WellnessUsageKind
+  description    String
+  /// Included items used (0 for a discount only).
+  quantity       Int               @default(0)
+  /// How much the client saved.
+  savedMinor     Int               @default(0)
+  note           String?
+  recordedByName String?
+  usedAt         DateTime          @default(now()) @db.Timestamptz(3)
+  reversedAt     DateTime?         @db.Timestamptz(3)
+  reversedReason String?
+  reversedByName String?
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  enrolment    WellnessEnrolment    @relation(fields: [enrolmentId], references: [id], onDelete: Restrict)
+  entitlement  WellnessEntitlement? @relation(fields: [entitlementId], references: [id], onDelete: Restrict)
+  charge       Charge?              @relation(fields: [chargeId], references: [id], onDelete: Restrict)
+
+  @@index([enrolmentId])
+  @@index([chargeId])
+}
+
+// ───────────────────────────── Dental charts ─────────────────────────────
+
+enum DentalDentition {
+  CANINE
+  FELINE
+  EQUINE
+}
+
+enum DentalChartStatus {
+  DRAFT
+  SIGNED
+}
+
+enum DentalToothState {
+  PRESENT
+  MISSING
+  UNERUPTED
+  EXTRACTED
+}
+
+/// A dental examination: whole-mouth findings, a row per tooth with findings, and the procedures done.
+/// Signed charts are locked by trigger (with their teeth and procedures); corrections are addenda.
+model DentalChart {
+  id               String            @id @default(uuid()) @db.Uuid
+  organizationId   String            @db.Uuid
+  number           Int
+  branchId         String            @db.Uuid
+  patientId        String            @db.Uuid
+  clientId         String            @db.Uuid
+  encounterId      String?           @db.Uuid
+  dentition        DentalDentition
+  showDeciduous    Boolean           @default(false)
+  examinedAt       DateTime          @db.Timestamptz(3)
+  anaesthetised    Boolean           @default(false)
+  status           DentalChartStatus @default(DRAFT)
+  /// NORMAL, LEVEL, MAL1–MAL4
+  occlusion        String?
+  periodontalStage Int?
+  calculusIndex    Int?
+  gingivalIndex    Int?
+  oralFindings     String?
+  homeCare         String?
+  notes            String?
+  recheckDate      DateTime?         @db.Date
+  /// The chart whose missing and extracted teeth this one started from.
+  previousChartId  String?           @db.Uuid
+  clinicianId      String?           @db.Uuid
+  clinicianName    String
+  signedById       String?           @db.Uuid
+  signedByName     String?
+  signedAt         DateTime?         @db.Timestamptz(3)
+  /// SHA-256 of the signed content (teeth and procedures included), so later tampering is detectable.
+  contentHash      String?
+  createdById      String            @db.Uuid
+  createdAt        DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime          @updatedAt @db.Timestamptz(3)
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  patient      Patient               @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  client       Client                @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  teeth        DentalToothFinding[]
+  procedures   DentalProcedure[]
+  addenda      DentalChartAddendum[]
+
+  @@unique([organizationId, number])
+  @@index([patientId, examinedAt(sort: Desc)])
+  @@index([organizationId, status, examinedAt])
+}
+
+/// A tooth with something recorded (teeth with nothing recorded have no row).
+model DentalToothFinding {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  chartId        String           @db.Uuid
+  /// Triadan number, e.g. "104".
+  tooth          String
+  state          DentalToothState @default(PRESENT)
+  findings       String[]         @default([])
+  trStage        Int?
+  pdStage        Int?
+  mobility       Int?
+  furcation      Int?
+  calculus       Int?
+  gingivitis     Int?
+  probingMm      Decimal?         @db.Decimal(4, 1)
+  recessionMm    Decimal?         @db.Decimal(4, 1)
+  notes          String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  chart        DentalChart  @relation(fields: [chartId], references: [id], onDelete: Cascade)
+
+  @@unique([chartId, tooth])
+}
+
+/// A procedure done during the dental: on a tooth, or the whole mouth (tooth null). Charged once when the chart is signed.
+model DentalProcedure {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  chartId        String   @db.Uuid
+  tooth          String?
+  code           String
+  serviceId      String?  @db.Uuid
+  notes          String?
+  recordedByName String
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  chart        DentalChart  @relation(fields: [chartId], references: [id], onDelete: Cascade)
+  service      Service?     @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  @@index([chartId])
+}
+
+model DentalChartAddendum {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  chartId        String   @db.Uuid
+  text           String
+  authorId       String   @db.Uuid
+  authorName     String
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  chart        DentalChart  @relation(fields: [chartId], references: [id], onDelete: Restrict)
+
+  @@index([chartId])
+}
+
+/// Which price-list service each dental procedure code is charged with (Settings → Dental prices).
+model DentalProcedurePrice {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @db.Uuid
+  code           String
+  serviceId      String @db.Uuid
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  service      Service      @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, code])
 }

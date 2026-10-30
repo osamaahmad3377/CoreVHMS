@@ -18,7 +18,7 @@ import { PatientTimelineService } from '../patients/patient-timeline.service';
 import { AdministrationsService } from '../pharmacy/administrations.service';
 import { PrescriptionsService } from '../pharmacy/prescriptions.service';
 import { SearchService } from '../search/search.service';
-import { ChargeCaptureService } from './charge-capture.service';
+import { ChargeCaptureService, chargeAmount } from './charge-capture.service';
 import { ClientPrivacyService } from '../clients/client-privacy.service';
 
 /**
@@ -218,7 +218,7 @@ export class BillingIntegrations implements OnModuleInit {
           db.payment.aggregate({ where: { ...b, receivedAt: { gte: startOfMonth } }, _sum: { amountMinor: true } }),
           db.invoice.aggregate({ where: { ...b, status: { in: ['ISSUED', 'PARTIALLY_PAID'] } }, _sum: { balanceMinor: true } }),
           db.invoice.count({ where: { ...b, status: { in: ['ISSUED', 'PARTIALLY_PAID'] }, dueAt: { lt: new Date() }, balanceMinor: { gt: 0 } } }),
-          db.charge.findMany({ where: { ...b, status: 'PENDING' }, select: { quantity: true, unitPriceMinor: true } }),
+          db.charge.findMany({ where: { ...b, status: 'PENDING' }, select: { quantity: true, unitPriceMinor: true, discountMinor: true } }),
         ]);
         return {
           billedTodayMinor: billedToday._sum.totalMinor ?? 0,
@@ -228,7 +228,7 @@ export class BillingIntegrations implements OnModuleInit {
           outstandingMinor: outstanding._sum.balanceMinor ?? 0,
           overdueInvoices: overdue,
           unbilledCount: unbilled.length,
-          unbilledMinor: unbilled.reduce((n, c) => n + Math.round(Number(c.quantity) * c.unitPriceMinor), 0),
+          unbilledMinor: unbilled.reduce((n, c) => n + chargeAmount(c), 0),
         };
       },
     });

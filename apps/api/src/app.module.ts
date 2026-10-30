@@ -18,6 +18,8 @@ import { ClinicalModule } from './modules/clinical/clinical.module';
 import { SchedulingModule } from './modules/scheduling/scheduling.module';
 import { HomeVisitsModule } from './modules/home-visits/home-visits.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
+import { WellnessModule } from './modules/wellness/wellness.module';
+import { DentalModule } from './modules/dental/dental.module';
 import { PharmacyModule } from './modules/pharmacy/pharmacy.module';
 import { LabModule } from './modules/lab/lab.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
@@ -76,6 +78,8 @@ import { env } from './config/env';
     SchedulingModule,
     HomeVisitsModule,
     AttendanceModule,
+    WellnessModule,
+    DentalModule,
     PharmacyModule,
     LabModule,
     InventoryModule,

@@ -355,7 +355,7 @@ function Pos() {
   const addCollected = (charges: Charge[]) =>
     setLines((ls) => [
       ...ls,
-      ...charges.filter((c) => !ls.some((l) => l.item.type === 'CHARGE' && l.item.id === c.id)).map((c) => ({ key: crypto.randomUUID(), item: chargeItem(c), quantity: c.quantity, priceMinor: c.unitPriceMinor, discountMinor: 0 })),
+      ...charges.filter((c) => !ls.some((l) => l.item.type === 'CHARGE' && l.item.id === c.id)).map((c) => ({ key: crypto.randomUUID(), item: chargeItem(c), quantity: c.quantity, priceMinor: c.unitPriceMinor, discountMinor: c.discountMinor ?? 0 })),
     ]);
 
   const dialogs = (

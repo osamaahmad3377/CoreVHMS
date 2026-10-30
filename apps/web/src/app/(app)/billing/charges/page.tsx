@@ -17,7 +17,7 @@ import { Card } from '@/components/ui/card';
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
 import { useUrlState } from '@/hooks/use-url-state';
 import { api, qs } from '@/lib/api';
-import { fmtDate, fmtDateTime, fmtMoney } from '@/lib/format';
+import { chargeNet, fmtDate, fmtDateTime, fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { Charge } from '@/lib/types';
 import { chargeSource, splitRef } from '@/lib/labels';
@@ -79,7 +79,9 @@ function ClientItems({ clientId }: { clientId: string }) {
           <span className="whitespace-nowrap text-xs text-muted-foreground">Added on {fmtDateTime(c.createdAt)}{c.createdByName && ` by ${c.createdByName}`}</span>
           <span className="w-36 text-right text-sm tabular">
             {c.quantity !== 1 && <span className="text-xs text-muted-foreground">{c.quantity} × {fmtMoney(c.unitPriceMinor, currency)} = </span>}
-            {fmtMoney(Math.round(c.quantity * c.unitPriceMinor), currency)}
+            {c.discountMinor > 0 && <s className="mr-1 text-xs text-muted-foreground">{fmtMoney(Math.round(c.quantity * c.unitPriceMinor), currency)}</s>}
+            {fmtMoney(chargeNet(c), currency)}
+            {c.discountNote && <span className="block text-2xs text-success">{c.discountNote}</span>}
           </span>
           {can('billing.void') && (
             <Button size="sm" variant="ghost" onClick={async () => { const r = await confirm({ title: 'Waive this item?', description: `${splitRef(c.description)[0]} will not be charged to the client.`, requireReason: true, confirmLabel: 'Waive' }); if (r.confirmed) act.mutate({ id: c.id, action: 'waive', reason: r.reason }); }}>Waive</Button>
@@ -197,7 +199,7 @@ function Charges() {
               { key: 'client', header: 'Client', cell: (r) => <Link className="text-sm font-medium hover:underline" href={`/clients/${r.client.id}?tab=account`}>{r.client.displayName}</Link> },
               { key: 'item', header: 'Item', cell: (r) => <ItemName charge={r} /> },
               { key: 'when', header: 'Added on', cell: (r) => <span className="whitespace-nowrap text-xs">{fmtDateTime(r.createdAt)}{r.createdByName && <span className="block text-muted-foreground">{r.createdByName}</span>}</span> },
-              { key: 'amt', header: 'Amount', className: 'text-right tabular', headerClassName: 'text-right', cell: (r) => <span>{r.quantity} × {fmtMoney(r.unitPriceMinor, currency)}<span className="block font-medium">{fmtMoney(Math.round(r.quantity * r.unitPriceMinor), currency)}</span></span> },
+              { key: 'amt', header: 'Amount', className: 'text-right tabular', headerClassName: 'text-right', cell: (r) => <span>{r.quantity} × {fmtMoney(r.unitPriceMinor, currency)}<span className="block font-medium">{fmtMoney(chargeNet(r), currency)}</span>{r.discountNote && <span className="block text-2xs text-success">{r.discountNote}</span>}</span> },
               { key: 'st', header: 'Status', cell: (r) => <CommerceBadge status={r.status} /> },
               {
                 key: 'act',

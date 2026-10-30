@@ -5,7 +5,7 @@ import { Receipt } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Card, CardHeader, CardTitle } from '../ui/card';
 import { api, qs } from '@/lib/api';
-import { fmtMoney } from '@/lib/format';
+import { chargeNet, fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { Charge } from '@/lib/types';
 
@@ -23,7 +23,7 @@ export function ConsultationCharges({ encounterId, hasPrescriptions }: { encount
   if (!can('billing.read')) return null;
   const rows = q.data?.data ?? [];
   const live = rows.filter((c) => c.status !== 'WAIVED');
-  const total = live.reduce((n, c) => n + Math.round(c.quantity * c.unitPriceMinor), 0);
+  const total = live.reduce((n, c) => n + chargeNet(c), 0);
   return (
     <Card>
       <CardHeader>
@@ -42,7 +42,8 @@ export function ConsultationCharges({ encounterId, hasPrescriptions }: { encount
               </span>
               {c.status === 'INVOICED' && <Badge variant="success">On invoice</Badge>}
               {c.status === 'WAIVED' && <Badge variant="outline">Waived</Badge>}
-              <span className="tabular text-xs">{fmtMoney(Math.round(c.quantity * c.unitPriceMinor), currency)}</span>
+              {c.discountMinor > 0 && <Badge variant="success" title={c.discountNote ?? undefined}>Plan</Badge>}
+              <span className="tabular text-xs">{fmtMoney(chargeNet(c), currency)}</span>
             </li>
           ))}
         </ul>
