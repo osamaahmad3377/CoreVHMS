@@ -147,13 +147,15 @@ export class InvoicesService {
       for (const c of charges) {
         if (c.status !== 'PENDING') throw ruleViolation('CHARGE_NOT_PENDING', `“${c.description}” is already ${c.status.toLowerCase()}`);
         if (clientId && c.clientId !== clientId) throw ruleViolation('CHARGE_CLIENT', `“${c.description}” belongs to a different client`);
-        const amounts = calcLine({ quantity: Number(c.quantity), unitPriceMinor: c.unitPriceMinor, taxRateBasisPoints: c.taxRateBasisPoints }, inclusive);
+        const amounts = calcLine({ quantity: Number(c.quantity), unitPriceMinor: c.unitPriceMinor, discountMinor: c.discountMinor, taxRateBasisPoints: c.taxRateBasisPoints }, inclusive);
         const line = await tx.invoiceLine.create({
           data: {
             organizationId: orgId,
             invoiceId,
             kind: c.kind,
-            description: c.description,
+            // A charge's discount (e.g. covered by a wellness plan) shows on the invoice with its reason.
+            description: c.discountMinor > 0 && c.discountNote ? `${c.description} — ${c.discountNote}` : c.description,
+            discountMinor: c.discountMinor,
             serviceId: c.serviceId,
             productId: c.productId,
             labTestId: c.labTestId,

@@ -72,9 +72,12 @@ describe('Staff attendance', () => {
 
     const me = await nurse.client.get('/attendance/me');
     expect(me.body.open).toBeNull();
-    expect(me.body.today).toMatchObject({ status: 'DONE' });
-    expect(me.body.today.records).toHaveLength(1);
-    expect(me.body.today.workedMinutes).toBeGreaterThanOrEqual(99);
+    // The shift counts on the (Karachi) day it started: yesterday when the test runs just after midnight.
+    const shiftDay = new Date(Date.now() - 2 * 3600_000 + 5 * 3600_000).toISOString().slice(0, 10);
+    const day = shiftDay === pastDate(0) ? me.body.today : (await nurse.client.get(`/attendance/me/history?from=${shiftDay}&to=${shiftDay}`)).body.members[0].days[0];
+    expect(day).toMatchObject({ status: 'DONE' });
+    expect(day.records).toHaveLength(1);
+    expect(day.workedMinutes).toBeGreaterThanOrEqual(99);
 
     const history = await nurse.client.get(`/attendance/me/history?from=${pastDate(6)}&to=${pastDate(0)}`);
     expect(history.status).toBe(200);

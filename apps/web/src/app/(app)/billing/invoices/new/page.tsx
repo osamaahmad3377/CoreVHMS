@@ -16,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/input';
 import { api, qs } from '@/lib/api';
-import { fmtDate, fmtMoney } from '@/lib/format';
+import { chargeNet, fmtDate, fmtMoney } from '@/lib/format';
 import { splitRef } from '@/lib/labels';
 import { useSession } from '@/lib/session';
 import type { Charge, ClientDetail, Invoice } from '@/lib/types';
@@ -48,7 +48,7 @@ function Builder() {
 
   const chargeTotals = useMemo(() => {
     const picked = (charges.data?.data ?? []).filter((c) => selected.includes(c.id));
-    return picked.map((c) => ({ ...calcLine({ quantity: c.quantity, unitPriceMinor: c.unitPriceMinor, taxRateBasisPoints: c.taxRateBasisPoints }, cat.pricesIncludeTax), discountMinor: 0 }));
+    return picked.map((c) => ({ ...calcLine({ quantity: c.quantity, unitPriceMinor: c.unitPriceMinor, discountMinor: c.discountMinor ?? 0, taxRateBasisPoints: c.taxRateBasisPoints }, cat.pricesIncludeTax), discountMinor: c.discountMinor ?? 0 }));
   }, [charges.data, selected, cat.pricesIncludeTax]);
   const manual = draftTotals(lines, currency, cat.pricesIncludeTax);
   const totals = chargeTotals.reduce((t, l) => ({ subtotalMinor: t.subtotalMinor + l.netMinor, taxMinor: t.taxMinor + l.taxMinor, totalMinor: t.totalMinor + l.grossMinor, discountMinor: t.discountMinor }), manual);
@@ -92,8 +92,12 @@ function Builder() {
                     <div className="min-w-0 flex-1 text-sm">
                       <p className="truncate font-medium">{splitRef(c.description)[0]}</p>
                       <p className="text-xs text-muted-foreground">{c.patient?.name ? `${c.patient.name} · ` : ''}{fmtDate(c.createdAt)} · {c.quantity} × {fmtMoney(c.unitPriceMinor, currency)}</p>
+                      {c.discountNote && <p className="text-xs text-success">{c.discountNote}</p>}
                     </div>
-                    <span className="text-sm tabular">{fmtMoney(Math.round(c.quantity * c.unitPriceMinor), currency)}</span>
+                    <span className="text-right text-sm tabular">
+                      {c.discountMinor > 0 && <s className="block text-xs text-muted-foreground">{fmtMoney(Math.round(c.quantity * c.unitPriceMinor), currency)}</s>}
+                      {fmtMoney(chargeNet(c), currency)}
+                    </span>
                   </li>
                 ))}
               </ul>

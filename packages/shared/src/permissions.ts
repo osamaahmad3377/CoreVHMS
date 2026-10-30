@@ -92,6 +92,9 @@ export const PERMISSION_GROUPS = {
     permissions: {
       'preventive.read': 'View vaccinations and reminders',
       'preventive.write': 'Record vaccinations and manage care plans',
+      'wellness.read': 'View wellness plans and members',
+      'wellness.enrol': 'Enrol patients on wellness plans, renew and cancel them',
+      'wellness.manage': 'Create wellness plans and change their prices and benefits',
     },
   },
   inventory: {
@@ -239,7 +242,7 @@ export const SYSTEM_ROLE_TEMPLATES: RoleTemplate[] = [
     permissions: pick(
       ['dashboard', 'clients', 'patients', 'appointments', 'triage', 'billing', 'payments', 'pos', 'cash', 'expenses',
         'inventory', 'procurement', 'reports', 'communications', 'documents', 'staff', 'users', 'boarding', 'insurance',
-        'preventive', 'branches', 'settings', 'audit', 'livestock', 'privacy', 'attendance'],
+        'preventive', 'branches', 'settings', 'audit', 'livestock', 'privacy', 'attendance', 'wellness'],
       ['clinical.read', 'prescriptions.read', 'lab.read', 'hospital.read', 'surgery.read'],
       ['roles.manage' as Permission],
     ),
@@ -253,7 +256,8 @@ export const SYSTEM_ROLE_TEMPLATES: RoleTemplate[] = [
         'appointments', 'livestock', 'documents'],
       ['clients.read', 'clients.write', 'patients.read', 'patients.write', 'patients.archive', 'patients.export', 'billing.read',
         'billing.write', 'inventory.read', 'reports.view', 'communications.read', 'communications.send',
-        'boarding.read', 'insurance.read', 'insurance.write', 'staff.read', 'procurement.request', 'attendance.clock'],
+        'boarding.read', 'insurance.read', 'insurance.write', 'staff.read', 'procurement.request', 'attendance.clock',
+        'wellness.read', 'wellness.enrol'],
       ['formulary.manage' as Permission],
     ),
   },
@@ -266,7 +270,7 @@ export const SYSTEM_ROLE_TEMPLATES: RoleTemplate[] = [
       ['clients.read', 'clients.write', 'patients.read', 'patients.write', 'clinical.read', 'clinical.write',
         'prescriptions.read', 'prescriptions.write', 'pharmacy.dispense', 'lab.read', 'lab.order', 'lab.result', 'surgery.read',
         'surgery.write', 'inventory.read', 'billing.read', 'documents.read', 'boarding.read', 'boarding.write',
-        'staff.read', 'procurement.request', 'attendance.clock'],
+        'staff.read', 'procurement.request', 'attendance.clock', 'wellness.read'],
     ),
   },
   {
@@ -277,7 +281,8 @@ export const SYSTEM_ROLE_TEMPLATES: RoleTemplate[] = [
       ['dashboard', 'appointments'],
       ['clients.read', 'clients.write', 'patients.read', 'patients.write', 'billing.read', 'billing.write',
         'payments.take', 'pos.use', 'preventive.read', 'communications.read', 'communications.send',
-        'documents.read', 'boarding.read', 'boarding.write', 'insurance.read', 'staff.read', 'inventory.read', 'attendance.clock'],
+        'documents.read', 'boarding.read', 'boarding.write', 'insurance.read', 'staff.read', 'inventory.read', 'attendance.clock',
+        'wellness.read', 'wellness.enrol'],
     ),
   },
   {
@@ -323,7 +328,7 @@ export const SYSTEM_ROLE_TEMPLATES: RoleTemplate[] = [
     name: 'Accountant / cashier',
     description: 'Invoicing, payments, cash registers and financial reports.',
     permissions: pick(['billing', 'payments', 'pos', 'cash', 'expenses', 'reports'], ['dashboard.view',
-      'clients.read', 'patients.read', 'procurement.read', 'inventory.read', 'insurance.read', 'attendance.clock']),
+      'clients.read', 'patients.read', 'procurement.read', 'inventory.read', 'insurance.read', 'attendance.clock', 'wellness.read']),
   },
   {
     key: 'field_vet',

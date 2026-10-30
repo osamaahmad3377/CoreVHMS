@@ -66,18 +66,21 @@ import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api } from '@/lib/api';
 import { fmtDate, fmtDateTime, fmtWeight } from '@/lib/format';
-import { useSession } from '@/lib/session';
+import { useModuleOn, useSession } from '@/lib/session';
 import type { PatientDetail } from '@/lib/types';
 import { PatientLivestock } from '@/components/livestock/patient-livestock';
 import { PatientInsurance } from '@/components/insurance/patient-insurance';
 import { cn } from '@/lib/utils';
 import { TimelineTab } from '@/components/patients/patient-timeline';
+import { PatientDental } from '@/components/dental/patient-dental';
+import { PatientWellnessTab } from '@/components/wellness/patient-wellness';
 
 function PatientRecord() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const confirm = useConfirm();
   const { can } = useSession();
+  const moduleOn = useModuleOn();
   const key = ['patient', id];
   const q = useQuery({ queryKey: key, queryFn: () => api.get<PatientDetail>(`/patients/${id}`) });
   // A current hospital stay replaces "Admit" with a link to the treatment sheet.
@@ -319,6 +322,8 @@ function PatientRecord() {
           {can('prescriptions.read') && <TabsTrigger value="medications">Medications</TabsTrigger>}
           {can('lab.read') && <TabsTrigger value="diagnostics">Diagnostics</TabsTrigger>}
           {can('preventive.read') && <TabsTrigger value="care">Care plan</TabsTrigger>}
+          {moduleOn('wellness') && can('wellness.read') && <TabsTrigger value="wellness">Wellness plan</TabsTrigger>}
+          {moduleOn('dental') && can('clinical.read') && <TabsTrigger value="dental">Dental</TabsTrigger>}
           {farmAnimal && can('livestock.read') && <TabsTrigger value="farm">Farm</TabsTrigger>}
           {can('insurance.read') && <TabsTrigger value="insurance">Insurance</TabsTrigger>}
           <TabsTrigger value="weight">Weight</TabsTrigger>
@@ -434,6 +439,16 @@ function PatientRecord() {
         {can('preventive.read') && (
           <TabsContent value="care">
             <CarePlan patientId={p.id} active={active} />
+          </TabsContent>
+        )}
+        {moduleOn('wellness') && can('wellness.read') && (
+          <TabsContent value="wellness">
+            <PatientWellnessTab patientId={p.id} patientName={p.name} active={active} />
+          </TabsContent>
+        )}
+        {moduleOn('dental') && can('clinical.read') && (
+          <TabsContent value="dental">
+            <PatientDental patientId={p.id} patientName={p.name} active={active} />
           </TabsContent>
         )}
 

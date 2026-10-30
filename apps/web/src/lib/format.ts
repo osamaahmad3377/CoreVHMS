@@ -40,6 +40,9 @@ export function fmtAge(dob: string | Date | null | undefined, estimated = false,
   return estimated ? `about ${s}` : s;
 }
 
+/** What a charge comes to before tax: quantity × price, less any discount (e.g. a wellness plan). */
+export const chargeNet = (c: { quantity: number; unitPriceMinor: number; discountMinor?: number | null }) => Math.round(c.quantity * c.unitPriceMinor) - (c.discountMinor ?? 0);
+
 export function fmtMoney(minor: number | null | undefined, currency = 'PKR') {
   return formatMoney(minor ?? 0, currency);
 }
