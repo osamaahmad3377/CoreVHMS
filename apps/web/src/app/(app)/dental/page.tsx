@@ -129,7 +129,7 @@ function DentalList() {
             <DialogDescription>Which patient is it for?</DialogDescription>
           </DialogHeader>
           <Field label="Patient" htmlFor="nd-patient">
-            <PatientPicker id="nd-patient" value={patient} onChange={setPatient} />
+            <PatientPicker id="nd-patient" value={patient} onChange={setPatient} allowCreate />
           </Field>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPicking(false)}>Cancel</Button>

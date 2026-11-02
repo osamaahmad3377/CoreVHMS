@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { COUNTRIES, DEFAULT_PRODUCT_CATEGORIES, SYSTEM_ROLE_TEMPLATES } from '@vcms/shared';
 import { DEFAULT_SPECIES } from '../catalog/default-species';
+import { DEFAULT_APPOINTMENT_CATEGORIES, categoryForKind } from '../scheduling/appointment-categories';
 
 export interface BootstrapInput {
   name: string;
@@ -72,6 +73,8 @@ export class OrgBootstrapService {
 
     // Starter shop categories (food, grooming, accessories…); the clinic can rename, add or hide them.
     await tx.productCategory.createMany({ data: DEFAULT_PRODUCT_CATEGORIES.map((c) => ({ ...c, organizationId: org.id })) });
+    // Appointment categories, one per built-in kind; the clinic can rename, hide or add its own.
+    await tx.appointmentTypeCategory.createMany({ data: DEFAULT_APPOINTMENT_CATEGORIES.map((c) => ({ ...c, organizationId: org.id })) });
 
     return { org, branch, membership, roleIds };
   }
@@ -100,7 +103,7 @@ export class OrgBootstrapService {
         const service = await tx.service.create({ data: { organizationId, code: s.code, name: s.name, category: s.category, priceMinor: 0 } });
         if (!hasTypes) {
           await tx.appointmentType.create({
-            data: { organizationId, name: s.name, category: s.appointmentCategory, durationMinutes: s.durationMinutes, color: s.color, serviceId: service.id },
+            data: { organizationId, name: s.name, category: s.appointmentCategory, categoryId: await categoryForKind(tx, organizationId, s.appointmentCategory), durationMinutes: s.durationMinutes, color: s.color, serviceId: service.id },
           });
         }
       }

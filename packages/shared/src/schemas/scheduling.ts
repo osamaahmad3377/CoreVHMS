@@ -5,6 +5,8 @@ import { optDate, optInt, optText, optUuid, reqText } from './common';
 export const appointmentTypeSchema = z.object({
   name: reqText(80),
   category: z.enum(APPOINTMENT_CATEGORIES).default('CONSULTATION'),
+  /** The clinic's own category; when given, `category` follows that category's kind. */
+  categoryId: optUuid(),
   durationMinutes: z.coerce.number().int().min(5).max(600),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#0d7a70'),
   priceMinor: optInt(0, 1_000_000_000),
@@ -15,6 +17,32 @@ export const appointmentTypeSchema = z.object({
   isActive: z.boolean().default(true),
 });
 export type AppointmentTypeInput = z.infer<typeof appointmentTypeSchema>;
+
+/**
+ * The clinic's own appointment categories (e.g. "Senior care", "Nail trim"). Each one works like a built-in kind,
+ * which is what the app goes by (grooming check-in, surgery booking, recheck suggestions…).
+ */
+export const appointmentCategorySchema = z.object({
+  name: reqText(60),
+  kind: z.enum(APPOINTMENT_CATEGORIES),
+  isActive: z.boolean().default(true),
+  sortOrder: z.coerce.number().int().min(0).max(10_000).default(100),
+});
+export type AppointmentCategoryInput = z.infer<typeof appointmentCategorySchema>;
+
+/** What each built-in kind makes the app do, for the "Works like" choice. */
+export const APPOINTMENT_KIND_HINTS: Record<(typeof APPOINTMENT_CATEGORIES)[number], string> = {
+  CONSULTATION: 'A normal visit with a vet; offered on the waiting-room screen',
+  VACCINATION: 'Vaccinations and preventive care; offered on the waiting-room screen',
+  FOLLOW_UP: 'Rechecks; suggested when booking a recheck from a consultation',
+  SURGERY: 'Operations; listed when scheduling surgery',
+  DENTAL: 'Dental checks and treatment',
+  DIAGNOSTICS: 'Tests, X-rays and scans',
+  GROOMING: 'Grooming; the appointment can be checked in as a grooming job',
+  EMERGENCY: 'Emergencies; flagged as urgent at the front desk',
+  FIELD_VISIT: 'Farm visits; the appointment opens a farm visit record',
+  OTHER: 'Anything else',
+};
 
 export const resourceSchema = z.object({
   branchId: z.string().uuid(),

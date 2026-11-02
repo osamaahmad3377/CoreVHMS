@@ -220,6 +220,18 @@ export interface AppointmentType {
   requiresClinician: boolean;
   allowOnlineBooking: boolean;
   isActive: boolean;
+  /** The clinic's own category (its kind is `category`). */
+  categoryId?: string | null;
+  categoryRef?: { id: string; name: string; kind: string; isActive: boolean } | null;
+}
+
+export interface AppointmentTypeCategory {
+  id: string;
+  name: string;
+  kind: string;
+  sortOrder: number;
+  isActive: boolean;
+  _count?: { appointmentTypes: number };
 }
 
 export interface Resource {
