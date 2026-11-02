@@ -148,6 +148,31 @@ export const GUIDES: HelpGuide[] = [
     keywords: ['attendance', 'clock in', 'clock out', 'timesheet', 'time sheet', 'punch', 'late', 'absent', 'hours worked', 'payroll', 'break', 'shift'],
   },
   {
+    id: 'dispose-stock',
+    title: 'Dispose of expired or damaged stock',
+    summary: 'Take expired, damaged or recalled medicines and products off the shelf and keep a disposal record.',
+    area: 'Inventory',
+    anyOf: ['inventory.read', 'inventory.adjust'],
+    steps: [
+      'Open Stock → Expiry & disposal. “To dispose” lists stock that has expired but is still on the shelf, stock expiring soon (30, 60 or 90 days — you choose), and recalled or quarantined batches, with what each is worth at cost.',
+      'Tick the batches to get rid of (or press Dispose on one row), then press Dispose selected.',
+      'Check the quantities, choose why (expired, damaged…) and how it is destroyed (waste contractor, incineration, denaturing kit…). For a waste contractor, enter the company and the consignment note number.',
+      'Controlled medicines must be destroyed in front of a witness: choose the member of staff who watched. It also appears in the controlled drugs register.',
+      'Press Dispose. The stock leaves the shelf and you get a disposal record (DSP-…) to print and sign — by you, the witness and the waste contractor.',
+      'All disposals are under Expiry & disposal → Disposal records, with the value written off this month.',
+    ],
+    tips: [
+      'You can also dispose of one batch from the product’s page: the ⋯ menu next to the batch → Dispose.',
+      'Can the supplier take it back for credit? Use Supplier returns instead, so the supplier’s account is credited.',
+      'Disposal records can’t be changed or deleted. If a quantity was wrong, correct it with an adjustment.',
+    ],
+    links: [
+      { label: 'Expiry & disposal', href: '/inventory/disposals' },
+      { label: 'Stock', href: '/inventory' },
+    ],
+    keywords: ['dispose', 'disposal', 'expired', 'expiry', 'destroy', 'destruction', 'waste', 'write off', 'damaged', 'recall', 'short dated', 'controlled drug destruction'],
+  },
+  {
     id: 'wellness',
     title: 'Sell and run wellness plans',
     summary: 'Yearly care packages paid up front or monthly; included items and the member discount come off the bill by themselves.',

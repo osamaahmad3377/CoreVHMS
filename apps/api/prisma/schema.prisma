@@ -356,128 +356,131 @@ model Organization {
   createdAt                   DateTime           @default(now()) @db.Timestamptz(3)
   updatedAt                   DateTime           @updatedAt @db.Timestamptz(3)
 
-  branches                 Branch[]
-  memberships              Membership[]
-  roles                    Role[]
-  counters                 Counter[]
-  species                  Species[]
-  breeds                   Breed[]
-  clients                  Client[]
-  addresses                Address[]
-  clientContacts           ClientContact[]
-  clientNotes              ClientNote[]
-  patients                 Patient[]
-  patientOwnerships        PatientOwnership[]
-  patientIds               PatientIdentifier[]
-  weightRecords            WeightRecord[]
-  patientAlerts            PatientAlert[]
-  attachments              Attachment[]
-  appointmentTypes         AppointmentType[]
-  resources                Resource[]
-  workingHours             WorkingHours[]
-  staffLeave               StaffLeave[]
-  staffAttendance          StaffAttendance[]
-  wellnessPlans            WellnessPlan[]
-  wellnessPlanItems        WellnessPlanItem[]
-  wellnessEnrolments       WellnessEnrolment[]
-  wellnessEntitlements     WellnessEntitlement[]
-  wellnessInstalments      WellnessInstalment[]
-  wellnessUsages           WellnessUsage[]
-  dentalCharts             DentalChart[]
-  dentalToothFindings      DentalToothFinding[]
-  dentalProcedures         DentalProcedure[]
-  dentalChartAddenda       DentalChartAddendum[]
-  dentalProcedurePrices    DentalProcedurePrice[]
-  appointments             Appointment[]
-  waitlist                 WaitlistEntry[]
-  triage                   TriageAssessment[]
-  encounters               Encounter[]
-  clinicalNotes            ClinicalNote[]
-  vitals                   VitalSign[]
-  vitalReferences          VitalReference[]
-  diagnoses                Diagnosis[]
-  problems                 ProblemListItem[]
-  clinicalTemplates        ClinicalTemplate[]
-  notePhrases              NotePhrase[]
-  tasks                    Task[]
-  products                 Product[]
-  productWithdrawals       ProductWithdrawal[]
-  doseReferences           DoseReference[]
-  prescriptions            Prescription[]
-  prescriptionItems        PrescriptionItem[]
-  dispensations            Dispensation[]
-  administrations          MedicationAdministration[]
-  withdrawals              PatientWithdrawal[]
-  labTests                 LabTest[]
-  labAnalytes              LabAnalyte[]
-  referenceIntervals       ReferenceInterval[]
-  diagnosticOrders         DiagnosticOrder[]
-  diagnosticItems          DiagnosticOrderItem[]
-  samples                  Sample[]
-  sampleEvents             SampleEvent[]
-  labResults               LabResult[]
-  imagingReports           ImagingReport[]
-  allowNegativeStock       Boolean                    @default(false)
-  pricesIncludeTax         Boolean                    @default(false)
-  paymentTermsDays         Int                        @default(0)
-  requireCashSession       Boolean                    @default(true)
+  branches                  Branch[]
+  memberships               Membership[]
+  roles                     Role[]
+  counters                  Counter[]
+  species                   Species[]
+  breeds                    Breed[]
+  clients                   Client[]
+  addresses                 Address[]
+  clientContacts            ClientContact[]
+  clientNotes               ClientNote[]
+  patients                  Patient[]
+  patientOwnerships         PatientOwnership[]
+  patientIds                PatientIdentifier[]
+  weightRecords             WeightRecord[]
+  patientAlerts             PatientAlert[]
+  attachments               Attachment[]
+  appointmentTypes          AppointmentType[]
+  resources                 Resource[]
+  workingHours              WorkingHours[]
+  staffLeave                StaffLeave[]
+  staffAttendance           StaffAttendance[]
+  wellnessPlans             WellnessPlan[]
+  wellnessPlanItems         WellnessPlanItem[]
+  wellnessEnrolments        WellnessEnrolment[]
+  wellnessEntitlements      WellnessEntitlement[]
+  wellnessInstalments       WellnessInstalment[]
+  wellnessUsages            WellnessUsage[]
+  dentalCharts              DentalChart[]
+  dentalToothFindings       DentalToothFinding[]
+  dentalProcedures          DentalProcedure[]
+  dentalChartAddenda        DentalChartAddendum[]
+  dentalProcedurePrices     DentalProcedurePrice[]
+  stockDisposals            StockDisposal[]
+  appointmentTypeCategories AppointmentTypeCategory[]
+  stockDisposalLines        StockDisposalLine[]
+  appointments              Appointment[]
+  waitlist                  WaitlistEntry[]
+  triage                    TriageAssessment[]
+  encounters                Encounter[]
+  clinicalNotes             ClinicalNote[]
+  vitals                    VitalSign[]
+  vitalReferences           VitalReference[]
+  diagnoses                 Diagnosis[]
+  problems                  ProblemListItem[]
+  clinicalTemplates         ClinicalTemplate[]
+  notePhrases               NotePhrase[]
+  tasks                     Task[]
+  products                  Product[]
+  productWithdrawals        ProductWithdrawal[]
+  doseReferences            DoseReference[]
+  prescriptions             Prescription[]
+  prescriptionItems         PrescriptionItem[]
+  dispensations             Dispensation[]
+  administrations           MedicationAdministration[]
+  withdrawals               PatientWithdrawal[]
+  labTests                  LabTest[]
+  labAnalytes               LabAnalyte[]
+  referenceIntervals        ReferenceInterval[]
+  diagnosticOrders          DiagnosticOrder[]
+  diagnosticItems           DiagnosticOrderItem[]
+  samples                   Sample[]
+  sampleEvents              SampleEvent[]
+  labResults                LabResult[]
+  imagingReports            ImagingReport[]
+  allowNegativeStock        Boolean                    @default(false)
+  pricesIncludeTax          Boolean                    @default(false)
+  paymentTermsDays          Int                        @default(0)
+  requireCashSession        Boolean                    @default(true)
   /// Purchase orders must be approved by someone other than the person who raised them. Clinics that
   /// existed before this setting keep the rule (migration backfills true); new clinics start without it.
-  poRequiresSecondApprover Boolean                    @default(false)
+  poRequiresSecondApprover  Boolean                    @default(false)
   /// Prescription-only medicines may be sold without a prescription (with a note saying who approved it); controlled medicines never.
-  sellWithoutPrescription  Boolean                    @default(false)
+  sellWithoutPrescription   Boolean                    @default(false)
   /// Prescribing screen asks "This is N tablets per dose — is that correct?" above this many countable units
   /// per dose. A data-entry safety prompt, not a dose limit.
-  rxConfirmUnitsPerDose    Int                        @default(4)
-  stockLocations           StockLocation[]
-  stockBatches             StockBatch[]
-  stockLevels              StockLevel[]
-  stockMovements           StockMovement[]
-  stockCounts              StockCount[]
-  stockCountLines          StockCountLine[]
-  suppliers                Supplier[]
-  purchaseOrders           PurchaseOrder[]
-  purchaseOrderLines       PurchaseOrderLine[]
-  goodsReceipts            GoodsReceipt[]
-  goodsReceiptLines        GoodsReceiptLine[]
-  taxRates                 TaxRate[]
-  services                 Service[]
-  charges                  Charge[]
-  invoices                 Invoice[]
-  invoiceLines             InvoiceLine[]
-  payments                 Payment[]
-  paymentAllocations       PaymentAllocation[]
-  refunds                  Refund[]
-  creditNotes              CreditNote[]
-  estimates                Estimate[]
-  estimateLines            EstimateLine[]
-  cashRegisters            CashRegister[]
-  cashSessions             CashSession[]
-  expenses                 Expense[]
-  wards                    Ward[]
-  cages                    Cage[]
-  admissions               Admission[]
-  treatmentOrders          TreatmentOrder[]
-  treatmentTasks           TreatmentTask[]
-  hospitalNotes            HospitalNote[]
-  surgeries                Surgery[]
-  surgeryTeamMembers       SurgeryTeamMember[]
-  anaesthesiaReadings      AnaesthesiaReading[]
-  surgeryItems             SurgeryItem[]
-  surgeryAddenda           SurgeryAddendum[]
-  surgeryChecklistItems    SurgeryChecklistItem[]
-  reminderLeadDays         Int                        @default(14)
-  overdueReminderDays      Int                        @default(7)
-  appointmentReminderHours Int                        @default(24)
-  portalEnabled            Boolean                    @default(true)
-  portalCancelHours        Int                        @default(24)
-  careProtocols            CareProtocol[]
-  careItems                CareItem[]
-  messageTemplates         MessageTemplate[]
-  outboundMessages         OutboundMessage[]
-  clientMessages           ClientMessage[]
-  portalAccesses           PortalAccess[]
-  appointmentRequests      AppointmentRequest[]
+  rxConfirmUnitsPerDose     Int                        @default(4)
+  stockLocations            StockLocation[]
+  stockBatches              StockBatch[]
+  stockLevels               StockLevel[]
+  stockMovements            StockMovement[]
+  stockCounts               StockCount[]
+  stockCountLines           StockCountLine[]
+  suppliers                 Supplier[]
+  purchaseOrders            PurchaseOrder[]
+  purchaseOrderLines        PurchaseOrderLine[]
+  goodsReceipts             GoodsReceipt[]
+  goodsReceiptLines         GoodsReceiptLine[]
+  taxRates                  TaxRate[]
+  services                  Service[]
+  charges                   Charge[]
+  invoices                  Invoice[]
+  invoiceLines              InvoiceLine[]
+  payments                  Payment[]
+  paymentAllocations        PaymentAllocation[]
+  refunds                   Refund[]
+  creditNotes               CreditNote[]
+  estimates                 Estimate[]
+  estimateLines             EstimateLine[]
+  cashRegisters             CashRegister[]
+  cashSessions              CashSession[]
+  expenses                  Expense[]
+  wards                     Ward[]
+  cages                     Cage[]
+  admissions                Admission[]
+  treatmentOrders           TreatmentOrder[]
+  treatmentTasks            TreatmentTask[]
+  hospitalNotes             HospitalNote[]
+  surgeries                 Surgery[]
+  surgeryTeamMembers        SurgeryTeamMember[]
+  anaesthesiaReadings       AnaesthesiaReading[]
+  surgeryItems              SurgeryItem[]
+  surgeryAddenda            SurgeryAddendum[]
+  surgeryChecklistItems     SurgeryChecklistItem[]
+  reminderLeadDays          Int                        @default(14)
+  overdueReminderDays       Int                        @default(7)
+  appointmentReminderHours  Int                        @default(24)
+  portalEnabled             Boolean                    @default(true)
+  portalCancelHours         Int                        @default(24)
+  careProtocols             CareProtocol[]
+  careItems                 CareItem[]
+  messageTemplates          MessageTemplate[]
+  outboundMessages          OutboundMessage[]
+  clientMessages            ClientMessage[]
+  portalAccesses            PortalAccess[]
+  appointmentRequests       AppointmentRequest[]
 
   farms                  Farm[]
   animalGroups           AnimalGroup[]
@@ -1277,7 +1280,29 @@ model AppointmentType {
   serviceId String?  @db.Uuid
   service   Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
 
+  /// The clinic's own category; `category` always equals its kind.
+  categoryId  String?                  @db.Uuid
+  categoryRef AppointmentTypeCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
   @@unique([organizationId, name])
+}
+
+/// A clinic-defined appointment category ("Senior care", "Nail trim"…) that works like one built-in kind.
+model AppointmentTypeCategory {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @db.Uuid
+  name           String
+  kind           AppointmentCategory
+  sortOrder      Int                 @default(100)
+  isActive       Boolean             @default(true)
+  createdAt      DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime            @updatedAt @db.Timestamptz(3)
+
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  appointmentTypes AppointmentType[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, isActive, sortOrder])
 }
 
 enum ResourceType {
@@ -1980,6 +2005,7 @@ model Product {
   supplierReturnLines  SupplierReturnLine[]
   wellnessPlanItems    WellnessPlanItem[]
   wellnessEntitlements WellnessEntitlement[]
+  disposalLines        StockDisposalLine[]
 
   @@unique([organizationId, sku])
   @@index([organizationId, type, name])
@@ -2551,6 +2577,7 @@ model StockLocation {
   levels       StockLevel[]
   movements    StockMovement[]
   counts       StockCount[]
+  disposals    StockDisposal[]
 
   @@unique([branchId, name])
   @@index([organizationId])
@@ -2586,6 +2613,7 @@ model StockBatch {
   countLines   StockCountLine[]
 
   supplierReturnLines SupplierReturnLine[]
+  disposalLines       StockDisposalLine[]
 
   @@unique([productId, batchNumber])
   @@index([organizationId, expiryDate])
@@ -5544,4 +5572,75 @@ model DentalProcedurePrice {
   service      Service      @relation(fields: [serviceId], references: [id], onDelete: Restrict)
 
   @@unique([organizationId, code])
+}
+
+// ───────────────────────────── Stock disposal ─────────────────────────────
+
+enum DisposalReason {
+  EXPIRED
+  SHORT_DATED
+  DAMAGED
+  RECALLED
+  CONTAMINATED
+  OPENED
+  OTHER
+}
+
+enum DisposalMethod {
+  WASTE_CONTRACTOR
+  INCINERATION
+  DENATURED
+  CLINICAL_WASTE
+  RETURNED_FOR_DESTRUCTION
+  OTHER
+}
+
+/// A record of stock destroyed (expired, damaged, recalled…). Each line is a WRITE_OFF movement (referenceType
+/// StockDisposal). Permanent: append-only by trigger. Controlled medicines need a witness.
+model StockDisposal {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @db.Uuid
+  branchId       String         @db.Uuid
+  number         Int
+  locationId     String         @db.Uuid
+  reason         DisposalReason
+  method         DisposalMethod
+  contractor     String?
+  reference      String?
+  notes          String?
+  witnessId      String?        @db.Uuid
+  witnessName    String?
+  hasControlled  Boolean        @default(false)
+  totalMinor     Int
+  disposedAt     DateTime       @db.Timestamptz(3)
+  createdById    String         @db.Uuid
+  createdByName  String
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  location     StockLocation       @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  lines        StockDisposalLine[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, disposedAt])
+}
+
+model StockDisposalLine {
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String  @db.Uuid
+  disposalId     String  @db.Uuid
+  productId      String  @db.Uuid
+  batchId        String  @db.Uuid
+  quantity       Decimal @db.Decimal(14, 4)
+  unitCostMinor  Int
+  totalMinor     Int
+  /// The batch was past its expiry date when it was disposed of.
+  wasExpired     Boolean @default(false)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  disposal     StockDisposal @relation(fields: [disposalId], references: [id], onDelete: Restrict)
+  product      Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  batch        StockBatch    @relation(fields: [batchId], references: [id], onDelete: Restrict)
+
+  @@index([disposalId])
 }

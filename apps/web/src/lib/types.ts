@@ -220,6 +220,18 @@ export interface AppointmentType {
   requiresClinician: boolean;
   allowOnlineBooking: boolean;
   isActive: boolean;
+  /** The clinic's own category (its kind is `category`). */
+  categoryId?: string | null;
+  categoryRef?: { id: string; name: string; kind: string; isActive: boolean } | null;
+}
+
+export interface AppointmentTypeCategory {
+  id: string;
+  name: string;
+  kind: string;
+  sortOrder: number;
+  isActive: boolean;
+  _count?: { appointmentTypes: number };
 }
 
 export interface Resource {
@@ -2165,4 +2177,57 @@ export interface DentalPrice {
   scope: 'tooth' | 'mouth' | 'both';
   dentitions: string[] | null;
   service: { id: string; name: string; code: string; priceMinor: number; isActive: boolean } | null;
+}
+
+// ── Stock disposal ──
+
+export interface DisposalCandidate {
+  batchId: string;
+  batchNumber: string;
+  expiryDate: string | null;
+  daysLeft: number | null;
+  state: 'EXPIRED' | 'EXPIRING' | 'RECALLED' | 'QUARANTINED';
+  statusReason: string | null;
+  product: { id: string; name: string; sku: string | null; dispensingUnit: string; isControlled: boolean; type: string };
+  location: { id: string; name: string; branchId: string };
+  quantity: number;
+  unitCostMinor: number;
+  valueMinor: number;
+}
+
+export interface DisposalCandidates {
+  today: string;
+  rows: DisposalCandidate[];
+  summary: Record<'expired' | 'expiring' | 'recalled' | 'quarantined', { count: number; valueMinor: number }>;
+}
+
+export interface StockDisposal {
+  id: string;
+  number: number;
+  disposalNo: string;
+  branchId: string;
+  location: { id: string; name: string; branchId: string };
+  reason: string;
+  reasonLabel: string;
+  method: string;
+  methodLabel: string;
+  contractor: string | null;
+  reference: string | null;
+  notes: string | null;
+  witnessId: string | null;
+  witnessName: string | null;
+  hasControlled: boolean;
+  totalMinor: number;
+  disposedAt: string;
+  createdByName: string;
+  createdAt: string;
+  lines: {
+    id: string;
+    quantity: number;
+    unitCostMinor: number;
+    totalMinor: number;
+    wasExpired: boolean;
+    product: { id: string; name: string; sku: string | null; dispensingUnit: string; isControlled: boolean; controlledSchedule: string | null };
+    batch: { id: string; batchNumber: string; expiryDate: string | null };
+  }[];
 }

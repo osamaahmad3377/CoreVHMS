@@ -1,7 +1,7 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
 import type { Paginated } from '@vcms/shared';
-import { Check, ChevronsUpDown, Loader2, Plus, Search } from 'lucide-react';
+import { Check, ChevronsUpDown, Loader2, Search, SearchX, UserPlus } from 'lucide-react';
 import { useState } from 'react';
 import { useDebounce } from '@/hooks/use-debounce';
 import { api, qs } from '@/lib/api';
@@ -80,7 +80,7 @@ export function PatientPicker({
           role="combobox"
           aria-expanded={open}
           aria-invalid={invalid || undefined}
-          className={cn('w-full justify-between font-normal', !value && 'text-muted-foreground', invalid && 'border-destructive')}
+          className={cn('w-full min-w-0 justify-between overflow-hidden font-normal', !value && 'text-muted-foreground', invalid && 'border-destructive')}
         >
           <span className="truncate">{value ? `${value.name} (${value.species.name}) · ${value.owner?.displayName ?? ''}` : placeholder}</span>
           <ChevronsUpDown className="opacity-50" />
@@ -101,20 +101,24 @@ export function PatientPicker({
         </div>
         <ul className="max-h-64 overflow-y-auto p-1" role="listbox">
           {!browse && q.length < 2 && (
-            <li className="px-3 py-4 text-center text-xs text-muted-foreground">Search by patient name, client name or phone, microchip or P-number</li>
+            <li className="px-3 py-5 text-center text-xs text-muted-foreground">Type at least 2 letters of the pet’s or owner’s name, a phone number, microchip or P-number.</li>
           )}
           {(browse || q.length >= 2) && !results.isFetching && rows.length === 0 && (
-            <li className="grid justify-items-center gap-2 px-3 py-4 text-center text-xs text-muted-foreground">
+            <li className="grid justify-items-center gap-2 px-4 py-6 text-center">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                <SearchX className="h-5 w-5 text-muted-foreground" />
+              </span>
               {q ? (
-                <span>
-                  No patient found for “{q}”. Check the spelling or phone number{canCreate ? ', or add a new client' : ''}.
-                </span>
+                <>
+                  <span className="text-sm font-semibold">No patient matches “{q}”</span>
+                  <span className="max-w-xs text-xs text-muted-foreground">Check the spelling or try the owner’s phone number.{canCreate ? ' If they are new to the clinic, register them now.' : ''}</span>
+                </>
               ) : (
-                <span>This client has no active patients.</span>
+                <span className="text-sm text-muted-foreground">This client has no active patients.</span>
               )}
-              {canCreate && (
-                <Button type="button" size="sm" onClick={startCreate}>
-                  <Plus /> New client and patient
+              {canCreate && q && (
+                <Button type="button" size="sm" className="mt-1" onClick={startCreate}>
+                  <UserPlus /> Add “{q.length > 24 ? `${q.slice(0, 24)}…` : q}” as a new patient
                 </Button>
               )}
             </li>
@@ -143,14 +147,19 @@ export function PatientPicker({
               </button>
             </li>
           ))}
-          {canCreate && rows.length > 0 && (
-            <li className="border-t pt-1">
-              <button type="button" onClick={startCreate} className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-primary hover:bg-muted">
-                <Plus className="h-4 w-4" /> Not listed? New client and patient
-              </button>
-            </li>
-          )}
         </ul>
+        {canCreate && (
+          // Always in view: a new client and their pet can be registered without leaving the form.
+          <button type="button" onClick={startCreate} className="flex w-full items-center gap-3 border-t bg-muted/40 px-3 py-2.5 text-left transition-colors hover:bg-primary/[0.06] focus-visible:bg-primary/[0.06] focus-visible:outline-none">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <UserPlus className="h-4 w-4" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-primary">New client and patient</span>
+              <span className="block truncate text-xs text-muted-foreground">Register the owner and their pet now</span>
+            </span>
+          </button>
+        )}
       </PopoverContent>
     </Popover>
   );

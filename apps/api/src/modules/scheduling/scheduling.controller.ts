@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import {
+  appointmentCategorySchema,
   appointmentListQuery,
   callPatientSchema,
   appointmentStatusActionSchema,
@@ -53,6 +54,32 @@ export class SchedulingController {
   @RequirePermissions('settings.manage')
   updateType(@Param('id', UUID) id: string, @Body(zp(appointmentTypeSchema.partial())) body: Partial<z.infer<typeof appointmentTypeSchema>>) {
     return this.config.updateType(id, body);
+  }
+
+  // ── Appointment categories ──
+  @Get('appointment-categories')
+  @RequireAnyPermission('appointments.read', 'settings.manage')
+  categories(@Query('all') all?: string) {
+    return this.config.listCategories(all === 'true');
+  }
+
+  @Post('appointment-categories')
+  @RequirePermissions('settings.manage')
+  @ApiZodBody(appointmentCategorySchema)
+  createCategory(@Body(zp(appointmentCategorySchema)) body: z.infer<typeof appointmentCategorySchema>) {
+    return this.config.createCategory(body);
+  }
+
+  @Patch('appointment-categories/:id')
+  @RequirePermissions('settings.manage')
+  updateCategory(@Param('id', UUID) id: string, @Body(zp(appointmentCategorySchema.partial())) body: Partial<z.infer<typeof appointmentCategorySchema>>) {
+    return this.config.updateCategory(id, body);
+  }
+
+  @Delete('appointment-categories/:id')
+  @RequirePermissions('settings.manage')
+  deleteCategory(@Param('id', UUID) id: string) {
+    return this.config.deleteCategory(id);
   }
 
   // ── Resources ──

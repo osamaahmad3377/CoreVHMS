@@ -19,7 +19,7 @@ import { useUrlState } from '@/hooks/use-url-state';
 import { api, qs } from '@/lib/api';
 import { fmtDate, fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
-import type { StockLocation, StockRow } from '@/lib/types';
+import type { DisposalCandidates, StockLocation, StockRow } from '@/lib/types';
 
 function Stock() {
   const router = useRouter();
@@ -39,6 +39,8 @@ function Stock() {
   const query = useQuery({ queryKey: ['stock', params], queryFn: () => api.get<Paginated<StockRow> & { totals: { valueMinor: number } }>(`/stock${qs(params)}`), placeholderData: (p) => p });
   const locations = useQuery({ queryKey: ['stock-locations'], queryFn: () => api.get<StockLocation[]>('/stock-locations') });
   const noLocations = locations.isSuccess && !locations.data.length;
+  const expired = useQuery({ queryKey: ['disposal-candidates', 0, ''], queryFn: () => api.get<DisposalCandidates>('/stock/disposals/candidates?days=0') });
+  const expiredCount = expired.data?.summary.expired.count ?? 0;
   return (
     <>
       <PageHeader
@@ -51,6 +53,17 @@ function Stock() {
       {noLocations && (
         <Card className="mb-4 border-warning/40 bg-warning/5 p-4 text-sm">
           No store rooms are set up yet, so stock is not being tracked. <Link className="font-medium underline" href="/inventory/locations">Add a store room</Link> (for example Pharmacy or Shop) to start receiving stock.
+        </Card>
+      )}
+      {expiredCount > 0 && (
+        <Card className="mb-4 flex flex-wrap items-center gap-3 border-destructive/40 bg-destructive/5 p-4 text-sm">
+          <AlertTriangle className="h-4 w-4 text-destructive" />
+          <span className="min-w-0 flex-1">
+            <b>{expiredCount} expired {expiredCount === 1 ? 'batch is' : 'batches are'} still on the shelf</b> ({fmtMoney(expired.data!.summary.expired.valueMinor, currency)} at cost). It can’t be used or sold — dispose of it and keep a record.
+          </span>
+          <Button size="sm" variant="outline" asChild>
+            <Link href="/inventory/disposals?days=0&show=EXPIRED">Dispose of expired stock</Link>
+          </Button>
         </Card>
       )}
       <Card>

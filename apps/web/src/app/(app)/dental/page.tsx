@@ -1,18 +1,15 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
-import { DENTITION_LABELS, dentitionForSpecies, type Paginated } from '@vcms/shared';
+import { DENTITION_LABELS, type Paginated } from '@vcms/shared';
 import { Plus, Smile } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
-import { NewDentalChartDialog } from '@/components/dental/patient-dental';
-import { Field } from '@/components/forms/field';
+import { NewDentalChartDialog } from '@/components/dental/new-chart-dialog';
 import { EmptyState, ErrorState, LoadingRows, PageHeader } from '@/components/page';
-import { PatientPicker, type PickedPatient } from '@/components/patients/patient-picker';
 import { RequirePermission } from '@/components/require';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
 import { api, qs } from '@/lib/api';
 import { fmtDate } from '@/lib/format';
@@ -25,8 +22,6 @@ function DentalList() {
   const [status, setStatus] = useState<'DRAFT' | 'ALL'>('DRAFT');
   const [page, setPage] = useState(1);
   const [picking, setPicking] = useState(false);
-  const [patient, setPatient] = useState<PickedPatient | null>(null);
-  const [starting, setStarting] = useState<PickedPatient | null>(null);
   const q = useQuery({ queryKey: ['dental-charts', status, page], queryFn: () => api.get<Paginated<DentalChartListItem>>(`/dental/charts${qs({ status, page, pageSize: 25 })}`) });
   const drafts = useQuery({ queryKey: ['dental-charts', 'DRAFT', 'count'], queryFn: () => api.get<Paginated<DentalChartListItem>>('/dental/charts?status=DRAFT&pageSize=1') });
   const rows = q.data?.data ?? [];
@@ -122,30 +117,7 @@ function DentalList() {
         )}
       </Card>
 
-      <Dialog open={picking} onOpenChange={(o) => { setPicking(o); if (!o) setPatient(null); }}>
-        <DialogContent size="sm">
-          <DialogHeader>
-            <DialogTitle>New dental chart</DialogTitle>
-            <DialogDescription>Which patient is it for?</DialogDescription>
-          </DialogHeader>
-          <Field label="Patient" htmlFor="nd-patient">
-            <PatientPicker id="nd-patient" value={patient} onChange={setPatient} />
-          </Field>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPicking(false)}>Cancel</Button>
-            <Button disabled={!patient} onClick={() => { setStarting(patient); setPicking(false); }}>Next</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      {starting && (
-        <NewDentalChartDialog
-          patientId={starting.id}
-          patientName={starting.name}
-          suggested={dentitionForSpecies(starting.species?.name, starting.species?.category)}
-          open={!!starting}
-          onOpenChange={(o) => { if (!o) { setStarting(null); setPatient(null); } }}
-        />
-      )}
+      <NewDentalChartDialog open={picking} onOpenChange={setPicking} />
     </>
   );
 }

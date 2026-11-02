@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import type { LeaveType, ResourceType } from '@prisma/client';
-import type { AppointmentTypeInput, WorkingHoursInput } from '@vcms/shared';
+import type { AppointmentCategoryInput, AppointmentTypeInput, WorkingHoursInput } from '@vcms/shared';
+import { Prisma } from '@prisma/client';
+import { categoryForKind } from './appointment-categories';
+import type { ScopedTx } from '../../common/prisma/tenant-extension';
+import { conflict } from '../../common/http/errors';
 import { AuditService, diff } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { notFound, ruleViolation } from '../../common/http/errors';
@@ -19,9 +23,20 @@ export class ScheduleConfigService {
     return this.prisma.db.appointmentType.findMany({
       where: includeInactive ? {} : { isActive: true },
       // The linked service is what gets charged; its price is the one to show when booking.
-      include: { service: { select: { id: true, code: true, name: true, priceMinor: true, isActive: true } } },
-      orderBy: [{ isActive: 'desc' }, { category: 'asc' }, { name: 'asc' }],
+      include: { service: { select: { id: true, code: true, name: true, priceMinor: true, isActive: true } }, categoryRef: { select: { id: true, name: true, kind: true, isActive: true } } },
+      orderBy: [{ isActive: 'desc' }, { categoryRef: { sortOrder: 'asc' } }, { category: 'asc' }, { name: 'asc' }],
     });
+  }
+
+  /** `category` (the built-in kind) always follows the chosen category; a kind on its own gets that kind's category. */
+  private async resolveCategory(tx: ScopedTx, input: Partial<AppointmentTypeInput>) {
+    if (input.categoryId) {
+      const c = await tx.appointmentTypeCategory.findUnique({ where: { id: input.categoryId } });
+      if (!c) throw ruleViolation('INVALID_CATEGORY', 'Category not found');
+      return { categoryId: c.id, category: c.kind };
+    }
+    if (input.category) return { categoryId: await categoryForKind(tx, RequestContext.orgId(), input.category), category: input.category };
+    return {};
   }
 
   private async assertService(serviceId?: string | null) {
@@ -31,7 +46,7 @@ export class ScheduleConfigService {
   async createType(input: AppointmentTypeInput) {
     await this.assertService(input.serviceId);
     return this.prisma.db.$transaction(async (tx) => {
-      const t = await tx.appointmentType.create({ data: { ...input, organizationId: RequestContext.orgId() } });
+      const t = await tx.appointmentType.create({ data: { ...input, ...(await this.resolveCategory(tx, { ...input, category: input.category ?? 'CONSULTATION' })), organizationId: RequestContext.orgId() } });
       await this.audit.record({ action: 'appointment_type.created', entityType: 'AppointmentType', entityId: t.id, summary: t.name }, tx);
       return t;
     });
@@ -42,13 +57,66 @@ export class ScheduleConfigService {
     return this.prisma.db.$transaction(async (tx) => {
       const before = await tx.appointmentType.findUnique({ where: { id } });
       if (!before) throw notFound('Appointment type');
-      const after = await tx.appointmentType.update({ where: { id }, data: input });
+      const after = await tx.appointmentType.update({ where: { id }, data: { ...input, ...(await this.resolveCategory(tx, input)) } });
       await this.audit.record(
         { action: 'appointment_type.updated', entityType: 'AppointmentType', entityId: id, summary: after.name, changes: diff(before, after, Object.keys(input)) },
         tx,
       );
       return after;
     });
+  }
+
+  // ── Appointment categories ──
+  listCategories(includeInactive = false) {
+    return this.prisma.db.appointmentTypeCategory.findMany({
+      where: includeInactive ? {} : { isActive: true },
+      include: { _count: { select: { appointmentTypes: true } } },
+      orderBy: [{ isActive: 'desc' }, { sortOrder: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  private nameTaken(e: unknown) {
+    return e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002' ? conflict('There is already a category with this name') : e;
+  }
+
+  async createCategory(input: AppointmentCategoryInput) {
+    try {
+      return await this.prisma.db.$transaction(async (tx) => {
+        const c = await tx.appointmentTypeCategory.create({ data: { ...input, organizationId: RequestContext.orgId() } });
+        await this.audit.record({ action: 'appointment_category.created', entityType: 'AppointmentTypeCategory', entityId: c.id, summary: `${c.name} (works like ${c.kind.toLowerCase().replace('_', ' ')})` }, tx);
+        return c;
+      });
+    } catch (e) {
+      throw this.nameTaken(e);
+    }
+  }
+
+  /** Changing what a category works like changes it for every appointment type in it. */
+  async updateCategory(id: string, input: Partial<AppointmentCategoryInput>) {
+    try {
+      return await this.prisma.db.$transaction(async (tx) => {
+        const before = await tx.appointmentTypeCategory.findUnique({ where: { id } });
+        if (!before) throw notFound('Category');
+        const after = await tx.appointmentTypeCategory.update({ where: { id }, data: input });
+        if (input.kind && input.kind !== before.kind) await tx.appointmentType.updateMany({ where: { categoryId: id }, data: { category: input.kind } });
+        await this.audit.record({ action: 'appointment_category.updated', entityType: 'AppointmentTypeCategory', entityId: id, summary: after.name, changes: diff(before, after, Object.keys(input)) }, tx);
+        return after;
+      });
+    } catch (e) {
+      throw this.nameTaken(e);
+    }
+  }
+
+  /** Only an unused category can be deleted; one in use can be hidden instead. */
+  async deleteCategory(id: string) {
+    const c = await this.prisma.db.appointmentTypeCategory.findUnique({ where: { id }, include: { _count: { select: { appointmentTypes: true } } } });
+    if (!c) throw notFound('Category');
+    if (c._count.appointmentTypes) throw ruleViolation('IN_USE', `${c.name} is used by ${c._count.appointmentTypes} appointment type(s). Move them to another category, or hide this one instead.`);
+    await this.prisma.db.$transaction(async (tx) => {
+      await tx.appointmentTypeCategory.delete({ where: { id } });
+      await this.audit.record({ action: 'appointment_category.deleted', entityType: 'AppointmentTypeCategory', entityId: id, summary: c.name }, tx);
+    });
+    return { ok: true };
   }
 
   // ── Resources ──

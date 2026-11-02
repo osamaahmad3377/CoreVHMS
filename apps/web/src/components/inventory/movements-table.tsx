@@ -7,7 +7,7 @@ import { fmtDateTime } from '@/lib/format';
 import type { StockMovement } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
-export const REF_LABEL: Record<string, string> = { Dispensation: 'Dispensing', Administration: 'Given in clinic', InvoiceLine: 'Sale', GoodsReceipt: 'Delivery', StockCount: 'Stock count', SupplierReturn: 'Returned to supplier', SurgeryItem: 'Used in surgery', FieldVisitItem: 'Used on farm visit', GroupTreatment: 'Herd treatment', Transfer: 'Transfer' };
+export const REF_LABEL: Record<string, string> = { Dispensation: 'Dispensing', Administration: 'Given in clinic', InvoiceLine: 'Sale', GoodsReceipt: 'Delivery', StockCount: 'Stock count', SupplierReturn: 'Returned to supplier', StockDisposal: 'Disposal', SurgeryItem: 'Used in surgery', FieldVisitItem: 'Used on farm visit', GroupTreatment: 'Herd treatment', Transfer: 'Transfer' };
 
 export function MovementsTable({ query, page, onPage, hideProduct }: { query: { data?: Paginated<StockMovement>; isLoading: boolean; error: unknown; refetch: () => unknown; isFetching?: boolean }; page: number; onPage: (p: number) => void; hideProduct?: boolean }) {
   return (

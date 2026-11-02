@@ -13,6 +13,7 @@ import { useConfirm } from '@/components/confirm';
 import { DataTable } from '@/components/data-table';
 import { Field } from '@/components/forms/field';
 import { AdjustDialog, TransferDialog } from '@/components/inventory/batch-dialogs';
+import { DisposeDialog, type DisposeItem } from '@/components/inventory/dispose-dialog';
 import { needsBatch } from '@/components/inventory/receive-dialog';
 import { MovementsTable } from '@/components/inventory/movements-table';
 import { ProductDialog } from '@/components/pharmacy/product-dialog';
@@ -153,6 +154,7 @@ function ProductStockView() {
   const { can, currency } = useSession();
   const [adjusting, setAdjusting] = useState<StockBatch | null>(null);
   const [moving, setMoving] = useState<StockBatch | null>(null);
+  const [disposing, setDisposing] = useState<DisposeItem[] | null>(null);
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState(false);
   const q = useQuery({ queryKey: ['stock-product', id], queryFn: () => api.get<ProductStock>(`/stock/products/${id}`) });
@@ -214,6 +216,19 @@ function ProductStockView() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onSelect={() => setAdjusting(b)}>Adjust / write off</DropdownMenuItem>
                           <DropdownMenuItem disabled={!b.levels.some((l) => l.quantity > 0)} onSelect={() => setMoving(b)}>Transfer</DropdownMenuItem>
+                          <DropdownMenuItem
+                            destructive
+                            disabled={!b.levels.some((l) => l.quantity > 0)}
+                            onSelect={() =>
+                              setDisposing(
+                                b.levels
+                                  .filter((l) => l.quantity > 0)
+                                  .map((l) => ({ batchId: b.id, batchNumber: b.batchNumber, expiryDate: b.expiryDate, expired: !!b.expiryDate && b.expiryDate.slice(0, 10) < today, recalled: b.status === 'RECALLED', productName: p.name, unit: p.dispensingUnit, isControlled: p.isControlled, location: l.location, onHand: l.quantity, unitCostMinor: b.unitCostMinor })),
+                              )
+                            }
+                          >
+                            Dispose…
+                          </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           {b.status !== 'AVAILABLE' && <DropdownMenuItem onSelect={() => setStatus(b, 'AVAILABLE')}>Release for use</DropdownMenuItem>}
                           {b.status !== 'QUARANTINED' && <DropdownMenuItem onSelect={() => setStatus(b, 'QUARANTINED')}>Quarantine</DropdownMenuItem>}
@@ -234,6 +249,7 @@ function ProductStockView() {
       </div>
       <AdjustDialog batch={adjusting} unit={p.dispensingUnit} onClose={() => setAdjusting(null)} />
       <TransferDialog batch={moving} unit={p.dispensingUnit} onClose={() => setMoving(null)} />
+      <DisposeDialog items={disposing ?? []} open={!!disposing} onOpenChange={(o) => !o && setDisposing(null)} />
     </>
   );
 }
