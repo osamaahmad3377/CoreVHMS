@@ -13,85 +13,15 @@ import { Button } from '../ui/button';
 import { Card, CardHeader, CardTitle } from '../ui/card';
 import { Checkbox } from '../ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
+import { NewDentalChartDialog } from './new-chart-dialog';
 import { Odontogram, OdontogramLegend } from './odontogram';
+
+export { NewDentalChartDialog };
 import { api } from '@/lib/api';
 import { fmtDate } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { DentalChart } from '@/lib/types';
 import { cn } from '@/lib/utils';
-
-export function NewDentalChartDialog({
-  patientId,
-  patientName,
-  suggested,
-  encounterId,
-  open,
-  onOpenChange,
-}: {
-  patientId: string;
-  patientName: string;
-  suggested: Dentition | null;
-  encounterId?: string | null;
-  open: boolean;
-  onOpenChange: (o: boolean) => void;
-}) {
-  const router = useRouter();
-  const qc = useQueryClient();
-  const [dentition, setDentition] = useState<Dentition | ''>(suggested ?? '');
-  const [baby, setBaby] = useState(false);
-  const [carry, setCarry] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    if (open) {
-      setDentition(suggested ?? '');
-      setBaby(false);
-      setCarry(true);
-      setError(null);
-    }
-  }, [open, suggested]);
-  const create = useMutation({
-    mutationFn: () => api.post<DentalChart>('/dental/charts', { patientId, dentition, showDeciduous: baby, carryForward: carry, encounterId: encounterId ?? null }),
-    onSuccess: (c) => {
-      if (encounterId) qc.invalidateQueries({ queryKey: ['encounter-dental', encounterId] });
-      qc.invalidateQueries({ queryKey: ['patient-dental', patientId] });
-      router.push(`/dental/${c.id}`);
-    },
-    onError: (e: Error) => setError(e.message),
-  });
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="sm">
-        <DialogHeader>
-          <DialogTitle>New dental chart</DialogTitle>
-          <DialogDescription>For {patientName}. You record findings tooth by tooth, then sign the chart.</DialogDescription>
-        </DialogHeader>
-        {error && <FormError message={error} />}
-        <Field label="Chart" htmlFor="nd-dentition" hint={suggested ? undefined : 'There’s no standard tooth chart for this species — choose the closest one.'}>
-          <div id="nd-dentition" role="radiogroup" className="grid grid-cols-3 gap-2">
-            {DENTITIONS.map((d) => (
-              <button key={d} type="button" role="radio" aria-checked={dentition === d} onClick={() => setDentition(d)} className={cn('rounded-lg surface-flat p-2 text-sm', dentition === d ? 'border-primary bg-primary/10 font-medium text-primary' : 'hover:bg-muted')}>
-                {DENTITION_LABELS[d]}
-                <span className="block text-2xs text-muted-foreground">{teethFor(d).length} adult teeth</span>
-              </button>
-            ))}
-          </div>
-        </Field>
-        <label className="flex items-center gap-2 text-sm">
-          <Checkbox checked={baby} onCheckedChange={(v) => setBaby(v === true)} /> Show baby teeth too (young animal)
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <Checkbox checked={carry} onCheckedChange={(v) => setCarry(v === true)} /> Start from the last signed chart (missing and extracted teeth)
-        </label>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button disabled={!dentition} loading={create.isPending} onClick={() => create.mutate()}>
-            Start chart
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 /** Patient tab: the latest dental chart at a glance, every chart, and starting a new one. */
 export function PatientDental({ patientId, patientName, active }: { patientId: string; patientName: string; active: boolean }) {
@@ -179,7 +109,7 @@ export function PatientDental({ patientId, patientName, active }: { patientId: s
           </ul>
         </Card>
       )}
-      <NewDentalChartDialog patientId={patientId} patientName={patientName} suggested={q.data?.suggestedDentition ?? null} open={open} onOpenChange={setOpen} />
+      <NewDentalChartDialog patient={{ id: patientId, name: patientName }} suggested={q.data?.suggestedDentition ?? null} open={open} onOpenChange={setOpen} />
     </div>
   );
 }

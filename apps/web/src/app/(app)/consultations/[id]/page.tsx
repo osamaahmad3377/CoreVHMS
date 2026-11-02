@@ -7,7 +7,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { ConsultationRecord } from '@/components/clinical/consultation-record';
-import { NewDentalChartDialog } from '@/components/dental/patient-dental';
+import { NewDentalChartDialog } from '@/components/dental/new-chart-dialog';
 import { useVisitDental, VisitDentalCard } from '@/components/dental/visit-dental';
 import { LastVisitStrip, PatientHistoryDialog, useCanSeeHistory } from '@/components/clinical/patient-history';
 import { ConsultationCharges } from '@/components/clinical/charges-card';
@@ -536,7 +536,13 @@ function Workspace() {
           </DialogContent>
         </Dialog>
       )}
-      <NewDentalChartDialog patientId={enc.patient.id} patientName={enc.patient.name} suggested={visitDental.data?.suggestedDentition ?? null} encounterId={enc.id} open={dentalOpen} onOpenChange={setDentalOpen} />
+      <NewDentalChartDialog
+        patient={{ id: enc.patient.id, name: enc.patient.name, patientNo: enc.patient.patientNo, species: enc.patient.species, ownerName: enc.patient.owner?.displayName ?? null }}
+        suggested={visitDental.data?.suggestedDentition ?? null}
+        encounterId={enc.id}
+        open={dentalOpen}
+        onOpenChange={setDentalOpen}
+      />
       <PatientHistoryDialog patientId={enc.patient.id} patientName={enc.patient.name} currentId={enc.id} open={historyOpen} onOpenChange={setHistoryOpen} initialVisitId={historyVisit} />
       <FinishConsultationDialog
         encounter={enc}
