@@ -62,7 +62,19 @@ export class ChargeCaptureService {
 
   private async afterWaive(tx: ScopedTx, chargeIds: string[], reason: string) {
     if (!chargeIds.length) return;
-    for (const h of this.waivedHooks) await h(tx, chargeIds, reason);
+    for (const h of this.waivedHooks) await h(tx, chargeIds, `Charge waived: ${reason}`);
+  }
+
+  /**
+   * Changes an unbilled charge (e.g. a corrected distance). Any discount on it (a wellness benefit) is given back
+   * first and worked out again on the new amount, so it never exceeds or lags behind the charge.
+   */
+  async updatePending(tx: ScopedTx, chargeId: string, data: { quantity?: number; unitPriceMinor?: number; description?: string }, reason: string) {
+    const c = await tx.charge.findUniqueOrThrow({ where: { id: chargeId } });
+    if (c.status !== 'PENDING') throw ruleViolation('NOT_PENDING', 'Only unbilled charges can be changed');
+    for (const h of this.waivedHooks) await h(tx, [chargeId], `Charge changed: ${reason}`);
+    const updated = await tx.charge.update({ where: { id: chargeId }, data: { ...data, discountMinor: 0, discountNote: null } });
+    return this.afterCapture(tx, updated);
   }
 
   async defaultTaxBp(tx: ScopedTx | PrismaService['db']) {

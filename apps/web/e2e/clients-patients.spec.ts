@@ -53,7 +53,7 @@ test.describe('Front desk: clients and patients', () => {
     const dialog = page.getByRole('dialog');
     await dialog.getByRole('combobox').first().click();
     await page.getByLabel('Search patients').fill(client);
-    await expect(page.getByText(`No patient found for “${client}”`)).toBeVisible();
+    await expect(page.getByText(`No patient matches “${client}”`)).toBeVisible();
     await page.getByRole('button', { name: 'New client and patient' }).click();
     await expect(dialog.locator('#qa-client')).toHaveValue(client);
     await dialog.locator('#qa-mobile').fill(`0300 ${Math.floor(1000000 + Math.random() * 8999999)}`);

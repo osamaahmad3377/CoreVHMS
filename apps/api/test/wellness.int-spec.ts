@@ -205,6 +205,26 @@ describe('Wellness plans', () => {
     expect((await s.desk.client.post('/wellness/enrolments', { planId: s.plan.id, patientId: s.patient.id })).status).toBe(201);
   });
 
+  it('stops a plan and its payments when the patient dies or is archived', async () => {
+    const s = await setup();
+    const e = (await s.desk.client.post('/wellness/enrolments', { planId: s.plan.id, patientId: s.patient.id, billing: 'MONTHLY' })).body;
+    expect((await chargesOf(s)).data.filter((c: any) => c.sourceType === 'WellnessInstalment')).toHaveLength(1);
+    expect((await s.org.owner.post(`/patients/${s.patient.id}/deceased`, { deceasedAt: new Date().toISOString(), euthanasia: false })).status).toBe(200);
+    const after = (await s.desk.client.get(`/wellness/enrolments/${e.id}`)).body;
+    expect(after).toMatchObject({ state: 'CANCELLED', autoRenew: false, cancelReason: expect.stringContaining('Patient deceased') });
+    expect(after.instalments.every((i: any) => i.status === 'CANCELLED')).toBe(true);
+    // The first payment, not yet invoiced, is dropped; nothing more is billed.
+    expect((await chargesOf(s)).data.filter((c: any) => c.sourceType === 'WellnessInstalment')).toHaveLength(0);
+    await prisma().wellnessInstalment.updateMany({ where: { enrolmentId: e.id }, data: { dueDate: new Date(Date.now() - 86400_000) } });
+    expect((await s.desk.client.post('/wellness/bill-due')).body).toEqual({ billed: 0 });
+
+    // Archiving a patient ends their plan too.
+    const other = (await s.org.owner.post('/patients', { ownerId: s.client.id, name: 'Rex', speciesId: s.plan.speciesId, sex: 'MALE' })).body;
+    const e2 = (await s.desk.client.post('/wellness/enrolments', { planId: s.plan.id, patientId: other.id })).body;
+    expect((await s.org.owner.post(`/patients/${other.id}/archive`, { reason: 'Moved away' })).status).toBeLessThan(300);
+    expect((await s.desk.client.get(`/wellness/enrolments/${e2.id}`)).body).toMatchObject({ state: 'CANCELLED', cancelReason: 'Patient archived — Moved away' });
+  });
+
   it('renews onto the next term, keeps members on what they bought, and lists members', async () => {
     const s = await setup();
     const e = (await s.desk.client.post('/wellness/enrolments', { planId: s.plan.id, patientId: s.patient.id })).body;

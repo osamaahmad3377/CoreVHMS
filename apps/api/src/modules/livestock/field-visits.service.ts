@@ -7,7 +7,7 @@ import { RequestContext } from '../../common/context/request-context';
 import { CounterService, formatNumber } from '../../common/counter/counter.service';
 import { conflict, notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { ChargeCaptureService } from '../billing/charge-capture.service';
+import { ChargeCaptureService, chargeAmount } from '../billing/charge-capture.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { WithdrawalService } from '../pharmacy/withdrawal.service';
 import { farmNo } from './farms.service';
@@ -82,14 +82,14 @@ export class FieldVisitsService {
     const treatments = await this.prisma.db.groupTreatment.findMany({ where: { fieldVisitId: id }, include: { group: { select: { id: true, name: true } } }, orderBy: { administeredAt: 'asc' } });
     const charges = await this.prisma.db.charge.findMany({
       where: { OR: [{ sourceType: 'FieldVisit', sourceId: id }, { sourceType: 'FieldVisitItem', sourceId: { in: items.map((i) => i.id) } }, { sourceType: 'GroupTreatment', sourceId: { in: treatments.map((t) => t.id) } }] },
-      select: { id: true, description: true, quantity: true, unitPriceMinor: true, taxRateBasisPoints: true, status: true, sourceType: true, sourceId: true },
+      select: { id: true, description: true, quantity: true, unitPriceMinor: true, discountMinor: true, discountNote: true, taxRateBasisPoints: true, status: true, sourceType: true, sourceId: true },
       orderBy: { createdAt: 'asc' },
     });
     return {
       ...shape(v),
       items: items.map((i) => ({ ...i, quantity: Number(i.quantity), patient: patients.find((p) => p.id === i.patientId) ?? null })),
       treatments: treatments.map((t) => ({ ...t, quantityIssued: t.quantityIssued === null ? null : Number(t.quantityIssued) })),
-      charges: charges.map((c) => ({ ...c, quantity: Number(c.quantity), totalMinor: Math.round(Number(c.quantity) * c.unitPriceMinor) })),
+      charges: charges.map((c) => ({ ...c, quantity: Number(c.quantity), totalMinor: chargeAmount(c) })),
     };
   }
 

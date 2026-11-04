@@ -52,13 +52,26 @@ export function shapePatientSummary(p: ListRow) {
   };
 }
 
+export type PatientStatusHook = (tx: ScopedTx, patientId: string, status: 'DECEASED' | 'ARCHIVED', reason: string) => Promise<void>;
+
 @Injectable()
 export class PatientsService {
+  private readonly statusHooks: PatientStatusHook[] = [];
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly counters: CounterService,
   ) {}
+
+  /** Other modules react when a patient dies or is archived (e.g. a wellness plan stops), in the same transaction. */
+  registerStatusHook(fn: PatientStatusHook) {
+    this.statusHooks.push(fn);
+  }
+
+  private async afterStatusChange(tx: ScopedTx, patientId: string, status: 'DECEASED' | 'ARCHIVED', reason: string) {
+    for (const h of this.statusHooks) await h(tx, patientId, status, reason);
+  }
 
   async list(q: PatientListQuery) {
     const where: Prisma.PatientWhereInput = {
@@ -351,6 +364,7 @@ export class PatientsService {
         { action: 'patient.deceased', entityType: 'Patient', entityId: patientId, summary: input.euthanasia ? 'Euthanasia' : 'Death recorded' },
         tx,
       );
+      await this.afterStatusChange(tx, patientId, 'DECEASED', input.euthanasia ? 'Euthanasia' : 'Patient died');
       return after;
     });
   }
@@ -362,6 +376,7 @@ export class PatientsService {
       if (p.status === 'MERGED' || p.status === 'ARCHIVED') throw ruleViolation('NOT_ARCHIVABLE', 'Patient is already archived or merged');
       const after = await tx.patient.update({ where: { id: patientId }, data: { status: 'ARCHIVED', archivedAt: new Date(), archivedReason: reason } });
       await this.audit.record({ action: 'patient.archived', entityType: 'Patient', entityId: patientId, summary: reason }, tx);
+      await this.afterStatusChange(tx, patientId, 'ARCHIVED', reason);
       return after;
     });
   }

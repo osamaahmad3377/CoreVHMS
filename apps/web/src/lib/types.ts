@@ -1742,7 +1742,7 @@ export interface BoardingStay {
 export interface BoardingStayDetail extends BoardingStay {
   logs: { id: string; kind: string; text: string; recordedAt: string; recordedByName: string }[];
   overdueVaccinations: { id: string; title: string; dueDate: string; status: string }[];
-  charge: { id: string; status: string; quantity: number; unitPriceMinor: number } | null;
+  charge: { id: string; status: string; quantity: number; unitPriceMinor: number; discountMinor?: number; discountNote?: string | null; totalMinor?: number } | null;
 }
 export interface BoardingBoard {
   today: string;

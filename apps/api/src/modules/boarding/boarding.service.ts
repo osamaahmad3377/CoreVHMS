@@ -10,7 +10,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import type { ScopedTx } from '../../common/prisma/tenant-extension';
 import { branchToday } from '../../common/time/branch-timezone';
 import { localParts } from '../../common/time/tz';
-import { ChargeCaptureService } from '../billing/charge-capture.service';
+import { ChargeCaptureService, chargeAmount } from '../billing/charge-capture.service';
 
 export const stayNo = (n: number) => formatNumber('BRD', n, 5);
 const DAY = 86400_000;
@@ -162,9 +162,9 @@ export class BoardingService {
     const [logs, overdue, charge] = await Promise.all([
       this.prisma.db.boardingLog.findMany({ where: { stayId: id }, orderBy: { recordedAt: 'desc' }, take: 300 }),
       this.overdueVaccinations(s.patientId, s.branchId),
-      this.prisma.db.charge.findFirst({ where: { sourceType: 'BoardingStay', sourceId: id }, select: { id: true, status: true, quantity: true, unitPriceMinor: true } }),
+      this.prisma.db.charge.findFirst({ where: { sourceType: 'BoardingStay', sourceId: id }, select: { id: true, status: true, quantity: true, unitPriceMinor: true, discountMinor: true, discountNote: true } }),
     ]);
-    return { ...shape(s), logs, overdueVaccinations: overdue, charge: charge ? { ...charge, quantity: Number(charge.quantity) } : null };
+    return { ...shape(s), logs, overdueVaccinations: overdue, charge: charge ? { ...charge, quantity: Number(charge.quantity), totalMinor: chargeAmount(charge) } : null };
   }
 
   /** Vaccinations due before today and not done (from the preventive-care plan). */

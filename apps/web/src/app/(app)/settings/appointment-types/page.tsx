@@ -45,10 +45,11 @@ function TypeDialog({ type, open, onOpenChange }: { type: AppointmentType | null
   const choices = (categories.data ?? []).filter((c) => c.isActive || c.id === f.categoryId);
   const chosen = choices.find((c) => c.id === f.categoryId);
   // A new type starts in the first category (Consultation unless the clinic changed the order).
-  const firstId = choices[0]?.id;
+  // A type not yet linked to a category keeps its kind: preselect a category of that kind (new types: the first one).
+  const fallbackId = (type ? choices.find((c) => c.kind === type.category && c.isActive) ?? choices.find((c) => c.kind === type.category) : undefined)?.id ?? choices[0]?.id;
   useEffect(() => {
-    if (firstId) setF((cur) => (cur.categoryId ? cur : { ...cur, categoryId: firstId }));
-  }, [firstId]);
+    if (fallbackId) setF((cur) => (cur.categoryId ? cur : { ...cur, categoryId: fallbackId }));
+  }, [fallbackId]);
   const save = useMutation({
     mutationFn: () => {
       // The price comes from the linked service (one price to maintain); the old indicative price is left as it is.

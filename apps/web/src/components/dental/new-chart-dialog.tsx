@@ -171,7 +171,7 @@ export function NewDentalChartDialog({
             )}
             {draft && (
               <p className="rounded-lg bg-warning/10 px-3 py-2 text-xs">
-                {draft.chartNo} for this patient is still a draft{encounterId ? ' for this visit' : ''} —{' '}
+                {draft.chartNo} ({DENTITION_LABELS[draft.dentition].toLowerCase()} chart) for this patient is still a draft{encounterId ? ' for this visit' : ''} —{' '}
                 <button type="button" className="font-semibold text-primary underline" onClick={() => router.push(`/dental/${draft.id}`)}>
                   open it
                 </button>{' '}

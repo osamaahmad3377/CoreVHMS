@@ -8,6 +8,7 @@ import { DashboardService } from '../dashboard/dashboard.service';
 import { PatientMergeService } from '../patients/patient-merge.service';
 import { PatientRecordService } from '../patients/patient-record.service';
 import { PatientTimelineService } from '../patients/patient-timeline.service';
+import { PatientsService } from '../patients/patients.service';
 import { enrolmentNo, WellnessService } from './wellness.service';
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -25,6 +26,7 @@ export class WellnessIntegrations implements OnModuleInit {
     private readonly dashboard: DashboardService,
     private readonly record: PatientRecordService,
     private readonly privacy: ClientPrivacyService,
+    private readonly patients: PatientsService,
   ) {}
 
   onModuleInit() {
@@ -35,6 +37,10 @@ export class WellnessIntegrations implements OnModuleInit {
       await this.wellness.applyToCharge(tx, charge);
     });
     this.charges.registerWaivedHook((tx, ids, reason) => this.wellness.releaseForCharges(tx, ids, reason));
+    // A patient who dies or is archived stops being billed for their plan.
+    this.patients.registerStatusHook((tx, patientId, status, reason) =>
+      this.wellness.cancelForPatient(tx, patientId, status === 'DECEASED' ? `Patient deceased — ${reason}` : `Patient archived — ${reason}`),
+    );
 
     this.timeline.register('wellness', async (id) => {
       const rows = await db().wellnessEnrolment.findMany({ where: { patientId: id }, orderBy: { createdAt: 'desc' }, take: 50 });

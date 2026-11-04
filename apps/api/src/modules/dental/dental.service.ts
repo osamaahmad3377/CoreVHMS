@@ -166,8 +166,8 @@ export class DentalService {
       const e = await db.encounter.findUnique({ where: { id: input.encounterId } });
       if (!e || e.patientId !== patient.id) throw ruleViolation('INVALID_ENCOUNTER', 'That consultation is not for this patient');
       if (e.status === 'CANCELLED') throw ruleViolation('ENCOUNTER_CANCELLED', 'This consultation was cancelled');
-      // Started from a consultation that already has a draft chart: open that one rather than a second.
-      const draft = await db.dentalChart.findFirst({ where: { encounterId: e.id, status: 'DRAFT' }, orderBy: { createdAt: 'desc' } });
+      // Started from a consultation that already has a draft chart of this kind: open that one rather than a second.
+      const draft = await db.dentalChart.findFirst({ where: { encounterId: e.id, status: 'DRAFT', dentition: input.dentition }, orderBy: { createdAt: 'desc' } });
       if (draft) return this.get(draft.id);
     }
     const branchId = ctx.branchId ?? patient.primaryBranchId;

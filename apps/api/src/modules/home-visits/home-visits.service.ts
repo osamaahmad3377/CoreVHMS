@@ -8,7 +8,7 @@ import { notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { ScopedTx } from '../../common/prisma/tenant-extension';
 import { localDayBounds, zonedToUtc } from '../../common/time/tz';
-import { ChargeCaptureService } from '../billing/charge-capture.service';
+import { ChargeCaptureService, chargeAmount } from '../billing/charge-capture.service';
 import { EncountersService } from '../clinical/encounters.service';
 import { appointmentInclude, appointmentNo, shapeAppointment } from '../scheduling/appointments.service';
 
@@ -116,7 +116,7 @@ export class HomeVisitsService implements OnModuleInit {
     const fees = ids.length
       ? await this.prisma.db.charge.findMany({
           where: { sourceType: { in: [CALLOUT, DISTANCE] }, sourceId: { in: ids } },
-          select: { id: true, sourceType: true, sourceId: true, description: true, quantity: true, unitPriceMinor: true, status: true },
+          select: { id: true, sourceType: true, sourceId: true, description: true, quantity: true, unitPriceMinor: true, discountMinor: true, status: true },
         })
       : [];
     return {
@@ -127,7 +127,7 @@ export class HomeVisitsService implements OnModuleInit {
         client: r.client,
         fees: fees
           .filter((f) => f.sourceId === r.id)
-          .map((f) => ({ id: f.id, kind: f.sourceType === CALLOUT ? 'CALLOUT' : 'DISTANCE', description: f.description, totalMinor: Math.round(Number(f.quantity) * f.unitPriceMinor), status: f.status })),
+          .map((f) => ({ id: f.id, kind: f.sourceType === CALLOUT ? 'CALLOUT' : 'DISTANCE', description: f.description, totalMinor: chargeAmount(f), status: f.status })),
       })),
     };
   }
@@ -183,8 +183,9 @@ export class HomeVisitsService implements OnModuleInit {
     await this.prisma.db.$transaction(async (tx) => {
       const after = await tx.appointment.update({ where: { id }, data: { distanceKm } });
       if (charge?.status === 'PENDING') {
-        if (distanceKm > 0) await tx.charge.update({ where: { id: charge.id }, data: { quantity: distanceKm, description: this.distanceText(a, distanceKm) } });
-        else await tx.charge.update({ where: { id: charge.id }, data: { status: 'WAIVED', waivedReason: 'Distance corrected to 0 km' } });
+        // Through billing, so a wellness discount on the travel charge is worked out again (or given back).
+        if (distanceKm > 0) await this.charges.updatePending(tx, charge.id, { quantity: distanceKm, description: this.distanceText(a, distanceKm) }, `distance corrected to ${distanceKm} km`);
+        else await this.charges.waiveForSource(tx, DISTANCE, [id], 'Distance corrected to 0 km');
       } else if (!charge && a.arrivedAt) {
         // Fees are added once the vet is there; before that the distance is only noted.
         await this.captureFees(tx, after);

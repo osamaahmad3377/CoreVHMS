@@ -30,6 +30,8 @@ export const enrolmentNo = (n: number) => formatNumber('WP', n);
 export type WellnessState = 'ACTIVE' | 'UPCOMING' | 'EXPIRED' | 'CANCELLED';
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
+/** "31 Oct 2026" for a calendar date, as printed on invoices. */
+const niceDate = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 const dateOnly = (s: string) => new Date(`${s}T00:00:00.000Z`);
 const DAY = 86400_000;
 /** How far back an enrolment can start (forgot to enrol at the visit) and how far ahead. */
@@ -397,44 +399,52 @@ export class WellnessService {
   }
 
   async cancel(id: string, input: WellnessCancelInput) {
-    const e = await this.prisma.db.wellnessEnrolment.findUnique({ where: { id }, include: { instalments: true, usages: true } });
+    const e = await this.prisma.db.wellnessEnrolment.findUnique({ where: { id } });
     if (!e) throw notFound('Wellness plan membership');
     if (e.status === 'CANCELLED') throw ruleViolation('CANCELLED', 'This plan is already cancelled');
-    const ctx = RequestContext.require();
-    await this.prisma.db.$transaction(async (tx) => {
-      const ids = e.instalments.map((i) => i.id);
-      // Payments not invoiced yet are dropped: scheduled ones cancelled, charged-but-unbilled ones waived.
-      const pending = (await this.instalmentCharges(ids, tx)).filter((c) => c.status === 'PENDING');
-      await this.charges.waiveForSource(tx, 'WellnessInstalment', pending.map((c) => c.sourceId), `Wellness plan ${enrolmentNo(e.number)} cancelled`);
-      await tx.wellnessInstalment.updateMany({ where: { enrolmentId: id, OR: [{ status: 'SCHEDULED' }, { id: { in: pending.map((c) => c.sourceId) } }] }, data: { status: 'CANCELLED' } });
-      const after = await tx.wellnessEnrolment.findUniqueOrThrow({ where: { id }, include: { instalments: true, usages: true } });
-      const s = this.settlementOf(after, await this.instalmentCharges(ids, tx));
-      if (input.chargeShortfall && s.shortfallMinor > 0) {
-        await this.charges.capture(tx, {
-          sourceType: 'WellnessCancellation',
-          sourceId: id,
-          clientId: e.clientId,
-          patientId: e.patientId,
-          branchId: e.branchId,
-          kind: 'CUSTOM',
-          description: `${e.planName} wellness plan cancelled — benefits used beyond payments (${enrolmentNo(e.number)})`,
-          quantity: 1,
-          unitPriceMinor: s.shortfallMinor,
-          taxRateBasisPoints: e.taxRateBasisPoints,
-        });
-      }
-      await tx.wellnessEnrolment.update({ where: { id }, data: { status: 'CANCELLED', autoRenew: false, cancelledAt: new Date(), cancelReason: input.reason, cancelledByName: ctx.userName ?? null } });
-      await this.audit.record(
-        {
-          action: 'wellness.cancelled',
-          entityType: 'Patient',
-          entityId: e.patientId,
-          summary: `${enrolmentNo(e.number)} ${e.planName}: ${input.reason}${input.chargeShortfall && s.shortfallMinor > 0 ? ` (shortfall ${s.shortfallMinor} charged)` : ''}`,
-        },
-        tx,
-      );
-    });
+    await this.prisma.db.$transaction((tx) => this.cancelTx(tx, id, input.reason, input.chargeShortfall));
     return this.detail(id);
+  }
+
+  /**
+   * Cancels inside the caller's transaction: payments not invoiced yet are dropped (scheduled ones cancelled,
+   * charged-but-unbilled ones waived) and, if asked, benefits used beyond what was invoiced are charged.
+   */
+  private async cancelTx(tx: ScopedTx, id: string, reason: string, chargeShortfall: boolean) {
+    const e = await tx.wellnessEnrolment.findUniqueOrThrow({ where: { id }, include: { instalments: true } });
+    if (e.status === 'CANCELLED') return;
+    const ids = e.instalments.map((i) => i.id);
+    const pending = (await this.instalmentCharges(ids, tx)).filter((c) => c.status === 'PENDING');
+    await this.charges.waiveForSource(tx, 'WellnessInstalment', pending.map((c) => c.sourceId), `Wellness plan ${enrolmentNo(e.number)} cancelled`);
+    await tx.wellnessInstalment.updateMany({ where: { enrolmentId: id, OR: [{ status: 'SCHEDULED' }, { id: { in: pending.map((c) => c.sourceId) } }] }, data: { status: 'CANCELLED' } });
+    const after = await tx.wellnessEnrolment.findUniqueOrThrow({ where: { id }, include: { instalments: true, usages: true } });
+    const s = this.settlementOf(after, await this.instalmentCharges(ids, tx));
+    const shortfall = chargeShortfall && s.shortfallMinor > 0;
+    if (shortfall) {
+      await this.charges.capture(tx, {
+        sourceType: 'WellnessCancellation',
+        sourceId: id,
+        clientId: e.clientId,
+        patientId: e.patientId,
+        branchId: e.branchId,
+        kind: 'CUSTOM',
+        description: `${e.planName} wellness plan cancelled — benefits used beyond payments (${enrolmentNo(e.number)})`,
+        quantity: 1,
+        unitPriceMinor: s.shortfallMinor,
+        taxRateBasisPoints: e.taxRateBasisPoints,
+      });
+    }
+    await tx.wellnessEnrolment.update({ where: { id }, data: { status: 'CANCELLED', autoRenew: false, cancelledAt: new Date(), cancelReason: reason, cancelledByName: RequestContext.get()?.userName ?? null } });
+    await this.audit.record(
+      { action: 'wellness.cancelled', entityType: 'Patient', entityId: e.patientId, summary: `${enrolmentNo(e.number)} ${e.planName}: ${reason}${shortfall ? ` (shortfall ${s.shortfallMinor} charged)` : ''}` },
+      tx,
+    );
+  }
+
+  /** A patient who dies or is archived: their current and upcoming plans end, and nothing more is billed. */
+  async cancelForPatient(tx: ScopedTx, patientId: string, reason: string) {
+    const open = await tx.wellnessEnrolment.findMany({ where: { patientId, status: 'ACTIVE' }, select: { id: true } });
+    for (const e of open) await this.cancelTx(tx, e.id, reason, false);
   }
 
   // ── Payments ──
@@ -443,7 +453,9 @@ export class WellnessService {
   private async billDueTx(tx: ScopedTx, enrolmentId: string, today: string) {
     const e = await tx.wellnessEnrolment.findUniqueOrThrow({ where: { id: enrolmentId }, include: { instalments: { where: { status: 'SCHEDULED', dueDate: { lte: dateOnly(today) } }, orderBy: { seq: 'asc' } }, _count: { select: { instalments: true } } } });
     if (e.status !== 'ACTIVE') return 0;
-    const period = `${iso(e.startDate)} to ${iso(e.endDate)}`;
+    const patient = await tx.patient.findUnique({ where: { id: e.patientId }, select: { status: true } });
+    if (patient?.status !== 'ACTIVE') return 0;
+    const period = `${niceDate(e.startDate)} – ${niceDate(e.endDate)}`;
     for (const i of e.instalments) {
       const what = e.billing === 'UPFRONT' ? `${period}` : `payment ${i.seq} of ${e._count.instalments}`;
       await this.charges.capture(tx, {
@@ -568,11 +580,11 @@ export class WellnessService {
     return usage;
   }
 
-  /** Gives benefits back when their unbilled charges are waived (ChargeCaptureService hook). */
+  /** Gives benefits back when their unbilled charges are waived or changed (ChargeCaptureService hook). */
   async releaseForCharges(tx: ScopedTx, chargeIds: string[], reason: string) {
     const usages = await tx.wellnessUsage.findMany({ where: { chargeId: { in: chargeIds }, reversedAt: null } });
     for (const u of usages) {
-      await tx.wellnessUsage.update({ where: { id: u.id }, data: { reversedAt: new Date(), reversedReason: `Charge waived: ${reason}`.slice(0, 300), reversedByName: RequestContext.get()?.userName ?? null } });
+      await tx.wellnessUsage.update({ where: { id: u.id }, data: { reversedAt: new Date(), reversedReason: reason.slice(0, 300), reversedByName: RequestContext.get()?.userName ?? null } });
       await tx.charge.update({ where: { id: u.chargeId! }, data: { discountMinor: 0, discountNote: null } });
     }
   }

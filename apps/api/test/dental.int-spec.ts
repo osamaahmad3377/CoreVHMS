@@ -142,6 +142,9 @@ describe('Dental charts', () => {
     // Starting again from the same visit opens the draft instead of a second chart.
     const again = await s.vet.client.post('/dental/charts', { patientId: s.patient.id, dentition: 'CANINE', encounterId: visit.id });
     expect(again.body.id).toBe(first.body.id);
+    const horse = await s.vet.client.post('/dental/charts', { patientId: s.patient.id, dentition: 'EQUINE', encounterId: visit.id });
+    expect(horse.body.id).not.toBe(first.body.id);
+    await s.vet.client.del(`/dental/charts/${horse.body.id}`);
     await s.vet.client.post(`/dental/charts/${first.body.id}/procedures`, { code: 'SP' });
     const forVisit = (await s.vet.client.get(`/encounters/${visit.id}/dental`)).body;
     expect(forVisit.charts.map((c: any) => [c.id, c.procedures.length])).toEqual([[first.body.id, 1]]);

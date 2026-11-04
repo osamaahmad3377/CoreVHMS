@@ -56,6 +56,29 @@ describe('Home visits', () => {
     expect(checkIn.body.error.code).toBe('HOME_VISIT');
   });
 
+  it('works a wellness member discount out again when the distance is corrected', async () => {
+    const org = await registerOrg();
+    const f = await schedulingFixture(org);
+    await fees(org);
+    const plan = (await org.owner.post('/wellness/plans', { name: 'Discount club', priceMinor: 100, serviceDiscountBp: 1000 })).body;
+    expect((await org.owner.post('/wellness/enrolments', { planId: plan.id, patientId: f.patient.id })).status).toBe(201);
+    const v = await org.owner.post('/appointments', booking(org, f, karachi(futureDate(3), '11:00'), home()));
+    expect((await f.vet.client.post(`/home-visits/${v.body.id}/arrived`, { distanceKm: 10 })).status).toBe(200);
+    const travel = async () => prisma().charge.findFirstOrThrow({ where: { organizationId: org.orgId, sourceId: v.body.id, description: { contains: 'km' } } });
+    expect(await travel()).toMatchObject({ unitPriceMinor: 5000, discountMinor: 5000, discountNote: 'Discount club member discount 10%' }); // 10 km × 5,000, 10% off
+
+    // A shorter distance: the discount is worked out on the new amount (it used to be left at 5,000 and could exceed it).
+    expect((await f.vet.client.call('put', `/home-visits/${v.body.id}/distance`, { distanceKm: 4 })).status).toBe(200);
+    expect(await travel()).toMatchObject({ discountMinor: 2000 });
+    expect(Number((await travel()).quantity)).toBe(4);
+    // Corrected to 0 km: the charge is waived and the benefit given back.
+    expect((await f.vet.client.call('put', `/home-visits/${v.body.id}/distance`, { distanceKm: 0 })).status).toBe(200);
+    const waived = await travel();
+    expect(waived).toMatchObject({ status: 'WAIVED', discountMinor: 0 });
+    const usages = await prisma().wellnessUsage.findMany({ where: { chargeId: waived.id } });
+    expect(usages.every((u) => u.reversedAt)).toBe(true);
+  });
+
   it('reschedules a home visit with its travel time, and turns it into a clinic visit', async () => {
     const org = await registerOrg();
     const f = await schedulingFixture(org);

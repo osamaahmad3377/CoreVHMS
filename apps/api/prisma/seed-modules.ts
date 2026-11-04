@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { localDayBounds, localParts, zonedToUtc } from '../src/common/time/tz';
+import { categoryForKind } from '../src/modules/scheduling/appointment-categories';
 
 export interface SeededOrg {
   org: { id: string; currency: string; country: string };
@@ -88,6 +89,7 @@ export async function seedModules(prisma: PrismaClient, s: SeededOrg) {
         priceMinor: t.price,
         requiresClinician: 'requiresClinician' in t ? t.requiresClinician : true,
         allowOnlineBooking: ['Consultation', 'Vaccination', 'Grooming'].includes(t.name),
+        categoryId: await categoryForKind(prisma, orgId, t.category),
       },
     });
     types[t.name] = row;

@@ -29,6 +29,10 @@ describe('Appointment categories', () => {
     const moved = await org.owner.patch(`/appointment-types/${t.body.id}`, { categoryId: grooming.id });
     expect(moved.body).toMatchObject({ category: 'GROOMING', categoryId: grooming.id });
 
+    // Clearing a type's category keeps it in a category of its kind (a type always has one).
+    const cleared = await org.owner.patch(`/appointment-types/${groom.body.id}`, { categoryId: null });
+    expect(cleared.body).toMatchObject({ category: 'GROOMING', categoryId: grooming.id });
+
     // Hidden categories leave the picker but stay on the full list; a used one can't be deleted.
     await org.owner.patch(`/appointment-categories/${senior.body.id}`, { isActive: false });
     expect((await org.owner.get('/appointment-categories')).body.map((c: any) => c.name)).not.toContain('Senior pets');

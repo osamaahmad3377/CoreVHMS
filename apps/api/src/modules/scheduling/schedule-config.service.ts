@@ -57,7 +57,9 @@ export class ScheduleConfigService {
     return this.prisma.db.$transaction(async (tx) => {
       const before = await tx.appointmentType.findUnique({ where: { id } });
       if (!before) throw notFound('Appointment type');
-      const after = await tx.appointmentType.update({ where: { id }, data: { ...input, ...(await this.resolveCategory(tx, input)) } });
+      // Clearing the category keeps the type in a category of its current kind (a type always has one).
+      const category = input.categoryId === null && !input.category ? { categoryId: await categoryForKind(tx, RequestContext.orgId(), before.category) } : await this.resolveCategory(tx, input);
+      const after = await tx.appointmentType.update({ where: { id }, data: { ...input, ...category } });
       await this.audit.record(
         { action: 'appointment_type.updated', entityType: 'AppointmentType', entityId: id, summary: after.name, changes: diff(before, after, Object.keys(input)) },
         tx,

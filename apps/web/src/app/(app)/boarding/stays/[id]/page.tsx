@@ -172,7 +172,7 @@ function Stay() {
               <p>{s.nightlyRateMinor ? `${fmtMoney(s.nightlyRateMinor, currency)} per night` : 'No nightly charge'}</p>
               {s.charge ? (
                 <>
-                  <p>{s.charge.quantity} night{s.charge.quantity === 1 ? '' : 's'} billed: <b>{fmtMoney(s.charge.quantity * s.charge.unitPriceMinor, currency)}</b> <Badge variant="secondary">{enumLabel(s.charge.status)}</Badge></p>
+                  <p>{s.charge.quantity} night{s.charge.quantity === 1 ? '' : 's'} billed: <b>{fmtMoney(s.charge.totalMinor ?? s.charge.quantity * s.charge.unitPriceMinor, currency)}</b>{s.charge.discountNote && <span className="text-xs text-success"> ({s.charge.discountNote})</span>} <Badge variant="secondary">{enumLabel(s.charge.status)}</Badge></p>
                   {s.charge.status === 'PENDING' && can('billing.write') && <Button size="sm" loading={invoice.isPending} onClick={() => invoice.mutate()}><Receipt /> Create invoice</Button>}
                 </>
               ) : s.status === 'CHECKED_IN' || s.status === 'RESERVED' ? <p className="text-xs text-muted-foreground">Nights are billed at check-out.</p> : null}

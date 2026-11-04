@@ -207,7 +207,10 @@ const mouthOf = (c: DentalChart): MouthForm => ({
 /** Whole-mouth findings: bite, overall periodontal stage, tartar and gum scores, soft tissue, home care and recheck. */
 export function MouthCard({ chart, editable, onChanged }: { chart: DentalChart; editable: boolean; onChanged: (c: DentalChart) => void }) {
   const [f, setF] = useState<MouthForm>(mouthOf(chart));
-  useEffect(() => setF(mouthOf(chart)), [chart]);
+  // Reset only when the saved whole-mouth findings change — not when a tooth or procedure is saved, which would
+  // wipe what is being typed here.
+  const saved = JSON.stringify(mouthOf(chart));
+  useEffect(() => setF(JSON.parse(saved) as MouthForm), [saved]);
   const dirty = JSON.stringify(f) !== JSON.stringify(mouthOf(chart));
   const save = useMutation({
     mutationFn: () =>
