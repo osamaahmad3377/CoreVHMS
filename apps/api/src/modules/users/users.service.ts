@@ -256,13 +256,34 @@ ${emailButton(link, 'Accept invitation', emailBrandOf(org))}
     // Bringing a paused person back adds to the staff count.
     if (input.status === 'ACTIVE' && before.status === 'SUSPENDED') assertWithinLimit('staff', await this.staffCount());
 
-    if (before.id === ctx.membershipId && (input.status === 'SUSPENDED' || input.roleIds)) {
-      throw ruleViolation('SELF_CHANGE', 'You cannot change your own roles or suspend yourself');
+    // Saving the same roles again is not a change (the edit form always sends them).
+    const rolesChanged = !!input.roleIds && !sameSet(input.roleIds, currentRoleIds);
+    const ownerRole = await this.prisma.db.role.findFirst({ where: { key: 'owner' } });
+    const self = before.id === ctx.membershipId;
+    if (self && input.status === 'SUSPENDED') throw ruleViolation('SELF_CHANGE', 'You cannot suspend yourself');
+    if (self && rolesChanged) {
+      // An owner can add or remove their own other roles, but not drop Owner (another owner does that); nobody
+      // else changes their own roles.
+      const isOwner = !!ownerRole && currentRoleIds.includes(ownerRole.id);
+      if (!isOwner) throw ruleViolation('SELF_CHANGE', 'You cannot change your own roles — ask an owner');
+      if (!input.roleIds!.includes(ownerRole!.id)) throw ruleViolation('SELF_CHANGE', 'You cannot remove your own Owner role — another owner can do that');
+    }
+
+    // Name and email belong to the person's account. Change them here only when the account is used at this
+    // organization alone, so one clinic can never rename or take over an account used elsewhere.
+    const name = input.name !== undefined && input.name !== before.user.name ? input.name : undefined;
+    const email = input.email !== undefined && input.email !== before.user.email ? input.email : undefined;
+    if (name !== undefined || email !== undefined) {
+      const account = await this.prisma.raw.user.findUniqueOrThrow({ where: { id: before.userId }, select: { isPlatformAdmin: true } });
+      const elsewhere = await this.prisma.raw.membership.count({ where: { userId: before.userId, organizationId: { not: before.organizationId } } });
+      if (elsewhere || account.isPlatformAdmin) {
+        throw ruleViolation('SHARED_ACCOUNT', 'This person also uses their account at another organization, so their name and email can’t be changed here.');
+      }
+      if (email !== undefined && (await this.prisma.raw.user.findUnique({ where: { email } }))) throw conflict('Another account already uses this email');
     }
 
     await this.prisma.db.$transaction(async (tx) => {
-      if (input.roleIds || input.status === 'SUSPENDED') {
-        const ownerRole = await tx.role.findFirst({ where: { key: 'owner' } });
+      if (rolesChanged || input.status === 'SUSPENDED') {
         const wasOwner = ownerRole && currentRoleIds.includes(ownerRole.id);
         const staysOwner = ownerRole && (input.roleIds ?? currentRoleIds).includes(ownerRole.id) && input.status !== 'SUSPENDED';
         if (wasOwner && !staysOwner) {
@@ -279,9 +300,14 @@ ${emailButton(link, 'Accept invitation', emailBrandOf(org))}
           status: input.status,
         },
       });
-      if (input.roleIds) {
+      if (name !== undefined || email !== undefined) {
+        await tx.user.update({ where: { id: before.userId }, data: { name, email } });
+        // A reset link already sent to the old address stops working.
+        if (email !== undefined) await tx.authToken.updateMany({ where: { userId: before.userId, type: 'PASSWORD_RESET', consumedAt: null }, data: { consumedAt: new Date() } });
+      }
+      if (rolesChanged) {
         await tx.membershipRole.deleteMany({ where: { membershipId: id } });
-        await tx.membershipRole.createMany({ data: input.roleIds.map((roleId) => ({ membershipId: id, roleId })) });
+        await tx.membershipRole.createMany({ data: input.roleIds!.map((roleId) => ({ membershipId: id, roleId })) });
       }
       if (input.branchIds) {
         await tx.membershipBranch.deleteMany({ where: { membershipId: id } });
@@ -292,9 +318,11 @@ ${emailButton(link, 'Accept invitation', emailBrandOf(org))}
           action: input.status === 'SUSPENDED' ? 'membership.suspended' : 'membership.updated',
           entityType: 'Membership',
           entityId: id,
-          summary: before.user.email,
+          summary: email ? `${before.user.email} → ${email}` : before.user.email,
           changes: {
-            ...(input.roleIds ? { roles: { from: currentRoleIds, to: input.roleIds } } : {}),
+            ...(name !== undefined ? { name: { from: before.user.name, to: name } } : {}),
+            ...(email !== undefined ? { email: { from: before.user.email, to: email } } : {}),
+            ...(rolesChanged ? { roles: { from: currentRoleIds, to: input.roleIds } } : {}),
             ...(input.branchIds ? { branches: { from: before.branches.map((b) => b.branchId), to: input.branchIds } } : {}),
             ...(input.status ? { status: { from: before.status, to: input.status } } : {}),
             ...(input.jobTitle !== undefined ? { jobTitle: { from: before.jobTitle, to: input.jobTitle } } : {}),
@@ -314,6 +342,8 @@ ${emailButton(link, 'Accept invitation', emailBrandOf(org))}
     return this.get(id);
   }
 }
+
+const sameSet = (a: string[], b: string[]) => new Set(a).size === new Set(b).size && a.every((x) => b.includes(x));
 
 function shape(m: any) {
   return {

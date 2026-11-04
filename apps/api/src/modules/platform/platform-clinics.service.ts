@@ -482,7 +482,10 @@ export class PlatformClinicsService implements OnModuleInit, OnModuleDestroy {
     const expiresAt = new Date(Date.now() + TEMP_PASSWORD_DAYS * 86400_000);
     await RequestContext.runInTenant(tenantRef(t), async () => {
       const raw = this.prisma.raw;
-      const user = await raw.user.findUnique({ where: { email: t.ownerEmail } });
+      // The clinic may since have changed the owner's email: fall back to its longest-standing owner.
+      const user =
+        (await raw.user.findUnique({ where: { email: t.ownerEmail } })) ??
+        (await raw.membership.findFirst({ where: { ...(t.organizationId ? { organizationId: t.organizationId } : {}), roles: { some: { role: { key: 'owner' } } } }, orderBy: { createdAt: 'asc' }, include: { user: true } }))?.user;
       if (!user) throw notFound('Owner account');
       await raw.$transaction(async (tx) => {
         await tx.user.update({

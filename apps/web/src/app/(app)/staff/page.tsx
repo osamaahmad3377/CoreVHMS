@@ -1,20 +1,21 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LEAVE_TYPES, enumLabel } from '@vcms/shared';
-import { CalendarOff, Clock, Edit, Plus, Trash2, UserCog, UserPlus } from 'lucide-react';
+import { CalendarOff, Clock, Edit, MoreHorizontal, Plus, Trash2, UserCog, UserPen, UserPlus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirm } from '@/components/confirm';
 import { Field } from '@/components/forms/field';
 import { FormError } from '@/components/forms/form-error';
-import { MemberDialog, TemporaryPasswordDialog, type TemporaryPassword } from '@/components/staff/member-dialog';
+import { MemberDialog, TemporaryPasswordDialog, type Member, type TemporaryPassword } from '@/components/staff/member-dialog';
 import { StaffTabs } from '@/components/staff/staff-tabs';
 import { EmptyState, ErrorState, LoadingRows, PageHeader } from '@/components/page';
 import { RequirePermission } from '@/components/require';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input, NativeSelect } from '@/components/ui/input';
 import { api, qs } from '@/lib/api';
@@ -175,6 +176,13 @@ function Rosters() {
   const [leave, setLeave] = useState(false);
   const [adding, setAdding] = useState(0);
   const [temp, setTemp] = useState<TemporaryPassword | null>(null);
+  // Editing someone's roles and details opens the same dialog as Settings → Staff accounts.
+  const [member, setMember] = useState<{ m: Member; key: number } | null>(null);
+  const openMember = useMutation({
+    mutationFn: (membershipId: string) => api.get<Member>(`/staff/${membershipId}`),
+    onSuccess: (m) => setMember({ m, key: Date.now() }),
+    onError: (e: Error) => toast.error(e.message),
+  });
   const removeLeave = useMutation({ mutationFn: (id: string) => api.del(`/schedules/leave/${id}`), onSuccess: () => qc.invalidateQueries({ queryKey: ['roster'] }) });
 
   if (q.isLoading) return <LoadingRows />;
@@ -206,7 +214,7 @@ function Rosters() {
               <table className="w-full text-sm">
                 <thead className="bg-muted/60 text-xs text-muted-foreground">
                   <tr>
-                    <th className="px-3 py-2 text-left font-semibold">Staff</th>
+                    <th className="sticky left-0 z-10 bg-card px-3 py-2 text-left font-semibold">Staff</th>
                     {DAYS.map((d) => <th key={d} className="whitespace-nowrap px-2 py-2 text-left font-semibold">{DAY_NAMES[d]}</th>)}
                     <th />
                   </tr>
@@ -214,7 +222,7 @@ function Rosters() {
                 <tbody>
                   {roster.map((r) => (
                     <tr key={r.membershipId} className="border-t">
-                      <td className="min-w-[160px] px-3 py-2 align-top">
+                      <td className="sticky left-0 z-10 min-w-[160px] bg-card px-3 py-2 align-top">
                         <p className="font-medium">{r.name}</p>
                         {(r.jobTitle || r.isClinician) && (
                           <p className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
@@ -238,10 +246,30 @@ function Rosters() {
                         );
                       })}
                       <td className="px-2 py-2 text-right">
-                        {can('staff.manage') && (
-                          <Button size="icon-sm" variant="ghost" aria-label={`Edit hours for ${r.name}`} onClick={() => setEdit({ entry: r, key: Date.now() })}>
-                            <Edit />
-                          </Button>
+                        {can('users.manage') ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="icon-sm" variant="ghost" aria-label={`Edit ${r.name}`} loading={openMember.isPending && openMember.variables === r.membershipId}>
+                                <MoreHorizontal />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-56">
+                              <DropdownMenuItem onSelect={() => openMember.mutate(r.membershipId)}>
+                                <UserPen /> Edit roles &amp; details
+                              </DropdownMenuItem>
+                              {can('staff.manage') && (
+                                <DropdownMenuItem onSelect={() => setEdit({ entry: r, key: Date.now() })}>
+                                  <Clock /> Edit working hours
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : (
+                          can('staff.manage') && (
+                            <Button size="icon-sm" variant="ghost" aria-label={`Edit hours for ${r.name}`} onClick={() => setEdit({ entry: r, key: Date.now() })}>
+                              <Edit />
+                            </Button>
+                          )
                         )}
                       </td>
                     </tr>
@@ -282,6 +310,15 @@ function Rosters() {
       <LeaveDialog roster={roster} open={leave} onOpenChange={setLeave} />
       {/* Same dialog as Settings → Staff accounts. */}
       {adding > 0 && <MemberDialog key={adding} member={null} open onOpenChange={(o) => { if (!o) { setAdding(0); qc.invalidateQueries({ queryKey: ['roster'] }); } }} onTemporaryPassword={setTemp} />}
+      {member && (
+        <MemberDialog
+          key={member.key}
+          member={member.m}
+          open
+          onOpenChange={(o) => { if (!o) { setMember(null); qc.invalidateQueries({ queryKey: ['roster'] }); } }}
+          onTemporaryPassword={setTemp}
+        />
+      )}
       <TemporaryPasswordDialog result={temp} onClose={() => setTemp(null)} />
     </>
   );

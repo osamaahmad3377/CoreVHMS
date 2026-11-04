@@ -79,11 +79,16 @@ export interface Role {
 
 export function MemberDialog({ member, open, onOpenChange, onTemporaryPassword }: { member?: Member | null; open: boolean; onOpenChange: (o: boolean) => void; onTemporaryPassword: (r: TemporaryPassword) => void }) {
   const qc = useQueryClient();
-  const { session } = useSession();
+  const { session, refresh } = useSession();
   const roles = useQuery({ queryKey: ['roles'], queryFn: () => api.get<Role[]>('/roles') });
+  const self = !!member && member.user.id === session.user.id;
+  const ownerRoleId = roles.data?.find((r) => r.key === 'owner')?.id;
+  const selfIsOwner = self && !!member?.roles.some((r) => r.key === 'owner');
+  // Your own roles: an owner can change their other roles but keeps Owner; anyone else asks an owner.
+  const rolesLocked = self && !selfIsOwner;
   const branches = useQuery({ queryKey: ['branches'], queryFn: () => api.get<Branch[]>('/branches') });
-  const [email, setEmail] = useState('');
-  const [name, setName] = useState('');
+  const [email, setEmail] = useState(member?.user.email ?? '');
+  const [name, setName] = useState(member?.user.name ?? '');
   const [jobTitle, setJobTitle] = useState(member?.jobTitle ?? '');
   const [registration, setRegistration] = useState(member?.professionalRegistration ?? '');
   const [isClinician, setClinician] = useState(member?.isClinician ?? false);
@@ -104,9 +109,12 @@ export function MemberDialog({ member, open, onOpenChange, onTemporaryPassword }
   };
   const roleBox = (r: Role) => {
     const assignable = r.permissions.every((p) => mine.has(p));
+    const keepOwn = selfIsOwner && r.id === ownerRoleId;
+    const enabled = assignable && !rolesLocked && !keepOwn;
+    const title = !assignable ? 'Gives access you do not have yourself' : keepOwn ? 'You keep your own Owner role — another owner can remove it' : rolesLocked ? 'Ask an owner to change your roles' : r.description ?? '';
     return (
-      <label key={r.id} className={`flex items-start gap-2 rounded p-1.5 text-sm ${assignable ? 'hover:bg-muted' : 'opacity-50'}`} title={assignable ? r.description ?? '' : 'Gives access you do not have yourself'}>
-        <Checkbox disabled={!assignable} checked={roleIds.includes(r.id)} onCheckedChange={() => toggleRole(r)} className="mt-0.5" />
+      <label key={r.id} className={`flex items-start gap-2 rounded p-1.5 text-sm ${enabled ? 'hover:bg-muted' : 'opacity-50'}`} title={title}>
+        <Checkbox disabled={!enabled} checked={roleIds.includes(r.id)} onCheckedChange={() => toggleRole(r)} className="mt-0.5" />
         <span>{r.name}</span>
       </label>
     );
@@ -115,12 +123,21 @@ export function MemberDialog({ member, open, onOpenChange, onTemporaryPassword }
   const save = useMutation({
     mutationFn: () =>
       member
-        ? api.patch(`/staff/${member.id}`, { roleIds, branchIds, jobTitle, isClinician, professionalRegistration: registration })
+        ? api.patch(`/staff/${member.id}`, {
+            ...(name.trim() !== member.user.name ? { name } : {}),
+            ...(email.trim().toLowerCase() !== member.user.email ? { email } : {}),
+            ...(rolesLocked ? {} : { roleIds }),
+            branchIds,
+            jobTitle,
+            isClinician,
+            professionalRegistration: registration,
+          })
         : method === 'invite'
           ? api.post('/staff/invite', { email, name, roleIds, branchIds, jobTitle, isClinician })
           : api.post<TemporaryPassword>('/staff/with-temporary-password', { email, name, roleIds, branchIds, jobTitle, isClinician }),
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ['staff'] });
+      if (self) void refresh();
       onOpenChange(false);
       if (!member && method === 'password') onTemporaryPassword(r as TemporaryPassword);
       else toast.success(member ? 'Staff member updated' : `Invitation sent to ${email}`);
@@ -133,8 +150,8 @@ export function MemberDialog({ member, open, onOpenChange, onTemporaryPassword }
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="lg">
         <DialogHeader>
-          <DialogTitle>{member ? `Edit ${member.user.name}` : 'Add staff member'}</DialogTitle>
-          {!member && <DialogDescription>How will they sign in the first time? (Works for 7 days.)</DialogDescription>}
+          <DialogTitle>{member ? (self ? 'Edit your roles & details' : `Edit ${member.user.name}`) : 'Add staff member'}</DialogTitle>
+          <DialogDescription>{member ? 'Name, email, job, roles and where they work.' : 'How will they sign in the first time? (Works for 7 days.)'}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
           {error && <FormError message={error} />}
@@ -158,16 +175,19 @@ export function MemberDialog({ member, open, onOpenChange, onTemporaryPassword }
               ))}
             </div>
           )}
-          {!member && (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Full name" htmlFor="m-name" required>
-                <Input id="m-name" value={name} onChange={(e) => setName(e.target.value)} />
-              </Field>
-              <Field label="Email" htmlFor="m-email" required hint={method === 'password' ? 'Used to sign in. No email is sent.' : undefined}>
-                <Input id="m-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-              </Field>
-            </div>
-          )}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Full name" htmlFor="m-name" required>
+              <Input id="m-name" value={name} onChange={(e) => setName(e.target.value)} />
+            </Field>
+            <Field
+              label="Email"
+              htmlFor="m-email"
+              required
+              hint={member ? (email.trim().toLowerCase() !== member.user.email ? `${self ? 'You' : 'They'} will sign in with the new email.` : 'Used to sign in.') : method === 'password' ? 'Used to sign in. No email is sent.' : undefined}
+            >
+              <Input id="m-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </Field>
+          </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Job title" htmlFor="m-title">
               <Input id="m-title" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} />
@@ -183,6 +203,7 @@ export function MemberDialog({ member, open, onOpenChange, onTemporaryPassword }
           </label>
           <fieldset className="grid gap-2">
             <legend className="mb-1 text-sm font-medium">Roles *</legend>
+            {rolesLocked && <p className="text-xs text-muted-foreground">Only an owner can change your roles.</p>}
             <div className="grid gap-1 rounded-lg surface-flat p-2 sm:grid-cols-2">
               {common.map(roleBox)}
               {others.length > 0 && (
@@ -212,7 +233,7 @@ export function MemberDialog({ member, open, onOpenChange, onTemporaryPassword }
           </Button>
           <Button
             loading={save.isPending}
-            disabled={!roleIds.length || !branchIds.length || (!member && (!email || name.length < 2))}
+            disabled={!roleIds.length || !branchIds.length || !email.trim() || name.trim().length < 2}
             onClick={() => {
               setError(null);
               save.mutate();

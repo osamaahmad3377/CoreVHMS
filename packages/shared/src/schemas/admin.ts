@@ -59,6 +59,9 @@ export const inviteUserSchema = z.object({
 export type InviteUserInput = z.infer<typeof inviteUserSchema>;
 
 export const updateMembershipSchema = z.object({
+  /** The person's sign-in name and email (only for accounts used at this organization alone). */
+  name: z.string().trim().min(2).max(120).optional(),
+  email: z.string().trim().toLowerCase().email().optional(),
   roleIds: z.array(z.string().uuid()).min(1).optional(),
   branchIds: z.array(z.string().uuid()).min(1).optional(),
   jobTitle: optText(120),
