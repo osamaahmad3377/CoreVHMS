@@ -22,11 +22,11 @@ const TOUCH_INTERVAL_MS = 60_000;
 export class SessionService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(userId: string, opts: { organizationId?: string | null; branchId?: string | null; ip?: string; userAgent?: string }) {
+  async create(userId: string, opts: { organizationId?: string | null; branchId?: string | null; ip?: string; userAgent?: string; maxHours?: number; supportBy?: string | null }) {
     const token = randomToken(32);
     const now = Date.now();
     const e = env();
-    const expiresAt = new Date(now + e.SESSION_ABSOLUTE_HOURS * 3600_000);
+    const expiresAt = new Date(now + Math.min(e.SESSION_ABSOLUTE_HOURS, opts.maxHours ?? Infinity) * 3600_000);
     const idleExpiresAt = new Date(Math.min(now + e.SESSION_IDLE_MINUTES * 60_000, expiresAt.getTime()));
     const session = await this.prisma.raw.session.create({
       data: {
@@ -39,6 +39,7 @@ export class SessionService {
         userAgent: opts.userAgent?.slice(0, 300),
         expiresAt,
         idleExpiresAt,
+        supportBy: opts.supportBy ?? null,
       },
     });
     return { token, session };
@@ -165,6 +166,8 @@ export class SessionService {
         email: session.user.email,
         name: session.user.name,
         isPlatformAdmin: session.user.isPlatformAdmin,
+        isSystemAccount: session.user.isSystemAccount,
+        supportBy: session.supportBy,
         mfaEnabled: session.user.mfaEnabled,
         mustChangePassword: session.user.mustChangePassword,
       },

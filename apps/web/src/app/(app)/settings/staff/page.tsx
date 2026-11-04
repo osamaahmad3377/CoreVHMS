@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Edit, KeyRound, Mail, MoreHorizontal, ShieldCheck, UserCheck, UserPlus, Users, UserX } from 'lucide-react';
+import { Edit, KeyRound, Lock, Mail, MoreHorizontal, ShieldCheck, UserCheck, UserPlus, Users, UserX } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirm } from '@/components/confirm';
@@ -26,7 +26,8 @@ export default function StaffPage() {
   const plan = usePlanUsage();
   const qc = useQueryClient();
   const [q, setQ] = useState('');
-  const list = useQuery({ queryKey: ['staff', q], queryFn: () => api.get<Member[]>(`/staff${qs({ q })}`) });
+  // NextCore's System account is listed last, locked.
+  const list = useQuery({ queryKey: ['staff', q], queryFn: () => api.get<Member[]>(`/staff${qs({ q })}`).then((rows) => [...rows].sort((a, b) => Number(!!a.user.isSystemAccount) - Number(!!b.user.isSystemAccount))) });
   const [dlg, setDlg] = useState<{ open: boolean; member?: Member | null; key: number }>({ open: false, key: 0 });
   const [temp, setTemp] = useState<TemporaryPassword | null>(null);
   const confirm = useConfirm();
@@ -92,7 +93,7 @@ export default function StaffPage() {
                     <p className="truncate font-medium">
                       {m.user.name} {m.user.id === session.user.id && <span className="text-xs text-muted-foreground">(you)</span>}
                     </p>
-                    <p className="truncate text-xs text-muted-foreground">{m.user.email}</p>
+                    <p className="truncate text-xs text-muted-foreground">{m.user.isSystemAccount ? 'Built-in support access for NextCore' : m.user.email}</p>
                   </div>
                 </div>
               ),
@@ -142,7 +143,9 @@ export default function StaffPage() {
               cell: (m) => (
                 <span className="flex items-center gap-1 text-xs text-muted-foreground">
                   {m.user.mfaEnabled && <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-success" aria-label="MFA enabled" />}
-                  {m.user.mustChangePassword ? (
+                  {m.user.isSystemAccount ? (
+                    m.user.lastLoginAt ? `Used ${fmtRelative(m.user.lastLoginAt)}` : 'Never used'
+                  ) : m.user.mustChangePassword ? (
                     <Badge variant="warning" className="normal-case tracking-normal" title={m.user.temporaryPasswordExpiresAt ? `Valid until ${fmtDateTime(m.user.temporaryPasswordExpiresAt)}` : undefined}>Temporary password</Badge>
                   ) : m.user.lastLoginAt ? `Seen ${fmtRelative(m.user.lastLoginAt)}` : 'Never signed in'}
                 </span>
@@ -154,6 +157,15 @@ export default function StaffPage() {
               header: <span className="sr-only">Actions</span>,
               className: 'w-10 text-right',
               cell: (m) => {
+                if (m.user.isSystemAccount) {
+                  return (
+                    <Tip label="Managed by NextCore. It has no password: NextCore support opens it from their console, and every use is in your audit log.">
+                      <span tabIndex={0} className="inline-flex h-8 w-8 items-center justify-center text-muted-foreground" aria-label="Managed by NextCore">
+                        <Lock className="h-4 w-4" />
+                      </span>
+                    </Tip>
+                  );
+                }
                 if (!can('users.manage')) return null;
                 const self = m.user.id === session.user.id;
                 return (

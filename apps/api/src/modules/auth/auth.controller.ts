@@ -12,6 +12,7 @@ import {
   registerOrganizationSchema,
   resetPasswordSchema,
   switchContextSchema,
+  systemSignInSchema,
 } from '@vcms/shared';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
@@ -57,6 +58,17 @@ export class AuthController {
   @ApiZodBody(mfaVerifySchema)
   async verifyMfa(@Body(zp(mfaVerifySchema)) body: z.infer<typeof mfaVerifySchema>, @Res({ passthrough: true }) res: Response) {
     return this.finish(res, await this.auth.verifyMfa(body.challengeId, body.code));
+  }
+
+  /** NextCore support: the one-time link from the super admin console, for the clinic's System account. */
+  @Public()
+  @SkipCsrf()
+  @Throttle(AUTH_THROTTLE)
+  @Post('system-sign-in')
+  @HttpCode(200)
+  @ApiZodBody(systemSignInSchema)
+  async systemSignIn(@Body(zp(systemSignInSchema)) body: z.infer<typeof systemSignInSchema>, @Res({ passthrough: true }) res: Response) {
+    return this.finish(res, await this.auth.systemSignIn(body.token));
   }
 
   @Public()

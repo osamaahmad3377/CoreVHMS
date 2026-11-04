@@ -10,6 +10,7 @@ import { assertWithinLimit, currentEntitlements } from '../../common/tenancy/ent
 import { multiClinic } from '../../common/tenancy/hosts';
 import { planOffer } from '../../common/tenancy/tenancy.service';
 import { storageUsedBytes } from '../attachments/attachments.service';
+import { REAL_STAFF } from '../users/system-account';
 
 /**
  * A clinic's branding as the web app uses it. `base` is where the images are served: the signed-in
@@ -97,7 +98,7 @@ export class OrganizationsService {
   /** The clinic's plan and how much of it is used (Settings → Your plan). */
   async plan(): Promise<ClinicPlanView> {
     const [staff, branches, automations, customAutomations, storageBytes] = await Promise.all([
-      this.prisma.raw.membership.count({ where: { status: { in: ['ACTIVE', 'INVITED'] } } }),
+      this.prisma.raw.membership.count({ where: { status: { in: ['ACTIVE', 'INVITED'] }, ...REAL_STAFF } }),
       this.prisma.raw.branch.count({ where: { isActive: true } }),
       this.prisma.db.automation.count({ where: { isActive: true, recipeKey: { not: null } } }),
       this.prisma.db.automation.count({ where: { isActive: true, recipeKey: null } }),

@@ -15,8 +15,11 @@ import { storageUsedBytes } from '../attachments/attachments.service';
 import { OrgBootstrapService } from '../organizations/org-bootstrap.service';
 import { TEMP_PASSWORD_DAYS } from '../users/users.service';
 import { toPayment } from './platform-payments';
+import { REAL_STAFF, ensureSystemAccount } from '../users/system-account';
 
 const INVITE_DAYS = 7;
+/** A System sign-in link from the console works once, within this many minutes. */
+const SYSTEM_LINK_MINUTES = 2;
 /** How often ended free trials are looked for. */
 const TRIAL_CHECK_MS = 60 * 60_000;
 
@@ -141,7 +144,7 @@ export class PlatformClinicsService implements OnModuleInit, OnModuleDestroy {
     try {
       return await RequestContext.runInTenant(tenantRef(t), async () => {
         const [staff, branches] = await Promise.all([
-          this.prisma.raw.membership.count({ where: { status: { in: ['ACTIVE', 'INVITED'] } } }),
+          this.prisma.raw.membership.count({ where: { status: { in: ['ACTIVE', 'INVITED'] }, ...REAL_STAFF } }),
           this.prisma.raw.branch.count({ where: { isActive: true } }),
         ]);
         return { staff, branches };
@@ -170,14 +173,14 @@ export class PlatformClinicsService implements OnModuleInit, OnModuleDestroy {
           const raw = this.prisma.raw;
           const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
           const [staff, activeStaff, staffCounted, branches, clients, patients, appointmentsThisMonth, lastSignIn, storageBytes] = await Promise.all([
-            raw.membership.count(),
-            raw.membership.count({ where: { status: 'ACTIVE' } }),
-            raw.membership.count({ where: { status: { in: ['ACTIVE', 'INVITED'] } } }),
+            raw.membership.count({ where: REAL_STAFF }),
+            raw.membership.count({ where: { status: 'ACTIVE', ...REAL_STAFF } }),
+            raw.membership.count({ where: { status: { in: ['ACTIVE', 'INVITED'] }, ...REAL_STAFF } }),
             raw.branch.count({ where: { isActive: true } }),
             raw.client.count({ where: { status: { not: 'MERGED' } } }),
             raw.patient.count({ where: { status: { not: 'MERGED' } } }),
             raw.appointment.count({ where: { startsAt: { gte: monthStart } } }),
-            raw.user.findFirst({ where: { lastLoginAt: { not: null } }, orderBy: { lastLoginAt: 'desc' }, select: { lastLoginAt: true } }),
+            raw.user.findFirst({ where: { lastLoginAt: { not: null }, isSystemAccount: false }, orderBy: { lastLoginAt: 'desc' }, select: { lastLoginAt: true } }),
             storageUsedBytes(raw),
           ]);
           return { staff, activeStaff, staffCounted, branches, storageBytes, clients, patients, appointmentsThisMonth, lastSignInAt: lastSignIn?.lastLoginAt?.toISOString() ?? null };
@@ -473,6 +476,29 @@ export class PlatformClinicsService implements OnModuleInit, OnModuleDestroy {
     return this.get(id);
   }
 
+  /**
+   * NextCore support access: a one-time link (valid for 2 minutes) that opens the clinic signed in as its System
+   * account. The link is in the address's #fragment, so it never reaches server logs. The clinic's audit log records
+   * the sign-in and who at NextCore made it.
+   */
+  async systemSignIn(id: string) {
+    const t = await this.find(id);
+    if (t.status !== 'ACTIVE' || !t.organizationId) throw ruleViolation('NOT_ACTIVE', 'The clinic must be active');
+    const ctx = RequestContext.require();
+    const admin = ctx.userId ? await this.prisma.control.user.findUnique({ where: { id: ctx.userId }, select: { name: true, email: true } }) : null;
+    const supportBy = admin ? `${admin.name} <${admin.email}>` : (ctx.userName ?? 'NextCore');
+    const token = randomToken(32);
+    const expiresAt = new Date(Date.now() + SYSTEM_LINK_MINUTES * 60_000);
+    await RequestContext.runInTenant(tenantRef(t), () =>
+      this.prisma.raw.$transaction(async (tx) => {
+        const { user } = await ensureSystemAccount(tx, t.organizationId!);
+        await tx.authToken.create({ data: { type: 'SYSTEM_SIGN_IN', tokenHash: sha256(token), userId: user.id, organizationId: t.organizationId, expiresAt, supportBy } });
+      }),
+    );
+    await this.audit.record({ action: 'platform.clinic_system_sign_in', entityType: 'Tenant', entityId: id, summary: `${t.slug} — ${supportBy}`, organizationId: null });
+    return { url: `${addressFor(t.slug)}/system-sign-in#${token}`, expiresAt: expiresAt.toISOString() };
+  }
+
   /** New temporary password for the clinic's first owner (lost password, or the invitation never arrived). */
   async resetOwnerPassword(id: string) {
     const t = await this.find(id);
@@ -485,7 +511,7 @@ export class PlatformClinicsService implements OnModuleInit, OnModuleDestroy {
       // The clinic may since have changed the owner's email: fall back to its longest-standing owner.
       const user =
         (await raw.user.findUnique({ where: { email: t.ownerEmail } })) ??
-        (await raw.membership.findFirst({ where: { ...(t.organizationId ? { organizationId: t.organizationId } : {}), roles: { some: { role: { key: 'owner' } } } }, orderBy: { createdAt: 'asc' }, include: { user: true } }))?.user;
+        (await raw.membership.findFirst({ where: { ...(t.organizationId ? { organizationId: t.organizationId } : {}), roles: { some: { role: { key: 'owner' } } }, ...REAL_STAFF }, orderBy: { createdAt: 'asc' }, include: { user: true } }))?.user;
       if (!user) throw notFound('Owner account');
       await raw.$transaction(async (tx) => {
         await tx.user.update({

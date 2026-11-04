@@ -6,6 +6,7 @@ import { RequestContext } from '../../common/context/request-context';
 import { forbidden, notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { dayOfWeekOf, localParts, zonedToUtc } from '../../common/time/tz';
+import { REAL_STAFF } from '../users/system-account';
 
 /** Where someone is with a given day, compared with their roster. */
 export type AttendanceStatus = 'IN' | 'ON_BREAK' | 'DONE' | 'NOT_IN_YET' | 'ABSENT' | 'ON_LEAVE' | 'DAY_OFF' | 'UPCOMING' | 'NOT_TRACKED' | 'PRESENT';
@@ -251,6 +252,7 @@ export class AttendanceService {
     const members = await this.prisma.db.membership.findMany({
       where: {
         id: q.membershipId,
+        ...REAL_STAFF,
         OR: [{ status: 'ACTIVE', branches: { some: { branchId: branch.id } } }, { attendance: { some: { branchId: branch.id, clockInAt: { gte: from, lt: to } } } }],
       },
       include: {

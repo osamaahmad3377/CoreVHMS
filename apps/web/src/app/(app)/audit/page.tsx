@@ -49,6 +49,7 @@ const SUBJECT_LABELS: Record<string, string> = { lab_order: 'Lab order', lab_res
 /** Whole-action names where "Subject verb" would read badly. */
 const ACTION_LABELS: Record<string, string> = {
   'auth.login': 'Signed in',
+  'auth.system_sign_in': 'NextCore support signed in as System',
   'auth.logout': 'Signed out',
   'auth.login_failed': 'Sign-in failed',
   'auth.account_locked': 'Account locked',

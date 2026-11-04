@@ -112,6 +112,14 @@ export class PlatformClinicsController {
   ownerPassword(@Param('id', ParseUUIDPipe) id: string) {
     return this.clinics.resetOwnerPassword(id);
   }
+
+  /** One-time link that opens the clinic signed in as its System account (NextCore support access). */
+  @Post(':id/system-sign-in')
+  @HttpCode(200)
+  @RequirePermissions('platform.clinics.manage')
+  systemSignIn(@Param('id', ParseUUIDPipe) id: string) {
+    return this.clinics.systemSignIn(id);
+  }
 }
 
 /** Payments clinics made to NextCore, and the money at a glance. */

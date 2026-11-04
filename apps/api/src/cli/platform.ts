@@ -88,7 +88,7 @@ async function addExisting(control: PrismaClient) {
     const orgs = await clinic.organization.findMany({ orderBy: { createdAt: 'asc' } });
     if (!orgs.length) throw new Error(`${databaseName} has no organization`);
     const owner = await clinic.membership.findFirst({
-      where: { organizationId: orgs[0].id, roles: { some: { role: { key: 'owner' } } } },
+      where: { organizationId: orgs[0].id, roles: { some: { role: { key: 'owner' } } }, user: { isSystemAccount: false } },
       include: { user: true },
       orderBy: { createdAt: 'asc' },
     });

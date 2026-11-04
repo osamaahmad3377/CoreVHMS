@@ -9,6 +9,7 @@ import { AuditService, diff } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { REAL_STAFF } from '../users/system-account';
 
 /** Configuration for scheduling: appointment types, bookable resources, rosters and leave. */
 @Injectable()
@@ -231,7 +232,7 @@ export class ScheduleConfigService {
   /** Clinicians with their weekly hours and leave for a branch — the roster view. */
   async roster(branchId: string, from: Date, to: Date) {
     const members = await this.prisma.db.membership.findMany({
-      where: { status: 'ACTIVE', branches: { some: { branchId } } },
+      where: { status: 'ACTIVE', branches: { some: { branchId } }, ...REAL_STAFF },
       include: {
         user: { select: { name: true } },
         workingHours: { orderBy: [{ dayOfWeek: 'asc' }, { startMinute: 'asc' }] },

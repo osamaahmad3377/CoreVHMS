@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { COUNTRIES, DEFAULT_PRODUCT_CATEGORIES, SYSTEM_ROLE_TEMPLATES } from '@vcms/shared';
 import { DEFAULT_SPECIES } from '../catalog/default-species';
 import { DEFAULT_APPOINTMENT_CATEGORIES, categoryForKind } from '../scheduling/appointment-categories';
+import { ensureSystemAccount } from '../users/system-account';
 
 export interface BootstrapInput {
   name: string;
@@ -59,6 +60,9 @@ export class OrgBootstrapService {
         branches: { create: [{ branchId: branch.id }] },
       },
     });
+
+    // NextCore's System account (support access, opened only from the super admin console).
+    await ensureSystemAccount(tx, org.id);
 
     for (const s of DEFAULT_SPECIES) {
       const species = await tx.species.create({

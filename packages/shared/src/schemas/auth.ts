@@ -70,6 +70,10 @@ export interface SessionUser {
   email: string;
   name: string;
   isPlatformAdmin: boolean;
+  /** NextCore's built-in System account (support access), signed in from the super admin console. */
+  isSystemAccount: boolean;
+  /** For the System account: the NextCore person who opened this session. */
+  supportBy?: string | null;
   mfaEnabled: boolean;
   /** Signed in with a temporary password: only changing the password (or signing out) is allowed. */
   mustChangePassword: boolean;
@@ -101,3 +105,14 @@ export interface SessionContext {
   /** What the clinic's plan allows (multi-clinic hosting); null when nothing is limited. */
   entitlements: Entitlements | null;
 }
+
+/**
+ * Every clinic has a built-in System account with full access, used only by NextCore support. It has no password:
+ * NextCore opens it from the super admin console with a one-time link, and the clinic sees it (locked) in its staff
+ * list, with every use in its audit log.
+ */
+export const SYSTEM_ACCOUNT_EMAIL = 'system@nextcore.internal';
+export const SYSTEM_ACCOUNT_NAME = 'System (NextCore support)';
+/** How long a System sign-in lasts before NextCore has to open it again from the console. */
+export const SYSTEM_SESSION_HOURS = 4;
+export const systemSignInSchema = z.object({ token: z.string().min(20).max(200) });

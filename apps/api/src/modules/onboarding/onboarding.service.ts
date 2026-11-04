@@ -5,6 +5,7 @@ import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { REAL_STAFF } from '../users/system-account';
 
 export interface SetupStep {
   key: string;
@@ -41,7 +42,7 @@ export class OnboardingService {
     const db = this.prisma.db;
     const org = await this.org();
     const [staff, hours, services, unpriced, taxRates, pricedProducts, stockMoves, receipt, cashSessions, clients, appointments] = await Promise.all([
-      db.membership.count({ where: { status: { in: ['ACTIVE', 'INVITED'] } } }),
+      db.membership.count({ where: { status: { in: ['ACTIVE', 'INVITED'] }, ...REAL_STAFF } }),
       db.workingHours.count(),
       db.service.count({ where: { isActive: true } }),
       db.service.count({ where: { isActive: true, priceMinor: 0 } }),

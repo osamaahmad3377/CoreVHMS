@@ -1,6 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import type { User } from '@prisma/client';
-import type { RegisterOrganizationInput } from '@vcms/shared';
+import { SYSTEM_SESSION_HOURS, type RegisterOrganizationInput } from '@vcms/shared';
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
 import { env } from '../../config/env';
@@ -52,7 +52,8 @@ export class AuthService {
     const ok = await verifyPassword(user?.passwordHash, password);
     // The super admin address accepts platform administrators only.
     const allowedHere = !RequestContext.get()?.platform || user?.isPlatformAdmin === true;
-    if (!user || !ok || user.status !== 'ACTIVE' || !allowedHere) {
+    // The System account never signs in with a password (it has none): only through the super admin console.
+    if (!user || !ok || user.status !== 'ACTIVE' || !allowedHere || user.isSystemAccount) {
       if (user) {
         const failed = user.failedLoginCount + 1;
         await this.prisma.raw.user.update({
@@ -157,6 +158,44 @@ export class AuthService {
       actorName: user.name,
     });
     return { status: 'ok', token, sessionId: session.id, csrf: session.csrfToken, expiresAt: session.expiresAt };
+  }
+
+  /**
+   * NextCore support opening a clinic as its System account: exchanges the one-time link made in the super admin
+   * console (valid for minutes, used once) for a session that lasts a few hours. Recorded in the clinic's audit log.
+   */
+  async systemSignIn(token: string): Promise<LoginResult> {
+    const invalid = () => ruleViolation('TOKEN_INVALID', 'This sign-in link is invalid or has expired. Open the clinic again from the NextCore console.');
+    const record = await this.prisma.raw.authToken.findUnique({ where: { tokenHash: sha256(token) }, include: { user: true } });
+    if (!record || record.type !== 'SYSTEM_SIGN_IN' || record.consumedAt || record.expiresAt < new Date() || !record.user.isSystemAccount || !record.organizationId) throw invalid();
+    // Used once, even if two requests race.
+    const { count } = await this.prisma.raw.authToken.updateMany({ where: { id: record.id, consumedAt: null }, data: { consumedAt: new Date() } });
+    if (!count) throw invalid();
+    const m = await this.prisma.raw.membership.findUnique({
+      where: { organizationId_userId: { organizationId: record.organizationId, userId: record.userId } },
+      include: { branches: { include: { branch: true } }, organization: true },
+    });
+    if (!m || m.status !== 'ACTIVE' || m.organization.status !== 'ACTIVE') throw invalid();
+    const ctx = RequestContext.get();
+    const { token: sessionToken, session } = await this.sessions.create(record.userId, {
+      organizationId: m.organizationId,
+      branchId: m.branches.find((b) => b.branch.isActive)?.branchId,
+      ip: ctx?.ip,
+      userAgent: ctx?.userAgent,
+      maxHours: SYSTEM_SESSION_HOURS,
+      supportBy: record.supportBy,
+    });
+    await this.prisma.raw.user.update({ where: { id: record.userId }, data: { lastLoginAt: new Date() } });
+    await this.audit.record({
+      action: 'auth.system_sign_in',
+      entityType: 'User',
+      entityId: record.userId,
+      organizationId: m.organizationId,
+      actorUserId: record.userId,
+      actorName: record.user.name,
+      summary: `NextCore support signed in${record.supportBy ? ` (${record.supportBy})` : ''}`,
+    });
+    return { status: 'ok', token: sessionToken, sessionId: session.id, csrf: session.csrfToken, expiresAt: session.expiresAt };
   }
 
   async logout(sessionId: string) {
@@ -326,6 +365,7 @@ ${emailButton(link, 'Reset password', brand)}
 
   async mfaSetup(userId: string) {
     const user = await this.prisma.raw.user.findUniqueOrThrow({ where: { id: userId } });
+    if (user.isSystemAccount) throw ruleViolation('SYSTEM_ACCOUNT', 'The System account signs in only through the NextCore console');
     if (user.mfaEnabled) throw ruleViolation('MFA_ALREADY_ENABLED', 'Two-factor authentication is already enabled');
     const secret = authenticator.generateSecret();
     await this.prisma.raw.user.update({ where: { id: userId }, data: { mfaPendingSecret: encryptSecret(secret) } });

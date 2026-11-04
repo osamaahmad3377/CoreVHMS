@@ -24,7 +24,8 @@ const keyFor = (userId: string) => `vcms.tour.done.${userId}`;
  */
 export function WelcomeTour() {
   const session = useOptionalSession();
-  const userId = session?.session.user.id;
+  // NextCore support (System account) doesn't need the staff tour.
+  const userId = session?.session.user.isSystemAccount ? undefined : session?.session.user.id;
   const [open, setOpen] = useState(false);
   const [i, setI] = useState(0);
 

@@ -21,7 +21,7 @@ export interface Member {
   jobTitle: string | null;
   isClinician: boolean;
   professionalRegistration: string | null;
-  user: { id: string; email: string; name: string; mfaEnabled: boolean; lastLoginAt: string | null; mustChangePassword?: boolean; temporaryPasswordExpiresAt?: string | null };
+  user: { id: string; email: string; name: string; mfaEnabled: boolean; lastLoginAt: string | null; mustChangePassword?: boolean; temporaryPasswordExpiresAt?: string | null; isSystemAccount?: boolean };
   roles: { id: string; name: string; key: string | null }[];
   branches: { id: string; name: string }[];
 }

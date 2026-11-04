@@ -1,5 +1,5 @@
 'use client';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { COUNTRIES, STORAGE_PACK_GB, storageText, yearlyMonthsFree, type ClinicOverview, type PlatformPlan } from '@vcms/shared';
 import {
   AlertTriangle,
@@ -20,6 +20,7 @@ import {
   Play,
   ReceiptText,
   RotateCcw,
+  ShieldAlert,
   UserCheck,
   UserRound,
   Users,
@@ -27,6 +28,7 @@ import {
 } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, use, useState } from 'react';
+import { toast } from 'sonner';
 import { ErrorState, LoadingRows, PageHeader } from '@/components/page';
 import { FeeLines, PaymentBadge, PaymentsTable, RecordPaymentDialog, canRemind, downloadPaymentsCsv, paymentText, useBillingActions } from '@/components/platform/billing-ui';
 import { ClinicBillingCard, ClinicPlanCard } from '@/components/platform/clinic-plan-card';
@@ -47,6 +49,7 @@ const EVENT_LABELS: Record<string, string> = {
   'platform.clinic_suspended': 'Paused',
   'platform.clinic_reactivated': 'Reactivated',
   'platform.clinic_owner_password_reset': 'New owner password created',
+  'platform.clinic_system_sign_in': 'Signed in as System (support)',
   'platform.clinic_added_existing': 'Existing database added',
   'platform.clinic_plan_changed': 'Plan changed',
   'platform.clinic_billing_changed': 'Billing or free period changed',
@@ -132,6 +135,24 @@ function ClinicPage({ id }: { id: string }) {
     refetchInterval: (query) => (query.state.data?.clinic.status === 'PROVISIONING' ? 3000 : false),
   });
   const plans = useQuery({ queryKey: ['platform-plans'], queryFn: () => api.get<PlatformPlan[]>('/platform/plans') });
+  // Support access: a one-time link that opens the clinic as its System account, in a new tab. The tab is opened
+  // on the click itself (so it isn't blocked as a pop-up), then pointed at the link.
+  const systemSignIn = useMutation({
+    mutationFn: async () => {
+      const tab = window.open('about:blank', '_blank');
+      try {
+        const r = await api.post<{ url: string }>(`/platform/clinics/${id}/system-sign-in`);
+        if (tab) {
+          tab.opener = null;
+          tab.location.href = r.url;
+        } else window.location.href = r.url;
+      } catch (e) {
+        tab?.close();
+        throw e;
+      }
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   if (q.isLoading) return <LoadingRows />;
   if (q.error || !q.data) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
@@ -156,6 +177,11 @@ function ClinicPage({ id }: { id: string }) {
           <>
             {billable && <Button onClick={() => setPaying(true)}><ReceiptText /> Record payment</Button>}
             {c.status === 'ACTIVE' && <Button asChild variant="outline"><a href={`${c.address}/login`} target="_blank" rel="noreferrer"><ExternalLink /> Open clinic</a></Button>}
+            {c.status === 'ACTIVE' && (
+              <Button variant="outline" loading={systemSignIn.isPending} onClick={() => systemSignIn.mutate()} title="Opens the clinic signed in as its System account (full access, for support). Recorded in the clinic’s audit log.">
+                <ShieldAlert /> Sign in as System
+              </Button>
+            )}
             <ClinicActionsMenu clinic={c} run={run} onRecordPayment={() => setPaying(true)} />
           </>
         }

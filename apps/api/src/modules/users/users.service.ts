@@ -9,13 +9,14 @@ import { emailBrandOf, emailButton, escapeHtml, layout, MailService } from '../.
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { assertWithinLimit, holds } from '../../common/tenancy/entitlements';
 import { appUrl } from '../../common/tenancy/hosts';
+import { REAL_STAFF, systemAccountLocked } from './system-account';
 
 const INVITE_DAYS = 7;
 /** An unused temporary password stops working after this many days. */
 export const TEMP_PASSWORD_DAYS = 7;
 
 const memberInclude = {
-  user: { select: { id: true, email: true, name: true, mfaEnabled: true, lastLoginAt: true, status: true, mustChangePassword: true, temporaryPasswordExpiresAt: true } },
+  user: { select: { id: true, email: true, name: true, mfaEnabled: true, lastLoginAt: true, status: true, mustChangePassword: true, temporaryPasswordExpiresAt: true, isSystemAccount: true } },
   roles: { include: { role: { select: { id: true, name: true, key: true } } } },
   branches: { include: { branch: { select: { id: true, name: true } } } },
 } as const;
@@ -74,7 +75,7 @@ export class UsersService {
 
   /** Staff accounts counted against the plan: people who can sign in or have been invited (paused ones are not). */
   staffCount() {
-    return this.prisma.raw.membership.count({ where: { status: { in: ['ACTIVE', 'INVITED'] } } });
+    return this.prisma.raw.membership.count({ where: { status: { in: ['ACTIVE', 'INVITED'] }, ...REAL_STAFF } });
   }
 
   async invite(input: InviteUserInput) {
@@ -87,6 +88,7 @@ export class UsersService {
     const result = await this.prisma.raw.$transaction(async (tx) => {
       let user = await tx.user.findUnique({ where: { email: input.email } });
       if (user) {
+        if (user.isSystemAccount) throw conflict('This email can’t be used for a staff account');
         const existing = await tx.membership.findUnique({ where: { organizationId_userId: { organizationId: orgId, userId: user.id } } });
         if (existing) throw conflict('This person is already a member of your organization');
       } else {
@@ -170,6 +172,7 @@ export class UsersService {
     const ctx = RequestContext.require();
     const m = await this.prisma.db.membership.findUnique({ where: { id }, include: { user: true, roles: true } });
     if (!m) throw notFound('Staff member');
+    if (m.user.isSystemAccount) throw systemAccountLocked();
     if (m.id === ctx.membershipId) throw ruleViolation('SELF_CHANGE', 'Change your own password under My account');
     if (m.status === 'SUSPENDED') throw ruleViolation('SUSPENDED', 'Reactivate this staff member first');
     await this.assertAssignableRoles(m.roles.map((r) => r.roleId));
@@ -245,6 +248,7 @@ ${emailButton(link, 'Accept invitation', emailBrandOf(org))}
     const ctx = RequestContext.require();
     const before = await this.prisma.db.membership.findUnique({ where: { id }, include: memberInclude });
     if (!before) throw notFound('Staff member');
+    if (before.user.isSystemAccount) throw systemAccountLocked();
 
     if (input.roleIds) await this.assertAssignableRoles(input.roleIds);
     if (input.branchIds) await this.assertBranches(input.branchIds);
@@ -287,7 +291,8 @@ ${emailButton(link, 'Accept invitation', emailBrandOf(org))}
         const wasOwner = ownerRole && currentRoleIds.includes(ownerRole.id);
         const staysOwner = ownerRole && (input.roleIds ?? currentRoleIds).includes(ownerRole.id) && input.status !== 'SUSPENDED';
         if (wasOwner && !staysOwner) {
-          const owners = await tx.membership.count({ where: { status: 'ACTIVE', roles: { some: { roleId: ownerRole!.id } } } });
+          // NextCore's System account doesn't count: the clinic must keep an owner of its own.
+          const owners = await tx.membership.count({ where: { status: 'ACTIVE', roles: { some: { roleId: ownerRole!.id } }, ...REAL_STAFF } });
           if (owners <= 1) throw ruleViolation('LAST_OWNER', 'The organization must keep at least one active owner');
         }
       }

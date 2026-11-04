@@ -10,6 +10,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { resolveTimezone } from '../../common/time/branch-timezone';
 import { localParts } from '../../common/time/tz';
 import { StockEngine, r4 } from './stock.engine';
+import { REAL_STAFF } from '../users/system-account';
 
 export const disposalNo = (n: number) => formatNumber('DSP', n);
 const DAY = 86400_000;
@@ -95,7 +96,7 @@ export class DisposalService {
   /** Staff who can witness a disposal: active members other than the person disposing. */
   async witnesses() {
     const me = RequestContext.require().userId;
-    const rows = await this.prisma.db.membership.findMany({ where: { status: 'ACTIVE', userId: { not: me } }, include: { user: { select: { name: true } } }, orderBy: { user: { name: 'asc' } } });
+    const rows = await this.prisma.db.membership.findMany({ where: { status: 'ACTIVE', userId: { not: me }, ...REAL_STAFF }, include: { user: { select: { name: true } } }, orderBy: { user: { name: 'asc' } } });
     return rows.map((m) => ({ id: m.id, name: m.user.name, jobTitle: m.jobTitle }));
   }
 

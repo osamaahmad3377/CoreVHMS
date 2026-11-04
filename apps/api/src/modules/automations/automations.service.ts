@@ -39,6 +39,7 @@ import { WhatsAppService } from '../integrations/whatsapp.service';
 import { buildContext, factNeeds, marketingFacts, OrgInfo, reach, RunContext, SOURCE_OF } from './automation-context';
 import { unsubscribeLink } from './unsubscribe';
 import { nextAt } from './automation-time';
+import { REAL_STAFF } from '../users/system-account';
 
 const SCAN_EVERY_MS = 5 * 60_000;
 const STUCK_MS = 10 * 60_000;
@@ -199,7 +200,7 @@ export class AutomationsService implements OnModuleInit {
       db.species.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
       db.branch.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
       db.appointmentType.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
-      db.membership.findMany({ where: { status: 'ACTIVE' }, orderBy: { user: { name: 'asc' } }, select: { id: true, jobTitle: true, user: { select: { name: true } } } }),
+      db.membership.findMany({ where: { status: 'ACTIVE', ...REAL_STAFF }, orderBy: { user: { name: 'asc' } }, select: { id: true, jobTitle: true, user: { select: { name: true } } } }),
       this.whatsapp.sending(orgId),
       this.mailbox.usable(orgId),
       db.service.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),

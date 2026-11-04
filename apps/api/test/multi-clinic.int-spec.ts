@@ -638,6 +638,45 @@ describe('Multi-clinic hosting', () => {
     expect((await alpha.owner.get('/clients')).status).toBe(200);
   });
 
+  it('lets only NextCore sign in to a clinic as its built-in System account', async () => {
+    // Every clinic has it from the start: visible to the clinic, locked, and not counted as staff.
+    const staff = (await alpha.owner.get('/staff')).body as any[];
+    const system = staff.find((m) => m.user.isSystemAccount);
+    expect(system).toMatchObject({ status: 'ACTIVE', user: { name: 'System (NextCore support)', email: 'system@nextcore.internal' }, roles: [{ key: 'owner' }] });
+    expect((await alpha.owner.patch(`/staff/${system.id}`, { status: 'SUSPENDED' })).body.error.code).toBe('SYSTEM_ACCOUNT');
+    expect((await alpha.owner.patch(`/staff/${system.id}`, { jobTitle: 'Hacked' })).body.error.code).toBe('SYSTEM_ACCOUNT');
+    expect((await alpha.owner.post(`/staff/${system.id}/temporary-password`)).body.error.code).toBe('SYSTEM_ACCOUNT');
+    expect((await alpha.owner.get('/organization/plan')).body.usage.staff).toBe(staff.length - 1);
+    // No password works for it, and it can't be invited.
+    expect((await client('alpha-paws').post('/auth/login', { email: 'system@nextcore.internal', password: PASSWORD })).status).toBe(401);
+    expect((await alpha.owner.post('/staff/invite', { email: 'system@nextcore.internal', name: 'X', roleIds: [system.roles[0].id], branchIds: system.branches.map((b: any) => b.id) })).status).not.toBe(201);
+
+    // The super admin gets a one-time link to the clinic's own address.
+    const link = await superAdmin.post(`/platform/clinics/${alpha.id}/system-sign-in`);
+    expect(link.status).toBe(200);
+    expect(link.body.url).toMatch(new RegExp(`^http://alpha-paws\\.${BASE.replace('.', '\\.')}(:\\d+)?/system-sign-in#`));
+    const token = link.body.url.split('#')[1];
+    // Only at that clinic, and only once.
+    expect((await client('bondi').post('/auth/system-sign-in', { token })).status).not.toBe(200);
+    const sys = client('alpha-paws');
+    const res = await sys.post('/auth/system-sign-in', { token });
+    expect(res.status).toBe(200);
+    expect(res.body.session.user).toMatchObject({ isSystemAccount: true, supportBy: 'Platform Root <root@nextcore.test>' });
+    expect(res.body.session.permissions).toContain('users.manage');
+    expect((await sys.get('/clients')).status).toBe(200);
+    expect((await client('alpha-paws').post('/auth/system-sign-in', { token })).body.error.code).toBe('TOKEN_INVALID');
+    const session = await RequestContext.runInTenant({ id: 'x', slug: 'alpha-paws', databaseName: `${PREFIX}alpha_paws` } as any, () =>
+      app.get(PrismaService).raw.session.findFirstOrThrow({ where: { user: { isSystemAccount: true } }, orderBy: { createdAt: 'desc' } }),
+    );
+    expect(session.expiresAt.getTime() - session.createdAt.getTime()).toBeLessThanOrEqual(4 * 3600_000 + 1000);
+    // The clinic sees it in its audit log; NextCore in the clinic's history.
+    const audit = (await alpha.owner.get('/audit-events?action=auth.system_sign_in')).body.data;
+    expect(audit[0]).toMatchObject({ actorName: 'System (NextCore support)', summary: expect.stringContaining('Platform Root') });
+    expect(await prisma().auditEvent.count({ where: { entityId: alpha.id, action: 'platform.clinic_system_sign_in' } })).toBe(1);
+    // Clinic staff can't make links.
+    expect((await alpha.owner.post(`/platform/clinics/${alpha.id}/system-sign-in`)).status).toBe(403);
+  });
+
   it('gives a clinic owner a new temporary password', async () => {
     const res = await superAdmin.post(`/platform/clinics/${alpha.id}/owner-password`);
     expect(res.status).toBe(200);

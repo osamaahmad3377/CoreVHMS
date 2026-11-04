@@ -7,6 +7,11 @@ export function cn(...inputs: ClassValue[]) {
 
 export function initials(name?: string | null) {
   if (!name) return '?';
-  const parts = name.replace(/^(dr\.?|mr\.?|mrs\.?|ms\.?)\s+/i, '').split(/[\s,]+/).filter(Boolean);
+  // Words that start with a letter or digit only: "System (NextCore support)" → "SN", not "S(".
+  const parts = name
+    .replace(/^(dr\.?|mr\.?|mrs\.?|ms\.?)\s+/i, '')
+    .split(/[\s,]+/)
+    .map((w) => w.replace(/^[^\p{L}\p{N}]+/u, ''))
+    .filter(Boolean);
   return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '?';
 }

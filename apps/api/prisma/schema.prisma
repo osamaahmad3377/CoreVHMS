@@ -574,6 +574,8 @@ model User {
   name                       String
   passwordHash               String?
   isPlatformAdmin            Boolean    @default(false)
+  /// NextCore's built-in System account (one per clinic database): no password, opened only from the super admin console.
+  isSystemAccount            Boolean    @default(false)
   status                     UserStatus @default(ACTIVE)
   mfaEnabled                 Boolean    @default(false)
   mfaSecretEnc               String?
@@ -700,6 +702,8 @@ model Session {
   idleExpiresAt  DateTime  @db.Timestamptz(3)
   expiresAt      DateTime  @db.Timestamptz(3)
   revokedAt      DateTime? @db.Timestamptz(3)
+  /// System account sessions: the NextCore person who opened it from the super admin console.
+  supportBy      String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -721,6 +725,8 @@ model MfaChallenge {
 enum AuthTokenType {
   PASSWORD_RESET
   INVITATION
+  /// One-time link from the super admin console that signs NextCore in as the clinic's System account.
+  SYSTEM_SIGN_IN
 }
 
 model AuthToken {
@@ -733,6 +739,8 @@ model AuthToken {
   expiresAt      DateTime      @db.Timestamptz(3)
   consumedAt     DateTime?     @db.Timestamptz(3)
   createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+  /// SYSTEM_SIGN_IN: the NextCore person the link was made for.
+  supportBy      String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
