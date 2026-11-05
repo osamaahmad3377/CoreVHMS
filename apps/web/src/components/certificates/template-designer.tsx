@@ -37,6 +37,7 @@ import {
   QrCode,
   Redo2,
   Square,
+  Stamp,
   Table2,
   Trash2,
   Type,
@@ -154,8 +155,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-const ICON: Record<El['type'], React.ComponentType<{ className?: string }>> = { text: Type, image: ImageIcon, qr: QrCode, barcode: BarcodeIcon, line: Minus, box: Square, table: Table2, signature: PenLine };
-const NAME: Record<El['type'], string> = { text: 'Text', image: 'Image', qr: 'QR code', barcode: 'Barcode', line: 'Line', box: 'Box / frame', table: 'Vaccinations table', signature: 'Signature' };
+const ICON: Record<El['type'], React.ComponentType<{ className?: string }>> = { text: Type, image: ImageIcon, qr: QrCode, barcode: BarcodeIcon, line: Minus, box: Square, table: Table2, signature: PenLine, watermark: Stamp };
+const NAME: Record<El['type'], string> = { text: 'Text', image: 'Image', qr: 'QR code', barcode: 'Barcode', line: 'Line', box: 'Box / frame', table: 'Vaccinations table', signature: 'Signature', watermark: 'Watermark' };
 
 /**
  * Drag-and-drop certificate designer. Elements are positioned in millimetres on a true-size page (scaled to fit the
@@ -394,6 +395,14 @@ export function TemplateDesigner({
     { label: 'Barcode', icon: BarcodeIcon, make: () => add({ type: 'barcode', color: '#111827', showText: true, w: 50, h: 12 }) },
     { label: 'Signature', icon: PenLine, make: () => add({ type: 'signature', label: info.subject === 'STAFF' ? 'For {{clinic.name}}' : 'Veterinarian', color: '#1f2937', showName: true, fontSize: 9, w: 70, h: 22 }) },
     ...(info.subject === 'PATIENT' ? [{ label: 'Vaccinations', icon: Table2, make: () => add({ type: 'table', source: 'VACCINATIONS', fontSize: 8.5, headerColor: '#1e3a5f', color: '#1f2937', w: page.w - 44, h: 50 }) }] : []),
+    {
+      label: 'Watermark',
+      icon: Stamp,
+      make: () => {
+        const w = Math.min(page.w - 20, 170);
+        add({ type: 'watermark', mode: 'text', text: 'ORIGINAL', src: 'logo', fontSize: 72, fontFamily: 'sans', fontWeight: 700, color: '#6b7280', opacity: 0.12, letterSpacing: 4, rotate: -30, w, h: 60, x: round((page.w - w) / 2), y: round(page.h / 2 - 30) });
+      },
+    },
     { label: 'Line', icon: Minus, make: () => add({ type: 'line', color: '#8a6d3b', thickness: 0.4, style: 'solid', w: 80, h: 1 }) },
     { label: 'Box / frame', icon: Square, make: () => add({ type: 'box', borderColor: '#8a6d3b', borderWidth: 0.5, borderStyle: 'solid', fill: 'transparent', radius: 2, w: 80, h: 40 }) },
   ];
@@ -633,6 +642,67 @@ export function TemplateDesigner({
                   <Num label="Text size (pt)" value={sel.fontSize} step={0.5} min={5} max={16} onChange={(v) => update(sel.id, { fontSize: v })} />
                   <ColorField label="Header" value={sel.headerColor} onChange={(v) => update(sel.id, { headerColor: v })} />
                   <ColorField label="Text" value={sel.color} onChange={(v) => update(sel.id, { color: v })} />
+                </Section>
+              )}
+              {sel.type === 'watermark' && (
+                <Section title="Watermark">
+                  <div className="grid grid-cols-2 gap-1" role="radiogroup" aria-label="Watermark type">
+                    <Button size="sm" variant={sel.mode === 'text' ? 'default' : 'outline'} role="radio" aria-checked={sel.mode === 'text'} onClick={() => update(sel.id, { mode: 'text' })}><Type /> Text</Button>
+                    <Button size="sm" variant={sel.mode === 'image' ? 'default' : 'outline'} role="radio" aria-checked={sel.mode === 'image'} onClick={() => update(sel.id, { mode: 'image' })}><ImageIcon /> Image</Button>
+                  </div>
+                  <label className="grid gap-1 text-2xs text-muted-foreground">
+                    Opacity — {Math.round(sel.opacity * 100)}%
+                    <input type="range" aria-label="Watermark opacity" min={2} max={100} step={1} value={Math.round(sel.opacity * 100)} onChange={(e) => update(sel.id, { opacity: Number(e.target.value) / 100 })} className="w-full accent-primary" />
+                    <span className="flex justify-between"><span>Faint</span><span>Solid</span></span>
+                  </label>
+                  <div className="flex flex-wrap gap-1">
+                    {[5, 10, 15, 25, 50].map((p) => (
+                      <Button key={p} size="sm" variant={Math.round(sel.opacity * 100) === p ? 'default' : 'outline'} className="h-7 px-2 text-2xs" onClick={() => update(sel.id, { opacity: p / 100 })}>{p}%</Button>
+                    ))}
+                  </div>
+                  {sel.mode === 'text' ? (
+                    <>
+                      <Textarea aria-label="Watermark text" rows={2} className="font-mono text-xs" value={sel.text} maxLength={200} onChange={(e) => update(sel.id, { text: e.target.value })} />
+                      <NativeSelect className="h-8 text-xs" aria-label="Insert a field" value="" onChange={(e) => e.target.value && update(sel.id, { text: `${sel.text}{{${e.target.value}}}` })}>
+                        <option value="">Insert a field…</option>
+                        {fields.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
+                      </NativeSelect>
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="grid gap-1 text-2xs text-muted-foreground">
+                          Font
+                          <NativeSelect className="h-8 text-xs" value={sel.fontFamily} onChange={(e) => update(sel.id, { fontFamily: e.target.value as 'sans' })}>
+                            <option value="sans">Sans</option>
+                            <option value="serif">Serif</option>
+                            <option value="script">Script</option>
+                            <option value="mono">Mono</option>
+                          </NativeSelect>
+                        </label>
+                        <Num label="Size (pt)" value={sel.fontSize} step={2} min={8} max={300} onChange={(v) => update(sel.id, { fontSize: v })} />
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        <Button size="icon-sm" variant={sel.fontWeight === 700 ? 'default' : 'outline'} aria-label="Bold" onClick={() => update(sel.id, { fontWeight: sel.fontWeight === 700 ? 400 : 700 })}><Bold /></Button>
+                        <Button size="sm" variant={sel.uppercase ? 'default' : 'outline'} className="h-7 px-2 text-2xs" onClick={() => update(sel.id, { uppercase: !sel.uppercase })}>AA</Button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <ColorField label="Colour" value={sel.color} onChange={(v) => update(sel.id, { color: v })} />
+                        <Num label="Letter spacing" value={sel.letterSpacing ?? 0} step={0.5} min={-2} max={40} onChange={(v) => update(sel.id, { letterSpacing: v })} />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" variant="outline" onClick={() => replaceInput.current?.click()}><Upload /> Choose image</Button>
+                        {sel.src !== 'logo' && <Button size="sm" variant="ghost" onClick={() => update(sel.id, { src: 'logo' })}>Use the clinic logo</Button>}
+                      </div>
+                      <input ref={replaceInput} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden" onChange={(e) => upload(e.target.files?.[0], (src) => update(sel.id, { src }))} />
+                      <p className="text-2xs text-muted-foreground">{sel.src === 'logo' ? 'Uses the logo from Settings → Branding.' : 'Your own image (a seal or crest works well).'}</p>
+                    </>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" onClick={() => update(sel.id, { x: round(page.w / 2 - sel.w / 2, 0.1), y: round(page.h / 2 - sel.h / 2, 0.1) })}>Centre on the page</Button>
+                    <Button size="sm" variant="ghost" onClick={() => update(sel.id, { rotate: sel.rotate === -30 ? 0 : -30 })}>{sel.rotate === -30 ? 'Straighten' : 'Tilt'}</Button>
+                  </div>
+                  <p className="text-2xs text-muted-foreground">Sits behind everything else on the page, and prints with it.</p>
                 </Section>
               )}
               {sel.type === 'signature' && (

@@ -166,6 +166,38 @@ export function ElementView({ el, data, designer }: { el: CertificateElement; da
         </table>
       );
     }
+    case 'watermark': {
+      if (el.mode === 'image') {
+        const src = el.src === 'logo' ? data.logoUrl : el.src;
+        if (!src) return designer ? <div className="flex h-full w-full items-center justify-center rounded border border-dashed border-gray-400 text-[8pt] text-gray-500">Watermark image</div> : null;
+        // eslint-disable-next-line @next/next/no-img-element
+        return <img src={src} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'contain', opacity: el.opacity }} />;
+      }
+      return (
+        <div
+          style={{
+            width: '100%',
+            height: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            textAlign: 'center',
+            opacity: el.opacity,
+            color: el.color,
+            fontSize: `${el.fontSize}pt`,
+            fontFamily: FONT[el.fontFamily],
+            fontWeight: el.fontWeight,
+            textTransform: el.uppercase ? 'uppercase' : undefined,
+            letterSpacing: el.letterSpacing ? `${el.letterSpacing}pt` : undefined,
+            lineHeight: 1.1,
+            whiteSpace: 'pre-wrap',
+            overflowWrap: 'anywhere',
+          }}
+        >
+          {fillCertificateText(el.text, data.fields) || (designer ? <span style={{ opacity: 0.4 }}>Watermark</span> : null)}
+        </div>
+      );
+    }
     case 'signature': {
       const name = data.fields['issuer.name'];
       const reg = data.fields['issuer.registration'];
@@ -247,11 +279,12 @@ export function CertificatePage({ layout, data, className, children, renderEleme
       }}
     >
       <Frame page={layout.page} />
-      {layout.elements.map((el, i) =>
+      {/* Watermarks sit behind everything else. */}
+      {[...layout.elements].sort((a, b) => Number(b.type === 'watermark') - Number(a.type === 'watermark')).map((el, i) =>
         renderElement ? (
           renderElement(el, i)
         ) : (
-          <div key={el.id} style={{ ...placeStyle(el), overflow: el.type === 'text' ? 'visible' : 'hidden' }}>
+          <div key={el.id} style={{ ...placeStyle(el), overflow: el.type === 'text' ? 'visible' : 'hidden', pointerEvents: el.type === 'watermark' ? 'none' : undefined }}>
             <ElementView el={el} data={data} />
           </div>
         ),

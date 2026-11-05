@@ -97,3 +97,15 @@ describe('certificate text', () => {
     expect(fillCertificateText('{{a}} / {{b}}', { a: 'x' })).toBe('x / ');
   });
 });
+
+describe('watermarks', () => {
+  it('are a layout element with an opacity between 2% and 100%', () => {
+    const base = defaultCertificateLayout('HEALTH');
+    const mark = { id: 'w1', type: 'watermark', mode: 'text', text: 'ORIGINAL', src: 'logo', fontSize: 60, fontFamily: 'serif', fontWeight: 700, color: '#888888', opacity: 0.12, x: 20, y: 120, w: 170, h: 50, rotate: -30 };
+    expect(certificateLayoutSchema.safeParse({ ...base, elements: [mark, ...base.elements] }).success).toBe(true);
+    expect(certificateLayoutSchema.safeParse({ ...base, elements: [{ ...mark, opacity: 0.001 }] }).success).toBe(false);
+    expect(certificateLayoutSchema.safeParse({ ...base, elements: [{ ...mark, opacity: 1.5 }] }).success).toBe(false);
+    expect(certificateLayoutSchema.safeParse({ ...base, elements: [{ ...mark, mode: 'image', src: 'logo' }] }).success).toBe(true);
+    expect(certificateLayoutSchema.safeParse({ ...base, elements: [{ ...mark, mode: 'image', src: 'http://evil.example/x.png' }] }).success).toBe(false);
+  });
+});

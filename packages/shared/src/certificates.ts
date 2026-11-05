@@ -471,7 +471,7 @@ export const PAGE_SIZES = { A4: { w: 210, h: 297, label: 'A4' }, LETTER: { w: 21
 export type PageSize = keyof typeof PAGE_SIZES;
 export const BORDER_STYLES = ['none', 'simple', 'double', 'thick', 'ornate'] as const;
 export const FONT_FAMILIES = ['sans', 'serif', 'script', 'mono'] as const;
-export const CERTIFICATE_ELEMENT_TYPES = ['text', 'image', 'qr', 'barcode', 'line', 'box', 'table', 'signature'] as const;
+export const CERTIFICATE_ELEMENT_TYPES = ['text', 'image', 'qr', 'barcode', 'line', 'box', 'table', 'signature', 'watermark'] as const;
 
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'A colour like #1a2b3c');
 const mm = z.number().min(-50).max(400);
@@ -520,6 +520,22 @@ export const certificateElementSchema = z.discriminatedUnion('type', [
   }),
   z.object({ ...base, type: z.literal('table'), source: z.literal('VACCINATIONS'), fontSize: z.number().min(5).max(16), headerColor: color, color }),
   z.object({ ...base, type: z.literal('signature'), label: z.string().max(80), color, showName: z.boolean(), fontSize: z.number().min(5).max(20) }),
+  /** Faint text or a picture behind everything else (e.g. "ORIGINAL", the clinic's logo), with its own opacity. */
+  z.object({
+    ...base,
+    type: z.literal('watermark'),
+    mode: z.enum(['text', 'image']),
+    text: z.string().max(200),
+    src: z.union([z.literal('logo'), imageData]),
+    fontSize: z.number().min(8).max(300),
+    fontFamily: z.enum(FONT_FAMILIES),
+    fontWeight: z.union([z.literal(400), z.literal(600), z.literal(700)]),
+    uppercase: z.boolean().optional(),
+    letterSpacing: z.number().min(-2).max(40).optional(),
+    color,
+    /** 2% (barely there) to 100%. */
+    opacity: z.number().min(0.02).max(1),
+  }),
 ]);
 export type CertificateElement = z.infer<typeof certificateElementSchema>;
 export type CertificateElementType = CertificateElement['type'];
