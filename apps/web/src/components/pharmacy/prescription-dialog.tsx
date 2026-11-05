@@ -1,7 +1,7 @@
 'use client';
 import { useUnits } from '@/lib/units';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FREQUENCIES, ROUTES, allergyConflictText, allergyConflicts, ownerInstructions } from '@vcms/shared';
+import { FREQUENCIES, ROUTES, allergyConflictText, allergyConflicts, ownerInstructions, weightIn } from '@vcms/shared';
 import { AlertTriangle, Calculator, Info, Plus, ShieldAlert, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -353,6 +353,7 @@ export function PrescriptionDialog({
   const { can } = useSession();
   const qc = useQueryClient();
   const u = useUnits();
+  const weightUnit = u.units.weight;
   const [weight, setWeight] = useState('');
   const [lines, setLines] = useState<Line[]>([blankLine(1)]);
   const [evals, setEvals] = useState<Record<number, DoseEvaluation | null>>({});
@@ -360,13 +361,13 @@ export function PrescriptionDialog({
   const [error, setError] = useState<unknown>(null);
   useEffect(() => {
     if (open) {
-      setWeight(patient.latestWeightKg ? String(u.fromKg(patient.latestWeightKg)) : '');
+      setWeight(patient.latestWeightKg ? String(weightIn(patient.latestWeightKg, weightUnit)) : '');
       setLines([blankLine(Date.now())]);
       setEvals({});
       setNotes('');
       setError(null);
     }
-  }, [open, patient.latestWeightKg]);
+  }, [open, patient.latestWeightKg, weightUnit]);
   // Typed in the clinic's unit; doses are always worked out per kg.
   const weightKg = weight ? u.toKg(weight) : null;
 
