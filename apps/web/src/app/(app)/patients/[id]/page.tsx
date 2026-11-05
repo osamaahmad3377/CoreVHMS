@@ -1,4 +1,5 @@
 'use client';
+import { PatientCertificates } from '@/components/certificates/patient-certificates';
 import { useUnits } from '@/lib/units';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { enumLabel } from '@vcms/shared';
@@ -325,6 +326,7 @@ function PatientRecord() {
           {can('preventive.read') && <TabsTrigger value="care">Care plan</TabsTrigger>}
           {moduleOn('wellness') && can('wellness.read') && <TabsTrigger value="wellness">Wellness plan</TabsTrigger>}
           {moduleOn('dental') && can('clinical.read') && <TabsTrigger value="dental">Dental</TabsTrigger>}
+          {can('certificates.read') && <TabsTrigger value="certificates">Certificates</TabsTrigger>}
           {farmAnimal && can('livestock.read') && <TabsTrigger value="farm">Farm</TabsTrigger>}
           {can('insurance.read') && <TabsTrigger value="insurance">Insurance</TabsTrigger>}
           <TabsTrigger value="weight">Weight</TabsTrigger>
@@ -445,6 +447,11 @@ function PatientRecord() {
         {moduleOn('wellness') && can('wellness.read') && (
           <TabsContent value="wellness">
             <PatientWellnessTab patientId={p.id} patientName={p.name} active={active} />
+          </TabsContent>
+        )}
+        {can('certificates.read') && (
+          <TabsContent value="certificates">
+            <PatientCertificates patientId={p.id} patientName={p.name} />
           </TabsContent>
         )}
         {moduleOn('dental') && can('clinical.read') && (

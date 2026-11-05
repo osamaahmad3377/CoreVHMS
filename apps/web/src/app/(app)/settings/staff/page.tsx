@@ -1,6 +1,7 @@
 'use client';
+import { IssueCertificateDialog } from '@/components/certificates/issue-dialog';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Edit, KeyRound, Lock, Mail, MoreHorizontal, ShieldCheck, UserCheck, UserPlus, Users, UserX } from 'lucide-react';
+import { Award, Edit, KeyRound, Lock, Mail, MoreHorizontal, ShieldCheck, UserCheck, UserPlus, Users, UserX } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirm } from '@/components/confirm';
@@ -30,6 +31,7 @@ export default function StaffPage() {
   const list = useQuery({ queryKey: ['staff', q], queryFn: () => api.get<Member[]>(`/staff${qs({ q })}`).then((rows) => [...rows].sort((a, b) => Number(!!a.user.isSystemAccount) - Number(!!b.user.isSystemAccount))) });
   const [dlg, setDlg] = useState<{ open: boolean; member?: Member | null; key: number }>({ open: false, key: 0 });
   const [temp, setTemp] = useState<TemporaryPassword | null>(null);
+  const [certificateFor, setCertificateFor] = useState<Member | null>(null);
   const confirm = useConfirm();
   const issue = useMutation({
     mutationFn: (m: Member) => api.post<TemporaryPassword>(`/staff/${m.id}/temporary-password`),
@@ -179,6 +181,11 @@ export default function StaffPage() {
                       <DropdownMenuItem onSelect={() => setDlg({ open: true, member: m, key: Date.now() })}>
                         <Edit /> Edit roles &amp; details
                       </DropdownMenuItem>
+                      {can('certificates.staff') && m.status !== 'INVITED' && (
+                        <DropdownMenuItem onSelect={() => setCertificateFor(m)}>
+                          <Award /> Issue certificate
+                        </DropdownMenuItem>
+                      )}
                       {m.status === 'INVITED' && (
                         <DropdownMenuItem onSelect={() => act.mutate(() => api.post(`/staff/${m.id}/resend-invite`).then(() => toast.success('Invitation re-sent')))}>
                           <Mail /> Resend invitation
@@ -213,6 +220,7 @@ export default function StaffPage() {
       </Card>
       {dlg.open && <MemberDialog key={dlg.key} member={dlg.member} open={dlg.open} onOpenChange={(open) => setDlg((d) => ({ ...d, open }))} onTemporaryPassword={setTemp} />}
       <TemporaryPasswordDialog result={temp} onClose={() => setTemp(null)} />
+      {certificateFor && <IssueCertificateDialog open onOpenChange={(o) => !o && setCertificateFor(null)} subject="STAFF" membership={{ id: certificateFor.id, name: certificateFor.user.name }} />}
     </RequirePermission>
   );
 }

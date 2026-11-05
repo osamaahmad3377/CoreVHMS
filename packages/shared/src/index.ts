@@ -7,6 +7,7 @@ export * from './allergy';
 export * from './treatment';
 export * from './modules';
 export * from './dental';
+export * from './certificates';
 export * from './schemas/common';
 export * from './schemas/auth';
 export * from './schemas/admin';

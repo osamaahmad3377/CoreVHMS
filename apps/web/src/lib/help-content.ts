@@ -226,6 +226,31 @@ export const GUIDES: HelpGuide[] = [
     keywords: ['dental', 'teeth', 'tooth', 'odontogram', 'periodontal', 'extraction', 'scale and polish', 'dentistry', 'triadan', 'tartar', 'calculus', 'gingivitis', 'resorption'],
   },
   {
+    id: 'certificates',
+    title: 'Issue a certificate',
+    summary: 'Vaccination, health, fitness to travel, microchip, desexing and other patient certificates — and employment, experience, training and other staff certificates — each with a QR code anyone can scan to check it.',
+    area: 'Clinical',
+    anyOf: ['certificates.read', 'certificates.staff'],
+    steps: [
+      'For a patient: open the patient → Certificates tab → Issue certificate (or press Certificate in a consultation). For staff: Settings → Staff accounts → ⋯ next to the person → Issue certificate. Or use Certificates in the menu.',
+      'Choose the kind of certificate. The form is filled in from the records — vaccinations, microchip, date of death, when someone joined — so you only check it and add what is missing (e.g. the destination for travel).',
+      'For a vaccination certificate, tick the vaccinations to list. Set how long it is valid, or choose No expiry.',
+      'The preview shows exactly what will print. Press Issue certificate, then Print — it prints on one page at its true size (A4 or Letter).',
+      'Made a mistake? Press Correct: a new certificate is issued with your changes and the old one is revoked as replaced. Use Revoke only to cancel one outright — anyone who scans it then sees it is revoked, and why.',
+    ],
+    tips: [
+      'Issued certificates are never changed. Each has a number (CERT-000001) and a verification code; its QR code opens a page on your clinic’s address that says whether it is genuine and valid, expired or revoked. Barcode scanners can type the code into yourclinic address/verify.',
+      'Change how certificates look under Settings → Certificate templates: start from the Classic, Modern or Elegant design and drag and drop text, fields (patient name, microchip, vet…), your logo, a scanned signature or stamp, the QR code, barcode, lines and frames.',
+      'Each kind uses its default template; certificates already issued keep the design they were issued with.',
+      'Vets issue patient certificates; staff certificates are issued, and seen, only by those who manage staff.',
+    ],
+    links: [
+      { label: 'Certificates', href: '/certificates' },
+      { label: 'Certificate templates', href: '/settings/certificate-templates', anyOf: ['certificates.templates'] },
+    ],
+    keywords: ['certificate', 'vaccination certificate', 'rabies', 'health certificate', 'travel', 'fit to fly', 'fitness', 'microchip', 'desexing', 'spay', 'neuter', 'death', 'euthanasia', 'employment', 'experience letter', 'training', 'cpd', 'appreciation', 'qr', 'barcode', 'verify'],
+  },
+  {
     id: 'front-desk',
     title: 'Check in arrivals, walk-ins and emergencies',
     summary: 'Run the waiting room from the Front desk board.',

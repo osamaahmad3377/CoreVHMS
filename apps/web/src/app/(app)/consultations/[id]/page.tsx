@@ -1,7 +1,8 @@
 'use client';
+import { IssueCertificateDialog } from '@/components/certificates/issue-dialog';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { enumLabel, type Paginated } from '@vcms/shared';
-import { Activity, AlertTriangle, ArrowRight, MoreHorizontal, BedDouble, CalendarPlus, CheckCircle2, ChevronDown, ClipboardList, FileText, FilePlus, FlaskConical, History, Paperclip, Pill, Printer, Receipt, Scissors, Smile, Stethoscope, Syringe, Upload, XCircle } from 'lucide-react';
+import { Award, Activity, AlertTriangle, ArrowRight, MoreHorizontal, BedDouble, CalendarPlus, CheckCircle2, ChevronDown, ClipboardList, FileText, FilePlus, FlaskConical, History, Paperclip, Pill, Printer, Receipt, Scissors, Smile, Stethoscope, Syringe, Upload, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
@@ -81,6 +82,7 @@ function Workspace() {
   const [labOpen, setLabOpen] = useState(false);
   const [recordOpen, setRecordOpen] = useState(false);
   const [dentalOpen, setDentalOpen] = useState(false);
+  const [certificateOpen, setCertificateOpen] = useState(false);
   const [booked, setBooked] = useState<Appointment | null>(null);
   const vitalsRef = useRef<VitalsPanelHandle>(null);
   const org = useQuery({ queryKey: ['organization'], queryFn: () => api.get<ClinicHeader>('/organization'), staleTime: 300_000 });
@@ -159,6 +161,7 @@ function Workspace() {
     workspace && moduleOn('surgery') && can('surgery.write') && { label: 'Surgery', icon: Scissors, onClick: () => goStep('outcome', () => setSurgeryOpen(true)) },
     active && can('appointments.write') && { label: 'Book recheck', icon: CalendarPlus, onClick: () => setFollowUp(true) },
     moduleOn('dental') && can('clinical.read') && (writable || !!dentalCharts.length) && { label: 'Dental chart', icon: Smile, onClick: openDental },
+    can('certificates.issue') && { label: 'Certificate', icon: Award, onClick: () => setCertificateOpen(true) },
     writable && { label: 'Upload', icon: Upload, onClick: () => (workspace ? goStep('advice', () => scrollTo('attachments-card')) : scrollTo('attachments-card')) },
   ].filter(Boolean) as { label: string; icon: React.ComponentType<{ className?: string }>; onClick: () => void }[];
 
@@ -543,6 +546,7 @@ function Workspace() {
         open={dentalOpen}
         onOpenChange={setDentalOpen}
       />
+      {certificateOpen && <IssueCertificateDialog open onOpenChange={setCertificateOpen} subject="PATIENT" patient={{ id: enc.patient.id, name: enc.patient.name }} encounterId={enc.id} />}
       <PatientHistoryDialog patientId={enc.patient.id} patientName={enc.patient.name} currentId={enc.id} open={historyOpen} onOpenChange={setHistoryOpen} initialVisitId={historyVisit} />
       <FinishConsultationDialog
         encounter={enc}

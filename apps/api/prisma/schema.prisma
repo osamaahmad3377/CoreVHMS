@@ -390,6 +390,8 @@ model Organization {
   wellnessInstalments       WellnessInstalment[]
   wellnessUsages            WellnessUsage[]
   dentalCharts              DentalChart[]
+  certificateTemplates      CertificateTemplate[]
+  certificates              Certificate[]
   dentalToothFindings       DentalToothFinding[]
   dentalProcedures          DentalProcedure[]
   dentalChartAddenda        DentalChartAddendum[]
@@ -640,6 +642,7 @@ model Membership {
 
   fieldVisits  FieldVisit[]  @relation("FieldVisitClinician")
   groomingJobs GroomingJob[] @relation("Groomer")
+  certificates Certificate[]
 
   @@unique([organizationId, userId])
   @@index([userId])
@@ -947,6 +950,7 @@ model Client {
   referrals          Referral[]
   wellnessEnrolments WellnessEnrolment[]
   dentalCharts       DentalChart[]
+  certificates       Certificate[]
 
   @@unique([organizationId, number])
   @@index([organizationId, status, displayName])
@@ -1143,6 +1147,7 @@ model Patient {
   referrals          Referral[]
   wellnessEnrolments WellnessEnrolment[]
   dentalCharts       DentalChart[]
+  certificates       Certificate[]
 
   @@unique([organizationId, number])
   @@index([organizationId, status, name])
@@ -5662,4 +5667,110 @@ model StockDisposalLine {
   batch        StockBatch    @relation(fields: [batchId], references: [id], onDelete: Restrict)
 
   @@index([disposalId])
+}
+
+// ── Certificates ──
+
+enum CertificateKind {
+  VACCINATION
+  RABIES_VACCINATION
+  HEALTH
+  FITNESS_TO_TRAVEL
+  FITNESS
+  MICROCHIP
+  STERILISATION
+  DEATH
+  BREEDING_SOUNDNESS
+  LIVESTOCK_HEALTH
+  PATIENT_CUSTOM
+  EMPLOYMENT
+  EXPERIENCE
+  TRAINING
+  CPD
+  APPRECIATION
+  STAFF_CUSTOM
+}
+
+enum CertificateSubject {
+  PATIENT
+  STAFF
+}
+
+enum CertificateStatus {
+  ISSUED
+  REVOKED
+}
+
+/// A clinic's design for a kind of certificate (Settings → Certificate templates). Issued certificates keep a copy of
+/// the layout, so changing a template never changes a certificate already issued.
+model CertificateTemplate {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  kind           CertificateKind
+  name           String
+  /// The design: page, frame and positioned elements (shared certificateLayoutSchema).
+  layout         Json
+  /// Used when issuing this kind unless another template is chosen (one per kind).
+  isDefault      Boolean         @default(false)
+  isActive       Boolean         @default(true)
+  createdByName  String?
+  updatedByName  String?
+  createdAt      DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime        @updatedAt @db.Timestamptz(3)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  certificates Certificate[]
+
+  @@index([organizationId, kind])
+}
+
+/// An issued certificate. Permanent: only revoking it (or re-pointing it after a patient or client merge) is allowed.
+model Certificate {
+  id               String             @id @default(uuid()) @db.Uuid
+  organizationId   String             @db.Uuid
+  branchId         String?            @db.Uuid
+  number           Int
+  kind             CertificateKind
+  subject          CertificateSubject
+  templateId       String?            @db.Uuid
+  templateName     String
+  patientId        String?            @db.Uuid
+  clientId         String?            @db.Uuid
+  membershipId     String?            @db.Uuid
+  encounterId      String?            @db.Uuid
+  /// The patient's or staff member's name when issued (for lists and search).
+  subjectName      String
+  title            String
+  /// What the issuer filled in.
+  inputs           Json
+  /// Everything printed: { fields: { placeholder: text }, table: rows } — fixed at issue time.
+  data             Json
+  /// The template's design at issue time.
+  layout           Json
+  /// Printed as a QR code and barcode; the public verification page looks it up.
+  verificationCode String             @unique
+  /// SHA-256 of the printed content, shown on the verification page.
+  contentHash      String
+  issuedAt         DateTime           @default(now()) @db.Timestamptz(3)
+  validUntil       DateTime?          @db.Date
+  issuedById       String             @db.Uuid
+  issuedByName     String
+  status           CertificateStatus  @default(ISSUED)
+  revokedAt        DateTime?          @db.Timestamptz(3)
+  revokedByName    String?
+  revokedReason    String?
+  /// The certificate this one corrects (that one is revoked when this is issued).
+  replacesId       String?            @unique @db.Uuid
+  createdAt        DateTime           @default(now()) @db.Timestamptz(3)
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  template     CertificateTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  patient      Patient?             @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  client       Client?              @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  membership   Membership?          @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, number])
+  @@index([organizationId, issuedAt])
+  @@index([patientId])
+  @@index([membershipId])
 }

@@ -1,6 +1,7 @@
 import type { OptionalModule, Permission } from '@vcms/shared';
 import { hasFeature, type Entitlements, type PlanFeature } from '@vcms/shared';
 import {
+  Award,
   Activity,
   BarChart3,
   BellRing,
@@ -92,6 +93,7 @@ export const NAV: NavSection[] = [
       { label: 'Hospital', href: '/hospital', icon: Bed, anyOf: ['hospital.read'], feature: 'hospital', ready: true, module: 'hospital' },
       { label: 'Surgery', href: '/surgery', icon: HeartPulse, anyOf: ['surgery.read'], feature: 'surgery', ready: true, module: 'surgery' },
       { label: 'Vaccines & reminders', href: '/preventive', icon: Syringe, anyOf: ['preventive.read'], ready: true },
+      { label: 'Certificates', href: '/certificates', icon: Award, anyOf: ['certificates.read', 'certificates.staff'], ready: true },
       { label: 'Dental', href: '/dental', icon: Smile, anyOf: ['clinical.read'], ready: true, module: 'dental' },
       { label: 'Wellness plans', href: '/wellness', icon: HeartHandshake, anyOf: ['wellness.read', 'wellness.manage'], ready: true, module: 'wellness' },
     ],
@@ -172,6 +174,7 @@ export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyO
   { label: 'Rooms & equipment', href: '/settings/resources', icon: Bed, anyOf: ['settings.manage'], group: 'Rooms & spaces', hint: 'Consult rooms, theatre and equipment that can be booked' },
   { label: 'Hospital wards & cages', href: '/settings/wards', icon: Bed, anyOf: ['settings.manage'], group: 'Rooms & spaces', hint: 'Where admitted patients stay and the daily fee', module: 'hospital' },
   { label: 'Boarding kennels', href: '/settings/boarding-units', icon: Bed, anyOf: ['settings.manage'], group: 'Rooms & spaces', hint: 'Kennels and catteries for boarding, and the nightly price', module: 'boarding' },
+  { label: 'Certificate templates', href: '/settings/certificate-templates', icon: Award, anyOf: ['certificates.templates'], group: 'Clinical setup', hint: 'Design vaccination, health, travel and staff certificates — drag and drop' },
   { label: 'Consultation templates', href: '/settings/templates', icon: FileText, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Ready-made note layouts for common visits' },
   { label: 'Quick note phrases', href: '/settings/note-phrases', icon: FileText, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'The buttons vets tap in consultation notes instead of typing' },
   { label: 'Species & breeds', href: '/settings/species', icon: PawPrint, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Already filled in; add a breed if one is missing' },

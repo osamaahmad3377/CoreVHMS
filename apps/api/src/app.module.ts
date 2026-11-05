@@ -20,6 +20,7 @@ import { HomeVisitsModule } from './modules/home-visits/home-visits.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { WellnessModule } from './modules/wellness/wellness.module';
 import { DentalModule } from './modules/dental/dental.module';
+import { CertificatesModule } from './modules/certificates/certificates.module';
 import { PharmacyModule } from './modules/pharmacy/pharmacy.module';
 import { LabModule } from './modules/lab/lab.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
@@ -80,6 +81,7 @@ import { env } from './config/env';
     AttendanceModule,
     WellnessModule,
     DentalModule,
+    CertificatesModule,
     PharmacyModule,
     LabModule,
     InventoryModule,

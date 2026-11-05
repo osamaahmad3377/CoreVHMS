@@ -15,8 +15,10 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
   // Pages for services the clinic does not offer (Settings → Services you offer) are hidden.
   const items = visibleSettings(canAny, session.organization?.enabledModules, !!session.entitlements);
   const current = items.find((i) => pathname.startsWith(i.href));
+  // The certificate designer needs the whole width.
+  if (/^\/settings\/certificate-templates\/[^/]+$/.test(pathname)) return <RequirePermission anyOf={['certificates.templates']}>{children}</RequirePermission>;
   return (
-    <RequirePermission anyOf={['org.manage', 'branches.manage', 'users.read', 'roles.manage', 'settings.manage', 'branding.manage', 'integrations.manage']}>
+    <RequirePermission anyOf={['org.manage', 'branches.manage', 'users.read', 'roles.manage', 'settings.manage', 'branding.manage', 'integrations.manage', 'certificates.templates']}>
       <PageHeader help="setup" title="Settings" description="Your clinic details, staff, prices and printing" />
       <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
         {/* Small screens: one compact picker instead of a hidden horizontal scroller of 17 links. */}
