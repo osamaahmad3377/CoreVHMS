@@ -269,7 +269,9 @@ export class CertificatesService {
       o ? [o.addressLine1, o.addressLine2, [o.city, o.postcode].filter(Boolean).join(' ')].filter(Boolean).join(', ') : '';
 
     const f: Record<string, string> = {
-      'clinic.name': org.brandName ?? org.name,
+      // The Clinic name from Settings → Clinic details (not the white-label branding name).
+      'clinic.name': org.name,
+      'clinic.legalName': org.legalName ?? org.name,
       'clinic.address': address(branch?.addressLine1 ? branch : org),
       'clinic.phone': branch?.phone ?? org.phone ?? '',
       'clinic.email': branch?.email ?? org.email ?? '',
@@ -456,7 +458,7 @@ export class CertificatesService {
     const c = await this.prisma.raw.certificate.findUnique({
       where: { verificationCode: code },
       include: {
-        organization: { select: { name: true, brandName: true } },
+        organization: { select: { name: true } },
         patient: { select: { name: true, species: { select: { name: true } }, breed: { select: { name: true } }, breedText: true } },
         client: { select: { displayName: true } },
         membership: { select: { jobTitle: true } },
@@ -477,7 +479,7 @@ export class CertificatesService {
       kindLabel: CERTIFICATE_KIND_INFO[c.kind].label,
       issuedAt: c.issuedAt.toISOString(),
       validUntil: c.validUntil ? dayOf(c.validUntil) : null,
-      clinic: c.organization.brandName ?? c.organization.name,
+      clinic: c.organization.name,
       subject: c.patient
         ? `${c.patient.name} — ${[c.patient.species.name, c.patient.breed?.name ?? c.patient.breedText].filter(Boolean).join(', ')}`
         : `${c.subjectName}${c.membership?.jobTitle ? ` — ${c.membership.jobTitle}` : ''}`,

@@ -326,6 +326,7 @@ export interface CertificateField {
 
 const COMMON_FIELDS: CertificateField[] = [
   { key: 'clinic.name', label: 'Clinic name', sample: 'Happy Paws Veterinary Clinic' },
+  { key: 'clinic.legalName', label: 'Clinic legal name (the clinic name if none is set)', sample: 'Happy Paws Veterinary Services (Pvt) Ltd' },
   { key: 'clinic.address', label: 'Clinic address', sample: '12 Main Boulevard, Gulberg, Lahore' },
   { key: 'clinic.phone', label: 'Clinic phone', sample: '0300 1234567' },
   { key: 'clinic.email', label: 'Clinic email', sample: 'hello@happypaws.pk' },

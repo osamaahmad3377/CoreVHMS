@@ -1,7 +1,8 @@
 import { defaultCertificateLayout } from '@vcms/shared';
 import { TestClient, closeApp, getApp, makeClient, makePatient, prisma, registerOrg, staff } from './helpers';
 
-const today = () => new Date().toISOString().slice(0, 10);
+// Test clinics are in Pakistan: their calendar day can be a day ahead of UTC.
+const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' });
 const inDays = (n: number) => new Date(Date.now() + n * 86400_000).toISOString().slice(0, 10);
 
 async function setup() {
@@ -150,6 +151,19 @@ describe('Certificates', () => {
     expect((await org.owner.del(`/certificate-templates/${second.id}`)).status).toBe(200);
     // Vets can see the templates to choose one, but not change them.
     expect((await vet.client.get('/certificate-templates?kind=HEALTH')).body.map((x: any) => x.name)).toEqual(['Green health']);
+  });
+
+  it('prints the clinic name from Settings → Clinic details, whatever the branding name is', async () => {
+    const { org, vet, patient } = await setup();
+    const orgName = (await org.owner.get('/organization')).body.name;
+    expect((await org.owner.call('put', '/organization/branding', { brandName: 'Fancy Pets Brand' })).status).toBe(200);
+    expect((await org.owner.patch('/organization', { legalName: 'Official Legal Name Ltd' })).status).toBe(200);
+    const c = (await vet.client.post('/certificates', { kind: 'HEALTH', patientId: patient.id, inputs: { examDate: today() } })).body;
+    expect(c.data.fields['clinic.name']).toBe(orgName);
+    expect(c.data.fields['clinic.legalName']).toBe('Official Legal Name Ltd');
+    expect(JSON.stringify(c.data.fields)).not.toContain('Fancy Pets Brand');
+    const anon = Object.assign(new TestClient(await getApp()), {});
+    expect((await anon.get(`/public/certificates/${c.verificationCode.replace(/-/g, '')}`)).body.clinic).toBe(orgName);
   });
 
   it('moves certificates with the patient when duplicates are merged', async () => {
