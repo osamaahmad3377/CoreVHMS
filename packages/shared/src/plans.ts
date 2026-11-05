@@ -1,5 +1,6 @@
 import type { ClinicPaymentView, PaymentState } from './schemas/platform';
 import { z } from 'zod';
+import { formatMoney } from './money';
 import { optText, reqText } from './schemas/common';
 
 /**
@@ -410,6 +411,57 @@ export const DEFAULT_PLANS: Omit<PlanInput, 'currency' | 'isActive'>[] = [
   },
 ];
 
+// ── Discounts for one clinic ──
+
+export const DISCOUNT_TYPES = ['PERCENT', 'AMOUNT'] as const;
+export type DiscountType = (typeof DISCOUNT_TYPES)[number];
+
+/**
+ * A discount NextCore gives one clinic on its fee: a percentage off, or a fixed amount off each month (12 times that
+ * off a year paid upfront). It covers the whole fee (plan and extras), never below zero, and stops by itself after
+ * `endsAt` (null: until removed).
+ */
+export interface ClinicDiscount {
+  type: DiscountType;
+  /** Percent (1–100), or the amount off a month in minor units. */
+  value: number;
+  endsAt: string | null;
+  note: string | null;
+}
+
+export const clinicDiscountSchema = z
+  .object({
+    type: z.enum(DISCOUNT_TYPES),
+    value: z.number().int().positive('Enter more than 0'),
+    endsAt: z.string().datetime({ offset: true }).nullable(),
+    note: optText(200),
+  })
+  .refine((d) => d.type !== 'PERCENT' || d.value <= 100, { message: 'A percentage is at most 100', path: ['value'] });
+/** Set (or with null, remove) a clinic's discount. */
+export const clinicDiscountInputSchema = z.object({ discount: clinicDiscountSchema.nullable() });
+export type ClinicDiscountInput = z.infer<typeof clinicDiscountInputSchema>;
+
+/** The discount's fields as stored on a clinic. */
+export interface DiscountFields {
+  discountType?: DiscountType | null;
+  discountValue?: number | null;
+  discountEndsAt?: Date | string | null;
+  discountNote?: string | null;
+}
+
+/** The clinic's discount, if it has one that hasn't ended. */
+export function activeDiscount(c: DiscountFields, now = new Date()): ClinicDiscount | null {
+  if (!c.discountType || !c.discountValue) return null;
+  const endsAt = c.discountEndsAt ? new Date(c.discountEndsAt) : null;
+  if (endsAt && endsAt <= now) return null;
+  return { type: c.discountType, value: c.discountValue, endsAt: endsAt?.toISOString() ?? null, note: c.discountNote ?? null };
+}
+
+/** "20% off", "Rs 1,000 off a month". */
+export function discountLabel(d: Pick<ClinicDiscount, 'type' | 'value'>, currency: string) {
+  return d.type === 'PERCENT' ? `${d.value}% off` : `${formatMoney(d.value, currency).replace(/\.00$/, '')} off a month`;
+}
+
 /** What a plan costs a month on a billing cycle (a yearly price is spread over 12 months). */
 export function monthlyPrice(p: { priceMonthlyMinor: number; priceYearlyMinor?: number | null }, cycle: BillingCycle = 'MONTHLY') {
   return cycle === 'YEARLY' && p.priceYearlyMinor != null ? Math.round(p.priceYearlyMinor / 12) : p.priceMonthlyMinor;
@@ -446,6 +498,12 @@ export interface ClinicBill {
   totalMinor: number;
   inTrial: boolean;
   currency: string;
+  /** NextCore's discount for this clinic (null: none, or it has ended); already taken off the fees above. */
+  discount: ClinicDiscount | null;
+  /** The discount a month on the clinic's cycle (a yearly discount spread over 12). */
+  discountMinor: number;
+  /** Paying monthly, before the discount. */
+  fullMonthlyFeeMinor: number;
 }
 
 /**
@@ -456,7 +514,7 @@ export interface ClinicBill {
  */
 export function clinicBill(
   plan: Pick<PlatformPlan, 'priceMonthlyMinor' | 'priceYearlyMinor' | 'currency' | 'maxStaff' | 'maxBranches' | 'extraBranchMinor' | 'extraStaffMinor'> & { storageGb?: number | null; extraStorageMinor?: number | null },
-  c: { billingCycle: BillingCycle; staffLimitOverride: number | null; branchLimitOverride: number | null; storageLimitOverrideGb?: number | null; trialEndsAt: Date | string | null },
+  c: { billingCycle: BillingCycle; staffLimitOverride: number | null; branchLimitOverride: number | null; storageLimitOverrideGb?: number | null; trialEndsAt: Date | string | null } & DiscountFields,
   now = new Date(),
   used?: { staff: number; branches: number } | null,
 ): ClinicBill {
@@ -469,9 +527,15 @@ export function clinicBill(
   const planMinor = monthlyPrice(plan, c.billingCycle);
   const extrasMinor = extraBranches * (plan.extraBranchMinor ?? 0) + extraStaff * (plan.extraStaffMinor ?? 0) + extraStoragePacks * (plan.extraStorageMinor ?? 0);
   const inTrial = !!c.trialEndsAt && new Date(c.trialEndsAt) > now;
-  const monthlyFeeMinor = plan.priceMonthlyMinor + extrasMinor;
-  const yearlyFeeMinor = plan.priceYearlyMinor != null ? plan.priceYearlyMinor + 12 * extrasMinor : null;
+  const discount = activeDiscount(c, now);
+  // A percentage comes off each fee; a fixed amount comes off each month (12 times off a year upfront). Never below 0.
+  const off = (fee: number, months: number) => (!discount ? 0 : Math.min(fee, discount.type === 'PERCENT' ? Math.round((fee * discount.value) / 100) : discount.value * months));
+  const grossMonthly = plan.priceMonthlyMinor + extrasMinor;
+  const grossYearly = plan.priceYearlyMinor != null ? plan.priceYearlyMinor + 12 * extrasMinor : null;
+  const monthlyFeeMinor = grossMonthly - off(grossMonthly, 1);
+  const yearlyFeeMinor = grossYearly != null ? grossYearly - off(grossYearly, 12) : null;
   const yearly = c.billingCycle === 'YEARLY' && yearlyFeeMinor != null;
+  const discountMinor = yearly ? Math.round(off(grossYearly!, 12) / 12) : off(grossMonthly, 1);
   return {
     cycle: yearly ? 'YEARLY' : 'MONTHLY',
     monthlyFeeMinor,
@@ -486,9 +550,12 @@ export function clinicBill(
     extraStoragePacks,
     extraStorageMinor: plan.extraStorageMinor ?? null,
     extrasMinor,
-    totalMinor: inTrial ? 0 : planMinor + extrasMinor,
+    totalMinor: inTrial ? 0 : Math.max(0, planMinor + extrasMinor - discountMinor),
     inTrial,
     currency: plan.currency,
+    discount,
+    discountMinor,
+    fullMonthlyFeeMinor: grossMonthly,
   };
 }
 

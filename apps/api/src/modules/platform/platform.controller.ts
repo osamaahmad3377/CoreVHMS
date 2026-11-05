@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query, Req, Res } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { clinicAddressSchema, clinicBillingSchema, clinicPlanSchema, createClinicSchema, paymentListSchema, planInputSchema, recordPaymentSchema, voidPaymentSchema, type HostInfo } from '@vcms/shared';
+import { clinicAddressSchema, clinicBillingSchema, clinicDiscountInputSchema, clinicPlanSchema, createClinicSchema, paymentListSchema, planInputSchema, recordPaymentSchema, voidPaymentSchema, type HostInfo } from '@vcms/shared';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { Public, RequirePermissions } from '../../common/auth/decorators';
@@ -58,6 +58,14 @@ export class PlatformClinicsController {
   @ApiZodBody(clinicPlanSchema)
   assignPlan(@Param('id', ParseUUIDPipe) id: string, @Body(zp(clinicPlanSchema)) body: z.infer<typeof clinicPlanSchema>) {
     return this.clinics.assignPlan(id, body);
+  }
+
+  /** A discount for this clinic on its fee (percentage or an amount a month, optionally until a date). */
+  @Put(':id/discount')
+  @RequirePermissions('platform.plans.manage')
+  @ApiZodBody(clinicDiscountInputSchema)
+  setDiscount(@Param('id', ParseUUIDPipe) id: string, @Body(zp(clinicDiscountInputSchema)) body: z.infer<typeof clinicDiscountInputSchema>) {
+    return this.clinics.setDiscount(id, body);
   }
 
   /** Monthly or yearly billing, and a free trial or free period (then another plan, or paused). */

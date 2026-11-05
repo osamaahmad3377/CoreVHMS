@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { COUNTRIES, STORAGE_PACK_GB, storageText, yearlyMonthsFree, type ClinicOverview, type PlatformPlan } from '@vcms/shared';
+import { COUNTRIES, STORAGE_PACK_GB, discountLabel, storageText, yearlyMonthsFree, type ClinicOverview, type PlatformPlan } from '@vcms/shared';
 import {
   AlertTriangle,
   Building2,
@@ -31,6 +31,7 @@ import { Suspense, use, useState } from 'react';
 import { toast } from 'sonner';
 import { ErrorState, LoadingRows, PageHeader } from '@/components/page';
 import { FeeLines, PaymentBadge, PaymentsTable, RecordPaymentDialog, canRemind, downloadPaymentsCsv, paymentText, useBillingActions } from '@/components/platform/billing-ui';
+import { ClinicDiscountCard } from '@/components/platform/clinic-discount-card';
 import { ClinicBillingCard, ClinicPlanCard } from '@/components/platform/clinic-plan-card';
 import { ClinicActionsMenu, CopyButton, OwnerAccessDialog, StatusBadge, shortAddress, useClinicActions, type OwnerAccess } from '@/components/platform/clinic-ui';
 import { BillBreakdown, amount } from '@/components/platform/plan-ui';
@@ -53,6 +54,8 @@ const EVENT_LABELS: Record<string, string> = {
   'platform.clinic_added_existing': 'Existing database added',
   'platform.clinic_plan_changed': 'Plan changed',
   'platform.clinic_billing_changed': 'Billing or free period changed',
+  'platform.clinic_discount_set': 'Discount given',
+  'platform.clinic_discount_removed': 'Discount removed',
   'platform.plan_request_approved': 'Owner’s request approved',
   'platform.plan_request_dismissed': 'Owner’s request dismissed',
   'platform.payment_recorded': 'Payment recorded',
@@ -358,6 +361,7 @@ function ClinicPage({ id }: { id: string }) {
                     </div>
                     <dl className="grid content-start gap-3 text-sm">
                       <Detail narrow label="Pays">{c.bill.cycle === 'YEARLY' ? 'A year upfront' : 'Monthly'}</Detail>
+                      {c.bill.discount && <Detail narrow label="Discount"><span className="font-medium text-success">{discountLabel(c.bill.discount, c.bill.currency)}</span>{c.bill.discount.endsAt ? ` until ${fmtDate(c.bill.discount.endsAt)}` : ''}</Detail>}
                       <Detail narrow label="Status"><span className="inline-flex flex-wrap items-center gap-2"><PaymentBadge state={c.payment} /> <span className="text-xs text-muted-foreground">{paymentText(c.payment)}</span></span></Detail>
                       <Detail narrow label="Next payment">{c.payment.kind === 'NO_PLAN' || c.payment.kind === 'FREE' ? '—' : `${amount(c.payment.dueMinor, c.payment.currency)} ${c.payment.kind === 'TRIAL' ? `when the trial ends (${fmtDate(c.payment.date)})` : c.payment.date ? `by ${fmtDate(c.payment.date)}` : 'now'}`}</Detail>
                       <Detail narrow label="Paid until">{c.paidUntil ? fmtDate(c.paidUntil) : '—'}</Detail>
@@ -382,6 +386,7 @@ function ClinicPage({ id }: { id: string }) {
             </Card>
           </div>
           <div className="grid content-start gap-4">
+            {live && c.planId && <ClinicDiscountCard key={JSON.stringify([c.discountType, c.discountValue, c.discountEndsAt, c.discountNote])} overview={q.data} />}
             {live && c.planId && (
               <ClinicBillingCard key={JSON.stringify([c.planId, c.billingCycle, c.trialEndsAt, c.trialThenPlanId])} overview={q.data} onRecordPayment={() => setPaying(true)} />
             )}

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Branding } from '../branding';
-import { BILLING_CYCLES, type BillingCycle, type ClinicBill, type Entitlements, type PlanFeature } from '../plans';
+import { BILLING_CYCLES, type BillingCycle, type ClinicBill, type DiscountType, type Entitlements, type PlanFeature } from '../plans';
 import { optText } from './common';
 
 /** A clinic's subdomain: 3–30 lowercase letters, numbers and single hyphens, starting with a letter. */
@@ -217,6 +217,11 @@ export interface PlatformClinic {
   trialThenPlanId: string | null;
   /** Why it is paused, e.g. TRIAL_ENDED. */
   pausedReason: string | null;
+  /** NextCore's discount for this clinic as set, even if it has ended (the bill has the one that applies now). */
+  discountType: DiscountType | null;
+  discountValue: number | null;
+  discountEndsAt: string | null;
+  discountNote: string | null;
   /** Its monthly bill (null without a plan). */
   bill: ClinicBill | null;
   /** The end of what it has paid for (null: nothing recorded). */

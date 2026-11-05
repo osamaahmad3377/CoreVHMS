@@ -513,6 +513,38 @@ describe('Multi-clinic hosting', () => {
       await billing({});
     });
 
+    it('gives one clinic a discount: a percentage or an amount a month, until a date, seen by the owner', async () => {
+      const starterPlan = await planByName('Starter');
+      await setPlan(lc.id, { planId: starterPlan.id });
+      await superAdmin.call('put', `/platform/clinics/${lc.id}/billing`, { billingCycle: 'MONTHLY', trialEndsAt: null, trialThenPlanId: null });
+      const clinic = async () => (await superAdmin.get(`/platform/clinics/${lc.id}`)).body;
+      const full = (await clinic()).bill.monthlyFeeMinor;
+      const put = (discount: unknown, as = superAdmin) => as.call('put', `/platform/clinics/${lc.id}/discount`, { discount });
+
+      // Only the super admin; sensible values only.
+      expect((await put({ type: 'PERCENT', value: 20, endsAt: null }, lc.owner)).status).toBe(403);
+      expect((await put({ type: 'PERCENT', value: 150, endsAt: null })).status).toBe(400);
+      expect((await put({ type: 'AMOUNT', value: 100_000, endsAt: new Date(Date.now() - 86400_000).toISOString() })).body.error.code).toBe('DATE_PASSED');
+
+      const until = new Date(Date.now() + 90 * 86400_000).toISOString();
+      const pct = await put({ type: 'PERCENT', value: 20, endsAt: until, note: 'Launch offer' });
+      expect(pct.status).toBe(200);
+      expect(pct.body).toMatchObject({ discountType: 'PERCENT', discountValue: 20, discountNote: 'Launch offer', bill: { monthlyFeeMinor: Math.round(full * 0.8), fullMonthlyFeeMinor: full, discount: { type: 'PERCENT', value: 20, endsAt: until } } });
+      expect(pct.body.payment.dueMinor).toBe(Math.round(full * 0.8));
+      // The owner sees the lower fee and the discount; the clinic's history records it.
+      const owner = (await lc.owner.get('/organization/plan')).body.billing;
+      expect(owner.bill).toMatchObject({ chargeMinor: Math.round(full * 0.8), discount: { type: 'PERCENT', value: 20 } });
+
+      const amt = await put({ type: 'AMOUNT', value: 100_000, endsAt: null });
+      expect(amt.body.bill).toMatchObject({ monthlyFeeMinor: full - 100_000, discount: { type: 'AMOUNT', value: 100_000, endsAt: null, note: null } });
+      // Removing it: the full fee again.
+      expect((await put(null)).body).toMatchObject({ discountType: null, bill: { monthlyFeeMinor: full, discount: null } });
+      const events = (await superAdmin.get(`/platform/clinics/${lc.id}/overview`)).body.events.map((e: any) => [e.action, e.summary]);
+      expect(events).toEqual(expect.arrayContaining([['platform.clinic_discount_set', expect.stringContaining('20% off until')], ['platform.clinic_discount_removed', expect.stringMatching(/^Removed \(was .*1,000 off a month\)$/)]]));
+      // The database refuses a discount with no value, even bypassing the app.
+      await expect(prisma().tenant.update({ where: { id: lc.id }, data: { discountType: 'PERCENT', discountValue: null } })).rejects.toThrow(/tenant_discount_valid/);
+    });
+
     it('records payments: paid until, free months for a year upfront, cancelling, reminders, the summary and pausing for non-payment', async () => {
       const starterPlan = await planByName('Starter');
       await setPlan(lc.id, { planId: starterPlan.id });

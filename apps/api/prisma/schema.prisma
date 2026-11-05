@@ -196,6 +196,12 @@ model Tenant {
   /// The end of the period the clinic has paid for (from its payments); null = nothing recorded.
   paidUntil              DateTime?       @db.Timestamptz(3)
   payments               ClinicPayment[]
+  /// NextCore's discount for this clinic on its whole fee: PERCENT (value 1–100) or AMOUNT (minor units off a month,
+  /// 12× off a year upfront). Stops by itself after discountEndsAt (null = until removed).
+  discountType           DiscountType?
+  discountValue          Int?
+  discountEndsAt         DateTime?       @db.Timestamptz(3)
+  discountNote           String?
 
   @@index([status])
   @@index([planId])
@@ -720,6 +726,11 @@ model MfaChallenge {
   createdAt  DateTime  @default(now()) @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum DiscountType {
+  PERCENT
+  AMOUNT
 }
 
 enum AuthTokenType {

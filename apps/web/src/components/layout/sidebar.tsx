@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { visibleNav } from '@/lib/navigation';
 import { useSession } from '@/lib/session';
-import { cn } from '@/lib/utils';
+import { cn, initials as initialsOf } from '@/lib/utils';
 import { MENU_LOGO_HEIGHT } from '@vcms/shared';
 import { logoFor, menuIsDark } from '../branding/brand-theme';
 import { Tip } from '../ui/tooltip';
@@ -107,7 +107,7 @@ export function SidebarNav({ collapsed, onNavigate }: { collapsed?: boolean; onN
 function SidebarFooter({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const { session } = useSession();
   const name = session.user.name;
-  const initials = name.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('');
+  const initials = initialsOf(name);
   const role = session.roles.map((r) => r.name.replace(/ & procurement officer$/, ' officer')).join(', ');
   return (
     <div className={cn('p-3', collapsed && 'px-2')}>

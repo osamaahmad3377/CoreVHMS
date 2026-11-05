@@ -108,7 +108,7 @@ export function ClinicPlanCard({ overview }: { overview: ClinicOverview }) {
   const branchLimit = branchOverride ?? plan?.maxBranches ?? null;
   const staffUsed = usage?.staffCounted ?? null;
   const branchesUsed = usage?.branches ?? null;
-  const bill = plan ? clinicBill(plan, { billingCycle: c.billingCycle, staffLimitOverride: staffOverride, branchLimitOverride: branchOverride, storageLimitOverrideGb: storageOverride, trialEndsAt: c.trialEndsAt }, undefined, usage && { staff: usage.staffCounted, branches: usage.branches }) : null;
+  const bill = plan ? clinicBill(plan, { billingCycle: c.billingCycle, staffLimitOverride: staffOverride, branchLimitOverride: branchOverride, storageLimitOverrideGb: storageOverride, trialEndsAt: c.trialEndsAt, discountType: c.discountType, discountValue: c.discountValue, discountEndsAt: c.discountEndsAt }, undefined, usage && { staff: usage.staffCounted, branches: usage.branches }) : null;
   // Staff or branches in use above the plan and the extra places given are billed too.
   const billedOverStaff = bill ? bill.extraStaff - xStaff : 0;
   const billedOverBranches = bill ? bill.extraBranches - xBranches : 0;

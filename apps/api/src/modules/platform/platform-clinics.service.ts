@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import type { Plan, Tenant } from '@prisma/client';
-import { STORAGE_PACK_GB, clinicBill, paymentState, type ClinicBillingInput, type ClinicOverview, type ClinicPlanInput, type ClinicUsage, type CreateClinicInput, type PlanFeature, type PlanRequestView, type PlatformClinic } from '@vcms/shared';
+import { STORAGE_PACK_GB, clinicBill, discountLabel, paymentState, type ClinicDiscountInput, type ClinicBillingInput, type ClinicOverview, type ClinicPlanInput, type ClinicUsage, type CreateClinicInput, type PlanFeature, type PlanRequestView, type PlatformClinic } from '@vcms/shared';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { randomToken, sha256 } from '../../common/crypto/crypto';
@@ -62,6 +62,10 @@ export function toClinic(t: TenantWithPlan, seats?: Seats | null): PlatformClini
     trialEndsAt: t.trialEndsAt?.toISOString() ?? null,
     trialThenPlanId: t.trialThenPlanId,
     pausedReason: t.pausedReason,
+    discountType: t.discountType,
+    discountValue: t.discountValue,
+    discountEndsAt: t.discountEndsAt?.toISOString() ?? null,
+    discountNote: t.discountNote,
     bill,
     paidUntil: t.paidUntil?.toISOString() ?? null,
     lastPaymentAt: t.payments?.[0]?.paidAt.toISOString() ?? null,
@@ -317,6 +321,30 @@ export class PlatformClinicsService implements OnModuleInit, OnModuleDestroy {
         ends ? `free until ${ends.toISOString().slice(0, 10)}, then ${then ? then.name : 'paused'}` : t.trialEndsAt ? 'marked as paying' : null,
       ].filter(Boolean).join(' · ');
       await this.audit.record({ action: 'platform.clinic_billing_changed', entityType: 'Tenant', entityId: id, summary, organizationId: null }, tx);
+    });
+    this.tenancy.forget(t.slug);
+    return this.get(id);
+  }
+
+  /** NextCore's discount for this clinic (null removes it). It applies to every fee from now on. */
+  async setDiscount(id: string, input: ClinicDiscountInput) {
+    const t = await this.find(id);
+    const d = input.discount;
+    const ends = d?.endsAt ? new Date(d.endsAt) : null;
+    if (ends && ends <= new Date()) throw ruleViolation('DATE_PASSED', 'Choose an end date in the future');
+    if (d?.type === 'AMOUNT' && !t.plan) throw ruleViolation('NO_PLAN', 'Give the clinic a plan first');
+    await this.prisma.control.$transaction(async (tx) => {
+      await tx.tenant.update({
+        where: { id },
+        data: { discountType: d?.type ?? null, discountValue: d?.value ?? null, discountEndsAt: ends, discountNote: d?.note || null },
+      });
+      const currency = t.plan?.currency ?? 'PKR';
+      const summary = d
+        ? `${discountLabel(d, currency)}${ends ? ` until ${ends.toISOString().slice(0, 10)}` : ''}${d.note ? ` — ${d.note}` : ''}`
+        : t.discountType
+          ? `Removed (was ${discountLabel({ type: t.discountType, value: t.discountValue! }, currency)})`
+          : 'No discount';
+      await this.audit.record({ action: d ? 'platform.clinic_discount_set' : 'platform.clinic_discount_removed', entityType: 'Tenant', entityId: id, summary, organizationId: null }, tx);
     });
     this.tenancy.forget(t.slug);
     return this.get(id);

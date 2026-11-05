@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { GB, STORAGE_PACK_GB, daysLeft, formatMoney, storageText, monthlyPrice, PLAN_FEATURES, PLAN_FEATURE_INFO, yearlyMonthsFree, type BillingCycle, type ClinicPlanView, type PlanFeature, type PlanOffer } from '@vcms/shared';
+import { GB, STORAGE_PACK_GB, daysLeft, discountLabel, formatMoney, storageText, monthlyPrice, PLAN_FEATURES, PLAN_FEATURE_INFO, yearlyMonthsFree, type BillingCycle, type ClinicPlanView, type PlanFeature, type PlanOffer } from '@vcms/shared';
 import { Building2, Check, Clock, GraduationCap, HardDrive, Headphones, Lock, MessageCircle, Phone, Plus, Receipt, Sparkles, Star, Users, Wand2, X, Zap } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
@@ -310,9 +310,15 @@ function PlanView() {
                 ? 'Your clinic has no limits.'
                 : billing
                   ? billing.bill.inTrial
-                    ? `Free until ${fmtDate(e.trialEndsAt!)}. Then ${price(billing.bill.planMinor + billing.bill.extrasMinor, billing.bill.currency)} a month${billing.cycle === 'YEARLY' ? ' (paid yearly)' : ''}.`
+                    ? `Free until ${fmtDate(e.trialEndsAt!)}. Then ${price(billing.bill.planMinor + billing.bill.extrasMinor - billing.bill.discountMinor, billing.bill.currency)} a month${billing.cycle === 'YEARLY' ? ' (paid yearly)' : ''}.`
                     : `${billing.bill.cycle === 'YEARLY' ? `You pay ${price(billing.bill.chargeMinor, billing.bill.currency)} a year, upfront` : `You pay ${price(billing.bill.chargeMinor, billing.bill.currency)} a month`}${billing.bill.extrasMinor && currentPlan ? (billing.bill.cycle === 'YEARLY' ? `, including ${[billing.bill.extraStaff && `${billing.bill.extraStaff} extra staff`, billing.bill.extraBranches && `${billing.bill.extraBranches} extra branch${billing.bill.extraBranches === 1 ? '' : 'es'}`, billing.bill.extraStoragePacks && `${billing.bill.extraStoragePacks * STORAGE_PACK_GB} GB extra storage`].filter(Boolean).join(' and ')}` : ` (${billSummary(billing.bill, currentPlan.name, billing.cycle)})`) : ''}.${billing.paidUntil ? ` Paid until ${fmtDate(billing.paidUntil)}.` : ''}`
                   : 'What your clinic uses of its plan.'}
+              {e.planName && billing?.bill.discount && (
+                <span className="mt-1 block font-medium text-success">
+                  Your NextCore discount: {discountLabel(billing.bill.discount, billing.bill.currency)}
+                  {billing.bill.discount.endsAt ? `, until ${fmtDate(billing.bill.discount.endsAt)}` : ''} — already taken off.
+                </span>
+              )}
             </CardDescription>
           </div>
         </CardHeader>

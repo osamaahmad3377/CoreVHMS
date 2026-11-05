@@ -1,4 +1,4 @@
-import { DEFAULT_PLANS, FULL_ACCESS, GB, STORAGE_PACK_GB, storageText, clinicBill, daysLeft, matchesRecommended, monthlyPrice, yearlyPriceFor, yearlyMonthsFree, PLAN_FEATURES, PLAN_FEATURE_BENEFITS, clinicPlanSchema, featureLockedMessage, featureOfPermission, permissionInPlan, planInputSchema, plansAllowing, plansWithFeature, resolveEntitlements } from './plans';
+import { DEFAULT_PLANS, FULL_ACCESS, clinicDiscountSchema, discountLabel, GB, STORAGE_PACK_GB, storageText, clinicBill, daysLeft, matchesRecommended, monthlyPrice, yearlyPriceFor, yearlyMonthsFree, PLAN_FEATURES, PLAN_FEATURE_BENEFITS, clinicPlanSchema, featureLockedMessage, featureOfPermission, permissionInPlan, planInputSchema, plansAllowing, plansWithFeature, resolveEntitlements } from './plans';
 import { ALL_PERMISSIONS } from './permissions';
 import { addMonths, nextPeriodStart, paymentState, receiptNumber, recordPaymentSchema } from './schemas/platform';
 
@@ -138,6 +138,29 @@ describe('clinic fees and payments', () => {
     expect(clinicBill({ ...starter, priceYearlyMinor: null }, { ...clinic, billingCycle: 'YEARLY' }, now)).toMatchObject({ cycle: 'MONTHLY', yearlyFeeMinor: null, chargeMinor: 680_000 });
     expect(yearlyPriceFor(680_000, 2)).toBe(6_800_000);
     expect(yearlyPriceFor(680_000, 0)).toBe(8_160_000);
+  });
+
+  it('takes a clinic’s discount off every fee: a percentage, or a fixed amount a month, until it ends', () => {
+    const pct = { ...clinic, discountType: 'PERCENT' as const, discountValue: 20, discountEndsAt: null, discountNote: 'Launch offer' };
+    const b = clinicBill(starter, pct, now, { staff: 3, branches: 1 }); // 680,000 + 50,000 extra staff
+    expect(b).toMatchObject({ monthlyFeeMinor: 584_000, yearlyFeeMinor: Math.round(7_400_000 * 0.8), chargeMinor: 584_000, discountMinor: 146_000, totalMinor: 584_000 });
+    expect(b.discount).toEqual({ type: 'PERCENT', value: 20, endsAt: null, note: 'Launch offer' });
+    // Paying yearly: 20% off the yearly fee, shown a month.
+    expect(clinicBill(professional, { ...pct, billingCycle: 'YEARLY' }, now)).toMatchObject({ chargeMinor: 7_840_000, discountMinor: Math.round(1_960_000 / 12) });
+
+    const amt = { ...clinic, discountType: 'AMOUNT' as const, discountValue: 100_000, discountEndsAt: '2026-12-31T00:00:00Z' };
+    expect(clinicBill(starter, amt, now)).toMatchObject({ monthlyFeeMinor: 580_000, yearlyFeeMinor: 6_800_000 - 1_200_000, discountMinor: 100_000, totalMinor: 580_000 });
+    // Never below zero; nothing off once it has ended, or during a free trial.
+    expect(clinicBill(starter, { ...amt, discountValue: 9_000_000 }, now)).toMatchObject({ monthlyFeeMinor: 0, yearlyFeeMinor: 0, totalMinor: 0 });
+    expect(clinicBill(starter, amt, new Date('2027-01-02T00:00:00Z'))).toMatchObject({ monthlyFeeMinor: 680_000, discount: null, discountMinor: 0 });
+    expect(clinicBill(starter, { ...amt, trialEndsAt: '2026-11-10T00:00:00Z' }, now).totalMinor).toBe(0);
+    // A clinic with no discount pays the plan price.
+    expect(clinicBill(starter, clinic, now)).toMatchObject({ discount: null, discountMinor: 0, monthlyFeeMinor: 680_000 });
+
+    expect(discountLabel({ type: 'PERCENT', value: 15 }, 'PKR')).toBe('15% off');
+    expect(discountLabel({ type: 'AMOUNT', value: 100_000 }, 'PKR')).toMatch(/1,000 off a month$/);
+    expect(clinicDiscountSchema.safeParse({ type: 'PERCENT', value: 120, endsAt: null }).success).toBe(false);
+    expect(clinicDiscountSchema.safeParse({ type: 'AMOUNT', value: 0, endsAt: null }).success).toBe(false);
   });
 
   it('knows whether a clinic is paid up, due soon, overdue or on trial', () => {

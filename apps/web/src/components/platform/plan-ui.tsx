@@ -1,5 +1,5 @@
 'use client';
-import { PLAN_FEATURES, PLAN_FEATURE_INFO, STORAGE_PACK_GB, type BillingCycle, type ClinicBill, type PlanFeature, type PlatformPlan } from '@vcms/shared';
+import { PLAN_FEATURES, PLAN_FEATURE_INFO, STORAGE_PACK_GB, discountLabel, type BillingCycle, type ClinicBill, type PlanFeature, type PlatformPlan } from '@vcms/shared';
 import { Check, Minus } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
@@ -21,12 +21,23 @@ export function billLines(bill: ClinicBill, planName: string, cycle: BillingCycl
   if (bill.extraStaff) lines.push({ label: each(bill.extraStaff, 'extra staff', bill.extraStaffMinor), minor: bill.extraStaff * (bill.extraStaffMinor ?? 0) });
   if (bill.extraBranches) lines.push({ label: each(bill.extraBranches, `extra branch${bill.extraBranches === 1 ? '' : 'es'}`, bill.extraBranchMinor), minor: bill.extraBranches * (bill.extraBranchMinor ?? 0) });
   if (bill.extraStoragePacks) lines.push({ label: `${bill.extraStoragePacks * STORAGE_PACK_GB} GB extra storage${bill.extraStorageMinor != null ? ` (${bill.extraStoragePacks} × ${amount(bill.extraStorageMinor, bill.currency)})` : ''}`, minor: bill.extraStoragePacks * (bill.extraStorageMinor ?? 0) });
+  const off = discountOff(bill, cycle);
+  if (off) lines.push({ label: `Discount — ${discountLabel(bill.discount!, bill.currency)}`, minor: -off });
   return lines;
+}
+
+/** The clinic's discount a month on a cycle: monthly, or a yearly discount spread over 12. */
+export function discountOff(bill: ClinicBill, cycle: BillingCycle) {
+  if (!bill.discount) return 0;
+  return cycle === 'MONTHLY' ? bill.fullMonthlyFeeMinor - bill.monthlyFeeMinor : bill.discountMinor;
 }
 
 /** "Starter Rs 6,800 + 3 extra staff × Rs 500" on one line. */
 export const billSummary = (bill: ClinicBill, planName: string, cycle: BillingCycle) =>
-  billLines(bill, planName, cycle).map((l, i) => (i === 0 ? `${planName} ${amount(l.minor, bill.currency)}` : l.label)).join(' + ');
+  billLines(bill, planName, cycle)
+    .filter((l) => l.minor >= 0) // the discount is told separately
+    .map((l, i) => (i === 0 ? `${planName} ${amount(l.minor, bill.currency)}` : l.label))
+    .join(' + ');
 
 /** A clinic's monthly bill as a small receipt: the plan, each extra and the total. */
 export function BillBreakdown({ bill, planName, cycle, className }: { bill: ClinicBill; planName: string; cycle: BillingCycle; className?: string }) {
@@ -35,12 +46,12 @@ export function BillBreakdown({ bill, planName, cycle, className }: { bill: Clin
       {billLines(bill, planName, cycle).map((l) => (
         <div key={l.label} className="flex items-baseline justify-between gap-3">
           <dt className="min-w-0 text-muted-foreground">{l.label}</dt>
-          <dd className="shrink-0 tabular-nums">{amount(l.minor, bill.currency)}</dd>
+          <dd className={cn('shrink-0 tabular-nums', l.minor < 0 && 'text-success')}>{l.minor < 0 ? `− ${amount(-l.minor, bill.currency)}` : amount(l.minor, bill.currency)}</dd>
         </div>
       ))}
       <div className="mt-1 flex items-baseline justify-between gap-3 border-t pt-1.5 font-semibold">
         <dt>{bill.inTrial ? 'A month after the free trial' : 'Total a month'}</dt>
-        <dd className="shrink-0 tabular-nums">{amount(bill.planMinor + bill.extrasMinor, bill.currency)}</dd>
+        <dd className="shrink-0 tabular-nums">{amount(bill.planMinor + bill.extrasMinor - discountOff(bill, cycle), bill.currency)}</dd>
       </div>
     </dl>
   );
