@@ -1,4 +1,5 @@
 'use client';
+import { WEIGHED_PRODUCTION, useUnits } from '@/lib/units';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BREEDING_EVENT_TYPES, GROUP_TREATMENT_KINDS, OUTBREAK_STATUSES, PATIENT_SEXES, PREGNANCY_RESULTS, PRODUCTION_UNITS, enumLabel } from '@vcms/shared';
 import { Plus, Trash2 } from 'lucide-react';
@@ -128,9 +129,12 @@ export function ProductionDialog({ open, onOpenChange, farmId, groups, animals, 
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { if (open) { setError(null); setF({ kind: defaultKind ?? 'MILK', groupId: defaultGroupId ?? '', patientId: '', recordedOn: today(), quantity: '', unit: '', session: '', notes: '' }); } }, [open, defaultKind, defaultGroupId]);
   const batchOnly = f.kind === 'MORTALITY' || f.kind === 'BATCH_WEIGHT';
+  const u = useUnits();
+  const weighed = WEIGHED_PRODUCTION.has(f.kind);
   const groupChoices = batchOnly ? groups.filter((g) => !g.tracksIndividuals && g.status === 'ACTIVE') : groups.filter((g) => g.status === 'ACTIVE');
   const m = useMutation({
-    mutationFn: () => api.post('/production', { farmId, kind: f.kind, groupId: f.groupId || null, patientId: f.patientId || null, recordedOn: f.recordedOn, quantity: f.quantity, unit: f.unit || null, session: f.session || null, notes: f.notes || null }),
+    // Feed and batch weights are typed in the clinic's weight unit and kept in kg.
+    mutationFn: () => api.post('/production', { farmId, kind: f.kind, groupId: f.groupId || null, patientId: f.patientId || null, recordedOn: f.recordedOn, quantity: weighed ? u.toKg(f.quantity) : f.quantity, unit: weighed ? null : f.unit || null, session: f.session || null, notes: f.notes || null }),
     onSuccess: () => { toast.success('Recorded'); qc.invalidateQueries({ queryKey: ['production'] }); onOpenChange(false); onDone?.(); },
     onError: (e: Error) => setError(e.message),
   });
@@ -151,7 +155,7 @@ export function ProductionDialog({ open, onOpenChange, farmId, groups, animals, 
           {f.kind === 'MILK' && animals && (
             <Field label="Animal" htmlFor="pr-animal"><NativeSelect id="pr-animal" value={f.patientId} onChange={(e) => setF({ ...f, patientId: e.target.value })}><option value="">Bulk / all</option>{animals.map((a) => <option key={a.id} value={a.id}>{a.name}{a.tag && a.tag !== a.name ? ` (${a.tag})` : ''}</option>)}</NativeSelect></Field>
           )}
-          <Field label={`Quantity (${f.unit || PRODUCTION_UNITS[f.kind as keyof typeof PRODUCTION_UNITS]})`} htmlFor="pr-qty" required><Input id="pr-qty" inputMode="decimal" value={f.quantity} onChange={(e) => setF({ ...f, quantity: e.target.value })} /></Field>
+          <Field label={`Quantity (${weighed ? u.w : f.unit || PRODUCTION_UNITS[f.kind as keyof typeof PRODUCTION_UNITS]})`} htmlFor="pr-qty" required><Input id="pr-qty" inputMode="decimal" value={f.quantity} onChange={(e) => setF({ ...f, quantity: e.target.value })} /></Field>
           {f.kind === 'MILK' && <Field label="Milking" htmlFor="pr-session"><NativeSelect id="pr-session" value={f.session} onChange={(e) => setF({ ...f, session: e.target.value })}><option value="">Whole day</option><option value="AM">Morning</option><option value="PM">Evening</option></NativeSelect></Field>}
           <Field label="Notes" htmlFor="pr-notes" className="sm:col-span-2"><Input id="pr-notes" value={f.notes} maxLength={500} onChange={(e) => setF({ ...f, notes: e.target.value })} /></Field>
         </div>

@@ -1,4 +1,5 @@
 'use client';
+import { useUnits } from '@/lib/units';
 import { ChoiceOrOther } from '../forms/choice-or-other';
 import { COAT_COLOURS, bloodTypeOptions } from '@/lib/patient-options';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -66,6 +67,7 @@ export function PatientForm({
 }) {
   const editing = !!patient;
   const { session } = useSession();
+  const u = useUnits();
   const [error, setError] = useState<string | null>(null);
   const [owner, setOwner] = useState<PickedClient | null>(initialOwner ?? null);
   const [ageMode, setAgeMode] = useState<'dob' | 'age'>(patient?.dobEstimated ? 'age' : 'dob');
@@ -146,7 +148,8 @@ export function PatientForm({
       }
       body.ownerId = owner.id;
       body.identifiers = (body.identifiers ?? []).filter((i: { value?: string }) => i.value?.trim());
-      if (body.initialWeightKg === '' || body.initialWeightKg === undefined) body.initialWeightKg = null;
+      // Typed in the clinic's unit (kg or lb), stored in kg.
+      body.initialWeightKg = body.initialWeightKg === '' || body.initialWeightKg === undefined || body.initialWeightKg === null ? null : u.toKg(body.initialWeightKg);
     } else {
       delete body.ownerId;
       delete body.identifiers;
@@ -274,7 +277,7 @@ export function PatientForm({
           </div>
           {/* Weight belongs with the basic details; later weights are recorded from the patient's Weight tab. */}
           {!editing && (
-            <Field label="Current weight (kg)" htmlFor="weight" error={e.initialWeightKg}>
+            <Field label={`Current weight (${u.w})`} htmlFor="weight" error={e.initialWeightKg}>
               <Input id="weight" type="number" step="0.001" min="0" inputMode="decimal" {...register('initialWeightKg')} />
             </Field>
           )}

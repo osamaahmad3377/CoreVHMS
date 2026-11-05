@@ -15,8 +15,9 @@ import { fmtDateTime } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { Vitals } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { useUnits, type UnitHelpers } from '@/lib/units';
 
-/** `label` for the entry form (plain words first), `short` for the narrow history table. */
+/** `label` for the entry form (plain words first), `short` for the narrow history table. Units are the clinic's. */
 const FIELDS = [
   { key: 'temperatureC', label: 'Temperature (°C)', short: 'Temp °C', step: '0.1' },
   { key: 'heartRate', label: 'Heart rate (beats/min)', short: 'Heart rate', step: '1' },
@@ -28,6 +29,15 @@ const FIELDS = [
   { key: 'spo2', label: 'Oxygen level — SpO₂ %', short: 'Oxygen %', step: '1' },
 ] as const;
 
+/** The fields with the clinic's units in their labels. */
+const withUnits = <T extends { key: string; label: string; short: string }>(fields: readonly T[], u: UnitHelpers): T[] =>
+  fields.map((f) =>
+    f.key === 'temperatureC' ? { ...f, label: `Temperature (${u.t})`, short: `Temp ${u.t}` } : f.key === 'weightKg' ? { ...f, label: `Weight (${u.w})`, short: `Weight ${u.w}` } : f,
+  );
+
+/** A stored value in the clinic's unit (temperature and weight are kept in °C and kg). */
+const shown = (k: string, value: number, u: UnitHelpers) => (k === 'temperatureC' ? u.fromC(value) : k === 'weightKg' ? u.fromKg(value) : value);
+
 /** Descriptive mucous-membrane colours, shared by consultation vitals and hospital observations (no reference ranges). */
 export const MUCOUS_MEMBRANES = ['Pink', 'Pale', 'White', 'Cyanotic', 'Injected', 'Icteric', 'Brick red'];
 
@@ -36,15 +46,16 @@ const COLUMNS = FIELDS.slice(0, 6);
 const EXTRA = FIELDS.slice(6);
 
 function Value({ v, k }: { v: Vitals; k: string }) {
+  const u = useUnits();
   const value = (v as any)[k];
   if (value === null || value === undefined) return <span className="text-muted-foreground">—</span>;
   const flag = v.flags?.[k];
   return (
     <span
       className={cn('inline-flex items-center gap-0.5 tabular', flag && 'font-semibold text-destructive')}
-      title={flag ? `${flag.flag === 'HIGH' ? 'Above' : 'Below'} reference ${flag.low}–${flag.high} (${flag.source})` : undefined}
+      title={flag ? `${flag.flag === 'HIGH' ? 'Above' : 'Below'} reference ${shown(k, Number(flag.low), u)}–${shown(k, Number(flag.high), u)} (${flag.source})` : undefined}
     >
-      {value}
+      {shown(k, Number(value), u)}
       {flag?.flag === 'HIGH' && <ArrowUp className="h-3 w-3" aria-label="high" />}
       {flag?.flag === 'LOW' && <ArrowDown className="h-3 w-3" aria-label="low" />}
     </span>
@@ -61,6 +72,10 @@ export interface VitalsPanelHandle {
 export const VitalsPanel = forwardRef<VitalsPanelHandle, { encounterId: string; vitals: Vitals[]; editable: boolean; onSaved: () => void }>(function VitalsPanel({ encounterId, vitals, editable, onSaved }, ref) {
   const qc = useQueryClient();
   const { can } = useSession();
+  const u = useUnits();
+  const fields = withUnits(FIELDS, u);
+  const columns = withUnits(COLUMNS, u);
+  const extraFields = withUnits(EXTRA, u);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
   const [error, setError] = useState<unknown>(null);
@@ -76,7 +91,13 @@ export const VitalsPanel = forwardRef<VitalsPanelHandle, { encounterId: string; 
     },
   }));
   const m = useMutation({
-    mutationFn: () => api.post<Vitals>(`/encounters/${encounterId}/vitals`, form),
+    // Typed in the clinic's units; stored as °C and kg.
+    mutationFn: () =>
+      api.post<Vitals>(`/encounters/${encounterId}/vitals`, {
+        ...form,
+        ...(form.temperatureC ? { temperatureC: u.toC(form.temperatureC) } : {}),
+        ...(form.weightKg ? { weightKg: u.toKg(form.weightKg) } : {}),
+      }),
     onSuccess: (v) => {
       const flagged = Object.keys(v.flags ?? {});
       if (flagged.length) toast.warning(`Outside the normal range: ${flagged.map((f) => VITAL_LABELS[f]?.label ?? f).join(', ')}`);
@@ -94,9 +115,9 @@ export const VitalsPanel = forwardRef<VitalsPanelHandle, { encounterId: string; 
       } else setError(e);
     },
   });
-  const local = (key: string) => checkVital(key as VitalKey, form[key]);
+  const local = (key: string) => checkVital(key as VitalKey, form[key], u.units);
   const submit = () => {
-    const problems = Object.fromEntries(FIELDS.map((f) => [f.key, local(f.key)?.message]).filter(([, msg]) => msg));
+    const problems = Object.fromEntries(fields.map((f) => [f.key, local(f.key)?.message]).filter(([, msg]) => msg));
     setFieldErrors(problems as Record<string, string>);
     setError(null);
     if (Object.keys(problems).length) {
@@ -128,7 +149,7 @@ export const VitalsPanel = forwardRef<VitalsPanelHandle, { encounterId: string; 
         >
           {!!error && <FormError error={error} />}
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {FIELDS.map((f) => {
+            {fields.map((f) => {
               const msg = fieldErrors[f.key];
               const hint = msg ? local(f.key) : null;
               return (
@@ -196,7 +217,7 @@ export const VitalsPanel = forwardRef<VitalsPanelHandle, { encounterId: string; 
             <thead className="bg-muted/60 text-muted-foreground">
               <tr>
                 <th className="px-2 py-1.5 text-left font-medium">Time</th>
-                {COLUMNS.map((f) => (
+                {columns.map((f) => (
                   <th key={f.key} className="px-2 py-1.5 text-right font-medium" title={f.label}>
                     {f.short}
                   </th>
@@ -205,13 +226,13 @@ export const VitalsPanel = forwardRef<VitalsPanelHandle, { encounterId: string; 
             </thead>
             <tbody>
               {vitals.map((v) => {
-                const extra = EXTRA.filter((f) => v[f.key] !== null && v[f.key] !== undefined);
+                const extra = extraFields.filter((f) => v[f.key] !== null && v[f.key] !== undefined);
                 const more = extra.length > 0 || !!v.mucousMembranes || !!v.notes;
                 return (
                   <Fragment key={v.id}>
                     <tr className="border-t">
                       <td className="whitespace-nowrap px-2 py-1.5 text-muted-foreground">{fmtDateTime(v.recordedAt).split(', ')[1]}</td>
-                      {COLUMNS.map((f) => (
+                      {columns.map((f) => (
                         <td key={f.key} className="px-2 py-1.5 text-right">
                           <Value v={v} k={f.key} />
                         </td>

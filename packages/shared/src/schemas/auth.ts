@@ -1,3 +1,4 @@
+import type { Units } from '../units';
 import { z } from 'zod';
 import type { Branding } from '../branding';
 import type { Entitlements } from '../plans';
@@ -91,6 +92,8 @@ export interface SessionContext {
     enabledModules: OptionalModule[];
     /** White label: name, logo, icon and colours (Settings → Branding, owner only). */
     branding: Branding;
+    /** How weights and temperatures are shown and typed in (stored as kg and °C). */
+    units: Units;
   } | null;
   branch: { id: string; name: string; timezone: string } | null;
   branches: { id: string; name: string; timezone: string }[];

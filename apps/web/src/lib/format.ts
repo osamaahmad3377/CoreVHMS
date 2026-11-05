@@ -1,5 +1,6 @@
 import { differenceInDays, differenceInMonths, differenceInYears, format, formatDistanceToNowStrict, isValid } from 'date-fns';
-import { formatMoney } from '@vcms/shared';
+import { formatMoney, formatTemperature, formatWeight } from '@vcms/shared';
+import { displayUnits } from './display-units';
 
 const toDate = (d: string | Date | null | undefined) => (d ? (typeof d === 'string' ? new Date(d) : d) : null);
 
@@ -47,10 +48,14 @@ export function fmtMoney(minor: number | null | undefined, currency = 'PKR') {
   return formatMoney(minor ?? 0, currency);
 }
 
+/** A stored weight (kg) in the clinic's unit: "18.5 kg" or "40.8 lb". */
 export function fmtWeight(kg: number | string | null | undefined) {
-  if (kg === null || kg === undefined || kg === '') return '—';
-  const n = Number(kg);
-  return `${n >= 100 ? n.toFixed(0) : n >= 10 ? n.toFixed(1) : n.toFixed(2).replace(/0$/, '')} kg`;
+  return formatWeight(kg, displayUnits().weight);
+}
+
+/** A stored temperature (°C) in the clinic's unit: "38.6 °C" or "101.5 °F". */
+export function fmtTemp(c: number | string | null | undefined) {
+  return formatTemperature(c, displayUnits().temperature);
 }
 
 export function fmtBytes(n: number) {

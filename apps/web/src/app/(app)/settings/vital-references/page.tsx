@@ -1,4 +1,5 @@
 'use client';
+import { useUnits } from '@/lib/units';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { VITAL_LABELS, VITAL_PARAMETERS } from '@vcms/shared';
 import { AlertTriangle, Plus, Trash2 } from 'lucide-react';
@@ -37,9 +38,19 @@ export default function VitalReferencesPage() {
   const species = useQuery({ queryKey: ['species'], queryFn: () => api.get<Species[]>('/species') });
   const refs = useQuery({ queryKey: ['vital-references'], queryFn: () => api.get<Ref[]>('/vital-references') });
   const [f, setF] = useState({ speciesId: '', parameter: 'heartRate', low: '', high: '', source: '' });
+  // Temperature ranges are typed and shown in the clinic's unit; they are kept in °C like the readings.
+  const u = useUnits();
+  const isTemp = (parameter: string) => parameter === 'temperatureC';
+  const unitOf = (parameter: string) => (isTemp(parameter) ? u.t : VITAL_LABELS[parameter]?.unit ?? '');
+  const shownValue = (parameter: string, v: string | number) => (isTemp(parameter) ? u.fromC(v) : Number(v));
   const [error, setError] = useState<string | null>(null);
   const save = useMutation({
-    mutationFn: () => api.post('/vital-references', { ...f, unit: VITAL_LABELS[f.parameter].unit }),
+    mutationFn: () =>
+      api.post('/vital-references', {
+        ...f,
+        ...(isTemp(f.parameter) ? { low: u.toC(f.low), high: u.toC(f.high) } : {}),
+        unit: VITAL_LABELS[f.parameter].unit,
+      }),
     onSuccess: () => {
       toast.success('Reference saved');
       setF({ ...f, low: '', high: '' });
@@ -68,7 +79,7 @@ export default function VitalReferencesPage() {
                 {species.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </NativeSelect>
               <NativeSelect aria-label="Parameter" className="w-44" value={f.parameter} onChange={(e) => setF({ ...f, parameter: e.target.value })}>
-                {VITAL_PARAMETERS.map((p) => <option key={p} value={p}>{VITAL_LABELS[p].label} ({VITAL_LABELS[p].unit})</option>)}
+                {VITAL_PARAMETERS.map((p) => <option key={p} value={p}>{VITAL_LABELS[p].label} ({unitOf(p)})</option>)}
               </NativeSelect>
               <Input aria-label="Low" placeholder="Low" className="w-24" inputMode="decimal" value={f.low} onChange={(e) => setF({ ...f, low: e.target.value })} />
               <Input aria-label="High" placeholder="High" className="w-24" inputMode="decimal" value={f.high} onChange={(e) => setF({ ...f, high: e.target.value })} />
@@ -84,7 +95,7 @@ export default function VitalReferencesPage() {
           columns={[
             { key: 's', header: 'Species', cell: (r) => r.species.name },
             { key: 'p', header: 'Parameter', cell: (r) => VITAL_LABELS[r.parameter]?.label ?? r.parameter },
-            { key: 'r', header: 'Interval', cell: (r) => <span className="tabular">{Number(r.low)} – {Number(r.high)} {r.unit}</span> },
+            { key: 'r', header: 'Interval', cell: (r) => <span className="tabular">{shownValue(r.parameter, r.low)} – {shownValue(r.parameter, r.high)} {isTemp(r.parameter) ? u.t : r.unit}</span> },
             { key: 'src', header: 'Source', cell: (r) => <span className="text-xs">{r.source}</span> },
             { key: 'rev', header: 'Reviewed', cell: (r) => <span className="text-xs text-muted-foreground">{r.reviewedByName} · {fmtDate(r.reviewedAt)}</span> },
             { key: 'x', header: '', cell: (r) => can('settings.manage') && <Button size="icon-sm" variant="ghost" aria-label="Remove" onClick={async () => { const c = await confirm({ title: 'Remove this reference interval?', destructive: true, confirmLabel: 'Remove' }); if (c.confirmed) remove.mutate(r.id); }}><Trash2 /></Button> },

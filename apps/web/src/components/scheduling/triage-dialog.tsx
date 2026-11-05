@@ -1,4 +1,5 @@
 'use client';
+import { useUnits } from '@/lib/units';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { TRIAGE_COLOURS, TRIAGE_PRIORITIES, enumLabel } from '@vcms/shared';
 import { useEffect, useState } from 'react';
@@ -37,6 +38,7 @@ export function TriageDialog({
   defaultComplaint?: string | null;
 }) {
   const qc = useQueryClient();
+  const u = useUnits();
   const [priority, setPriority] = useState<string>('');
   const [complaint, setComplaint] = useState('');
   const [v, setV] = useState({ temperatureC: '', heartRate: '', respiratoryRate: '', capillaryRefillSec: '', painScore: '', mucousMembranes: '', mentation: '', notes: '' });
@@ -50,7 +52,8 @@ export function TriageDialog({
     }
   }, [open, defaultComplaint]);
   const m = useMutation({
-    mutationFn: () => api.post('/triage', { patientId, appointmentId, priority, presentingComplaint: complaint, ...v }),
+    // Temperature typed in the clinic's unit, stored in °C.
+    mutationFn: () => api.post('/triage', { patientId, appointmentId, priority, presentingComplaint: complaint, ...v, temperatureC: v.temperatureC ? u.toC(v.temperatureC) : '' }),
     onSuccess: () => {
       toast.success(`Triage saved: ${patientName} — ${enumLabel(priority)}`);
       qc.invalidateQueries({ queryKey: ['queue'] });
@@ -93,7 +96,7 @@ export function TriageDialog({
             <Input id="tr-c" value={complaint} onChange={(e) => setComplaint(e.target.value)} />
           </Field>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Field label="Temp (°C)" htmlFor="tr-t"><Input id="tr-t" type="number" step="0.1" value={v.temperatureC} onChange={set('temperatureC')} /></Field>
+            <Field label={`Temp (${u.t})`} htmlFor="tr-t"><Input id="tr-t" type="number" step="0.1" value={v.temperatureC} onChange={set('temperatureC')} /></Field>
             <Field label="HR (bpm)" htmlFor="tr-hr"><Input id="tr-hr" type="number" value={v.heartRate} onChange={set('heartRate')} /></Field>
             <Field label="RR (/min)" htmlFor="tr-rr"><Input id="tr-rr" type="number" value={v.respiratoryRate} onChange={set('respiratoryRate')} /></Field>
             <Field label="CRT (s)" htmlFor="tr-crt"><Input id="tr-crt" type="number" step="0.5" value={v.capillaryRefillSec} onChange={set('capillaryRefillSec')} /></Field>

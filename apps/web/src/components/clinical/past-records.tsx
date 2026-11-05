@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { NOTE_PHRASE_FIELDS, NOTE_PHRASE_FIELD_LABELS, enumLabel, type NotePhraseField } from '@vcms/shared';
+import { NOTE_PHRASE_FIELDS, NOTE_PHRASE_FIELD_LABELS, enumLabel, temperatureIn, temperatureSymbol, type NotePhraseField } from '@vcms/shared';
 import { Clock, FileText, FlaskConical, History, Pill, Plus, RotateCcw, Stethoscope, Syringe, X } from 'lucide-react';
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -11,6 +11,7 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog';
 import { api } from '@/lib/api';
+import { displayUnits } from '@/lib/display-units';
 import { fmtDate, fmtDateTime, fmtWeight } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import { cn } from '@/lib/utils';
@@ -262,13 +263,13 @@ function VitalsTab({ data, encounterId }: { data: PastData; encounterId: string 
     <div className="overflow-x-auto rounded-xl border">
       <table className="w-full text-xs">
         <thead className="bg-muted/40 text-left text-muted-foreground">
-          <tr>{['Date', 'Temp °C', 'Heart', 'Breathing', 'Weight', 'Pain'].map((h) => <th key={h} className="px-2.5 py-2 font-medium">{h}</th>)}</tr>
+          <tr>{['Date', `Temp ${temperatureSymbol(displayUnits().temperature)}`, 'Heart', 'Breathing', 'Weight', 'Pain'].map((h) => <th key={h} className="px-2.5 py-2 font-medium">{h}</th>)}</tr>
         </thead>
         <tbody>
           {rows.map((v: Row) => (
             <tr key={v.id} className="border-t">
               <td className="px-2.5 py-1.5 font-medium">{fmtDate(v.recordedAt)}</td>
-              <td className="px-2.5 py-1.5 tabular">{v.temperatureC ?? '—'}</td>
+              <td className="px-2.5 py-1.5 tabular">{temperatureIn(v.temperatureC, displayUnits().temperature) ?? '—'}</td>
               <td className="px-2.5 py-1.5 tabular">{v.heartRate ?? '—'}</td>
               <td className="px-2.5 py-1.5 tabular">{v.respiratoryRate ?? '—'}</td>
               <td className="px-2.5 py-1.5 tabular">{v.weightKg != null ? fmtWeight(Number(v.weightKg)) : '—'}</td>

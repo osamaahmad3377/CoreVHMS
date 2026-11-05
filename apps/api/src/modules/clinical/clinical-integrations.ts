@@ -12,6 +12,8 @@ import { PatientTimelineService } from '../patients/patient-timeline.service';
 import { appointmentNo } from '../scheduling/appointments.service';
 import { encounterNo } from './encounters.service';
 import { ClientPrivacyService } from '../clients/client-privacy.service';
+import { formatTemperature } from '@vcms/shared';
+import { orgUnits } from '../../common/units/org-units';
 
 /** Plugs scheduling and clinical data into the shared registries (timeline, merge, dashboard, files). */
 @Injectable()
@@ -71,14 +73,15 @@ export class ClinicalIntegrations implements OnModuleInit {
         href: `/consultations/${e.id}`,
       })),
     );
-    this.timeline.register('vitals', async (id) =>
-      (await db().vitalSign.findMany({ where: { patientId: id }, orderBy: { recordedAt: 'desc' }, take: 200 })).map((v) => ({
+    this.timeline.register('vitals', async (id) => {
+      const units = await orgUnits(this.prisma);
+      return (await db().vitalSign.findMany({ where: { patientId: id }, orderBy: { recordedAt: 'desc' }, take: 200 })).map((v) => ({
         id: v.id,
         at: v.recordedAt,
         kind: 'vitals',
         title: 'Vital signs',
         detail: [
-          v.temperatureC && `T ${Number(v.temperatureC)} °C`,
+          v.temperatureC && `T ${formatTemperature(Number(v.temperatureC), units.temperature)}`,
           v.heartRate && `HR ${v.heartRate}`,
           v.respiratoryRate && `RR ${v.respiratoryRate}`,
           v.painScore !== null && v.painScore !== undefined && `Pain ${v.painScore}/10`,
@@ -87,8 +90,8 @@ export class ClinicalIntegrations implements OnModuleInit {
           .join(' · '),
         actor: v.recordedByName,
         href: v.encounterId ? `/consultations/${v.encounterId}` : undefined,
-      })),
-    );
+      }));
+    });
 
     // ── Merges ──
     const patientSteps: [string, (s: string, m: string, tx: any) => Promise<{ count: number }>][] = [

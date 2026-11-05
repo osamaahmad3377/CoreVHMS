@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { formatWeight } from '@vcms/shared';
+import { orgUnits } from '../../common/units/org-units';
 
 export interface TimelineEvent {
   id: string;
@@ -40,16 +42,17 @@ export class PatientTimelineService {
       }
       return events;
     });
-    this.register('weight', async (id) =>
-      (await this.prisma.db.weightRecord.findMany({ where: { patientId: id }, orderBy: { measuredAt: 'desc' }, take: 200 })).map((w) => ({
+    this.register('weight', async (id) => {
+      const units = await orgUnits(this.prisma);
+      return (await this.prisma.db.weightRecord.findMany({ where: { patientId: id }, orderBy: { measuredAt: 'desc' }, take: 200 })).map((w) => ({
         id: w.id,
         at: w.measuredAt,
         kind: 'weight',
-        title: `Weight ${Number(w.weightKg)} kg`,
+        title: `Weight ${formatWeight(Number(w.weightKg), units.weight)}`,
         detail: w.bodyConditionScore ? `BCS ${w.bodyConditionScore}/${w.bcsScale}` : w.notes,
         actor: w.recordedByName,
-      })),
-    );
+      }));
+    });
     this.register('alert', async (id) =>
       (await this.prisma.db.patientAlert.findMany({ where: { patientId: id } })).map((a) => ({
         id: a.id,

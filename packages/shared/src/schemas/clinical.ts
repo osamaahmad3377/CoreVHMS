@@ -1,3 +1,4 @@
+import { DEFAULT_UNITS, temperatureIn, temperatureSymbol, weightIn, type Units } from '../units';
 import { z } from 'zod';
 import { DIAGNOSIS_STATUSES, DIAGNOSIS_TYPES, ENCOUNTER_TYPES, PROBLEM_STATUSES, SPECIES_CATEGORIES, TASK_TYPES } from '../enums';
 import { optDate, optText, optUuid, paginationQuery, reqText } from './common';
@@ -59,9 +60,20 @@ export const VITAL_BOUNDS = {
 } as const;
 export type VitalKey = keyof typeof VITAL_BOUNDS;
 
-/** "Temperature must be between 25 and 46 °C". */
-export function vitalRangeMessage(key: VitalKey) {
+/**
+ * The plausibility limits in the clinic's units: temperature in °C or °F, weight in kg or lb (stored values are
+ * always °C and kg; everything else has one unit).
+ */
+export function vitalBounds(key: VitalKey, units: Units = DEFAULT_UNITS) {
   const b = VITAL_BOUNDS[key];
+  if (key === 'temperatureC' && units.temperature === 'F') return { ...b, unit: temperatureSymbol('F'), min: temperatureIn(b.min, 'F')!, max: temperatureIn(b.max, 'F')! };
+  if (key === 'weightKg' && units.weight === 'lb') return { ...b, unit: 'lb', min: 0.01, max: Math.round(weightIn(b.max, 'lb')!) };
+  return b;
+}
+
+/** "Temperature must be between 25 and 46 °C" (or 77 and 114.8 °F). */
+export function vitalRangeMessage(key: VitalKey, units: Units = DEFAULT_UNITS) {
+  const b = vitalBounds(key, units);
   return `${b.label} must be between ${b.min} and ${b.max}${b.unit ? ` ${b.unit}` : ''}`;
 }
 
@@ -69,9 +81,9 @@ export function vitalRangeMessage(key: VitalKey) {
  * Checks one typed value against the plausibility limits. Returns null when it is fine, otherwise a message
  * and, when the value looks like a missing decimal point (398 → 39.8), the value that was probably meant.
  */
-export function checkVital(key: VitalKey, raw: string | number | null | undefined): { message: string; suggestion: number | null } | null {
+export function checkVital(key: VitalKey, raw: string | number | null | undefined, units: Units = DEFAULT_UNITS): { message: string; suggestion: number | null } | null {
   if (raw === null || raw === undefined || raw === '') return null;
-  const b = VITAL_BOUNDS[key];
+  const b = vitalBounds(key, units);
   const v = Number(raw);
   if (!Number.isFinite(v)) return { message: `${b.label} must be a number`, suggestion: null };
   if (b.int && !Number.isInteger(v)) return { message: `${b.label} must be a whole number`, suggestion: null };
@@ -86,7 +98,7 @@ export function checkVital(key: VitalKey, raw: string | number | null | undefine
       }
     }
   }
-  return { message: vitalRangeMessage(key), suggestion };
+  return { message: vitalRangeMessage(key, units), suggestion };
 }
 
 const vital = (key: VitalKey) => {

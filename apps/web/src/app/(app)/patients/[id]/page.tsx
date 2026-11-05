@@ -1,4 +1,5 @@
 'use client';
+import { useUnits } from '@/lib/units';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { enumLabel } from '@vcms/shared';
 import { FileText,
@@ -683,7 +684,8 @@ function PatientRecord() {
 }
 
 function WeightTab({ patient, onAdd }: { patient: PatientDetail; onAdd?: () => void }) {
-  const data = [...patient.weights].reverse().map((w) => ({ date: fmtDate(w.measuredAt), kg: w.weightKg }));
+  const u = useUnits();
+  const data = [...patient.weights].reverse().map((w) => ({ date: fmtDate(w.measuredAt), kg: u.fromKg(w.weightKg) }));
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
       <Card>
@@ -701,8 +703,8 @@ function WeightTab({ patient, onAdd }: { patient: PatientDetail; onAdd?: () => v
               <LineChart data={data} margin={{ left: -10, right: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} />
-                <YAxis tick={{ fontSize: 11 }} tickLine={false} unit=" kg" domain={['auto', 'auto']} />
-                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 6 }} formatter={(v: number) => [`${v} kg`, 'Weight']} />
+                <YAxis tick={{ fontSize: 11 }} tickLine={false} unit={` ${u.w}`} domain={['auto', 'auto']} />
+                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 6 }} formatter={(v: number) => [`${v} ${u.w}`, 'Weight']} />
                 <Line type="monotone" dataKey="kg" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3 }} />
               </LineChart>
             </ResponsiveContainer>

@@ -1591,7 +1591,7 @@ model TriageAssessment {
   appointmentId       String?        @db.Uuid
   priority            TriagePriority
   presentingComplaint String
-  temperatureC        Decimal?       @db.Decimal(4, 1)
+  temperatureC        Decimal?       @db.Decimal(5, 2)
   heartRate           Int?
   respiratoryRate     Int?
   mucousMembranes     String?
@@ -1725,7 +1725,7 @@ model VitalSign {
   patientId          String   @db.Uuid
   encounterId        String?  @db.Uuid
   recordedAt         DateTime @default(now()) @db.Timestamptz(3)
-  temperatureC       Decimal? @db.Decimal(4, 1)
+  temperatureC       Decimal? @db.Decimal(5, 2)
   heartRate          Int?
   respiratoryRate    Int?
   weightKg           Decimal? @db.Decimal(9, 3)
@@ -3662,7 +3662,7 @@ model AnaesthesiaReading {
   systolicBp      Int?
   diastolicBp     Int?
   meanBp          Int?
-  temperatureC    Decimal?     @db.Decimal(4, 1)
+  temperatureC    Decimal?     @db.Decimal(5, 2)
   agentPercent    Decimal?     @db.Decimal(4, 2)
   oxygenLpm       Decimal?     @db.Decimal(5, 2)
   painScore       Int?

@@ -9,6 +9,7 @@ import { notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { MessagesService } from '../comms/messages.service';
 import { ClinicalSummaryService } from './clinical-summary.service';
+import { formatWeight, unitsOf } from '@vcms/shared';
 
 export const referralNo = (n: number) => formatNumber('REF', n, 5);
 
@@ -159,7 +160,7 @@ export class ReferralsService {
       if (input.action === 'decline' || input.action === 'cancel') Object.assign(data, { declineReason: input.reason });
       const after = await tx.referral.update({ where: { id }, data, include });
       if (input.action === 'send' && input.email && r.contact?.email) {
-        const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: ctx.organizationId! }, select: { name: true, phone: true, email: true } });
+        const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: ctx.organizationId! }, select: { name: true, phone: true, email: true, weightUnit: true, temperatureUnit: true } });
         await this.messages.enqueue(tx, {
           channel: 'EMAIL',
           recipient: r.contact.email,
@@ -179,14 +180,15 @@ export class ReferralsService {
   }
 }
 
-function letterText(r: Ref, org: { name: string; phone: string | null; email: string | null }) {
+function letterText(r: Ref, org: { name: string; phone: string | null; email: string | null; weightUnit: string; temperatureUnit: string }) {
   const p = r.patient;
+  const units = unitsOf(org);
   return [
     `Dear ${r.contact?.name ?? 'colleague'},`,
     '',
     `We would be grateful if you could see the following patient (${r.urgency.toLowerCase()} referral).`,
     '',
-    `Patient: ${p.name} — ${p.species.name}${p.breed?.name || p.breedText ? `, ${p.breed?.name ?? p.breedText}` : ''}, ${p.sex.toLowerCase().replace('_', ' ')}${p.dateOfBirth ? `, born ${p.dateOfBirth.toISOString().slice(0, 10)}` : ''}${p.latestWeightKg ? `, ${Number(p.latestWeightKg)} kg` : ''}`,
+    `Patient: ${p.name} — ${p.species.name}${p.breed?.name || p.breedText ? `, ${p.breed?.name ?? p.breedText}` : ''}, ${p.sex.toLowerCase().replace('_', ' ')}${p.dateOfBirth ? `, born ${p.dateOfBirth.toISOString().slice(0, 10)}` : ''}${p.latestWeightKg ? `, ${formatWeight(Number(p.latestWeightKg), units.weight)}` : ''}`,
     p.identifiers[0] ? `Microchip: ${p.identifiers[0].value}` : null,
     `Owner: ${r.client.displayName}${r.client.mobilePhone ? `, ${r.client.mobilePhone}` : ''}`,
     '',

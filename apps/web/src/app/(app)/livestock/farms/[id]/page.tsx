@@ -24,7 +24,9 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useUrlState } from '@/hooks/use-url-state';
 import { api, qs } from '@/lib/api';
-import { fmtDate, fmtDateOnly, fmtDateTime, fmtMoney, fmtNumber } from '@/lib/format';
+import { fmtDate, fmtDateOnly, fmtDateTime, fmtMoney, fmtNumber, fmtWeight } from '@/lib/format';
+import { displayUnits } from '@/lib/display-units';
+import { WEIGHED_PRODUCTION, productionIn } from '@/lib/units';
 import { useSession } from '@/lib/session';
 import type { FarmDetail, FarmReport, FertilityRow, FieldVisitRow, GroupTreatmentRow, MovementRow, OutbreakRow, ProductionRow, WithdrawalBoardRow } from '@/lib/types';
 import { localToday } from '@/lib/time';
@@ -107,8 +109,9 @@ const longDay = (d: string) => format(parseISO(d), 'd MMM yyyy');
 
 /** One small chart per measure — litres, kg and head never share an axis. */
 function MetricChart({ kind, data }: { kind: string; data: Record<string, number | string>[] }) {
-  const unit = PRODUCTION_UNITS[kind as keyof typeof PRODUCTION_UNITS] ?? '';
-  const points = data.map((d) => ({ date: d.date as string, value: typeof d[kind] === 'number' ? (d[kind] as number) : null }));
+  // Feed and batch weights are kept in kg and shown in the clinic's weight unit.
+  const unit = WEIGHED_PRODUCTION.has(kind) ? displayUnits().weight : (PRODUCTION_UNITS[kind as keyof typeof PRODUCTION_UNITS] ?? '');
+  const points = data.map((d) => ({ date: d.date as string, value: typeof d[kind] === 'number' ? productionIn(kind, d[kind] as number, PRODUCTION_UNITS[kind as keyof typeof PRODUCTION_UNITS]).quantity : null }));
   const total = points.reduce((n, p) => n + (p.value ?? 0), 0);
   const recorded = points.filter((p) => p.value != null);
   const latest = recorded[recorded.length - 1];
@@ -198,7 +201,7 @@ function Production({ farm, canWrite }: { farm: FarmDetail; canWrite: boolean })
             { key: 'date', header: 'Date', className: 'whitespace-nowrap', cell: (r) => <span className="text-sm">{fmtDateOnly(r.recordedOn)}{r.session ? ` · ${r.session}` : ''}</span> },
             { key: 'kind', header: 'Record', cell: (r) => <span className="text-sm">{enumLabel(r.kind)}</span> },
             { key: 'what', header: 'For', cell: (r) => <span className="text-sm">{r.patient?.name ?? r.group?.name ?? 'Whole farm'}</span> },
-            { key: 'qty', header: 'Quantity', className: 'whitespace-nowrap text-right', headerClassName: 'text-right', cell: (r) => <span className="text-sm tabular">{fmtNumber(r.quantity)} {r.unit}</span> },
+            { key: 'qty', header: 'Quantity', className: 'whitespace-nowrap text-right', headerClassName: 'text-right', cell: (r) => <span className="text-sm tabular">{(({ quantity, unit }) => `${fmtNumber(quantity)} ${unit}`)(productionIn(r.kind, Number(r.quantity), r.unit))}</span> },
             { key: 'by', header: 'By', cell: (r) => <span className="text-xs text-muted-foreground">{r.recordedByName}</span> },
             { key: 'act', header: '', className: 'text-right', cell: (r) => canWrite && <Button size="sm" variant="ghost" onClick={async () => { const c = await confirm({ title: 'Void this record?', description: 'It stays in the history, marked void. Enter the correct figure as a new record.', confirmLabel: 'Void', requireReason: true }); if (c.confirmed) voidM.mutate({ id: r.id, reason: c.reason! }); }}>Void</Button> },
           ]}
@@ -357,7 +360,7 @@ function Report({ farm }: { farm: FarmDetail }) {
             <Card><CardHeader><CardTitle>Production</CardTitle></CardHeader><CardContent><DescriptionList items={[
               { label: 'Milk', value: `${fmtNumber(r.production.milkLitres)} L` },
               { label: 'Eggs', value: fmtNumber(r.production.eggs) },
-              { label: 'Feed', value: `${fmtNumber(r.production.feedKg)} kg` },
+              { label: 'Feed', value: (({ quantity, unit }) => `${fmtNumber(quantity)} ${unit}`)(productionIn('FEED', r.production.feedKg, 'kg')) },
               { label: 'Batch deaths (daily mortality records)', value: `${fmtNumber(r.production.batchMortality)} head` },
             ]} /></CardContent></Card>
             <Card><CardHeader><CardTitle>Health</CardTitle></CardHeader><CardContent><DescriptionList items={[
@@ -372,8 +375,8 @@ function Report({ farm }: { farm: FarmDetail }) {
               <CardHeader><CardTitle>Batches</CardTitle></CardHeader>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="p-2">Batch</th><th className="p-2">Age</th><th className="p-2">Placed</th><th className="p-2">Now</th><th className="p-2">Mortality since placement</th><th className="p-2">Deaths in period</th><th className="p-2">Feed (kg)</th><th className="p-2">Eggs</th><th className="p-2">Avg weight</th></tr></thead>
-                  <tbody>{r.batches.map((b) => <tr key={b.id} className="border-t"><td className="p-2 font-medium">{b.name}<span className="block text-xs font-normal text-muted-foreground">{b.species} · {enumLabel(b.purpose)}{b.status === 'CLOSED' ? ' · closed' : ''}</span></td><td className="p-2 whitespace-nowrap">{b.ageDays != null ? `${fmtNumber(b.ageDays)} d` : '—'}</td><td className="p-2 tabular">{fmtNumber(b.initialCount)}</td><td className="p-2 tabular">{fmtNumber(b.headCount)}</td><td className="p-2">{b.cumulativeMortalityPct != null ? `${b.cumulativeMortalityPct}%` : '—'}</td><td className="p-2 tabular">{fmtNumber(b.mortalityInPeriod)}</td><td className="p-2 tabular">{fmtNumber(b.feedKg)}</td><td className="p-2 tabular">{fmtNumber(b.eggs)}</td><td className="p-2 whitespace-nowrap">{b.latestAvgWeightKg != null ? `${fmtNumber(b.latestAvgWeightKg)} kg` : '—'}</td></tr>)}</tbody>
+                  <thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="p-2">Batch</th><th className="p-2">Age</th><th className="p-2">Placed</th><th className="p-2">Now</th><th className="p-2">Mortality since placement</th><th className="p-2">Deaths in period</th><th className="p-2">Feed ({displayUnits().weight})</th><th className="p-2">Eggs</th><th className="p-2">Avg weight</th></tr></thead>
+                  <tbody>{r.batches.map((b) => <tr key={b.id} className="border-t"><td className="p-2 font-medium">{b.name}<span className="block text-xs font-normal text-muted-foreground">{b.species} · {enumLabel(b.purpose)}{b.status === 'CLOSED' ? ' · closed' : ''}</span></td><td className="p-2 whitespace-nowrap">{b.ageDays != null ? `${fmtNumber(b.ageDays)} d` : '—'}</td><td className="p-2 tabular">{fmtNumber(b.initialCount)}</td><td className="p-2 tabular">{fmtNumber(b.headCount)}</td><td className="p-2">{b.cumulativeMortalityPct != null ? `${b.cumulativeMortalityPct}%` : '—'}</td><td className="p-2 tabular">{fmtNumber(b.mortalityInPeriod)}</td><td className="p-2 tabular">{fmtNumber(productionIn('FEED', b.feedKg, 'kg').quantity)}</td><td className="p-2 tabular">{fmtNumber(b.eggs)}</td><td className="p-2 whitespace-nowrap">{b.latestAvgWeightKg != null ? fmtWeight(b.latestAvgWeightKg) : '—'}</td></tr>)}</tbody>
                 </table>
               </div>
             </Card>

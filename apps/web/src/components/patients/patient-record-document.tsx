@@ -3,7 +3,7 @@ import { enumLabel } from '@vcms/shared';
 import { Fragment } from 'react';
 import type { ClinicHeader } from '../billing/invoice-document';
 import { LetterFooter, Letterhead } from '../documents/letterhead';
-import { fmtAge, fmtDate, fmtDateTime, fmtMoney, fmtWeight } from '@/lib/format';
+import { fmtAge, fmtDate, fmtDateTime, fmtMoney, fmtTemp, fmtWeight } from '@/lib/format';
 import type { PatientDetail } from '@/lib/types';
 
 type Row = Record<string, any>;
@@ -100,7 +100,7 @@ function Consultations({ rows }: { rows: Row[] }) {
             {v && (
               <p className="text-[9.5pt]">
                 <span className="font-semibold">Vital signs ({fmtDateTime(v.recordedAt)}): </span>
-                {[v.temperatureC != null && `Temp ${v.temperatureC} °C`, v.heartRate != null && `Heart rate ${v.heartRate}`, v.respiratoryRate != null && `Breathing ${v.respiratoryRate}`, v.weightKg != null && `Weight ${fmtWeight(Number(v.weightKg))}`, v.mucousMembranes && `Gums ${v.mucousMembranes}`, v.painScore != null && `Pain ${v.painScore}/10`].filter(Boolean).join(' · ') || '—'}
+                {[v.temperatureC != null && `Temp ${fmtTemp(v.temperatureC)}`, v.heartRate != null && `Heart rate ${v.heartRate}`, v.respiratoryRate != null && `Breathing ${v.respiratoryRate}`, v.weightKg != null && `Weight ${fmtWeight(Number(v.weightKg))}`, v.mucousMembranes && `Gums ${v.mucousMembranes}`, v.painScore != null && `Pain ${v.painScore}/10`].filter(Boolean).join(' · ') || '—'}
               </p>
             )}
             {e.diagnoses?.length > 0 && (

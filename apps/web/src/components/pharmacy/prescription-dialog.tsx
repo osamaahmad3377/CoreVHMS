@@ -1,4 +1,5 @@
 'use client';
+import { useUnits } from '@/lib/units';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FREQUENCIES, ROUTES, allergyConflictText, allergyConflicts, ownerInstructions } from '@vcms/shared';
 import { AlertTriangle, Calculator, Info, Plus, ShieldAlert, Trash2 } from 'lucide-react';
@@ -351,6 +352,7 @@ export function PrescriptionDialog({
 }) {
   const { can } = useSession();
   const qc = useQueryClient();
+  const u = useUnits();
   const [weight, setWeight] = useState('');
   const [lines, setLines] = useState<Line[]>([blankLine(1)]);
   const [evals, setEvals] = useState<Record<number, DoseEvaluation | null>>({});
@@ -358,14 +360,15 @@ export function PrescriptionDialog({
   const [error, setError] = useState<unknown>(null);
   useEffect(() => {
     if (open) {
-      setWeight(patient.latestWeightKg ? String(patient.latestWeightKg) : '');
+      setWeight(patient.latestWeightKg ? String(u.fromKg(patient.latestWeightKg)) : '');
       setLines([blankLine(Date.now())]);
       setEvals({});
       setNotes('');
       setError(null);
     }
   }, [open, patient.latestWeightKg]);
-  const weightKg = weight ? Number(weight) : null;
+  // Typed in the clinic's unit; doses are always worked out per kg.
+  const weightKg = weight ? u.toKg(weight) : null;
 
   const save = useMutation({
     mutationFn: (authorize: boolean) =>
@@ -401,7 +404,7 @@ export function PrescriptionDialog({
           <AllergyStrip alerts={patient.alerts ?? []} />
           {!!error && <FormError error={error} />}
           <div className="flex flex-wrap items-end gap-3">
-            <Field label="Body weight used (kg)" htmlFor="rx-weight" hint={patient.latestWeightKg ? `Latest recorded: ${patient.latestWeightKg} kg` : 'No weight on record'} className="w-48">
+            <Field label={`Body weight used (${u.w})`} htmlFor="rx-weight" hint={patient.latestWeightKg ? `Latest recorded: ${u.weight(patient.latestWeightKg)}` : 'No weight on record'} className="w-48">
               <Input id="rx-weight" inputMode="decimal" value={weight} onChange={(e) => setWeight(e.target.value)} />
             </Field>
           </div>

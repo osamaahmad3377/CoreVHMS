@@ -16,7 +16,7 @@ import { PastButton, usePastRecords } from './past-records';
 import { QuickPicks } from './quick-picks';
 import { useNotePhrases, useTemplates } from '@/hooks/use-catalog';
 import { api } from '@/lib/api';
-import { fmtDateTime } from '@/lib/format';
+import { fmtDateTime, fmtTemp, fmtWeight } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { ClinicalNote, ExamFinding, Vitals } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -103,11 +103,11 @@ export interface WorkflowStep {
   ignoreFieldsForDone?: boolean;
 }
 
-/** "Temp 39.8 °C, Weight 18 kg, Heart rate 120/min, …" from a vitals row. */
+/** "Temp 39.8 °C, Weight 18 kg, Heart rate 120/min, …" from a vitals row, in the clinic's units. */
 export function vitalsText(v: Vitals) {
   const parts: string[] = [];
-  if (v.temperatureC != null) parts.push(`Temp ${v.temperatureC} °C`);
-  if (v.weightKg != null) parts.push(`Weight ${v.weightKg} kg`);
+  if (v.temperatureC != null) parts.push(`Temp ${fmtTemp(v.temperatureC)}`);
+  if (v.weightKg != null) parts.push(`Weight ${fmtWeight(v.weightKg)}`);
   if (v.heartRate != null) parts.push(`Heart rate ${v.heartRate}/min`);
   if (v.respiratoryRate != null) parts.push(`Breathing ${v.respiratoryRate}/min`);
   if (v.capillaryRefillSec != null) parts.push(`CRT ${v.capillaryRefillSec} s`);

@@ -14,6 +14,7 @@ import { fmtDateTime } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import { branchTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { useUnits, type UnitHelpers } from '@/lib/units';
 
 interface VitalRow {
   id: string;
@@ -30,7 +31,8 @@ interface VitalRow {
   flags: Record<string, { flag: 'LOW' | 'HIGH'; low: number; high: number; source: string }>;
 }
 
-const FIELDS: { key: string; label: string; unit?: string; mode?: 'decimal' | 'numeric' | 'text' }[] = [
+type Obs = { key: string; label: string; unit?: string; mode?: 'decimal' | 'numeric' | 'text' };
+const FIELDS: Obs[] = [
   { key: 'temperatureC', label: 'Temp', unit: '°C', mode: 'decimal' },
   { key: 'heartRate', label: 'Heart rate', unit: '/min', mode: 'numeric' },
   { key: 'respiratoryRate', label: 'Resp. rate', unit: '/min', mode: 'numeric' },
@@ -40,22 +42,34 @@ const FIELDS: { key: string; label: string; unit?: string; mode?: 'decimal' | 'n
   { key: 'weightKg', label: 'Weight', unit: 'kg', mode: 'decimal' },
 ];
 
+/** The fields with the clinic's temperature and weight units. */
+const fieldsIn = (u: UnitHelpers): Obs[] => FIELDS.map((f) => (f.key === 'temperatureC' ? { ...f, unit: u.t } : f.key === 'weightKg' ? { ...f, unit: u.w } : f));
+/** A stored value (°C, kg) in the clinic's unit. */
+const shown = (key: string, v: unknown, u: UnitHelpers) => (v == null ? v : key === 'temperatureC' ? u.fromC(v as number) : key === 'weightKg' ? u.fromKg(v as number) : v);
+
 /** Inpatient observations: quick entry, trend chart and flagged table (flags use the clinic's sourced reference ranges). */
 export function Observations({ admissionId, active }: { admissionId: string; active: boolean }) {
   const qc = useQueryClient();
   const { can, session } = useSession();
   const tz = session.branch?.timezone ?? 'UTC';
+  const u = useUnits();
+  const fields = fieldsIn(u);
   const [values, setValues] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
   const q = useQuery({ queryKey: ['admission-vitals', admissionId], queryFn: () => api.get<{ vitals: VitalRow[] }>(`/admissions/${admissionId}/vitals`) });
   const m = useMutation({
-    mutationFn: () => api.post(`/admissions/${admissionId}/vitals`, { ...Object.fromEntries(Object.entries(values).filter(([, v]) => v !== '')), notes: notes || null }),
+    // Typed in the clinic's units; stored as °C and kg.
+    mutationFn: () =>
+      api.post(`/admissions/${admissionId}/vitals`, {
+        ...Object.fromEntries(Object.entries(values).filter(([, v]) => v !== '').map(([k, v]) => [k, k === 'temperatureC' ? u.toC(v) : k === 'weightKg' ? u.toKg(v) : v])),
+        notes: notes || null,
+      }),
     onSuccess: () => { toast.success('Observations recorded'); setValues({}); setNotes(''); qc.invalidateQueries({ queryKey: ['admission-vitals', admissionId] }); qc.invalidateQueries({ queryKey: ['flowboard'] }); },
     onError: (e: Error) => setError(e.message),
   });
   const rows = q.data?.vitals ?? [];
-  const chart = [...rows].reverse().map((v) => ({ time: branchTime(v.recordedAt, tz, 'dd/MM HH:mm'), Temp: v.temperatureC, HR: v.heartRate, RR: v.respiratoryRate }));
+  const chart = [...rows].reverse().map((v) => ({ time: branchTime(v.recordedAt, tz, 'dd/MM HH:mm'), Temp: u.fromC(v.temperatureC), HR: v.heartRate, RR: v.respiratoryRate }));
   return (
     <div className="grid gap-4">
       {active && can('hospital.write') && (
@@ -64,7 +78,7 @@ export function Observations({ admissionId, active }: { admissionId: string; act
           <CardContent className="grid gap-3">
             {error && <FormError message={error} />}
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
-              {FIELDS.map((f) => (
+              {fields.map((f) => (
                 <label key={f.key} className="grid gap-1 text-xs text-muted-foreground">
                   {f.label}{f.unit ? ` (${f.unit})` : ''}
                   {f.key === 'mucousMembranes' ? (
@@ -97,7 +111,7 @@ export function Observations({ admissionId, active }: { admissionId: string; act
                 <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 10 }} />
                 <Tooltip contentStyle={{ fontSize: 12 }} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Line yAxisId="t" type="monotone" dataKey="Temp" stroke="hsl(var(--destructive))" dot connectNulls />
+                 <Line yAxisId="t" type="monotone" dataKey="Temp" name={`Temp ${u.t}`} stroke="hsl(var(--destructive))" dot connectNulls />
                 <Line yAxisId="r" type="monotone" dataKey="HR" stroke="hsl(var(--primary))" dot connectNulls />
                 <Line yAxisId="r" type="monotone" dataKey="RR" stroke="hsl(var(--info))" dot connectNulls />
               </LineChart>
@@ -110,15 +124,15 @@ export function Observations({ admissionId, active }: { admissionId: string; act
         {rows.length ? (
           <div className="overflow-x-auto">
             <Table>
-              <THead><TR><TH>Time</TH>{FIELDS.map((f) => <TH key={f.key} className="text-right">{f.label}</TH>)}<TH>Notes</TH></TR></THead>
+              <THead><TR><TH>Time</TH>{fields.map((f) => <TH key={f.key} className="text-right">{f.label}{f.key === 'temperatureC' || f.key === 'weightKg' ? ` (${f.unit})` : ''}</TH>)}<TH>Notes</TH></TR></THead>
               <TBody>
                 {rows.map((v) => (
                   <TR key={v.id}>
                     <TD className="whitespace-nowrap text-xs">{fmtDateTime(v.recordedAt)}<span className="block text-muted-foreground">{v.recordedByName}</span></TD>
-                    {FIELDS.map((f) => {
-                      const val = (v as any)[f.key];
+                    {fields.map((f) => {
+                      const val = shown(f.key, (v as any)[f.key], u) as React.ReactNode;
                       const flag = v.flags[f.key];
-                      return <TD key={f.key} className={cn('text-right tabular', flag && 'font-semibold text-destructive')} title={flag ? `${flag.flag} (range ${flag.low}–${flag.high}, ${flag.source})` : undefined}>{val ?? '—'}{flag ? (flag.flag === 'HIGH' ? ' ↑' : ' ↓') : ''}</TD>;
+                      return <TD key={f.key} className={cn('text-right tabular', flag && 'font-semibold text-destructive')} title={flag ? `${flag.flag} (range ${shown(f.key, flag.low, u)}–${shown(f.key, flag.high, u)}, ${flag.source})` : undefined}>{val ?? '—'}{flag ? (flag.flag === 'HIGH' ? ' ↑' : ' ↓') : ''}</TD>;
                     })}
                     <TD className="text-xs">{v.notes}</TD>
                   </TR>

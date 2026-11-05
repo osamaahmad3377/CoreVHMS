@@ -8,7 +8,7 @@ import { ErrorState, LoadingRows } from '@/components/page';
 import { RequirePermission } from '@/components/require';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
-import { fmtDate } from '@/lib/format';
+import { fmtDate, fmtWeight } from '@/lib/format';
 import type { ClinicalSummary, Referral } from '@/lib/types';
 import { LetterFooter, Letterhead } from '@/components/documents/letterhead';
 
@@ -42,7 +42,7 @@ function LetterView() {
         <table className="mb-4"><tbody>
           <tr><th className="w-40 py-0.5 pr-3 text-left font-medium text-muted-foreground">Patient</th><td>{p.name} — {p.species.name}{p.breed?.name || p.breedText ? `, ${p.breed?.name ?? p.breedText}` : ''}</td></tr>
           <tr><th className="py-0.5 pr-3 text-left font-medium text-muted-foreground">Sex / born</th><td>{enumLabel(p.sex)}{p.dateOfBirth ? ` · ${fmtDate(p.dateOfBirth)}` : ''}</td></tr>
-          {summary.weight && <tr><th className="py-0.5 pr-3 text-left font-medium text-muted-foreground">Weight</th><td>{summary.weight.weightKg} kg ({fmtDate(summary.weight.measuredAt)})</td></tr>}
+          {summary.weight && <tr><th className="py-0.5 pr-3 text-left font-medium text-muted-foreground">Weight</th><td>{fmtWeight(summary.weight.weightKg)} ({fmtDate(summary.weight.measuredAt)})</td></tr>}
           {p.identifiers[0] && <tr><th className="py-0.5 pr-3 text-left font-medium text-muted-foreground">Microchip</th><td>{p.identifiers[0].value}</td></tr>}
           <tr><th className="py-0.5 pr-3 text-left font-medium text-muted-foreground">Owner</th><td>{r.client.displayName}{r.client.mobilePhone ? ` · ${r.client.mobilePhone}` : ''}</td></tr>
           {summary.problems.length > 0 && <tr><th className="py-0.5 pr-3 text-left align-top font-medium text-muted-foreground">Active problems</th><td>{summary.problems.map((x) => x.term).join('; ')}</td></tr>}

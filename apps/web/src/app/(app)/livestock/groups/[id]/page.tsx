@@ -1,4 +1,5 @@
 'use client';
+import { productionIn } from '@/lib/units';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { enumLabel } from '@vcms/shared';
 import { ArrowRightLeft, Baby, Lock, Milk, Plus, Skull, Syringe, Users } from 'lucide-react';
@@ -128,7 +129,7 @@ function Group() {
               <li key={r.id} className="flex items-center gap-3 px-4 py-2">
                 <span className="w-24 whitespace-nowrap text-muted-foreground">{fmtDateOnly(r.recordedOn)}</span>
                 <span className="flex-1">{enumLabel(r.kind)}{r.patient ? ` — ${r.patient.name}` : ''}</span>
-                <span className="tabular">{fmtNumber(r.quantity)} {r.unit}</span>
+                <span className="tabular">{(({ quantity, unit }) => `${fmtNumber(quantity)} ${unit}`)(productionIn(r.kind, Number(r.quantity), r.unit))}</span>
                 {r.kind === 'MORTALITY' && <Badge variant="destructive">Deaths</Badge>}
               </li>
             ))}

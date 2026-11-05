@@ -1,4 +1,5 @@
 'use client';
+import { setDisplayUnits } from '@/lib/display-units';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarDays, Home, LogOut, MessageSquare, PawPrint, Receipt, Settings } from 'lucide-react';
 import Link from 'next/link';
@@ -38,6 +39,8 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
   };
   if (!session.data) return <div className="mx-auto max-w-5xl p-6"><LoadingRows /></div>;
   const s = session.data;
+  // Weights in the clinic's units (fmtWeight).
+  setDisplayUnits(s.clinic.units);
   const active = (href: string, exact?: boolean) => (exact ? pathname === href : pathname.startsWith(href));
   return (
     <Ctx.Provider value={s}>

@@ -1,6 +1,6 @@
 import { findFrequency, ownerAmount, ownerLabelText } from '@vcms/shared';
 import type { ClinicHeader } from '../billing/invoice-document';
-import { fmtDate, fmtDateOnly } from '@/lib/format';
+import { fmtDate, fmtDateOnly, fmtWeight } from '@/lib/format';
 import { qtyUnit } from '@/lib/labels';
 import type { Prescription } from '@/lib/types';
 
@@ -78,7 +78,7 @@ function OutsidePrescription({ rx, items, clinic, address }: { rx: Prescription;
         </div>
       </div>
       <p className="mt-2">
-        Patient: <b>{rx.patient.name}</b> ({rx.patient.species.name}){rx.weightKg ? ` · ${rx.weightKg} kg` : ''} · Owner: {ownerName(rx.client)}
+        Patient: <b>{rx.patient.name}</b> ({rx.patient.species.name}){rx.weightKg ? ` · ${fmtWeight(rx.weightKg)}` : ''} · Owner: {ownerName(rx.client)}
         {rx.client.mobilePhone ? ` · ${rx.client.mobilePhone}` : ''}
       </p>
       <ol className="mt-3 grid list-decimal gap-2 pl-6">

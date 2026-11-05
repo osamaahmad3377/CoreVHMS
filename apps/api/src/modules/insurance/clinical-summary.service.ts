@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { formatWeight } from '@vcms/shared';
+import { orgUnits } from '../../common/units/org-units';
 
 /**
  * Builds a factual clinical summary from signed records (signalment, problems, diagnoses, latest signed
@@ -31,8 +33,9 @@ export class ClinicalSummaryService {
   /** Plain-text version for pre-filling a referral or claim (the clinician edits it before sending). */
   async text(patientId: string, from?: Date, to?: Date) {
     const s = await this.forPeriod(patientId, from, to);
+    const units = await orgUnits(this.prisma);
     const lines: string[] = [];
-    if (s.weight) lines.push(`Latest weight: ${s.weight.weightKg} kg (${s.weight.measuredAt.toISOString().slice(0, 10)})`);
+    if (s.weight) lines.push(`Latest weight: ${formatWeight(Number(s.weight.weightKg), units.weight)} (${s.weight.measuredAt.toISOString().slice(0, 10)})`);
     if (s.problems.length) lines.push(`Active problems: ${s.problems.map((p) => p.term + (p.isChronic ? ' (chronic)' : '')).join('; ')}`);
     if (s.diagnoses.length) lines.push(`Diagnoses: ${[...new Set(s.diagnoses.map((d) => `${d.term} (${d.type.toLowerCase()})`))].join('; ')}`);
     for (const n of s.notes) {

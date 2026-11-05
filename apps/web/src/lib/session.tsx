@@ -4,6 +4,7 @@ import type { OptionalModule, Permission, SessionContext } from '@vcms/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createContext, useCallback, useContext, useEffect, useMemo } from 'react';
 import { api, setActiveBranch } from './api';
+import { setDisplayUnits } from './display-units';
 
 interface SessionValue {
   session: SessionContext;
@@ -26,6 +27,8 @@ export function useSessionQuery() {
 
 export function SessionProvider({ session, children }: { session: SessionContext; children: React.ReactNode }) {
   const qc = useQueryClient();
+  // Set during render, so every child formats weights and temperatures in the clinic's units on this same pass.
+  setDisplayUnits(session.organization?.units);
   useEffect(() => {
     setActiveBranch(session.branch?.id ?? null);
   }, [session.branch?.id]);

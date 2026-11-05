@@ -1,4 +1,4 @@
-import type { ApiErrorBody } from '@vcms/shared';
+import type { ApiErrorBody, Units } from '@vcms/shared';
 import { ApiError } from './api';
 
 function readCookie(name: string): string {
@@ -37,6 +37,6 @@ export const portalApi = {
 export interface PortalSession {
   user: { id: string; email: string; name: string };
   client: { id: string; displayName: string };
-  clinic: { id: string; name: string; currency: string; phone: string | null; email: string | null; defaultTimezone: string; portalCancelHours: number };
+  clinic: { id: string; name: string; currency: string; phone: string | null; email: string | null; defaultTimezone: string; portalCancelHours: number; units?: Units };
   clinics: { accessId: string; name: string }[];
 }

@@ -1,4 +1,5 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { unitsOf } from '@vcms/shared';
 import type { CookieOptions, Response } from 'express';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
@@ -110,11 +111,13 @@ export class PortalAuthService {
     const raw = this.prisma.raw;
     const [user, accesses, client] = await Promise.all([
       raw.portalUser.findUniqueOrThrow({ where: { id: ctx.portalUserId }, select: { id: true, email: true, name: true } }),
-      raw.portalAccess.findMany({ where: { portalUserId: ctx.portalUserId, isActive: true }, include: { organization: { select: { id: true, name: true, currency: true, phone: true, email: true, logoAttachmentId: true, defaultTimezone: true, portalCancelHours: true } } } }),
+      raw.portalAccess.findMany({ where: { portalUserId: ctx.portalUserId, isActive: true }, include: { organization: { select: { id: true, name: true, currency: true, phone: true, email: true, logoAttachmentId: true, defaultTimezone: true, portalCancelHours: true, weightUnit: true, temperatureUnit: true } } } }),
       raw.client.findUniqueOrThrow({ where: { id: ctx.clientId }, select: { id: true, displayName: true } }),
     ]);
     const active = accesses.find((a) => a.id === ctx.accessId)!;
-    return { user, client, clinic: active.organization, clinics: accesses.map((a) => ({ accessId: a.id, name: a.organization.name })), csrfToken: ctx.csrfToken };
+    const { weightUnit, temperatureUnit, ...clinic } = active.organization;
+    // Pets' weights are shown in the clinic's units.
+    return { user, client, clinic: { ...clinic, units: unitsOf({ weightUnit, temperatureUnit }) }, clinics: accesses.map((a) => ({ accessId: a.id, name: a.organization.name })), csrfToken: ctx.csrfToken };
   }
 
   async switchClinic(ctx: PortalContext, accessId: string) {

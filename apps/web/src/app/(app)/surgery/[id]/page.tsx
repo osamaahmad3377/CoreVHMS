@@ -1,4 +1,5 @@
 'use client';
+import { useUnits } from '@/lib/units';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ASA_GRADES, SURGERY_ROLES, enumLabel } from '@vcms/shared';
 import { BedDouble, Check, CheckCircle2, Circle, Lock, Pill, Printer, Syringe, Trash2, XCircle } from 'lucide-react';
@@ -98,12 +99,14 @@ function Readings({ s, phase, locked }: { s: Surgery; phase: 'INTRA_OP' | 'RECOV
   const m = useSurgeryMutation(s.id);
   const { session } = useSession();
   const tz = session.branch?.timezone ?? 'UTC';
+  const u = useUnits();
   const [v, setV] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState('');
-  const fields = READING_FIELDS.filter((f) => f.phases.includes(phase));
+  // Temperature in the clinic's unit (stored in °C).
+  const fields = READING_FIELDS.filter((f) => f.phases.includes(phase)).map((f) => (f.key === 'temperatureC' ? { ...f, label: `Temp ${u.t}` } : f));
   const rows = (s.readings ?? []).filter((r) => r.phase === phase);
   const canRecord = !locked && ['PRE_OP', 'IN_PROGRESS', 'RECOVERY'].includes(s.status);
-  const chart = rows.map((r) => ({ time: branchTime(r.recordedAt, tz), HR: r.heartRate, 'SpO₂': r.spo2, EtCO2: r.etco2, MAP: r.meanBp, Temp: r.temperatureC }));
+  const chart = rows.map((r) => ({ time: branchTime(r.recordedAt, tz), HR: r.heartRate, 'SpO₂': r.spo2, EtCO2: r.etco2, MAP: r.meanBp, Temp: u.fromC(r.temperatureC) }));
   return (
     <div className="grid gap-3">
       {canRecord && (
@@ -115,7 +118,7 @@ function Readings({ s, phase, locked }: { s: Surgery; phase: 'INTRA_OP' | 'RECOV
           </div>
           <div className="flex gap-2">
             <Input aria-label="Reading notes" className="h-8" placeholder="Notes (events, drugs, depth…)" value={notes} maxLength={500} onChange={(e) => setNotes(e.target.value)} />
-            <Button size="sm" loading={m.isPending} disabled={!Object.values(v).some((x) => x !== '')} onClick={() => m.mutate({ path: '/readings', body: { phase, ...Object.fromEntries(Object.entries(v).filter(([, x]) => x !== '')), notes: notes || null } }, { onSuccess: () => { setV({}); setNotes(''); } })}>Record</Button>
+            <Button size="sm" loading={m.isPending} disabled={!Object.values(v).some((x) => x !== '')} onClick={() => m.mutate({ path: '/readings', body: { phase, ...Object.fromEntries(Object.entries(v).filter(([, x]) => x !== '').map(([k, x]) => [k, k === 'temperatureC' ? u.toC(x) : x])), notes: notes || null } }, { onSuccess: () => { setV({}); setNotes(''); } })}>Record</Button>
           </div>
         </div>
       )}
@@ -144,7 +147,7 @@ function Readings({ s, phase, locked }: { s: Surgery; phase: 'INTRA_OP' | 'RECOV
               {rows.map((r) => (
                 <TR key={r.id}>
                   <TD className="whitespace-nowrap text-xs tabular">{branchTime(r.recordedAt, tz)}<span className="block text-muted-foreground">{r.recordedByName}</span></TD>
-                  {fields.map((f) => <TD key={f.key} className="text-right tabular">{(r[f.key] as number | null) ?? '—'}</TD>)}
+                  {fields.map((f) => <TD key={f.key} className="text-right tabular">{(f.key === 'temperatureC' ? u.fromC(r.temperatureC) : (r[f.key] as number | null)) ?? '—'}</TD>)}
                   <TD className="text-xs">{r.notes}</TD>
                 </TR>
               ))}

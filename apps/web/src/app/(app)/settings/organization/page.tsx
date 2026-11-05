@@ -73,6 +73,8 @@ function OrgForm({ org }: { org: Org }) {
       await api.patch('/organization', v);
       toast.success('Clinic details saved');
       qc.invalidateQueries({ queryKey: ['organization'] });
+      // Units, name and currency show everywhere: reload the session that carries them.
+      qc.invalidateQueries({ queryKey: ['session'] });
       refresh();
     } catch (err) {
       if (err instanceof ApiError) applyServerErrors(err.fieldErrors, form.setError);

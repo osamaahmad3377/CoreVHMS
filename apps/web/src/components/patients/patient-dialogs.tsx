@@ -1,4 +1,5 @@
 'use client';
+import { useUnits } from '@/lib/units';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation } from '@tanstack/react-query';
 import { ALERT_SEVERITIES, ALERT_TYPES, IDENTIFIER_TYPES, alertSchema, enumLabel, identifierSchema, weightSchema } from '@vcms/shared';
@@ -42,6 +43,7 @@ function useServerForm<T extends z.ZodTypeAny>(schema: T, defaults: z.input<T>) 
 }
 
 export function WeightDialog({ patientId, open, onOpenChange, onSaved }: Base) {
+  const u = useUnits();
   const { form, error, run } = useServerForm(weightSchema, {
     weightKg: '' as any,
     bodyConditionScore: '' as any,
@@ -54,6 +56,8 @@ export function WeightDialog({ patientId, open, onOpenChange, onSaved }: Base) {
     (v: any) =>
       api.post(`/patients/${patientId}/weights`, {
         ...v,
+        // Typed in the clinic's unit (kg or lb), stored in kg.
+        weightKg: u.toKg(v.weightKg),
         bodyConditionScore: v.bodyConditionScore === '' ? null : v.bodyConditionScore,
         measuredAt: v.measuredAt ? new Date(v.measuredAt).toISOString() : undefined,
       }),
@@ -71,7 +75,7 @@ export function WeightDialog({ patientId, open, onOpenChange, onSaved }: Base) {
         </DialogHeader>
         <form onSubmit={submit} className="grid gap-3" noValidate>
           {error && <FormError message={error} />}
-          <Field label="Weight (kg)" htmlFor="w-kg" error={e.weightKg as any} required>
+          <Field label={`Weight (${u.w})`} htmlFor="w-kg" error={e.weightKg as any} required>
             <Input id="w-kg" type="number" step="0.001" min="0" inputMode="decimal" autoFocus {...form.register('weightKg')} />
           </Field>
           <div className="grid grid-cols-2 gap-3">

@@ -5,7 +5,7 @@ import { useVisitDental } from '../dental/visit-dental';
 import type { ClinicHeader } from '../billing/invoice-document';
 import { LetterFooter, Letterhead } from '../documents/letterhead';
 import { api, qs } from '@/lib/api';
-import { fmtAge, fmtDate, fmtDateTime, fmtWeight } from '@/lib/format';
+import { fmtAge, fmtDate, fmtDateTime, fmtTemp, fmtWeight } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { Administration, ClinicalNote, DiagnosticOrder, Encounter, Prescription } from '@/lib/types';
 
@@ -124,7 +124,7 @@ export function ConsultationRecord({ encounter: e, clinic }: { encounter: Encoun
 
   const vitalItems: [string, string | null][] = vitals
     ? [
-        ['Temperature', vitals.temperatureC != null ? `${vitals.temperatureC} °C` : null],
+        ['Temperature', vitals.temperatureC != null ? fmtTemp(vitals.temperatureC) : null],
         ['Heart rate', vitals.heartRate != null ? `${vitals.heartRate} /min` : null],
         ['Respiratory rate', vitals.respiratoryRate != null ? `${vitals.respiratoryRate} /min` : null],
         ['Weight', vitals.weightKg != null ? fmtWeight(vitals.weightKg) : null],
