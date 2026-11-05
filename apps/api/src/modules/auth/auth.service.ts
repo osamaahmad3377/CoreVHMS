@@ -372,7 +372,7 @@ ${emailButton(link, 'Reset password', brand)}
     // The authenticator app lists the code under the clinic's brand name (NextCore for super admins).
     const orgId = RequestContext.get()?.organizationId;
     const org = orgId ? await this.prisma.raw.organization.findUnique({ where: { id: orgId } }) : null;
-    const otpauthUrl = authenticator.keyuri(user.email, org ? (org.brandName ?? org.name) : 'NextCore VCMS', secret);
+    const otpauthUrl = authenticator.keyuri(user.email, org ? org.name : 'NextCore VCMS', secret);
     return { secret, otpauthUrl, qrDataUrl: await QRCode.toDataURL(otpauthUrl) };
   }
 

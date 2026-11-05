@@ -257,8 +257,8 @@ export class EmailIntegrationService {
 
   /** A test email to check the connection (to the person testing, or another address). */
   async test(to: string) {
-    const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: RequestContext.orgId() }, select: { name: true, brandName: true } });
-    const name = org.brandName ?? org.name;
+    const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: RequestContext.orgId() }, select: { name: true } });
+    const name = org.name;
     const r = await this.send(
       RequestContext.orgId(),
       {

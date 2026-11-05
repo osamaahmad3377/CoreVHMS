@@ -61,7 +61,7 @@ export class OnlineBookingService {
     ]);
     return {
       enabled: s?.enabled ?? false,
-      slug: s?.slug ?? (await this.freeSlug(slugify(org.brandName ?? org.name))),
+      slug: s?.slug ?? (await this.freeSlug(slugify(org.name))),
       saved: !!s,
       daysAhead: s?.daysAhead ?? 30,
       minNoticeHours: s?.minNoticeHours ?? 2,
@@ -347,7 +347,7 @@ export class OnlineBookingService {
       const b = await this.summary(a.id);
       const changeable = ['BOOKED', 'CONFIRMED'].includes(b.status) && b.startsAt.getTime() >= Date.now() + s.cancelNoticeHours * 3600_000;
       const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: s.organizationId } });
-      return { booking: b, changeable, cancelNoticeHours: s.cancelNoticeHours, slug: s.enabled ? s.slug : null, clinic: { name: org.brandName ?? org.name, phone: org.phone, branding: brandingOf(org, `/api/v1/public/booking/${s.slug}`) } };
+      return { booking: b, changeable, cancelNoticeHours: s.cancelNoticeHours, slug: s.enabled ? s.slug : null, clinic: { name: org.name, phone: org.phone, branding: brandingOf(org, `/api/v1/public/booking/${s.slug}`) } };
     });
   }
 

@@ -624,12 +624,12 @@ export class AutomationsService implements OnModuleInit {
   private async orgInfo(): Promise<OrgInfo> {
     const orgId = RequestContext.orgId();
     const [org, wa, booking] = await Promise.all([
-      this.prisma.raw.organization.findUniqueOrThrow({ where: { id: orgId }, select: { name: true, brandName: true, phone: true, country: true, currency: true, defaultTimezone: true } }),
+      this.prisma.raw.organization.findUniqueOrThrow({ where: { id: orgId }, select: { name: true, phone: true, country: true, currency: true, defaultTimezone: true } }),
       this.whatsapp.sending(orgId),
       this.prisma.db.onlineBookingSettings.findFirst({ where: { enabled: true }, select: { slug: true } }),
     ]);
     return {
-      name: org.brandName ?? org.name,
+      name: org.name,
       phone: org.phone,
       country: org.country,
       currency: org.currency,

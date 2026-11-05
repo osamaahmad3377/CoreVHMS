@@ -39,7 +39,6 @@ const SIDEBAR_SWATCHES = ['#131c26', '#0f172a', '#1e1b4b', '#14532d', '#422006',
 
 /** Everything on this page that is saved with the Save button (images save as soon as they upload). */
 const draftOf = (b: Branding, orgName: string) => ({
-  brandName: b.brandName === orgName ? '' : b.brandName,
   primaryColor: b.primaryColor,
   sidebarColor: b.sidebarColor,
   loginHeadline: b.loginHeadline ?? '',
@@ -73,7 +72,8 @@ type Draft = ReturnType<typeof draftOf>;
 const withDraft = (b: Branding, d: Draft, orgName: string): Branding => ({
   ...b,
   ...d,
-  brandName: d.brandName.trim() || orgName,
+  // The name shown everywhere is the clinic name (Settings → Clinic details).
+  brandName: orgName,
   loginHeadline: d.loginHeadline || null,
   loginMessage: d.loginMessage || null,
   loginFooter: d.loginFooter || null,
@@ -421,10 +421,11 @@ function BrandingForm({ branding, orgId, orgName, clinic }: { branding: Branding
                 </div>
               </Section>
 
-              <Section title="Name" description="Shown in the menu, on the sign-in page and in the browser tab.">
-                <Field label="Name shown in the app" htmlFor="b-name" hint={`Leave empty to use your clinic name (${orgName}).`} error={errors.brandName}>
-                  <Input id="b-name" value={draft.brandName} maxLength={60} placeholder={orgName} onChange={(e) => set('brandName', e.target.value)} />
-                </Field>
+              <Section title="Name" description="Everything shows your clinic name — the menu, sign-in page, browser tab, documents and emails.">
+                <p className="rounded-lg bg-muted/50 px-3 py-2 text-sm">
+                  <span className="font-semibold">{orgName}</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">Change it under Settings → Clinic details.</span>
+                </p>
               </Section>
 
               <Section title="Logos and icon" description="PNG, JPG or WebP. Images apply as soon as they upload.">

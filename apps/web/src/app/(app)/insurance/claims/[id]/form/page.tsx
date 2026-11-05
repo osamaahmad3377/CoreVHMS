@@ -29,7 +29,7 @@ function Form() {
   if (q.error || !q.data) return <ErrorState error={q.error} />;
   const { claim: c, lines, history, organization: org } = q.data;
   // One name for the practice everywhere on the form (header, payee), as on invoices.
-  const practice = org.legalName ?? org.name;
+  const practice = org.name;
   const lineTotal = (l: ClaimForm['lines'][number]) => l.grossMinor ?? l.lineTotalMinor ?? Math.round(l.quantity * l.unitPriceMinor);
   const row = (label: string, value: React.ReactNode) => <tr><th className="w-48 py-1 pr-3 text-left align-top font-medium text-muted-foreground">{label}</th><td className="py-1">{value}</td></tr>;
   return (

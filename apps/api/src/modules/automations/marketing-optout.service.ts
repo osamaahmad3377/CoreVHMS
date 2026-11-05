@@ -22,10 +22,10 @@ export class MarketingOptOutService {
     return RequestContext.runAs({ organizationId: t.organizationId, userName: 'Client (unsubscribe link)' }, async () => {
       const [client, org] = await Promise.all([
         this.prisma.db.client.findUnique({ where: { id: t.clientId }, select: { id: true, marketingConsent: true, status: true } }),
-        this.prisma.raw.organization.findUnique({ where: { id: t.organizationId }, select: { name: true, brandName: true } }),
+        this.prisma.raw.organization.findUnique({ where: { id: t.organizationId }, select: { name: true } }),
       ]);
       if (!client || !org || client.status === 'MERGED') throw notFound('Link');
-      return { t, client, clinicName: org.brandName ?? org.name };
+      return { t, client, clinicName: org.name };
     });
   }
 

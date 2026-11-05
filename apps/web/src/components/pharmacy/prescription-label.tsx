@@ -50,7 +50,7 @@ export function PrescriptionLabels({ rx, clinic }: { rx: Prescription; clinic: C
               {rx.prescriber?.registration ? ` (${rx.prescriber.registration})` : ''}
             </p>
             <p className="mt-1 border-t border-black pt-1 text-[9pt]">
-              <b>{clinic.legalName || clinic.name}</b>
+              <b>{clinic.name}</b>
               {address ? ` · ${address}` : ''}
               {clinic.phone ? ` · ${clinic.phone}` : ''}
             </p>
@@ -69,7 +69,7 @@ function OutsidePrescription({ rx, items, clinic, address }: { rx: Prescription;
     <section className="mb-6 break-inside-avoid border border-black p-5 text-[11pt] leading-snug">
       <div className="flex items-start justify-between gap-4 border-b border-black pb-2">
         <div>
-          <p className="text-[14pt] font-bold">{clinic.legalName || clinic.name}</p>
+          <p className="text-[14pt] font-bold">{clinic.name}</p>
           <p className="text-[9pt]">{[address, clinic.phone].filter(Boolean).join(' · ')}</p>
         </div>
         <div className="text-right">

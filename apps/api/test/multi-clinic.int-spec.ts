@@ -156,12 +156,12 @@ describe('Multi-clinic hosting', () => {
     expect((await stolen.get('/clients')).status).toBe(401);
 
     // Each clinic's sign-in page shows its own branding, before anyone signs in, and never another clinic's.
-    await alpha.owner.call('put', '/organization/branding', { brandName: 'Alpha', primaryColor: '#dc2626' });
+    await alpha.owner.call('put', '/organization/branding', { primaryColor: '#dc2626' });
     const logo = await alpha.owner.upload('/attachments', { entityType: 'Branding', entityId: alpha.owner.session.organization.id, category: 'logo' }, { buffer: PNG, name: 'logo.png', type: 'image/png' });
     expect((await alpha.owner.post('/organization/logo', { attachmentId: logo.body.id })).status).toBe(200);
     const anonymousAlpha = client('alpha-paws');
     const alphaInfo = (await anonymousAlpha.get('/tenant')).body;
-    expect(alphaInfo.clinic.branding).toMatchObject({ brandName: 'Alpha', primaryColor: '#dc2626', logoUrl: expect.stringMatching(/^\/api\/v1\/tenant\/logo\?v=/) });
+    expect(alphaInfo.clinic.branding).toMatchObject({ brandName: 'Alpha Paws', primaryColor: '#dc2626', logoUrl: expect.stringMatching(/^\/api\/v1\/tenant\/logo\?v=/) });
     const publicLogo = await anonymousAlpha.get('/tenant/logo');
     expect(publicLogo.status).toBe(200);
     expect(publicLogo.headers['content-type']).toBe('image/png');

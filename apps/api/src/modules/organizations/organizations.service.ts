@@ -19,7 +19,8 @@ import { REAL_STAFF } from '../users/system-account';
 export function brandingOf(org: Organization, base = '/api/v1/organization'): Branding {
   const v = org.brandingUpdatedAt?.getTime() ?? 0;
   return {
-    brandName: org.brandName ?? org.name,
+    // Always the clinic's own name (Settings → Clinic details).
+    brandName: org.name,
     primaryColor: org.primaryColor,
     sidebarColor: org.sidebarColor,
     logoUrl: org.logoAttachmentId ? `${base}/logo?v=${v}` : null,
@@ -55,7 +56,7 @@ export function brandingOf(org: Organization, base = '/api/v1/organization'): Br
 }
 
 const BRANDING_FIELDS = [
-  'brandName', 'primaryColor', 'sidebarColor', 'loginHeadline', 'loginMessage', 'brandFont', 'cornerStyle', 'menuLogoSize', 'defaultTheme',
+  'primaryColor', 'sidebarColor', 'loginHeadline', 'loginMessage', 'brandFont', 'cornerStyle', 'menuLogoSize', 'defaultTheme',
   'loginLayout', 'loginBackground', 'loginFooter', 'printLogoPosition', 'printHeaderText', 'printFooterText',
   'printUseBrandColour', 'printLogoSize', 'printNameSize', 'printRule', 'printShowAddress', 'printShowContact', 'printShowTaxNumber',
   'printFooterAlign', 'printPreprinted', 'printTopSpaceMm', 'emailSenderName', 'emailSignature',

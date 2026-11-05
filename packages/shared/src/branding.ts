@@ -40,8 +40,6 @@ export type PrintRule = 'BAND' | 'LINE' | 'DOUBLE' | 'NONE';
 export const CORNER_RADIUS: Record<CornerStyle, string> = { SHARP: '0.375rem', STANDARD: '1rem', ROUNDED: '1.5rem' };
 
 export const brandingUpdateSchema = z.object({
-  /** Name shown in the menu, on the sign-in page and in the browser tab; empty = the clinic name. */
-  brandName: optText(60),
   /** Buttons, links and highlights. */
   primaryColor: hexColour,
   /** Side menu background. */

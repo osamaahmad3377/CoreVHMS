@@ -16,14 +16,12 @@ function hslToHex(v: string) {
 
 describe('clinic branding', () => {
   it('validates and normalises colours and texts', () => {
-    expect(brandingUpdateSchema.parse({ primaryColor: '#0F766E', brandName: '  Happy Paws  ', loginMessage: '' })).toMatchObject({
-      primaryColor: '#0f766e',
-      brandName: 'Happy Paws',
-      loginMessage: null,
-    });
+    const parsed = brandingUpdateSchema.parse({ primaryColor: '#0F766E', brandName: '  Happy Paws  ', loginMessage: '' });
+    expect(parsed).toMatchObject({ primaryColor: '#0f766e', loginMessage: null });
+    // The name shown is always the clinic name, so a branding name is not accepted.
+    expect(parsed).not.toHaveProperty('brandName');
     expect(brandingUpdateSchema.safeParse({ primaryColor: 'red' }).success).toBe(false);
     expect(brandingUpdateSchema.safeParse({ sidebarColor: '#12345' }).success).toBe(false);
-    expect(brandingUpdateSchema.safeParse({ brandName: 'x'.repeat(61) }).success).toBe(false);
   });
 
   it('uses the defaults when no colours are chosen', () => {

@@ -11,30 +11,33 @@ const image = (name: string) => ({ buffer: PNG, name, type: 'image/png' });
 describe('Clinic branding (owner only)', () => {
   afterAll(closeApp);
 
-  it('starts with the clinic name and default colours, and the owner can change them', async () => {
+  it('shows the clinic name everywhere, whatever else is sent, and the owner can change the colours', async () => {
     const org = await registerOrg('Happy Paws Clinic');
     expect((await org.owner.get('/organization/branding')).body).toMatchObject({
       brandName: 'Happy Paws Clinic', primaryColor: null, sidebarColor: null, logoUrl: null, iconUrl: null, hasOwnIcon: false,
     });
 
+    // The name shown is always the clinic name (Settings → Clinic details): a branding name is ignored.
     const saved = await org.owner.call('put', '/organization/branding', {
       brandName: 'Happy Paws', primaryColor: '#2563EB', sidebarColor: '#0f172a', loginHeadline: 'Welcome back', loginMessage: 'Open 9–5. Call 042 111 222 for help.',
     });
     expect(saved.status).toBe(200);
-    expect(saved.body).toMatchObject({ brandName: 'Happy Paws', primaryColor: '#2563eb', sidebarColor: '#0f172a', loginHeadline: 'Welcome back' });
+    expect(saved.body).toMatchObject({ brandName: 'Happy Paws Clinic', primaryColor: '#2563eb', sidebarColor: '#0f172a', loginHeadline: 'Welcome back' });
     expect((await org.owner.call('put', '/organization/branding', { primaryColor: 'blue' })).status).toBe(400);
 
     // Everyone's session carries the branding, so the whole app shows it.
     const session = (await org.owner.get('/auth/session')).body;
-    expect(session.organization.branding).toMatchObject({ brandName: 'Happy Paws', primaryColor: '#2563eb' });
+    expect(session.organization.branding).toMatchObject({ brandName: 'Happy Paws Clinic', primaryColor: '#2563eb' });
     // The clinic's legal name is unchanged.
     expect(session.organization.name).toBe('Happy Paws Clinic');
 
     const audit = await prisma().auditEvent.findFirst({ where: { organizationId: org.orgId, action: 'organization.branding_updated' } });
-    expect(audit?.changes).toMatchObject({ brandName: { from: null, to: 'Happy Paws' }, primaryColor: { from: null, to: '#2563eb' } });
+    expect(audit?.changes).toMatchObject({ primaryColor: { from: null, to: '#2563eb' } });
+    expect(audit?.changes).not.toHaveProperty('brandName');
 
-    // Clearing the name falls back to the clinic name.
-    expect((await org.owner.call('put', '/organization/branding', { brandName: '' })).body.brandName).toBe('Happy Paws Clinic');
+    // Renaming the clinic changes the name shown everywhere.
+    expect((await org.owner.patch('/organization', { name: 'Happy Paws Veterinary' })).status).toBe(200);
+    expect((await org.owner.get('/auth/session')).body.organization.branding.brandName).toBe('Happy Paws Veterinary');
   });
 
   it('uploads a logo and a separate browser-tab icon', async () => {
@@ -134,17 +137,17 @@ describe('Clinic branding (owner only)', () => {
 
   it('emails to staff carry the clinic’s name and colour', async () => {
     const org = await registerOrg('Sunrise Animal Hospital');
-    await org.owner.call('put', '/organization/branding', { brandName: 'Sunrise Vets', primaryColor: '#7c3aed' });
+    await org.owner.call('put', '/organization/branding', { primaryColor: '#7c3aed' });
     const vet = await staff(org, 'veterinarian');
     const invite = mail().outbox.filter((m) => m.to === vet.email).pop()!;
     expect(invite.subject).toBe('You’re invited to join Sunrise Animal Hospital'.replace('’', "'"));
     expect(invite.html).toContain('background:#7c3aed');
-    expect(invite.html).toContain('Sunrise Vets');
+    expect(invite.html).toContain('Sunrise Animal Hospital');
     expect(invite.html).not.toContain('NextCore');
 
     await new TestClient(await getApp()).post('/auth/forgot-password', { email: vet.email });
     const reset = mail().outbox.filter((m) => m.to === vet.email).pop()!;
-    expect(reset.subject).toBe('Reset your Sunrise Vets password');
+    expect(reset.subject).toBe('Reset your Sunrise Animal Hospital password');
     expect(reset.html).toContain('background:#7c3aed');
   });
 });

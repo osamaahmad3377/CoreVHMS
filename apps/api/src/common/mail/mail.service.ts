@@ -91,18 +91,17 @@ export interface EmailBrand {
 const DEFAULT_EMAIL_COLOUR = '#0f766e';
 export const NEXTCORE_EMAIL: EmailBrand = { name: 'NextCore Veterinary Clinic Management System' };
 
-/** The branding a clinic's emails carry (its brand name and main colour). */
+/** The branding a clinic's emails carry (its clinic name and main colour). */
 export const emailBrandOf = (org: {
   name: string;
-  brandName?: string | null;
   primaryColor?: string | null;
   email?: string | null;
   emailSenderName?: string | null;
   emailSignature?: string | null;
 }): EmailBrand => ({
-  name: org.brandName ?? org.name,
+  name: org.name,
   color: org.primaryColor,
-  senderName: org.emailSenderName ?? org.brandName ?? org.name,
+  senderName: org.emailSenderName ?? org.name,
   replyTo: org.email,
   signature: org.emailSignature,
 });

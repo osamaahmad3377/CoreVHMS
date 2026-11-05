@@ -22,7 +22,7 @@ function LetterView() {
   const { referral: r, organization: org, summary } = q.data;
   const p = r.patient;
   // Same practice name in the letterhead and the sign-off.
-  const practice = org.legalName ?? org.name;
+  const practice = org.name;
   return (
     <>
       <div className="no-print mb-4 flex items-center justify-between">

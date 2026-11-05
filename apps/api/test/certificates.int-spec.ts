@@ -153,15 +153,13 @@ describe('Certificates', () => {
     expect((await vet.client.get('/certificate-templates?kind=HEALTH')).body.map((x: any) => x.name)).toEqual(['Green health']);
   });
 
-  it('prints the clinic name from Settings → Clinic details, whatever the branding name is', async () => {
+  it('prints the clinic name from Settings → Clinic details, and the legal name only where a template asks for it', async () => {
     const { org, vet, patient } = await setup();
     const orgName = (await org.owner.get('/organization')).body.name;
-    expect((await org.owner.call('put', '/organization/branding', { brandName: 'Fancy Pets Brand' })).status).toBe(200);
     expect((await org.owner.patch('/organization', { legalName: 'Official Legal Name Ltd' })).status).toBe(200);
     const c = (await vet.client.post('/certificates', { kind: 'HEALTH', patientId: patient.id, inputs: { examDate: today() } })).body;
     expect(c.data.fields['clinic.name']).toBe(orgName);
     expect(c.data.fields['clinic.legalName']).toBe('Official Legal Name Ltd');
-    expect(JSON.stringify(c.data.fields)).not.toContain('Fancy Pets Brand');
     const anon = Object.assign(new TestClient(await getApp()), {});
     expect((await anon.get(`/public/certificates/${c.verificationCode.replace(/-/g, '')}`)).body.clinic).toBe(orgName);
   });

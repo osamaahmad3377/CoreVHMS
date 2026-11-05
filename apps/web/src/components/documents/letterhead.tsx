@@ -46,7 +46,8 @@ export function Letterhead({
   const accent = accentOf(b);
   const position = b?.printLogoPosition ?? 'LEFT';
   const rule = b?.printRule ?? 'BAND';
-  const name = clinic?.legalName || clinic?.name;
+  // The clinic name from Settings → Clinic details; the legal name, when different, goes underneath.
+  const name = clinic?.name || clinic?.legalName;
   const address = [branch?.addressLine1 ?? clinic?.addressLine1, branch ? branch.addressLine2 : clinic?.addressLine2, branch?.city ?? clinic?.city, branch?.postcode ?? clinic?.postcode]
     .filter(Boolean)
     .join(', ');
@@ -84,7 +85,7 @@ export function Letterhead({
   const details = (
     <div className={cn('min-w-0', centred && 'text-center', position === 'RIGHT' && 'text-left')}>
       <p className="font-bold leading-tight" style={{ color: accent, fontSize: `${PRINT_NAME_PT[b?.printNameSize ?? 'MEDIUM']}pt` }}>{name}</p>
-      {clinic?.legalName && clinic.name && clinic.legalName !== clinic.name && <p className="text-[9.5pt]">{clinic.name}</p>}
+      {clinic?.legalName && clinic.name && clinic.legalName !== clinic.name && <p className="text-[9.5pt]">{clinic.legalName}</p>}
       {b?.printHeaderText && <p className="text-[9.5pt] italic">{b.printHeaderText}</p>}
       {branch?.name && <p className="font-semibold">{branch.name}</p>}
       {(b?.printShowAddress ?? true) && address && <p>{address}</p>}
