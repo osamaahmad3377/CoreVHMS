@@ -51,7 +51,7 @@ test.describe('Certificates', () => {
     await page.getByRole('dialog').getByRole('button', { name: 'Revoke' }).click();
     await expect(page.getByText('Revoked', { exact: true }).first()).toBeVisible();
     await anon.reload();
-    await expect(anon.getByText('This certificate was revoked')).toBeVisible();
+    await expect(anon.getByText('This certificate has been revoked')).toBeVisible();
     await expect(anon.getByText(/Travel cancelled/)).toBeVisible();
     await anon.close();
   });

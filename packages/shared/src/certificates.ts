@@ -761,6 +761,8 @@ export interface CertificateVerification {
   issuedAt?: string;
   validUntil?: string | null;
   clinic?: string;
+  /** How to reach the clinic to confirm a certificate (the details it publishes anyway). */
+  clinicContact?: { phone: string | null; email: string | null; website: string | null; address: string | null };
   /** "Bruno — Dog, Labrador Retriever" or the staff member's name. */
   subject?: string;
   /** The owner's name with the family name shortened ("Ahmed K."). */

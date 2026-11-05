@@ -458,7 +458,7 @@ export class CertificatesService {
     const c = await this.prisma.raw.certificate.findUnique({
       where: { verificationCode: code },
       include: {
-        organization: { select: { name: true } },
+        organization: { select: { name: true, phone: true, email: true, website: true, addressLine1: true, addressLine2: true, city: true, postcode: true } },
         patient: { select: { name: true, species: { select: { name: true } }, breed: { select: { name: true } }, breedText: true } },
         client: { select: { displayName: true } },
         membership: { select: { jobTitle: true } },
@@ -480,6 +480,12 @@ export class CertificatesService {
       issuedAt: c.issuedAt.toISOString(),
       validUntil: c.validUntil ? dayOf(c.validUntil) : null,
       clinic: c.organization.name,
+      clinicContact: {
+        phone: c.organization.phone,
+        email: c.organization.email,
+        website: c.organization.website,
+        address: [c.organization.addressLine1, c.organization.addressLine2, [c.organization.city, c.organization.postcode].filter(Boolean).join(' ')].filter(Boolean).join(', ') || null,
+      },
       subject: c.patient
         ? `${c.patient.name} — ${[c.patient.species.name, c.patient.breed?.name ?? c.patient.breedText].filter(Boolean).join(', ')}`
         : `${c.subjectName}${c.membership?.jobTitle ? ` — ${c.membership.jobTitle}` : ''}`,

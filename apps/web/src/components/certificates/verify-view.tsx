@@ -1,7 +1,8 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
-import { formatVerificationCode, normaliseVerificationCode, type CertificateVerification } from '@vcms/shared';
-import { BadgeCheck, CircleAlert, Clock, Loader2, Search, ShieldCheck, ShieldX } from 'lucide-react';
+import { formatVerificationCode, normaliseVerificationCode, type CertificateVerification, type HostInfo } from '@vcms/shared';
+import { BadgeCheck, CalendarClock, CircleAlert, Clock, Globe, Loader2, Mail, MapPin, PawPrint, Phone, Search, ShieldCheck, ShieldX, Stethoscope, User } from 'lucide-react';
+import { useTheme } from 'next-themes';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Button } from '../ui/button';
@@ -10,6 +11,15 @@ import { api } from '@/lib/api';
 import { fmtDate, fmtDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
+/** The clinic whose address this is: its name, logo and colours (public; the colours are applied by the layout). */
+function useClinic() {
+  const q = useQuery({ queryKey: ['host-info'], queryFn: () => api.get<HostInfo>('/tenant'), staleTime: 300_000, retry: false });
+  const { resolvedTheme } = useTheme();
+  const b = q.data?.clinic?.branding;
+  const logo = resolvedTheme === 'dark' ? (b?.logoDarkUrl ?? b?.logoUrl) : b?.logoUrl;
+  return { name: b?.brandName ?? q.data?.clinic?.name ?? null, logo: logo ?? null };
+}
+
 /** Type or scan a code (barcode scanners type it in and press Enter). */
 export function VerifyForm({ initial = '' }: { initial?: string }) {
   const router = useRouter();
@@ -17,82 +27,172 @@ export function VerifyForm({ initial = '' }: { initial?: string }) {
   const clean = normaliseVerificationCode(code);
   return (
     <form
-      className="flex gap-2"
+      className="flex flex-col gap-2 sm:flex-row"
       onSubmit={(e) => {
         e.preventDefault();
         if (clean.length === 12) router.push(`/verify/${clean}`);
       }}
     >
-      <Input aria-label="Verification code" autoFocus={!initial} className="font-mono uppercase tracking-wider" placeholder="XXXX-XXXX-XXXX" value={code} onChange={(e) => setCode(e.target.value)} />
-      <Button type="submit" disabled={clean.length !== 12}><Search /> Check</Button>
+      <Input aria-label="Verification code" autoFocus={!initial} autoComplete="off" spellCheck={false} className="h-11 flex-1 font-mono text-base uppercase tracking-[0.18em]" placeholder="XXXX-XXXX-XXXX" value={code} onChange={(e) => setCode(e.target.value)} />
+      <Button type="submit" size="lg" disabled={clean.length !== 12}><Search /> Check</Button>
     </form>
   );
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+function Fact({ icon: Icon, label, children }: { icon: React.ComponentType<{ className?: string }>; label: string; children: React.ReactNode }) {
   return (
-    <div className="grid gap-0.5 sm:grid-cols-[9rem_1fr] sm:gap-3">
-      <dt className="text-xs text-muted-foreground sm:pt-0.5">{label}</dt>
-      <dd className="min-w-0 break-words text-sm font-medium">{children}</dd>
+    <div className="flex items-start gap-3">
+      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        <Icon className="h-4 w-4" />
+      </span>
+      <div className="min-w-0">
+        <dt className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">{label}</dt>
+        <dd className="mt-0.5 break-words text-sm font-medium">{children}</dd>
+      </div>
     </div>
   );
 }
+
+const TONES = {
+  VALID: { band: 'bg-success text-white', icon: BadgeCheck, title: 'Genuine and valid', ring: 'ring-success/30' },
+  EXPIRED: { band: 'bg-warning text-warning-foreground', icon: Clock, title: 'Genuine, but expired', ring: 'ring-warning/40' },
+  REVOKED: { band: 'bg-destructive text-white', icon: CircleAlert, title: 'This certificate has been revoked', ring: 'ring-destructive/30' },
+} as const;
 
 /** The public answer for one code: genuine and valid, expired, revoked — or not found. */
 export function VerifyResult({ code }: { code: string }) {
   const q = useQuery({ queryKey: ['verify', code], queryFn: () => api.get<CertificateVerification>(`/public/certificates/${encodeURIComponent(code)}`), retry: false });
-  if (q.isLoading) return <p className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Checking…</p>;
-  if (q.error) return <p className="py-6 text-center text-sm text-destructive">{(q.error as Error).message}</p>;
-  const v = q.data!;
-  if (!v.found) {
+  if (q.isLoading) {
     return (
-      <div className="grid justify-items-center gap-2 py-6 text-center">
-        <ShieldX className="h-12 w-12 text-destructive" />
-        <p className="text-lg font-semibold">No certificate has this code</p>
-        <p className="max-w-sm text-sm text-muted-foreground">Check the code ({formatVerificationCode(normaliseVerificationCode(code))}) and try again. A certificate that can’t be found here was not issued by this clinic.</p>
+      <div className="flex flex-col items-center gap-3 rounded-2xl surface-strong px-6 py-16 text-center shadow-pop">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">Checking the certificate…</p>
       </div>
     );
   }
-  const tone = v.status === 'VALID' ? 'success' : v.status === 'EXPIRED' ? 'warning' : 'destructive';
-  const Icon = v.status === 'VALID' ? BadgeCheck : v.status === 'EXPIRED' ? Clock : CircleAlert;
-  return (
-    <div className="grid gap-5">
-      <div className={cn('flex items-center gap-3 rounded-xl p-4 ring-1 ring-inset', tone === 'success' && 'bg-success/10 ring-success/25', tone === 'warning' && 'bg-warning/10 ring-warning/30', tone === 'destructive' && 'bg-destructive/10 ring-destructive/25')}>
-        <Icon className={cn('h-10 w-10 shrink-0', tone === 'success' && 'text-success', tone === 'warning' && 'text-warning', tone === 'destructive' && 'text-destructive')} />
-        <div>
-          <p className="text-lg font-semibold">
-            {v.status === 'VALID' ? 'Genuine and valid' : v.status === 'EXPIRED' ? `Genuine, but expired on ${fmtDate(v.validUntil)}` : 'This certificate was revoked'}
+  if (q.error) {
+    return <div className="rounded-2xl surface-strong p-8 text-center text-sm text-destructive shadow-pop">{(q.error as Error).message}</div>;
+  }
+  const v = q.data!;
+  if (!v.found) {
+    return (
+      <div className="overflow-hidden rounded-2xl surface-strong shadow-pop ring-1 ring-destructive/25">
+        <div className="flex items-center gap-3 bg-destructive px-6 py-4 text-white">
+          <ShieldX className="h-7 w-7 shrink-0" />
+          <p className="text-lg font-semibold">Certificate not found</p>
+        </div>
+        <div className="grid gap-3 p-6 text-sm">
+          <p>
+            No certificate was issued with the code <span className="font-mono font-semibold tracking-wider">{formatVerificationCode(normaliseVerificationCode(code)) || code}</span>.
           </p>
-          <p className="text-sm text-muted-foreground">
-            {v.status === 'REVOKED' ? `${v.revokedAt ? `On ${fmtDate(v.revokedAt)}` : ''}${v.revokedReason ? ` — ${v.revokedReason}` : ''}${v.replacedBy ? `. Replaced by ${v.replacedBy}.` : ''}` : `Issued by ${v.clinic}.`}
+          <p className="text-muted-foreground">Check the code on the certificate and try again. A certificate that can’t be found here was not issued by this clinic — please contact the clinic if you are unsure.</p>
+        </div>
+      </div>
+    );
+  }
+  const tone = TONES[v.status!];
+  const Icon = tone.icon;
+  const staff = !v.owner;
+  return (
+    <article className={cn('overflow-hidden rounded-2xl surface-strong shadow-pop ring-1', tone.ring)} aria-label="Certificate check result">
+      {/* The answer, first and unmistakable. */}
+      <div className={cn('flex items-center gap-4 px-5 py-5 sm:px-8', tone.band)} role="status">
+        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-white/20">
+          <Icon className="h-8 w-8" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-xl font-bold leading-tight sm:text-2xl">{v.status === 'EXPIRED' ? `${tone.title} on ${fmtDate(v.validUntil)}` : tone.title}</p>
+          <p className="mt-0.5 text-sm opacity-90">
+            {v.status === 'VALID' && `Issued by ${v.clinic}.`}
+            {v.status === 'EXPIRED' && `Issued by ${v.clinic}. It was valid when issued, but is no longer current.`}
+            {v.status === 'REVOKED' && `${v.revokedAt ? `Revoked on ${fmtDate(v.revokedAt)}. ` : ''}${v.replacedBy ? `Replaced by ${v.replacedBy}.` : 'Do not accept it.'}`}
           </p>
         </div>
       </div>
-      <dl className="grid gap-3">
-        <Row label="Certificate">{v.title}</Row>
-        <Row label="Number">{v.number}</Row>
-        <Row label="For">{v.subject}</Row>
-        {v.owner && <Row label="Owner">{v.owner}</Row>}
-        <Row label="Issued">{v.issuedAt ? fmtDateTime(v.issuedAt) : ''} by {v.issuedBy}</Row>
-        <Row label="Valid until">{v.validUntil ? fmtDate(v.validUntil) : 'No expiry'}</Row>
-        <Row label="Clinic">{v.clinic}</Row>
-        <Row label="Fingerprint"><span className="break-all font-mono text-2xs font-normal text-muted-foreground">{v.contentHash}</span></Row>
-      </dl>
-      <p className="flex items-start gap-2 text-xs text-muted-foreground">
-        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-        Compare these details with the paper certificate. If anything differs, the paper copy has been altered — contact the clinic.
-      </p>
-    </div>
+
+      <div className="grid gap-6 p-5 sm:p-8">
+        {v.status === 'REVOKED' && v.revokedReason && (
+          <p className="rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            <span className="font-semibold">Reason: </span>
+            {v.revokedReason}
+          </p>
+        )}
+        <header className="flex flex-wrap items-start justify-between gap-3 border-b pb-5">
+          <div className="min-w-0">
+            <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">{v.kindLabel}</p>
+            <h2 className="mt-1 text-2xl font-bold leading-tight tracking-tight">{v.title}</h2>
+          </div>
+          <span className="rounded-pill bg-primary/10 px-3 py-1 font-mono text-sm font-semibold tracking-wider text-primary">{v.number}</span>
+        </header>
+
+        <dl className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
+          <Fact icon={staff ? User : PawPrint} label={staff ? 'Issued to' : 'Patient'}>{v.subject}</Fact>
+          {v.owner && <Fact icon={User} label="Owner">{v.owner}</Fact>}
+          <Fact icon={CalendarClock} label="Issued">{v.issuedAt ? fmtDateTime(v.issuedAt) : '—'}</Fact>
+          <Fact icon={Clock} label="Valid until">{v.validUntil ? fmtDate(v.validUntil) : 'No expiry'}</Fact>
+          <Fact icon={Stethoscope} label="Issued by">{v.issuedBy}</Fact>
+          <Fact icon={ShieldCheck} label="Clinic">{v.clinic}</Fact>
+        </dl>
+
+        <div className="rounded-xl bg-muted/50 p-4 text-xs leading-relaxed text-muted-foreground">
+          <p className="flex items-start gap-2">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <span>
+              <b className="text-foreground">Compare these details with the paper certificate.</b> If anything differs, the copy you hold has been altered — please contact the clinic.
+            </span>
+          </p>
+          {v.contentHash && (
+            <details className="mt-3 pl-6">
+              <summary className="cursor-pointer select-none font-medium text-foreground">Technical details</summary>
+              <p className="mt-2">Fingerprint (SHA-256) of what was printed:</p>
+              <p className="mt-1 break-all font-mono text-2xs">{v.contentHash}</p>
+            </details>
+          )}
+        </div>
+
+        {v.clinicContact && (v.clinicContact.phone || v.clinicContact.email || v.clinicContact.website || v.clinicContact.address) && (
+          <footer className="grid gap-2 border-t pt-5 text-sm sm:grid-cols-2">
+            {v.clinicContact.phone && (
+              <a href={`tel:${v.clinicContact.phone.replace(/\s/g, '')}`} className="flex items-center gap-2 hover:text-primary"><Phone className="h-4 w-4 text-muted-foreground" /> {v.clinicContact.phone}</a>
+            )}
+            {v.clinicContact.email && (
+              <a href={`mailto:${v.clinicContact.email}`} className="flex min-w-0 items-center gap-2 break-all hover:text-primary"><Mail className="h-4 w-4 shrink-0 text-muted-foreground" /> {v.clinicContact.email}</a>
+            )}
+            {v.clinicContact.website && (
+              <a href={/^https?:\/\//.test(v.clinicContact.website) ? v.clinicContact.website : `https://${v.clinicContact.website}`} target="_blank" rel="noreferrer" className="flex min-w-0 items-center gap-2 break-all hover:text-primary"><Globe className="h-4 w-4 shrink-0 text-muted-foreground" /> {v.clinicContact.website.replace(/^https?:\/\//, '')}</a>
+            )}
+            {v.clinicContact.address && <p className="flex items-start gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" /> {v.clinicContact.address}</p>}
+          </footer>
+        )}
+      </div>
+    </article>
   );
 }
 
-export function VerifyShell({ children }: { children: React.ReactNode }) {
+/** The clinic's logo and name over the page, then whatever the page shows. */
+export function VerifyShell({ children, title = 'Certificate verification' }: { children: React.ReactNode; title?: string }) {
+  const { name, logo } = useClinic();
   return (
-    <div className="app-canvas flex min-h-screen items-start justify-center px-4 py-10 sm:py-16">
-      <div className="w-full max-w-xl rounded-2xl surface-strong p-6 shadow-pop sm:p-8">
-        <h1 className="mb-1 flex items-center gap-2 text-xl font-semibold tracking-tight"><ShieldCheck className="h-6 w-6 text-primary" /> Certificate check</h1>
-        <p className="mb-5 text-sm text-muted-foreground">Scan the QR code on a certificate, or type its verification code.</p>
+    <div className="app-canvas min-h-screen">
+      <div className="mx-auto w-full max-w-2xl px-4 pb-16 pt-8 sm:pt-12">
+        <header className="mb-6 flex flex-col items-center gap-3 text-center sm:mb-8">
+          {logo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logo} alt={name ?? ''} className="h-16 max-w-[220px] object-contain sm:h-20" />
+          ) : (
+            <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-brand-2 text-3xl font-bold text-white shadow-glow" aria-hidden>
+              {(name ?? 'C').trim().charAt(0).toUpperCase()}
+            </span>
+          )}
+          <div>
+            {name && <p className="text-xl font-bold tracking-tight sm:text-2xl">{name}</p>}
+            <p className="mt-1 flex items-center justify-center gap-1.5 text-sm font-medium text-muted-foreground">
+              <ShieldCheck className="h-4 w-4 text-primary" /> {title}
+            </p>
+          </div>
+        </header>
         {children}
+        <p className="mt-8 text-center text-xs text-muted-foreground">Certificates carry a QR code and a verification code. Anyone can check one here, without signing in.</p>
       </div>
     </div>
   );

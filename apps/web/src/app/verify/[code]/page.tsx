@@ -7,11 +7,11 @@ export default function VerifyCodePage() {
   const { code } = useParams<{ code: string }>();
   return (
     <VerifyShell>
-      <div className="grid gap-6">
+      <div className="grid gap-5">
         <VerifyResult code={code} />
-        <div className="border-t pt-4">
-          <p className="mb-2 text-xs text-muted-foreground">Check another certificate</p>
-          <VerifyForm initial="" />
+        <div className="grid gap-2 rounded-2xl surface-strong p-5 shadow-card">
+          <p className="text-sm font-medium">Check another certificate</p>
+          <VerifyForm />
         </div>
       </div>
     </VerifyShell>
