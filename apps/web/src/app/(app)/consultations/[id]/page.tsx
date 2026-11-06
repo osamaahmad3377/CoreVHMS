@@ -2,7 +2,8 @@
 import { IssueCertificateDialog } from '@/components/certificates/issue-dialog';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { enumLabel, type Paginated } from '@vcms/shared';
-import { Award, Activity, AlertTriangle, ArrowRight, MoreHorizontal, BedDouble, CalendarPlus, CheckCircle2, ChevronDown, ClipboardList, FileText, FilePlus, FlaskConical, History, Paperclip, Pill, Printer, Receipt, Scissors, Smile, Stethoscope, Syringe, Upload, XCircle } from 'lucide-react';
+import { FinishedVisitActions } from '@/components/clinical/finished-visit';
+import { Award, Activity, AlertTriangle, MoreHorizontal, BedDouble, CalendarPlus, CheckCircle2, ChevronDown, ClipboardList, FilePlus, FlaskConical, History, Paperclip, Pill, Printer, Scissors, Smile, Syringe, Upload, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
@@ -40,7 +41,7 @@ import { useAppointmentTypes } from '@/hooks/use-catalog';
 import { api, qs } from '@/lib/api';
 import { fmtDateTime } from '@/lib/format';
 import { useModuleOn, useSession } from '@/lib/session';
-import { branchTime, localDate, shiftDate, todayIn } from '@/lib/time';
+import { branchTime, shiftDate, todayIn } from '@/lib/time';
 import type { ClinicHeader } from '@/components/billing/invoice-document';
 import type { Appointment, ClinicalNote, Encounter, Prescription } from '@/lib/types';
 
@@ -86,6 +87,9 @@ function Workspace() {
   const [dentalOpen, setDentalOpen] = useState(false);
   const [certificateOpen, setCertificateOpen] = useState(false);
   const [booked, setBooked] = useState<Appointment | null>(null);
+  // A finished visit shows three next steps; the full record opens on request.
+  const [details, setDetails] = useState(false);
+  const [nextInDays, setNextInDays] = useState<number | null>(null);
   const vitalsRef = useRef<VitalsPanelHandle>(null);
   const org = useQuery({ queryKey: ['organization'], queryFn: () => api.get<ClinicHeader>('/organization'), staleTime: 300_000 });
   const types = useAppointmentTypes();
@@ -131,6 +135,13 @@ function Workspace() {
   const followUpType = types.data?.find((t) => t.category === 'FOLLOW_UP' && t.isActive !== false);
   const hasPrescriptions = (rx.data?.data ?? []).some((p) => p.status !== 'CANCELLED');
   const active = enc.status !== 'CANCELLED';
+  const finished = enc.status === 'COMPLETED';
+  /** On a finished visit, opens the full details first so the panel the action uses is on screen. */
+  const withDetails = (fn: () => void) => () => {
+    if (!finished || details) return fn();
+    setDetails(true);
+    setTimeout(fn, 120);
+  };
   // An open consultation is run as a guided visit; a finished one is shown as a read-only record.
   const workspace = enc.status === 'OPEN' && writable;
   const draft = drafts.find((d) => !d.amendsId) ?? null;
@@ -298,7 +309,8 @@ function Workspace() {
         <span>{enc.encounterNo}</span>
       </nav>
       <PatientBanner patient={enc.patient} className="mb-3" />
-      <LastVisitStrip patientId={enc.patient.id} currentId={enc.id} onOpenHistory={(visitId) => { setHistoryVisit(visitId ?? null); setHistoryOpen(true); }} />
+      {/* Once finished, the page is only about this visit: the previous visit is in Full details → History. */}
+      {!finished && <LastVisitStrip patientId={enc.patient.id} currentId={enc.id} onOpenHistory={(visitId) => { setHistoryVisit(visitId ?? null); setHistoryOpen(true); }} />}
       <WithdrawalBanner patientId={enc.patient.id} />
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <h1 className="text-lg font-semibold">
@@ -307,20 +319,28 @@ function Workspace() {
         </h1>
         <Badge variant={enc.status === 'OPEN' ? 'warning' : enc.status === 'COMPLETED' ? 'success' : 'outline'}>{enc.status === 'OPEN' ? 'In progress' : enc.status === 'COMPLETED' ? 'Finished' : enumLabel(enc.status)}</Badge>
         <span className="text-xs text-muted-foreground">
-          {enc.encounterNo} · {enc.clinician?.name ?? 'No vet assigned'} · started {fmtDateTime(enc.startedAt)}
-          {enc.appointment && ` · ${enc.appointment.appointmentType.name} appointment`}
-          {enc.appointment?.location === 'HOME' && ` · home visit: ${enc.appointment.visitAddress ?? ''}`}
+          {enc.encounterNo} · {enc.clinician?.name ?? 'No vet assigned'} · {finished ? fmtDateTime(enc.completedAt ?? enc.startedAt) : `started ${fmtDateTime(enc.startedAt)}`}
+          {!finished && enc.appointment && ` · ${enc.appointment.appointmentType.name} appointment`}
+          {enc.appointment?.location === 'HOME' && ` · home visit${finished ? '' : `: ${enc.appointment.visitAddress ?? ''}`}`}
         </span>
         <div className="ml-auto flex gap-2">
-          {enc.status === 'COMPLETED' && (
-            <>
-              <Button size="sm" variant="outline" onClick={() => setRecordOpen(true)}>
-                <FileText /> Consultation record
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => window.print()}>
-                <Printer /> Print
-              </Button>
-            </>
+          {finished && actions.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline" aria-label="More actions">
+                  <MoreHorizontal /> More
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                {actions
+                  .filter((a) => a.label !== 'Book recheck')
+                  .map((a) => (
+                    <DropdownMenuItem key={a.label} onSelect={withDetails(a.onClick)}>
+                      <a.icon /> {a.label}
+                    </DropdownMenuItem>
+                  ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
           {enc.status === 'OPEN' && can('clinical.write') && (
             <>
@@ -351,7 +371,7 @@ function Workspace() {
         </div>
       </div>
 
-      {!workspace && actions.length > 0 && (
+      {!workspace && !finished && actions.length > 0 && (
         <div role="toolbar" aria-label="Consultation actions" className="surface mb-6 flex flex-wrap items-center gap-1 rounded-2xl p-1.5">
           {/* The four things vets do most stay in view; the rest are one tap away under More. */}
           {actions.filter((a) => PRIMARY_ACTIONS.includes(a.label)).map((a) => (
@@ -392,25 +412,36 @@ function Workspace() {
         <div role="alert" className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-warning/50 bg-warning/10 px-3 py-2 text-sm font-medium">
           <AlertTriangle className="h-4 w-4 text-warning" /> Notes not signed yet
           {can('clinical.sign') && (
-            <button type="button" className="text-primary underline" onClick={() => scrollTo(`note-${drafts[0].id}`)}>
+            <button type="button" className="text-primary underline" onClick={withDetails(() => scrollTo(`note-${drafts[0].id}`))}>
               — sign now
             </button>
           )}
         </div>
       )}
 
-      {enc.status === 'COMPLETED' && (
-        <NextSteps
-          steps={[
-            can('billing.write') && { icon: Receipt, title: 'Bill this visit', text: 'Charges from this consultation are ready to invoice', href: `/billing/invoices/new?clientId=${enc.client.id}`, primary: true },
-            { icon: FileText, title: 'Consultation record', text: 'View or print the full record of this visit', onClick: () => setRecordOpen(true) },
-            can('appointments.write') &&
-              (recheck
-                ? { icon: CheckCircle2, done: true, title: `✔ Recheck booked — ${when(recheck.startsAt, tz).replace(',', '')}`, text: recheck.clinician ? `with ${recheck.clinician.name}` : 'Any free vet', href: `/calendar?date=${localDate(recheck.startsAt, tz)}`, linkLabel: '(change)' }
-                : { icon: CalendarPlus, title: 'Book a recheck', text: 'Find a free slot for the follow-up visit', onClick: () => setFollowUp(true) }),
-            can('appointments.checkin') ? { icon: ClipboardList, title: 'Back to the waiting list', text: 'See who is next', href: '/front-desk' } : { icon: Stethoscope, title: 'Next consultation', text: 'Open consultations', href: '/consultations' },
-          ]}
-        />
+      {finished && (
+        <>
+          <FinishedVisitActions
+            encounter={enc}
+            recheck={recheck}
+            recheckWhen={recheck ? when(recheck.startsAt, tz).replace(',', '') : null}
+            onViewRecord={() => setRecordOpen(true)}
+            onBookNext={
+              can('appointments.write')
+                ? (days) => {
+                    setNextInDays(days);
+                    setFollowUp(true);
+                  }
+                : undefined
+            }
+          />
+          <div className="mb-4 flex justify-center">
+            <button type="button" aria-expanded={details} onClick={() => setDetails((d) => !d)} className="flex items-center gap-1.5 rounded-pill px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">
+              {details ? 'Hide full details' : 'Show full details'}
+              <ChevronDown className={`h-4 w-4 transition-transform ${details ? 'rotate-180' : ''}`} />
+            </button>
+          </div>
+        </>
       )}
 
       {workspace ? (
@@ -435,7 +466,7 @@ function Workspace() {
           </PastRecordsProvider>
           {supersededBlock}
         </div>
-      ) : (
+      ) : (!finished || details) && (
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="grid min-w-0 grid-cols-1 content-start gap-4 [&>*]:min-w-0">
           {drafts
@@ -568,7 +599,7 @@ function Workspace() {
         defaults={{
           clinicianId: enc.clinician?.id,
           // No recheck interval is configured on templates, so suggest a week from today (branch time).
-          date: shiftDate(todayIn(tz), 7),
+          date: shiftDate(todayIn(tz), nextInDays ?? 7),
           followUpOfId: enc.appointmentId ?? undefined,
           appointmentTypeId: followUpType?.id,
           reason: `Recheck${enc.chiefComplaint ? `: ${enc.chiefComplaint}` : ''}`,
@@ -597,61 +628,5 @@ export default function ConsultationPage() {
     <RequirePermission anyOf={['clinical.read']}>
       <Workspace />
     </RequirePermission>
-  );
-}
-
-interface Step {
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  text: string;
-  href?: string;
-  onClick?: () => void;
-  primary?: boolean;
-  /** Already done: shown with a tick and an optional link to change it. */
-  done?: boolean;
-  linkLabel?: string;
-}
-
-/** What to do once a consultation is finished, so the visit flows on to billing and follow-up. */
-function NextSteps({ steps }: { steps: (Step | false)[] }) {
-  const list = steps.filter(Boolean) as Step[];
-  if (!list.length) return null;
-  return (
-    <section aria-label="Next steps" className="mb-4 rounded-lg border border-success/30 bg-success/5 p-3">
-      <p className="mb-2 flex items-center gap-2 text-sm font-medium"><CheckCircle2 className="h-4 w-4 text-success" /> Consultation finished — next steps</p>
-      <div className={`grid gap-2 sm:grid-cols-2 ${list.length >= 4 ? 'xl:grid-cols-4' : 'lg:grid-cols-3'}`}>
-        {list.map((st) => {
-          if (st.done) {
-            return (
-              <div key={st.title} className="flex items-center gap-3 rounded-md border border-success/40 bg-card px-3 py-2.5">
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-success">{st.title}</span>
-                  <span className="block text-xs text-muted-foreground">
-                    {st.text}
-                    {st.href && (
-                      <>
-                        {' '}
-                        <Link href={st.href} className="text-primary underline">
-                          {st.linkLabel ?? 'change'}
-                        </Link>
-                      </>
-                    )}
-                  </span>
-                </span>
-              </div>
-            );
-          }
-          const inner = (
-            <>
-              <span className={`rounded-md p-1.5 ${st.primary ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary'}`}><st.icon className="h-4 w-4" /></span>
-              <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{st.title}</span><span className="block text-xs text-muted-foreground">{st.text}</span></span>
-              <ArrowRight className="h-4 w-4 text-muted-foreground" />
-            </>
-          );
-          const cls = 'flex items-center gap-3 rounded-lg surface-flat px-3 py-2.5 text-left shadow-card transition-colors hover:border-primary/50 hover:bg-primary/5';
-          return st.href ? <Link key={st.title} href={st.href} className={cls}>{inner}</Link> : <button key={st.title} type="button" onClick={st.onClick} className={cls}>{inner}</button>;
-        })}
-      </div>
-    </section>
   );
 }

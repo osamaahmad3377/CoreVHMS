@@ -941,6 +941,8 @@ export interface Charge {
   createdAt: string;
   createdByName: string | null;
   client: { id: string; displayName: string };
+  /** The invoice the charge is on (once invoiced). */
+  invoice?: { id: string; invoiceNo: string; status: string } | null;
   patient: { id: string; name: string } | null;
 }
 

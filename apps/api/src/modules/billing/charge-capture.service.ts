@@ -5,6 +5,7 @@ import { RequestContext } from '../../common/context/request-context';
 import { notFound, ruleViolation } from '../../common/http/errors';
 import { pageArgs, paginated } from '../../common/http/pagination';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { formatNumber } from '../../common/counter/counter.service';
 import type { ScopedTx } from '../../common/prisma/tenant-extension';
 
 export interface CaptureInput {
@@ -117,14 +118,29 @@ export class ChargeCaptureService {
       encounterId: q.encounterId,
     };
     const [rows, total, sum] = await Promise.all([
-      this.prisma.db.charge.findMany({ where, include: { client: { select: { id: true, displayName: true } } }, orderBy: { createdAt: 'desc' }, ...pageArgs(q) }),
+      this.prisma.db.charge.findMany({
+        where,
+        include: { client: { select: { id: true, displayName: true } }, invoiceLine: { select: { invoice: { select: { id: true, number: true, status: true } } } } },
+        orderBy: { createdAt: 'desc' },
+        ...pageArgs(q),
+      }),
       this.prisma.db.charge.count({ where }),
       this.prisma.db.charge.findMany({ where, select: { quantity: true, unitPriceMinor: true, discountMinor: true } }),
     ]);
     const patientIds = [...new Set(rows.map((r) => r.patientId).filter(Boolean))] as string[];
     const patients = await this.prisma.db.patient.findMany({ where: { id: { in: patientIds } }, select: { id: true, name: true } });
     return {
-      ...paginated(rows.map((r) => ({ ...r, quantity: Number(r.quantity), patient: patients.find((p) => p.id === r.patientId) ?? null })), total, q),
+      ...paginated(
+        rows.map(({ invoiceLine, ...r }) => ({
+          ...r,
+          quantity: Number(r.quantity),
+          patient: patients.find((p) => p.id === r.patientId) ?? null,
+          // The invoice the charge went onto, so a finished consultation can link to its bill.
+          invoice: invoiceLine ? { id: invoiceLine.invoice.id, invoiceNo: invoiceLine.invoice.number ? formatNumber('INV', invoiceLine.invoice.number) : 'Draft', status: invoiceLine.invoice.status } : null,
+        })),
+        total,
+        q,
+      ),
       totalMinor: sum.reduce((n, c) => n + chargeAmount(c), 0),
     };
   }

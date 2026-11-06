@@ -50,10 +50,12 @@ test.describe('Everyday flow', () => {
     await expect(check.getByText('Before you finish')).toBeVisible();
     await expect(check.getByText('No notes written yet')).toBeVisible();
     await check.getByRole('button', { name: 'Finish consultation' }).click();
-    const next = page.getByRole('region', { name: 'Next steps' });
+    // Finished: only the three next steps — bill, view & print, next consultation.
+    const next = page.getByRole('region', { name: 'Consultation finished' });
     await expect(next).toBeVisible();
-    await expect(next.getByRole('button', { name: /Book a recheck/ })).toBeVisible();
-    await next.getByRole('link', { name: /Bill this visit/ }).click();
+    await expect(next.getByRole('button', { name: /View & print consultation/ })).toBeVisible();
+    await expect(next.getByRole('group', { name: 'Next consultation in' }).getByRole('button', { name: '1 week' })).toBeVisible();
+    await next.getByRole('link', { name: /Bill this consultation/ }).click();
     await expect(page).toHaveURL(/\/billing\/invoices\/new\?clientId=/);
     await expect(page.getByText(/Akmal|Kamran/).first()).toBeVisible(); // Toto's owner is preselected
   });
@@ -83,7 +85,7 @@ test.describe('Everyday flow', () => {
     const check = vet.getByRole('dialog');
     await expect(check.getByText('Notes written')).toBeVisible();
     await check.getByRole('button', { name: 'Sign notes & finish' }).click();
-    await expect(vet.getByRole('region', { name: 'Next steps' })).toBeVisible();
+    await expect(vet.getByRole('region', { name: 'Consultation finished' })).toBeVisible();
 
     await reception.reload();
     const card = reception.getByRole('listitem').filter({ hasText: 'Rocky' }).filter({ has: reception.getByRole('link', { name: 'Bill', exact: true }) }).first();
