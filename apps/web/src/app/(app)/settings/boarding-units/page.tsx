@@ -18,6 +18,7 @@ import { api } from '@/lib/api';
 import { fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { BoardingUnit, Service } from '@/lib/types';
+import { DeleteRecordButton } from '@/components/delete-record';
 
 function UnitDialog({ unit, open, onOpenChange }: { unit: BoardingUnit | null; open: boolean; onOpenChange: (o: boolean) => void }) {
   const qc = useQueryClient();
@@ -53,6 +54,7 @@ function UnitDialog({ unit, open, onOpenChange }: { unit: BoardingUnit | null; o
           {unit && <label className="flex items-center gap-2 text-sm"><Checkbox checked={f.isActive} onCheckedChange={(v) => setF({ ...f, isActive: !!v })} /> In use</label>}
         </div>
         <DialogFooter>
+          {unit && <DeleteRecordButton className="text-destructive hover:text-destructive sm:mr-auto" name={unit.name} path={`/boarding/units/${unit.id}`} invalidate={[['boarding-units']]} onDeleted={() => onOpenChange(false)} />}
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button loading={m.isPending} disabled={!f.name.trim() || !f.branchId} onClick={() => { setError(null); m.mutate(); }}>Save</Button>
         </DialogFooter>

@@ -5,7 +5,7 @@ async function setup() {
   const f = await schedulingFixture(org);
   const type = await org.owner.post('/appointment-types', { name: 'Surgery admission', category: 'SURGERY', durationMinutes: 60 });
   const theatre = await org.owner.post('/resources', { branchId: org.branchId, name: 'Theatre 1', type: 'THEATRE' });
-  const svc = await org.owner.post('/services', { code: 'SPAY', name: 'Ovariohysterectomy', category: 'SURGERY', priceMinor: 40000 });
+  const svc = await org.owner.post('/services', { code: 'TSPAY', name: 'Ovariohysterectomy', category: 'SURGERY', priceMinor: 40000 });
   return { org, f, typeId: type.body.id as string, theatreId: theatre.body.id as string, serviceId: svc.body.id as string };
 }
 

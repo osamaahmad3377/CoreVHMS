@@ -11,6 +11,8 @@ interface ConfirmOptions {
   confirmLabel?: string;
   /** Label of the dismiss button (defaults to "Cancel"). Use it when "Cancel" would be ambiguous, e.g. "Keep appointment". */
   cancelLabel?: string;
+  /** Only one button (the confirm button), e.g. for a message that just needs acknowledging. */
+  hideCancel?: boolean;
   destructive?: boolean;
   /** Ask for a mandatory reason (returned to the caller and usually stored in the audit trail). */
   requireReason?: boolean;
@@ -52,9 +54,11 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => close(false)}>
-              {opts?.cancelLabel ?? 'Cancel'}
-            </Button>
+            {!opts?.hideCancel && (
+              <Button variant="outline" onClick={() => close(false)}>
+                {opts?.cancelLabel ?? 'Cancel'}
+              </Button>
+            )}
             <Button
               variant={opts?.destructive ? 'destructive' : 'default'}
               disabled={opts?.requireReason && !reason.trim()}

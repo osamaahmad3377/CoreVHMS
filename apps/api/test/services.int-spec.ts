@@ -8,8 +8,8 @@ const inDays = (days: number) => futureDate(days);
 async function boardingFixture() {
   const org = await registerOrg();
   const nightly = (await org.owner.post('/services', { code: unique('BRD').slice(0, 20), name: 'Boarding (per night)', category: 'BOARDING', priceMinor: 150000 })).body;
-  const k1 = (await org.owner.post('/boarding/units', { branchId: org.branchId, name: 'Kennel 1', type: 'KENNEL', nightlyServiceId: nightly.id })).body;
-  const k2 = (await org.owner.post('/boarding/units', { branchId: org.branchId, name: 'Kennel 2', type: 'KENNEL', nightlyServiceId: nightly.id })).body;
+  const k1 = (await org.owner.post('/boarding/units', { branchId: org.branchId, name: 'Run 1', type: 'KENNEL', nightlyServiceId: nightly.id })).body;
+  const k2 = (await org.owner.post('/boarding/units', { branchId: org.branchId, name: 'Run 2', type: 'KENNEL', nightlyServiceId: nightly.id })).body;
   const client = await makeClient(org.owner);
   const dog = await makePatient(org.owner, client.id, { name: 'Sheru' });
   const dog2 = await makePatient(org.owner, client.id, { name: 'Moti' });
@@ -46,7 +46,7 @@ describe('Boarding, grooming, insurance and referrals', () => {
     expect((await rec.client.post(`/boarding/stays/${r.body.id}/cancel`, { reason: 'x' })).body.error.code).toBe('NOT_RESERVED');
     const board = (await rec.client.get('/boarding/board')).body;
     expect(board.inHouse.map((s: any) => s.id)).toContain(r.body.id);
-    expect(board.occupancy).toEqual({ units: 2, occupied: 1 });
+    expect(board.occupancy).toEqual({ units: 8, occupied: 1 }); // the clinic's 6 starter kennels and catteries + the 2 made here
 
     // Leaving early: billed for the nights actually stayed (2), at the rate fixed when booked.
     await org.owner.patch(`/services/${(await prisma().boardingUnit.findUniqueOrThrow({ where: { id: k1.id } })).nightlyServiceId}`, { priceMinor: 999999 });

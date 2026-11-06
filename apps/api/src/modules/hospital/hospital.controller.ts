@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import {
   addendumSchema,
@@ -73,6 +73,18 @@ export class HospitalController {
     return this.wards.saveWard(null, body);
   }
 
+  @Get('wards/:id/deletion-check')
+  @RequirePermissions('settings.manage')
+  wardDeletionCheck(@Param('id', UUID) id: string) {
+    return this.wards.wardDeletionCheck(id);
+  }
+
+  @Delete('wards/:id')
+  @RequirePermissions('settings.manage')
+  removeWard(@Param('id', UUID) id: string) {
+    return this.wards.removeWard(id);
+  }
+
   @Patch('wards/:id')
   @RequirePermissions('settings.manage')
   updateWard(@Param('id', UUID) id: string, @Body(zp(wardSchema)) body: z.infer<typeof wardSchema>) {
@@ -84,6 +96,18 @@ export class HospitalController {
   @ApiZodBody(cageSchema)
   createCage(@Body(zp(cageSchema)) body: z.infer<typeof cageSchema>) {
     return this.wards.saveCage(null, body);
+  }
+
+  @Get('cages/:id/deletion-check')
+  @RequirePermissions('settings.manage')
+  cageDeletionCheck(@Param('id', UUID) id: string) {
+    return this.wards.cageDeletionCheck(id);
+  }
+
+  @Delete('cages/:id')
+  @RequirePermissions('settings.manage')
+  removeCage(@Param('id', UUID) id: string) {
+    return this.wards.removeCage(id);
   }
 
   @Patch('cages/:id')

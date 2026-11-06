@@ -27,11 +27,12 @@ import { FileText,
   UserPlus,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useRef, useState } from 'react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { toast } from 'sonner';
 import { useConfirm } from '@/components/confirm';
+import { useDeleteRecord } from '@/components/delete-record';
 import { DescriptionList, EmptyState, ErrorState, LoadingRows } from '@/components/page';
 import { PatientBanner } from '@/components/patients/patient-banner';
 import {
@@ -83,6 +84,8 @@ function PatientRecord() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const confirm = useConfirm();
+  const deleteRecord = useDeleteRecord();
+  const router = useRouter();
   const { can } = useSession();
   const moduleOn = useModuleOn();
   const key = ['patient', id];
@@ -135,6 +138,10 @@ function PatientRecord() {
   const active = p.status === 'ACTIVE';
   const farmAnimal = !!p.farmId || ['LIVESTOCK', 'POULTRY', 'EQUINE'].includes(p.species.category);
   const banner = { ...p, alerts: p.alerts.filter((a) => a.isActive) };
+  const archivePatient = async () => {
+    const r = await confirm({ title: `Archive ${p.name}?`, requireReason: true, destructive: true, confirmLabel: 'Archive' });
+    if (r.confirmed) act.mutate(() => api.post(`/patients/${p.id}/archive`, { reason: r.reason }));
+  };
 
   return (
     <>
@@ -206,7 +213,7 @@ function PatientRecord() {
           {editable && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="sm" variant="outline" aria-label="More actions" title="More actions: photo, microchip or tag, change client, archive">
+                <Button size="sm" variant="outline" aria-label="More actions" title="More actions: photo, microchip or tag, change client, archive, delete">
                   <MoreHorizontal /> More
                 </Button>
               </DropdownMenuTrigger>
@@ -242,12 +249,7 @@ function PatientRecord() {
                       </DropdownMenuItem>
                     )}
                     {(active || p.status === 'DECEASED') && (
-                      <DropdownMenuItem
-                        onSelect={async () => {
-                          const r = await confirm({ title: `Archive ${p.name}?`, requireReason: true, destructive: true, confirmLabel: 'Archive' });
-                          if (r.confirmed) act.mutate(() => api.post(`/patients/${p.id}/archive`, { reason: r.reason }));
-                        }}
-                      >
+                      <DropdownMenuItem onSelect={archivePatient}>
                         <Archive /> Archive
                       </DropdownMenuItem>
                     )}
@@ -256,6 +258,25 @@ function PatientRecord() {
                         <ArchiveRestore /> Restore
                       </DropdownMenuItem>
                     )}
+                  </>
+                )}
+                {can('patients.delete') && (
+                  <>
+                    {!can('patients.archive') && <DropdownMenuSeparator />}
+                    <DropdownMenuItem
+                      destructive
+                      onSelect={() =>
+                        deleteRecord({
+                          name: p.name,
+                          path: `/patients/${p.id}`,
+                          instead: (active || p.status === 'DECEASED') && can('patients.archive') ? { label: 'Archive instead', run: archivePatient } : undefined,
+                          invalidate: [['patients'], ['client']],
+                          onDeleted: () => router.replace('/patients'),
+                        })
+                      }
+                    >
+                      <Trash2 /> Delete…
+                    </DropdownMenuItem>
                   </>
                 )}
               </DropdownMenuContent>

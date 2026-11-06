@@ -110,6 +110,18 @@ export class PharmacyController {
     return this.formulary.create(body);
   }
 
+  @Get('products/:id/deletion-check')
+  @RequireAnyPermission('formulary.manage', 'inventory.write')
+  productDeletionCheck(@Param('id', UUID) id: string) {
+    return this.formulary.deletionCheck(id);
+  }
+
+  @Delete('products/:id')
+  @RequireAnyPermission('formulary.manage', 'inventory.write')
+  removeProduct(@Param('id', UUID) id: string) {
+    return this.formulary.remove(id);
+  }
+
   @Patch('products/:id')
   @RequireAnyPermission('formulary.manage', 'inventory.write')
   updateProduct(@Param('id', UUID) id: string, @Body(zp(productSchema.partial())) body: Partial<z.infer<typeof productSchema>>) {

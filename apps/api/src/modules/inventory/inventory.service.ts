@@ -4,11 +4,14 @@ import { PRESCRIBABLE_PRODUCT_TYPES } from '@vcms/shared';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { CounterService, formatNumber } from '../../common/counter/counter.service';
+import { assertDeletable, deleteOrExplain, deletionCheck, usage } from '../../common/deletion/deletion';
 import { notFound, ruleViolation } from '../../common/http/errors';
 import { pageArgs, paginated } from '../../common/http/pagination';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { ScopedTx } from '../../common/prisma/tenant-extension';
 import { StockEngine, r4 } from './stock.engine';
+
+const LOCATION_INSTEAD = 'Switch the store room off instead (untick “Active”) — its stock history is kept.';
 
 const ADJ_TYPE: Record<string, MovementType> = {
   DAMAGED: 'WRITE_OFF',
@@ -61,6 +64,41 @@ export class InventoryService {
     });
   }
 
+  private async locationHistory(id: string) {
+    const db = this.prisma.db;
+    const where = { locationId: id };
+    return usage([
+      ['stock movement', 'stock movements', db.stockMovement.count({ where })],
+      ['stock record', 'stock records', db.stockLevel.count({ where })],
+      ['stock count', 'stock counts', db.stockCount.count({ where })],
+      ['disposal', 'disposals', db.stockDisposal.count({ where })],
+      ['purchase order', 'purchase orders', db.purchaseOrder.count({ where })],
+      ['goods received note', 'goods received notes', db.goodsReceipt.count({ where })],
+      ['supplier return', 'supplier returns', db.supplierReturn.count({ where })],
+    ]);
+  }
+
+  async locationDeletionCheck(id: string) {
+    if (!(await this.prisma.db.stockLocation.findUnique({ where: { id }, select: { id: true } }))) throw notFound('Store room');
+    return deletionCheck(await this.locationHistory(id), LOCATION_INSTEAD);
+  }
+
+  /** Deletes a store room that has never held stock. If it was the branch's default, the next active one becomes the default. */
+  async removeLocation(id: string) {
+    const loc = await this.prisma.db.stockLocation.findUnique({ where: { id } });
+    if (!loc) throw notFound('Store room');
+    assertDeletable(loc.name, deletionCheck(await this.locationHistory(id), LOCATION_INSTEAD));
+    await this.prisma.db.$transaction(async (tx) => {
+      await deleteOrExplain(loc.name, LOCATION_INSTEAD, () => tx.stockLocation.delete({ where: { id } }));
+      if (loc.isDefault) {
+        const next = await tx.stockLocation.findFirst({ where: { branchId: loc.branchId, isActive: true }, orderBy: [{ type: 'asc' }, { createdAt: 'asc' }] });
+        if (next) await tx.stockLocation.update({ where: { id: next.id }, data: { isDefault: true } });
+      }
+      await this.audit.record({ action: 'stock_location.deleted', entityType: 'StockLocation', entityId: id, summary: `${loc.name} deleted — never held stock` }, tx);
+    });
+    return { ok: true };
+  }
+
   /** Location used for automatic issues at a branch (default, else first active pharmacy/store). */
   async defaultLocation(tx: ScopedTx | PrismaService['db'], branchId: string) {
     return (
@@ -70,14 +108,24 @@ export class InventoryService {
   }
 
   /**
+   * Where stock is checked and taken from at a branch — or null while the branch's stock is not set up yet: it has
+   * no store room, or nothing has ever been received or counted into one. New clinics start with store rooms, so
+   * this keeps sales and dispensing working until the clinic enters its stock ("Enter the stock you have now").
+   */
+  async trackingLocation(tx: ScopedTx | PrismaService['db'], branchId: string) {
+    if (!(await tx.stockMovement.findFirst({ where: { branchId }, select: { id: true } }))) return null;
+    return this.defaultLocation(tx, branchId);
+  }
+
+  /**
    * Automatic stock issue for clinical/sales events. Skipped when the product is not stock-tracked or the
-   * branch has no stock locations (inventory not set up yet); otherwise insufficient stock blocks the event
+   * branch's stock is not set up yet (trackingLocation); otherwise insufficient stock blocks the event
    * unless the organization allows negative stock.
    */
   async issueForEvent(tx: ScopedTx, e: { productId: string; quantity: number; branchId: string; type: MovementType; referenceType: string; referenceId: string; preferredBatchNumber?: string | null }) {
     const product = await tx.product.findUnique({ where: { id: e.productId } });
     if (!product || !product.trackStock || e.quantity <= 0) return [];
-    const location = await this.defaultLocation(tx, e.branchId);
+    const location = await this.trackingLocation(tx, e.branchId);
     if (!location) return [];
     const org = await this.org();
     return this.engine.issueFefo(tx, { ...e, locationId: location.id, allowNegative: org.allowNegativeStock });

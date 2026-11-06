@@ -2,8 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { AuditService, diff } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { CounterService, formatNumber } from '../../common/counter/counter.service';
+import { assertDeletable, deleteOrExplain, deletionCheck, usage } from '../../common/deletion/deletion';
 import { forbidden, notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
+
+const SUPPLIER_INSTEAD = 'Switch the supplier off instead (untick “Active”) — it disappears from lists and its orders and payments are kept.';
 
 export const poNo = (n: number) => formatNumber('PO', n);
 
@@ -32,6 +35,35 @@ export class ProcurementService {
       await this.audit.record({ action: 'supplier.created', entityType: 'Supplier', entityId: s.id, summary: s.name }, tx);
       return s;
     });
+  }
+
+  private async supplierHistory(id: string) {
+    const db = this.prisma.db;
+    const where = { supplierId: id };
+    return usage([
+      ['purchase order', 'purchase orders', db.purchaseOrder.count({ where })],
+      ['goods received note', 'goods received notes', db.goodsReceipt.count({ where })],
+      ['supplier return', 'supplier returns', db.supplierReturn.count({ where })],
+      ['stock batch', 'stock batches', db.stockBatch.count({ where })],
+      ['expense or payment', 'expenses or payments', db.expense.count({ where })],
+    ]);
+  }
+
+  async supplierDeletionCheck(id: string) {
+    if (!(await this.prisma.db.supplier.findUnique({ where: { id }, select: { id: true } }))) throw notFound('Supplier');
+    return deletionCheck(await this.supplierHistory(id), SUPPLIER_INSTEAD);
+  }
+
+  /** Deletes a supplier added by mistake: no orders, deliveries, returns or payments. */
+  async removeSupplier(id: string) {
+    const s = await this.prisma.db.supplier.findUnique({ where: { id } });
+    if (!s) throw notFound('Supplier');
+    assertDeletable(s.name, deletionCheck(await this.supplierHistory(id), SUPPLIER_INSTEAD));
+    await this.prisma.db.$transaction(async (tx) => {
+      await deleteOrExplain(s.name, SUPPLIER_INSTEAD, () => tx.supplier.delete({ where: { id } }));
+      await this.audit.record({ action: 'supplier.deleted', entityType: 'Supplier', entityId: id, summary: `${s.name} deleted — never used` }, tx);
+    });
+    return { ok: true };
   }
 
   /** Supplier account: received goods, less payments recorded as SUPPLIER_PAYMENT expenses and goods returned. */

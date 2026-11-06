@@ -14,6 +14,7 @@ import { Input, NativeSelect } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import type { Resource } from '@/lib/types';
+import { DeleteRecordButton } from '@/components/delete-record';
 
 export default function ResourcesPage() {
   const { session } = useSession();
@@ -52,6 +53,7 @@ export default function ResourcesPage() {
             { key: 'type', header: 'Type', cell: (r) => enumLabel(r.type) },
             { key: 'branch', header: 'Branch', cell: (r) => r.branch?.name },
             { key: 'active', header: 'Bookable', cell: (r) => <Switch checked={r.isActive} aria-label={`${r.name} active`} onCheckedChange={(v) => act.mutate(() => api.patch(`/resources/${r.id}`, { isActive: v }))} /> },
+            { key: 'delete', header: '', className: 'w-10', cell: (r) => <DeleteRecordButton iconOnly name={r.name} path={`/resources/${r.id}`} invalidate={[['resources']]} /> },
           ]}
         />
       </Card>

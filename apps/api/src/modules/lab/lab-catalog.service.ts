@@ -3,8 +3,11 @@ import { Prisma } from '@prisma/client';
 import type { LabTestInput } from '@vcms/shared';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
+import { assertDeletable, deleteOrExplain, deletionCheck, usage } from '../../common/deletion/deletion';
 import { notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
+
+const TEST_INSTEAD = 'Switch the test off instead (untick “Active”) — it can no longer be ordered, and its results are kept.';
 
 const dec = (d: Prisma.Decimal | null) => (d === null ? null : Number(d));
 
@@ -73,6 +76,35 @@ export class LabCatalogService {
       await this.audit.record({ action: 'lab_test.created', entityType: 'LabTest', entityId: t.id, summary: `${t.code} ${t.name}` }, tx);
       return this.getTx(tx, t.id);
     });
+  }
+
+  private async testHistory(id: string) {
+    const db = this.prisma.db;
+    return usage([
+      ['lab order', 'lab orders', db.diagnosticOrderItem.count({ where: { testId: id } })],
+      ['wellness plan item', 'wellness plan items', db.wellnessPlanItem.count({ where: { labTestId: id } })],
+      ['wellness allowance', 'wellness allowances', db.wellnessEntitlement.count({ where: { labTestId: id } })],
+      ['charge', 'charges', db.charge.count({ where: { labTestId: id } })],
+      ['invoice line', 'invoice lines', db.invoiceLine.count({ where: { labTestId: id } })],
+      ['estimate line', 'estimate lines', db.estimateLine.count({ where: { labTestId: id } })],
+    ]);
+  }
+
+  async deletionCheck(id: string) {
+    if (!(await this.prisma.db.labTest.findUnique({ where: { id }, select: { id: true } }))) throw notFound('Test');
+    return deletionCheck(await this.testHistory(id), TEST_INSTEAD);
+  }
+
+  /** Deletes a test that has never been ordered or charged. Its result fields and the clinic's normal ranges go with it. */
+  async remove(id: string) {
+    const t = await this.prisma.db.labTest.findUnique({ where: { id } });
+    if (!t) throw notFound('Test');
+    assertDeletable(t.name, deletionCheck(await this.testHistory(id), TEST_INSTEAD));
+    await this.prisma.db.$transaction(async (tx) => {
+      await deleteOrExplain(t.name, TEST_INSTEAD, () => tx.labTest.delete({ where: { id } }));
+      await this.audit.record({ action: 'lab_test.deleted', entityType: 'LabTest', entityId: id, summary: `${t.code} ${t.name} deleted — never ordered` }, tx);
+    });
+    return { ok: true };
   }
 
   private getTx(tx: any, id: string) {

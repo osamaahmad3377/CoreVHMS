@@ -115,6 +115,19 @@ export class ClientsController {
     return this.clients.restore(id);
   }
 
+  /** Can this client be deleted permanently? (Only when neither they nor their animals have any history.) */
+  @Get(':id/deletion-check')
+  @RequirePermissions('clients.delete')
+  deletionCheck(@Param('id', UUID) id: string) {
+    return this.clients.deletionCheck(id);
+  }
+
+  @Delete(':id')
+  @RequirePermissions('clients.delete', 'patients.delete')
+  remove(@Param('id', UUID) id: string) {
+    return this.clients.remove(id);
+  }
+
   @Post(':id/addresses')
   @RequirePermissions('clients.write')
   @ApiZodBody(addressSchema)

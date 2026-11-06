@@ -4,7 +4,7 @@ import { enumLabel, type Paginated } from '@vcms/shared';
 import { PRESCRIBABLE_PRODUCT_TYPES, PRODUCT_TYPE_LABELS } from '@vcms/shared';
 import { Edit, Lock, MoreHorizontal, PackagePlus } from 'lucide-react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { MoneyInput, bpToPct, parseMoney } from '@/components/billing/money';
@@ -149,6 +149,7 @@ function OpeningStock({ product }: { product: ProductStock['product'] }) {
 
 function ProductStockView() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const qc = useQueryClient();
   const confirm = useConfirm();
   const { can, currency } = useSession();
@@ -189,7 +190,7 @@ function ProductStockView() {
         }
         actions={(can('inventory.write') || can('formulary.manage')) && details.data && <Button size="sm" variant="outline" onClick={() => setEditing(true)}><Edit /> Edit product</Button>}
       />
-      {editing && details.data && <ProductDialog product={details.data} open={editing} onOpenChange={setEditing} onSaved={() => qc.invalidateQueries({ queryKey: ['stock-product', id] })} />}
+      {editing && details.data && <ProductDialog product={details.data} open={editing} onOpenChange={setEditing} onSaved={() => qc.invalidateQueries({ queryKey: ['stock-product', id] })} onDeleted={() => router.replace('/inventory/catalog')} />}
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="grid content-start gap-4">
           {!batches.length && p.trackStock && can('inventory.write') && <OpeningStock product={p} />}

@@ -3,9 +3,12 @@ import { Prisma, ProductType } from '@prisma/client';
 import type { ProductInput } from '@vcms/shared';
 import { AuditService, diff } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
+import { assertDeletable, deleteOrExplain, deletionCheck, usage } from '../../common/deletion/deletion';
 import { notFound, ruleViolation } from '../../common/http/errors';
 import { orderBy, pageArgs, paginated } from '../../common/http/pagination';
 import { PrismaService } from '../../common/prisma/prisma.service';
+
+const PRODUCT_INSTEAD = 'Switch it off instead (untick “Active”) — it disappears from lists and the shop counter, and its history is kept.';
 
 export const PRESCRIBABLE_TYPES: ProductType[] = ['MEDICINE', 'VACCINE'];
 
@@ -88,8 +91,10 @@ export class FormularyService {
     const product = await db.product.findUnique({ where: { id: productId }, select: { id: true, name: true, dispensingUnit: true, trackStock: true } });
     if (!product) throw notFound('Product');
     const branch = branchId ?? RequestContext.require().branchId;
-    // Mirrors InventoryService.defaultLocation: the branch's default location, else its first active one.
-    const location = branch
+    // Mirrors InventoryService.trackingLocation: none until the branch has entered stock; then the branch's default
+    // location, else its first active one.
+    const stockSetUp = branch ? !!(await db.stockMovement.findFirst({ where: { branchId: branch }, select: { id: true } })) : false;
+    const location = branch && stockSetUp
       ? ((await db.stockLocation.findFirst({ where: { branchId: branch, isActive: true, isDefault: true }, select: { id: true, name: true } })) ??
         (await db.stockLocation.findFirst({ where: { branchId: branch, isActive: true }, orderBy: [{ type: 'asc' }, { createdAt: 'asc' }], select: { id: true, name: true } })))
       : null;
@@ -168,6 +173,53 @@ export class FormularyService {
       await this.audit.record({ action: 'product.updated', entityType: 'Product', entityId: id, summary: after.name, changes: diff(before, after, Object.keys(data)) }, tx);
       return decimalProduct(after);
     });
+  }
+
+  /** Stock, sales, prescriptions and plans that refer to the product — any of it means it is switched off, not deleted. */
+  private async productHistory(id: string) {
+    const db = this.prisma.db;
+    const where = { productId: id };
+    return usage([
+      ['stock batch', 'stock batches', db.stockBatch.count({ where })],
+      ['stock movement', 'stock movements', db.stockMovement.count({ where })],
+      ['stock count line', 'stock count lines', db.stockCountLine.count({ where })],
+      ['purchase request', 'purchase requests', db.purchaseRequest.count({ where })],
+      ['purchase order line', 'purchase order lines', db.purchaseOrderLine.count({ where })],
+      ['goods received line', 'goods received lines', db.goodsReceiptLine.count({ where })],
+      ['supplier return line', 'supplier return lines', db.supplierReturnLine.count({ where })],
+      ['disposal line', 'disposal lines', db.stockDisposalLine.count({ where })],
+      ['prescription', 'prescriptions', db.prescriptionItem.count({ where })],
+      ['medication given', 'medications given', db.medicationAdministration.count({ where })],
+      ['withdrawal period on an animal', 'withdrawal periods on animals', db.patientWithdrawal.count({ where })],
+      ['hospital treatment', 'hospital treatments', db.treatmentOrder.count({ where })],
+      ['surgery item', 'surgery items', db.surgeryItem.count({ where })],
+      ['herd treatment', 'herd treatments', db.groupTreatment.count({ where })],
+      ['farm visit item', 'farm visit items', db.fieldVisitItem.count({ where })],
+      ['care protocol', 'care protocols', db.careProtocol.count({ where })],
+      ['wellness plan item', 'wellness plan items', db.wellnessPlanItem.count({ where })],
+      ['wellness allowance', 'wellness allowances', db.wellnessEntitlement.count({ where })],
+      ['charge', 'charges', db.charge.count({ where })],
+      ['invoice line', 'invoice lines', db.invoiceLine.count({ where })],
+      ['estimate line', 'estimate lines', db.estimateLine.count({ where })],
+    ]);
+  }
+
+  async deletionCheck(id: string) {
+    if (!(await this.prisma.db.product.findUnique({ where: { id }, select: { id: true } }))) throw notFound('Product');
+    return deletionCheck(await this.productHistory(id), PRODUCT_INSTEAD);
+  }
+
+  /** Deletes a product added by mistake (no stock, sales or clinical use). Its withdrawal periods and dose notes go with it. */
+  async remove(id: string) {
+    const p = await this.prisma.db.product.findUnique({ where: { id }, select: { id: true, name: true, photoAttachmentId: true } });
+    if (!p) throw notFound('Product');
+    assertDeletable(p.name, deletionCheck(await this.productHistory(id), PRODUCT_INSTEAD));
+    await this.prisma.db.$transaction(async (tx) => {
+      await deleteOrExplain(p.name, PRODUCT_INSTEAD, () => tx.product.delete({ where: { id } }));
+      await tx.attachment.updateMany({ where: { entityType: 'Product', entityId: id, deletedAt: null }, data: { deletedAt: new Date() } });
+      await this.audit.record({ action: 'product.deleted', entityType: 'Product', entityId: id, summary: `${p.name} deleted — added by mistake, never used` }, tx);
+    });
+    return { ok: true };
   }
 
   /** Product photo shown on the shop counter: an image already attached to this product, or null to remove it. */

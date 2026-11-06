@@ -11,7 +11,10 @@ import { AuditService, diff } from '../../common/audit/audit.service';
 import { ClientEvents } from '../../common/events/client-events';
 import { RequestContext } from '../../common/context/request-context';
 import { CounterService, formatNumber } from '../../common/counter/counter.service';
+import { assertDeletable, deleteOrExplain, deletionCheck, usage, type DeletionCheck } from '../../common/deletion/deletion';
 import { notFound, ruleViolation } from '../../common/http/errors';
+import type { ScopedTx } from '../../common/prisma/tenant-extension';
+import { deleteRemovablePatient, patientHistory, patientNo } from '../patients/patients.service';
 import { orderBy, pageArgs, paginated } from '../../common/http/pagination';
 import { csvCell } from '../../common/util/csv';
 import { phoneSearchDigits } from '../../common/util/phone';
@@ -19,6 +22,66 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { ClientMergeService } from './client-merge.service';
 
 export const clientNo = (n: number) => formatNumber('C', n);
+
+const CLIENT_INSTEAD = 'Archive the client instead to hide them and keep their history — or, if they are a duplicate, merge them into the right record.';
+
+type Db = ScopedTx | PrismaService['db'];
+
+/**
+ * A client's own history, plus their animals'. Animals that only this client ever owned and that have no history
+ * are deleted with the client; an animal with history, or one that has (had) another owner, keeps the client.
+ */
+async function clientHistory(db: Db, c: { id: string; status: string; balanceMinor: number }) {
+  const where = { clientId: c.id };
+  const used = await usage([
+    ['appointment', 'appointments', db.appointment.count({ where })],
+    ['waiting-list entry', 'waiting-list entries', db.waitlistEntry.count({ where })],
+    ['visit', 'visits', db.encounter.count({ where })],
+    ['prescription', 'prescriptions', db.prescription.count({ where })],
+    ['lab order', 'lab orders', db.diagnosticOrder.count({ where })],
+    ['charge', 'charges', db.charge.count({ where })],
+    ['invoice', 'invoices', db.invoice.count({ where })],
+    ['payment', 'payments', db.payment.count({ where })],
+    ['estimate', 'estimates', db.estimate.count({ where })],
+    ['hospital stay', 'hospital stays', db.admission.count({ where })],
+    ['surgery', 'surgeries', db.surgery.count({ where })],
+    ['message', 'messages', db.clientMessage.count({ where })],
+    ['client portal account', 'client portal accounts', db.portalAccess.count({ where })],
+    ['online booking request', 'online booking requests', db.appointmentRequest.count({ where })],
+    ['farm', 'farms', db.farm.count({ where })],
+    ['farm visit', 'farm visits', db.fieldVisit.count({ where })],
+    ['boarding stay', 'boarding stays', db.boardingStay.count({ where })],
+    ['grooming job', 'grooming jobs', db.groomingJob.count({ where })],
+    ['insurance policy', 'insurance policies', db.insurancePolicy.count({ where })],
+    ['insurance claim', 'insurance claims', db.insuranceClaim.count({ where })],
+    ['referral', 'referrals', db.referral.count({ where })],
+    ['wellness plan', 'wellness plans', db.wellnessEnrolment.count({ where })],
+    ['dental chart', 'dental charts', db.dentalChart.count({ where })],
+    ['certificate', 'certificates', db.certificate.count({ where })],
+    ['task', 'tasks', db.task.count({ where })],
+    ['record merged into them', 'records merged into them', db.client.count({ where: { mergedIntoId: c.id } })],
+    ['document', 'documents', db.attachment.count({ where: { entityType: 'Client', entityId: c.id, deletedAt: null } })],
+  ]);
+  if (c.status === 'MERGED') used.unshift('a merge (it points to the record it was merged into)');
+  if (c.balanceMinor !== 0) used.push('an account balance');
+
+  const owned = await db.patient.findMany({
+    where: { ownerships: { some: { clientId: c.id } } },
+    select: { id: true, name: true, number: true, status: true, photoAttachmentId: true, _count: { select: { ownerships: { where: { clientId: { not: c.id } } } } } },
+    orderBy: { name: 'asc' },
+  });
+  const animals: typeof owned = [];
+  for (const a of owned) {
+    if (a._count.ownerships) {
+      used.push(`${a.name}, who also has another owner`);
+      continue;
+    }
+    const history = await patientHistory(db, a);
+    if (history.length) used.push(`${a.name}’s history (${history.join(', ')})`);
+    else animals.push(a);
+  }
+  return { used, animals };
+}
 
 /** Last 10 digits — matches local (0300…) and international (+92 300…) forms of the same number. */
 export function phoneKey(phone?: string | null): string | null {
@@ -251,6 +314,35 @@ export class ClientsService {
       const updated = await tx.client.update({ where: { id }, data: { status: 'ARCHIVED', archivedAt: new Date(), archivedReason: reason } });
       await this.audit.record({ action: 'client.archived', entityType: 'Client', entityId: id, summary: reason }, tx);
       return updated;
+    });
+  }
+
+  /** Whether the client can be deleted permanently, and if not, what history they (or their animals) have. */
+  async deletionCheck(id: string): Promise<DeletionCheck & { animals: string[] }> {
+    const c = await this.prisma.db.client.findUnique({ where: { id } });
+    if (!c) throw notFound('Client');
+    const { used, animals } = await clientHistory(this.prisma.db, c);
+    return { ...deletionCheck(used, CLIENT_INSTEAD), animals: animals.map((a) => a.name) };
+  }
+
+  /**
+   * Deletes a client added by mistake, together with their animals, when none of it has any history. Addresses,
+   * contacts and notes go with the client.
+   */
+  async remove(id: string) {
+    return this.prisma.db.$transaction(async (tx) => {
+      const c = await tx.client.findUnique({ where: { id } });
+      if (!c) throw notFound('Client');
+      const { used, animals } = await clientHistory(tx, c);
+      assertDeletable(c.displayName, deletionCheck(used, CLIENT_INSTEAD));
+      for (const a of animals) {
+        // The ownership row would otherwise keep the client; the animal goes with its only owner.
+        await deleteRemovablePatient(tx, a);
+        await this.audit.record({ action: 'patient.deleted', entityType: 'Patient', entityId: a.id, summary: `${a.name} (${patientNo(a.number)}) deleted with its owner ${c.displayName} — added by mistake, no history` }, tx);
+      }
+      await deleteOrExplain(c.displayName, CLIENT_INSTEAD, () => tx.client.delete({ where: { id } }));
+      await this.audit.record({ action: 'client.deleted', entityType: 'Client', entityId: id, summary: `${c.displayName} (${clientNo(c.number)}) deleted — added by mistake, no history` }, tx);
+      return { ok: true, animalsDeleted: animals.length };
     });
   }
 

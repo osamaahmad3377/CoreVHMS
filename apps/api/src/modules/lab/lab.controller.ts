@@ -47,6 +47,18 @@ export class LabController {
     return this.catalog.create(body);
   }
 
+  @Get('lab-tests/:id/deletion-check')
+  @RequirePermissions('settings.manage')
+  testDeletionCheck(@Param('id', UUID) id: string) {
+    return this.catalog.deletionCheck(id);
+  }
+
+  @Delete('lab-tests/:id')
+  @RequirePermissions('settings.manage')
+  removeTest(@Param('id', UUID) id: string) {
+    return this.catalog.remove(id);
+  }
+
   @Patch('lab-tests/:id')
   @RequirePermissions('settings.manage')
   updateTest(@Param('id', UUID) id: string, @Body(zp(labTestSchema.partial())) body: Partial<z.infer<typeof labTestSchema>>) {

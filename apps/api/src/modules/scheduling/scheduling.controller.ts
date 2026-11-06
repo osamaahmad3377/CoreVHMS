@@ -50,6 +50,18 @@ export class SchedulingController {
     return this.config.createType(body);
   }
 
+  @Get('appointment-types/:id/deletion-check')
+  @RequirePermissions('settings.manage')
+  typeDeletionCheck(@Param('id', UUID) id: string) {
+    return this.config.typeDeletionCheck(id);
+  }
+
+  @Delete('appointment-types/:id')
+  @RequirePermissions('settings.manage')
+  removeType(@Param('id', UUID) id: string) {
+    return this.config.removeType(id);
+  }
+
   @Patch('appointment-types/:id')
   @RequirePermissions('settings.manage')
   updateType(@Param('id', UUID) id: string, @Body(zp(appointmentTypeSchema.partial())) body: Partial<z.infer<typeof appointmentTypeSchema>>) {
@@ -94,6 +106,18 @@ export class SchedulingController {
   @ApiZodBody(resourceSchema)
   createResource(@Body(zp(resourceSchema)) body: z.infer<typeof resourceSchema>) {
     return this.config.createResource(body);
+  }
+
+  @Get('resources/:id/deletion-check')
+  @RequirePermissions('settings.manage')
+  resourceDeletionCheck(@Param('id', UUID) id: string) {
+    return this.config.resourceDeletionCheck(id);
+  }
+
+  @Delete('resources/:id')
+  @RequirePermissions('settings.manage')
+  removeResource(@Param('id', UUID) id: string) {
+    return this.config.removeResource(id);
   }
 
   @Patch('resources/:id')

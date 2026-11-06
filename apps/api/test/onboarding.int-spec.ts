@@ -24,31 +24,77 @@ describe('Setup checklist', () => {
     expect((await reception.client.post('/setup/hide')).status).toBe(403);
   });
 
-  it('creates a starter cash drawer and price list on registration, with linked appointment types', async () => {
+  it('starts every new clinic with a full set-up: price list at 0, appointment types, rooms, wards, kennels, tests, stores and a supplier', async () => {
     const org = await registerOrg();
     const db = prisma();
-    const registers = await db.cashRegister.findMany({ where: { organizationId: org.orgId } });
+    const where = { organizationId: org.orgId };
+    const registers = await db.cashRegister.findMany({ where });
     expect(registers).toHaveLength(1);
     expect(registers[0].branchId).toBe(org.branchId);
-    const services = await db.service.findMany({ where: { organizationId: org.orgId }, orderBy: { code: 'asc' } });
-    expect(services.map((s) => s.name).sort()).toEqual(['Consultation', 'Deworming', 'Follow-up', 'Vaccination']);
+
+    // Price list: common services, every price 0 until the clinic sets its own.
+    const services = await db.service.findMany({ where });
+    expect(services.length).toBeGreaterThan(40);
     expect(services.every((s) => s.priceMinor === 0)).toBe(true);
-    const types = await db.appointmentType.findMany({ where: { organizationId: org.orgId } });
-    expect(types).toHaveLength(4);
-    expect(types.every((t) => services.some((s) => s.id === t.serviceId && s.name === t.name))).toBe(true);
-    // No stock location yet: an empty store would switch stock checks on before any stock is entered.
-    expect(await db.stockLocation.count({ where: { organizationId: org.orgId } })).toBe(0);
+    expect(services.map((s) => s.name)).toEqual(expect.arrayContaining(['Consultation', 'Vaccination', 'Spay (ovariohysterectomy)', 'Full groom', 'Boarding — dog (per night)', 'Hospital stay (per day)', 'Home visit call-out fee', 'Dental: Scale and polish']));
+    const byCode = (code: string) => services.find((s) => s.code === code)!.id;
 
-    // Pricing every starter service ticks "Check your price list".
-    for (const s of services) expect((await org.owner.patch(`/services/${s.id}`, { code: s.code, name: s.name, category: s.category, priceMinor: 150000 })).status).toBe(200);
-    expect(step((await org.owner.get('/setup/status')).body, 'prices').done).toBe(true);
+    // Appointment types, grooming included, each charging its service.
+    const types = await db.appointmentType.findMany({ where });
+    expect(types.map((t) => t.name)).toEqual(expect.arrayContaining(['Consultation', 'Follow-up', 'Vaccination', 'Emergency', 'Surgery', 'Dental', 'Full groom', 'Bath & blow-dry', 'Nail trim']));
+    expect(types.find((t) => t.name === 'Full groom')).toMatchObject({ category: 'GROOMING', serviceId: byCode('GROOM-FULL') });
+    expect(types.every((t) => !!t.categoryId)).toBe(true);
 
-    // Starting "Enter the stock you have now" creates "Main store" once.
+    // Home visits and dental prices are linked to the price list.
+    const o = await db.organization.findUniqueOrThrow({ where: { id: org.orgId } });
+    expect(o).toMatchObject({ homeVisitCalloutServiceId: byCode('HV-CALLOUT'), homeVisitPerKmServiceId: byCode('HV-KM') });
+    expect(await db.dentalProcedurePrice.findFirst({ where: { ...where, code: 'SP' } })).toMatchObject({ serviceId: byCode('DENT-SP') });
+
+    // Per branch: rooms and equipment, wards with cages (charging per day), kennels (per night), store rooms.
+    expect((await db.resource.findMany({ where: { branchId: org.branchId } })).map((r) => r.name)).toEqual(expect.arrayContaining(['Consult room 1', 'Theatre', 'X-ray machine']));
+    const wards = await db.ward.findMany({ where: { branchId: org.branchId }, include: { cages: true } });
+    expect(wards.find((w) => w.name === 'General ward')).toMatchObject({ dailyServiceId: byCode('HOSPDAY') });
+    expect(wards.find((w) => w.name === 'General ward')!.cages).toHaveLength(6);
+    const kennels = await db.boardingUnit.findMany({ where: { branchId: org.branchId } });
+    expect(kennels.find((k) => k.name === 'Kennel 1')).toMatchObject({ type: 'KENNEL', nightlyServiceId: byCode('BOARD-DOG') });
+    const stores = await db.stockLocation.findMany({ where: { branchId: org.branchId } });
+    expect(stores.map((x) => [x.name, x.isDefault])).toEqual(expect.arrayContaining([['Main store', true], ['Pharmacy', false]]));
+
+    // Test catalogue (no reference ranges: those come from the clinic's analyser or lab) and the default supplier.
+    const tests = await db.labTest.findMany({ where, include: { analytes: true } });
+    expect(tests.map((t) => t.code)).toEqual(expect.arrayContaining(['CBC', 'BIOCH', 'UA', 'FAECAL', 'SKINSCRAPE', 'XRAY']));
+    expect(tests.every((t) => t.priceMinor === 0)).toBe(true);
+    expect(await db.referenceInterval.count({ where })).toBe(0);
+    expect((await db.supplier.findMany({ where })).map((x) => x.name)).toEqual(['Local Purchase']);
+
+    // The settings pages read them back.
+    const suppliers = (await org.owner.get('/suppliers')).body;
+    expect(suppliers.data ?? suppliers).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'Local Purchase' })]));
+
+    // "Enter the stock you have now" finds the store that is already there.
     const first = await org.owner.post('/setup/store-room');
     expect(first.status).toBe(200);
-    expect(first.body).toMatchObject({ created: true, location: { name: 'Main store', branchId: org.branchId } });
-    expect((await org.owner.post('/setup/store-room')).body.created).toBe(false);
-    expect(await db.auditEvent.count({ where: { organizationId: org.orgId, action: 'stock_location.created' } })).toBe(1);
+    expect(first.body).toMatchObject({ created: false, location: { name: 'Main store', branchId: org.branchId } });
+
+    // Pricing every service ticks "Check your price list".
+    await db.service.updateMany({ where, data: { priceMinor: 150000 } });
+    expect(step((await org.owner.get('/setup/status')).body, 'prices').done).toBe(true);
+  });
+
+  it('does not check stock until the branch has entered some, even though store rooms exist from day one', async () => {
+    const org = await registerOrg();
+    const db = prisma();
+    const product = (await org.owner.post('/products', { name: 'Kibble 2 kg', type: 'FOOD', dispensingUnit: 'bag', sellPriceMinor: 100000, trackStock: true })).body;
+    expect(product.id).toBeTruthy();
+    const item = async () => ((await org.owner.get('/pos/catalog?q=Kibble')).body.items as any[]).find((i) => i.id === product.id);
+    // No stock entered yet: the till does not count it, so selling it is never blocked.
+    expect(await item()).toMatchObject({ trackStock: false, available: null });
+
+    // Once stock is received into the store, the checks start.
+    const store = await db.stockLocation.findFirstOrThrow({ where: { branchId: org.branchId, isDefault: true } });
+    const supplier = await db.supplier.findFirstOrThrow({ where: { organizationId: org.orgId, name: 'Local Purchase' } });
+    expect((await org.owner.post('/stock/receipts', { supplierId: supplier.id, locationId: store.id, lines: [{ productId: product.id, batchNumber: 'K1', quantity: 5, unitCostMinor: 50000 }] })).status).toBe(201);
+    expect(await item()).toMatchObject({ trackStock: true, available: 5 });
   });
 
   it('remembers skipped steps and hiding for the whole clinic, with an audit trail', async () => {

@@ -5,6 +5,7 @@ import type { boardingStaySchema, boardingUnitSchema, updateStaySchema } from '@
 import { AuditService, diff } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { CounterService, formatNumber } from '../../common/counter/counter.service';
+import { assertDeletable, deleteOrExplain, deletionCheck, usage } from '../../common/deletion/deletion';
 import { conflict, notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { ScopedTx } from '../../common/prisma/tenant-extension';
@@ -34,6 +35,8 @@ type Stay = Prisma.BoardingStayGetPayload<{ include: typeof include }>;
 const shape = (s: Stay) => ({ ...s, stayNo: stayNo(s.number), nights: Math.round((s.endDate.getTime() - s.startDate.getTime()) / DAY) });
 
 /** Boarding units, reservations, check-in/out with nightly billing, and the daily care log. */
+const UNIT_INSTEAD = 'Switch it off instead (untick “Active”) — it can no longer be booked, and past stays keep it.';
+
 @Injectable()
 export class BoardingService {
   constructor(
@@ -73,6 +76,27 @@ export class BoardingService {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw conflict('A unit with this name already exists at this branch');
       throw e;
     }
+  }
+
+  private unitHistory(id: string) {
+    return usage([['boarding stay', 'boarding stays', this.prisma.db.boardingStay.count({ where: { unitId: id } })]]);
+  }
+
+  async unitDeletionCheck(id: string) {
+    if (!(await this.prisma.db.boardingUnit.findUnique({ where: { id }, select: { id: true } }))) throw notFound('Unit');
+    return deletionCheck(await this.unitHistory(id), UNIT_INSTEAD);
+  }
+
+  /** Deletes a kennel or cattery unit that has never been booked. */
+  async removeUnit(id: string) {
+    const u = await this.prisma.db.boardingUnit.findUnique({ where: { id } });
+    if (!u) throw notFound('Unit');
+    assertDeletable(u.name, deletionCheck(await this.unitHistory(id), UNIT_INSTEAD));
+    await this.prisma.db.$transaction(async (tx) => {
+      await deleteOrExplain(u.name, UNIT_INSTEAD, () => tx.boardingUnit.delete({ where: { id } }));
+      await this.audit.record({ action: 'boarding_unit.deleted', entityType: 'BoardingUnit', entityId: id, summary: `${u.name} deleted — never booked` }, tx);
+    });
+    return { ok: true };
   }
 
   async updateUnit(id: string, input: Partial<z.infer<typeof boardingUnitSchema>>) {

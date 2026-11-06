@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import {
   adjustmentSchema,
@@ -128,6 +128,18 @@ export class InventoryController {
     return this.inventory.saveLocation(null, body);
   }
 
+  @Get('stock-locations/:id/deletion-check')
+  @RequireAnyPermission('settings.manage', 'inventory.write')
+  locationDeletionCheck(@Param('id', UUID) id: string) {
+    return this.inventory.locationDeletionCheck(id);
+  }
+
+  @Delete('stock-locations/:id')
+  @RequireAnyPermission('settings.manage', 'inventory.write')
+  removeLocation(@Param('id', UUID) id: string) {
+    return this.inventory.removeLocation(id);
+  }
+
   @Patch('stock-locations/:id')
   @RequireAnyPermission('settings.manage', 'inventory.write')
   updateLocation(@Param('id', UUID) id: string, @Body(zp(locationSchema)) body: z.infer<typeof locationSchema>) {
@@ -250,6 +262,18 @@ export class InventoryController {
   @ApiZodBody(supplierSchema)
   createSupplier(@Body(zp(supplierSchema)) body: z.infer<typeof supplierSchema>) {
     return this.procurement.saveSupplier(null, body);
+  }
+
+  @Get('suppliers/:id/deletion-check')
+  @RequirePermissions('procurement.write')
+  supplierDeletionCheck(@Param('id', UUID) id: string) {
+    return this.procurement.supplierDeletionCheck(id);
+  }
+
+  @Delete('suppliers/:id')
+  @RequirePermissions('procurement.write')
+  removeSupplier(@Param('id', UUID) id: string) {
+    return this.procurement.removeSupplier(id);
   }
 
   @Patch('suppliers/:id')

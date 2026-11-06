@@ -50,6 +50,18 @@ export class BoardingController {
     return this.boarding.createUnit(body);
   }
 
+  @Get('boarding/units/:id/deletion-check')
+  @RequirePermissions('settings.manage')
+  unitDeletionCheck(@Param('id', UUID) id: string) {
+    return this.boarding.unitDeletionCheck(id);
+  }
+
+  @Delete('boarding/units/:id')
+  @RequirePermissions('settings.manage')
+  removeUnit(@Param('id', UUID) id: string) {
+    return this.boarding.removeUnit(id);
+  }
+
   @Patch('boarding/units/:id')
   @RequirePermissions('settings.manage')
   updateUnit(@Param('id', UUID) id: string, @Body(zp(boardingUnitSchema.partial())) body: Partial<z.infer<typeof boardingUnitSchema>>) {

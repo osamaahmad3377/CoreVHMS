@@ -11,6 +11,7 @@ import type {
 import { AuditService, diff } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { CounterService, formatNumber } from '../../common/counter/counter.service';
+import { assertDeletable, deleteOrExplain, deletionCheck, usage, type DeletionCheck } from '../../common/deletion/deletion';
 import { conflict, notFound, ruleViolation } from '../../common/http/errors';
 import { orderBy, pageArgs, paginated } from '../../common/http/pagination';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -18,6 +19,70 @@ import { phoneSearchDigits } from '../../common/util/phone';
 import type { ScopedTx } from '../../common/prisma/tenant-extension';
 
 export const patientNo = (n: number) => formatNumber('P', n);
+
+const PATIENT_INSTEAD = 'Archive the animal instead to hide it and keep its history — or, if it is a duplicate, merge it into the right record.';
+
+type Db = ScopedTx | PrismaService['db'];
+
+/**
+ * Everything that makes an animal's record part of the clinic's history. Any of it means the animal is archived,
+ * not deleted. Care reminders that were only planned (not done) don't count.
+ */
+export async function patientHistory(db: Db, p: { id: string; status: string; photoAttachmentId: string | null }): Promise<string[]> {
+  const where = { patientId: p.id };
+  const used = await usage([
+    ['appointment', 'appointments', db.appointment.count({ where })],
+    ['waiting-list entry', 'waiting-list entries', db.waitlistEntry.count({ where })],
+    ['triage', 'triages', db.triageAssessment.count({ where })],
+    ['visit', 'visits', db.encounter.count({ where })],
+    ['clinical note', 'clinical notes', db.clinicalNote.count({ where })],
+    ['set of vitals', 'sets of vitals', db.vitalSign.count({ where })],
+    ['diagnosis', 'diagnoses', db.diagnosis.count({ where })],
+    ['problem', 'problems', db.problemListItem.count({ where })],
+    ['task', 'tasks', db.task.count({ where })],
+    ['prescription', 'prescriptions', db.prescription.count({ where })],
+    ['medication given', 'medications given', db.medicationAdministration.count({ where })],
+    ['withdrawal period', 'withdrawal periods', db.patientWithdrawal.count({ where })],
+    ['lab order', 'lab orders', db.diagnosticOrder.count({ where })],
+    ['hospital stay', 'hospital stays', db.admission.count({ where })],
+    ['surgery', 'surgeries', db.surgery.count({ where })],
+    ['completed vaccination or treatment', 'completed vaccinations or treatments', db.careItem.count({ where: { ...where, status: 'COMPLETED' } })],
+    ['livestock movement', 'livestock movements', db.livestockMovement.count({ where })],
+    ['breeding record', 'breeding records', db.breedingEvent.count({ where: { OR: [{ patientId: p.id }, { sireId: p.id }] } })],
+    ['production record', 'production records', db.productionRecord.count({ where })],
+    ['offspring', 'offspring', db.patient.count({ where: { OR: [{ sireId: p.id }, { damId: p.id }] } })],
+    ['record merged into it', 'records merged into it', db.patient.count({ where: { mergedIntoId: p.id } })],
+    ['boarding stay', 'boarding stays', db.boardingStay.count({ where })],
+    ['grooming job', 'grooming jobs', db.groomingJob.count({ where })],
+    ['insurance policy', 'insurance policies', db.insurancePolicy.count({ where })],
+    ['insurance claim', 'insurance claims', db.insuranceClaim.count({ where })],
+    ['referral', 'referrals', db.referral.count({ where })],
+    ['wellness plan', 'wellness plans', db.wellnessEnrolment.count({ where })],
+    ['dental chart', 'dental charts', db.dentalChart.count({ where })],
+    ['certificate', 'certificates', db.certificate.count({ where })],
+    ['serology test', 'serology tests', db.serologyTest.count({ where })],
+    ['charge', 'charges', db.charge.count({ where })],
+    ['invoice', 'invoices', db.invoice.count({ where })],
+    ['estimate', 'estimates', db.estimate.count({ where })],
+    ['online booking request', 'online booking requests', db.appointmentRequest.count({ where })],
+    ['farm visit', 'farm visits', db.fieldVisitItem.count({ where })],
+    ['message', 'messages', db.clientMessage.count({ where })],
+    ['document', 'documents', db.attachment.count({ where: { entityType: 'Patient', entityId: p.id, deletedAt: null, ...(p.photoAttachmentId ? { id: { not: p.photoAttachmentId } } : {}) } })],
+  ]);
+  if (p.status === 'MERGED') used.unshift('a merge (it points to the record it was merged into)');
+  return used;
+}
+
+/** Removes an animal that `patientHistory` found nothing for, with the details that belong only to it. */
+export async function deleteRemovablePatient(tx: ScopedTx, p: { id: string; name: string; photoAttachmentId: string | null }) {
+  await deleteOrExplain(p.name, PATIENT_INSTEAD, async () => {
+    await tx.careItem.deleteMany({ where: { patientId: p.id, status: { not: 'COMPLETED' } } });
+    await tx.patientDiaryLink.deleteMany({ where: { patientId: p.id } });
+    // Ownerships, microchips/tags, weights and alerts are removed by the database with the patient.
+    await tx.patient.delete({ where: { id: p.id } });
+  });
+  if (p.photoAttachmentId) await tx.attachment.updateMany({ where: { id: p.photoAttachmentId, deletedAt: null }, data: { deletedAt: new Date() } });
+}
 
 const listInclude = {
   species: { select: { id: true, name: true, category: true } },
@@ -366,6 +431,28 @@ export class PatientsService {
       );
       await this.afterStatusChange(tx, patientId, 'DECEASED', input.euthanasia ? 'Euthanasia' : 'Patient died');
       return after;
+    });
+  }
+
+  /** Whether the animal can be deleted permanently, and if not, what history it has. */
+  async deletionCheck(patientId: string): Promise<DeletionCheck> {
+    const p = await this.prisma.db.patient.findUnique({ where: { id: patientId }, select: { id: true, status: true, photoAttachmentId: true } });
+    if (!p) throw notFound('Patient');
+    return deletionCheck(await patientHistory(this.prisma.db, p), PATIENT_INSTEAD);
+  }
+
+  /**
+   * Deletes an animal added by mistake. Only allowed while it has no history at all (see `patientHistory`);
+   * its owners, microchips, weights, alerts, photo, online diary link and not-yet-done care reminders go with it.
+   */
+  async remove(patientId: string) {
+    return this.prisma.db.$transaction(async (tx) => {
+      const p = await tx.patient.findUnique({ where: { id: patientId }, select: { id: true, name: true, number: true, status: true, photoAttachmentId: true } });
+      if (!p) throw notFound('Patient');
+      assertDeletable(p.name, deletionCheck(await patientHistory(tx, p), PATIENT_INSTEAD));
+      await deleteRemovablePatient(tx, p);
+      await this.audit.record({ action: 'patient.deleted', entityType: 'Patient', entityId: p.id, summary: `${p.name} (${patientNo(p.number)}) deleted — added by mistake, no history` }, tx);
+      return { ok: true };
     });
   }
 

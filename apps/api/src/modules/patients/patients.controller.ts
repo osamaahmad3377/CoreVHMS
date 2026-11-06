@@ -182,6 +182,19 @@ export class PatientsController {
     return this.patients.restore(id);
   }
 
+  /** Can this animal be deleted permanently? (Only when it has no history.) */
+  @Get(':id/deletion-check')
+  @RequirePermissions('patients.delete')
+  deletionCheck(@Param('id', UUID) id: string) {
+    return this.patients.deletionCheck(id);
+  }
+
+  @Delete(':id')
+  @RequirePermissions('patients.delete')
+  remove(@Param('id', UUID) id: string) {
+    return this.patients.remove(id);
+  }
+
   @Post(':id/transfer')
   @HttpCode(200)
   @RequirePermissions('patients.write', 'clients.read')

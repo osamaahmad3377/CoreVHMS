@@ -20,6 +20,7 @@ import { Input, NativeSelect } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import type { StockLocation } from '@/lib/types';
+import { DeleteRecordButton } from '@/components/delete-record';
 
 function LocationDialog({ location, open, onOpenChange }: { location: StockLocation | null; open: boolean; onOpenChange: (o: boolean) => void }) {
   const qc = useQueryClient();
@@ -54,6 +55,7 @@ function LocationDialog({ location, open, onOpenChange }: { location: StockLocat
         <label className="flex items-center gap-2 text-sm"><Checkbox checked={f.isDefault} onCheckedChange={(v) => setF({ ...f, isDefault: !!v })} /> Main store room for this branch</label>
         <label className="flex items-center gap-2 text-sm"><Checkbox checked={f.isActive} onCheckedChange={(v) => setF({ ...f, isActive: !!v })} /> Active</label>
         <DialogFooter>
+          {location && <DeleteRecordButton className="text-destructive hover:text-destructive sm:mr-auto" name={location.name} path={`/stock-locations/${location.id}`} invalidate={[['stock-locations']]} onDeleted={() => onOpenChange(false)} />}
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button loading={m.isPending} disabled={!f.name.trim() || !f.branchId} onClick={() => { setError(null); m.mutate(); }}>Save</Button>
         </DialogFooter>

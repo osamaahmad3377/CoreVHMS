@@ -2,8 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { Organization, ServiceCategory } from '@prisma/client';
 import { AuditService, diff } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
+import { assertDeletable, deleteOrExplain, deletionCheck, usage } from '../../common/deletion/deletion';
 import { notFound } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
+
+const SERVICE_INSTEAD = 'Switch it off instead (untick “Active”) — it disappears from price lists and its history is kept.';
 
 @Injectable()
 export class BillingConfigService {
@@ -44,6 +47,49 @@ export class BillingConfigService {
       await this.audit.record({ action: id ? 'service.updated' : 'service.created', entityType: 'Service', entityId: s.id, summary: `${s.code} ${s.name}`, changes: before ? diff(before, s, Object.keys(input)) : undefined }, tx);
       return s;
     });
+  }
+
+  /** Charges, invoices, set-up and records that use the service — any of it means it is switched off, not deleted. */
+  private async serviceHistory(id: string) {
+    const db = this.prisma.db;
+    const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: RequestContext.orgId() }, select: { homeVisitCalloutServiceId: true, homeVisitPerKmServiceId: true } });
+    const where = { serviceId: id };
+    const used = await usage([
+      ['charge', 'charges', db.charge.count({ where })],
+      ['invoice line', 'invoice lines', db.invoiceLine.count({ where })],
+      ['estimate line', 'estimate lines', db.estimateLine.count({ where })],
+      ['appointment type', 'appointment types', db.appointmentType.count({ where })],
+      ['hospital ward', 'hospital wards', db.ward.count({ where: { dailyServiceId: id } })],
+      ['boarding kennel', 'boarding kennels', db.boardingUnit.count({ where: { nightlyServiceId: id } })],
+      ['boarding stay', 'boarding stays', db.boardingStay.count({ where: { nightlyServiceId: id } })],
+      ['grooming job', 'grooming jobs', db.groomingJobService.count({ where })],
+      ['surgery', 'surgeries', db.surgery.count({ where })],
+      ['farm visit', 'farm visits', db.fieldVisit.count({ where: { calloutServiceId: id } })],
+      ['farm visit item', 'farm visit items', db.fieldVisitItem.count({ where })],
+      ['wellness plan item', 'wellness plan items', db.wellnessPlanItem.count({ where })],
+      ['wellness allowance', 'wellness allowances', db.wellnessEntitlement.count({ where })],
+      ['dental procedure', 'dental procedures', db.dentalProcedure.count({ where })],
+      ['dental price', 'dental prices', db.dentalProcedurePrice.count({ where })],
+    ]);
+    if (org.homeVisitCalloutServiceId === id || org.homeVisitPerKmServiceId === id) used.push('the home-visit fees (Settings → Home visits)');
+    return used;
+  }
+
+  async serviceDeletionCheck(id: string) {
+    if (!(await this.prisma.db.service.findUnique({ where: { id }, select: { id: true } }))) throw notFound('Service');
+    return deletionCheck(await this.serviceHistory(id), SERVICE_INSTEAD);
+  }
+
+  /** Deletes a service added by mistake: never charged, and not set up anywhere. */
+  async removeService(id: string) {
+    const s = await this.prisma.db.service.findUnique({ where: { id } });
+    if (!s) throw notFound('Service');
+    assertDeletable(s.name, deletionCheck(await this.serviceHistory(id), SERVICE_INSTEAD));
+    await this.prisma.db.$transaction(async (tx) => {
+      await deleteOrExplain(s.name, SERVICE_INSTEAD, () => tx.service.delete({ where: { id } }));
+      await this.audit.record({ action: 'service.deleted', entityType: 'Service', entityId: id, summary: `${s.code} ${s.name} deleted — never used` }, tx);
+    });
+    return { ok: true };
   }
 
   async settings() {

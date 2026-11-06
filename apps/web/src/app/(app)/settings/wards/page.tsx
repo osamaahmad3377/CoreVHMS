@@ -18,6 +18,7 @@ import { api } from '@/lib/api';
 import { fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { Service, WardRow } from '@/lib/types';
+import { DeleteRecordButton } from '@/components/delete-record';
 
 function WardDialog({ ward, open, onOpenChange }: { ward: WardRow | null; open: boolean; onOpenChange: (o: boolean) => void }) {
   const qc = useQueryClient();
@@ -55,6 +56,7 @@ function WardDialog({ ward, open, onOpenChange }: { ward: WardRow | null; open: 
           {ward && <label className="flex items-center gap-2 self-end pb-2 text-sm"><Checkbox checked={f.isActive} onCheckedChange={(v) => setF({ ...f, isActive: !!v })} /> Active</label>}
         </div>
         <DialogFooter>
+          {ward && <DeleteRecordButton className="text-destructive hover:text-destructive sm:mr-auto" name={ward.name} path={`/wards/${ward.id}`} invalidate={[['wards']]} onDeleted={() => onOpenChange(false)} />}
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button loading={m.isPending} disabled={!f.name.trim()} onClick={() => { setError(null); m.mutate(); }}>Save</Button>
         </DialogFooter>
@@ -112,9 +114,12 @@ export default function WardsSettingsPage() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {w.cages.map((c) => (
-                    <button key={c.id} type="button" title={c.occupant ? `Occupied by ${c.occupant.patient.name}` : c.isActive ? 'Click to deactivate' : 'Click to reactivate'} disabled={!!c.occupant} onClick={() => toggleCage.mutate({ ...c, wardId: w.id })} className={`rounded-md border px-3 py-1.5 text-sm ${c.isActive ? '' : 'text-muted-foreground line-through'} ${c.occupant ? 'border-primary/40 bg-primary/5' : 'hover:bg-muted'}`}>
-                      {c.name}{c.occupant ? ` · ${c.occupant.patient.name}` : ''}
-                    </button>
+                    <span key={c.id} className={`inline-flex items-center rounded-md border ${c.occupant ? 'border-primary/40 bg-primary/5' : ''}`}>
+                      <button type="button" title={c.occupant ? `Occupied by ${c.occupant.patient.name}` : c.isActive ? 'Click to deactivate' : 'Click to reactivate'} disabled={!!c.occupant} onClick={() => toggleCage.mutate({ ...c, wardId: w.id })} className={`rounded-l-md px-3 py-1.5 text-sm ${c.isActive ? '' : 'text-muted-foreground line-through'} ${c.occupant ? '' : 'hover:bg-muted'}`}>
+                        {c.name}{c.occupant ? ` · ${c.occupant.patient.name}` : ''}
+                      </button>
+                      {!c.occupant && <DeleteRecordButton iconOnly className="h-7 w-7 rounded-l-none text-muted-foreground hover:text-destructive" name={c.name} path={`/cages/${c.id}`} invalidate={[['wards']]} />}
+                    </span>
                   ))}
                   {!w.cages.length && <span className="text-sm text-muted-foreground">No cages yet.</span>}
                 </div>

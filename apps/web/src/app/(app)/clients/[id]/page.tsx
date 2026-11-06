@@ -41,6 +41,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useDeleteRecord } from '@/components/delete-record';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { NativeSelect, Textarea } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -77,6 +78,7 @@ function ClientRecord() {
   const router = useRouter();
   const qc = useQueryClient();
   const confirm = useConfirm();
+  const deleteRecord = useDeleteRecord();
   const { can, currency, session } = useSession();
   const portal = session.features?.clientPortal === true;
   const key = ['client', id];
@@ -101,6 +103,16 @@ function ClientRecord() {
   const c = q.data!;
   const writable = can('clients.write') && c.status !== 'MERGED';
   const primaryAddress = c.addresses.find((a) => a.isPrimary) ?? c.addresses[0];
+  const archiveClient = async () => {
+    const r = await confirm({
+      title: `Archive ${c.displayName}?`,
+      description: 'Archived clients are hidden from searches and lists but their records are kept. You can restore them later.',
+      requireReason: true,
+      destructive: true,
+      confirmLabel: 'Archive client',
+    });
+    if (r.confirmed) action.mutate(() => api.post(`/clients/${c.id}/archive`, { reason: r.reason }));
+  };
 
   return (
     <>
@@ -157,10 +169,10 @@ function ClientRecord() {
                 <Edit /> Edit
               </Button>
             )}
-            {(can('clients.archive') || can('clients.merge')) && c.status !== 'MERGED' && (
+            {(can('clients.archive') || can('clients.merge') || can('clients.delete')) && c.status !== 'MERGED' && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button size="sm" variant="outline" aria-label="More actions" title="More actions: merge, archive">
+                  <Button size="sm" variant="outline" aria-label="More actions" title="More actions: merge, archive, delete">
                     <MoreHorizontal /> More
                   </Button>
                 </DropdownMenuTrigger>
@@ -172,25 +184,29 @@ function ClientRecord() {
                   )}
                   {can('clients.archive') && <DropdownMenuSeparator />}
                   {can('clients.archive') && c.status === 'ACTIVE' && (
-                    <DropdownMenuItem
-                      destructive
-                      onSelect={async () => {
-                        const r = await confirm({
-                          title: `Archive ${c.displayName}?`,
-                          description: 'Archived clients are hidden from searches and lists but their records are kept. You can restore them later.',
-                          requireReason: true,
-                          destructive: true,
-                          confirmLabel: 'Archive client',
-                        });
-                        if (r.confirmed) action.mutate(() => api.post(`/clients/${c.id}/archive`, { reason: r.reason }));
-                      }}
-                    >
+                    <DropdownMenuItem destructive onSelect={archiveClient}>
                       <Archive /> Archive client
                     </DropdownMenuItem>
                   )}
                   {can('clients.archive') && c.status === 'ARCHIVED' && (
                     <DropdownMenuItem onSelect={() => action.mutate(() => api.post(`/clients/${c.id}/restore`))}>
                       <ArchiveRestore /> Restore client
+                    </DropdownMenuItem>
+                  )}
+                  {can('clients.delete') && can('patients.delete') && (
+                    <DropdownMenuItem
+                      destructive
+                      onSelect={() =>
+                        deleteRecord({
+                          name: c.displayName,
+                          path: `/clients/${c.id}`,
+                          instead: c.status === 'ACTIVE' && can('clients.archive') ? { label: 'Archive instead', run: archiveClient } : undefined,
+                          invalidate: [['clients'], ['patients']],
+                          onDeleted: () => router.replace('/clients'),
+                        })
+                      }
+                    >
+                      <Trash2 /> Delete client…
                     </DropdownMenuItem>
                   )}
                 </DropdownMenuContent>

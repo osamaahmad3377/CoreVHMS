@@ -23,6 +23,7 @@ import { fmtMoney } from '@/lib/format';
 import { usePortalEnabled, useSession } from '@/lib/session';
 import type { AppointmentType, AppointmentTypeCategory, Service } from '@/lib/types';
 import { useConfirm } from '@/components/confirm';
+import { DeleteRecordButton } from '@/components/delete-record';
 
 function TypeDialog({ type, open, onOpenChange }: { type: AppointmentType | null; open: boolean; onOpenChange: (o: boolean) => void }) {
   const { currency } = useSession();
@@ -102,6 +103,7 @@ function TypeDialog({ type, open, onOpenChange }: { type: AppointmentType | null
           </div>
         </div>
         <DialogFooter>
+          {type && <DeleteRecordButton className="text-destructive hover:text-destructive sm:mr-auto" name={type.name} path={`/appointment-types/${type.id}`} invalidate={[['appointment-types']]} onDeleted={() => onOpenChange(false)} />}
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button disabled={!f.name.trim()} loading={save.isPending} onClick={() => { setError(null); save.mutate(); }}>Save</Button>
         </DialogFooter>

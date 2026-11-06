@@ -8,7 +8,7 @@ async function setup() {
   const vet = await staff(org, 'veterinarian', { isClinician: true });
   const client = await makeClient(org.owner);
   const patient = await makePatient(org.owner, client.id);
-  const svc = await org.owner.post('/services', { code: 'HOSPDAY', name: 'Hospitalisation per day', category: 'HOSPITALISATION', priceMinor: 5000 });
+  const svc = await org.owner.post('/services', { code: 'TESTDAY', name: 'Hospitalisation per day', category: 'HOSPITALISATION', priceMinor: 5000 });
   const ward = await org.owner.post('/wards', { branchId: org.branchId, name: 'General', type: 'GENERAL', dailyServiceId: svc.body.id });
   const icu = await org.owner.post('/wards', { branchId: org.branchId, name: 'ICU', type: 'ICU' });
   const k1 = await org.owner.post('/cages', { wardId: ward.body.id, name: 'K1' });

@@ -120,8 +120,8 @@ export class OnboardingService {
   }
 
   /**
-   * Creates the "Main store" stock location in the current branch if the branch has none, so stock can be
-   * received. Done on demand rather than at registration: any stock location switches stock checks on.
+   * The branch's store room to receive stock into: new clinics already have "Main store" (starter set-up); a branch
+   * without one gets it here. Stock checks start only once stock has been entered (InventoryService.trackingLocation).
    */
   async ensureStoreRoom() {
     const ctx = RequestContext.require();

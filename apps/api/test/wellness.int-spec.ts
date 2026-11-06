@@ -10,7 +10,7 @@ async function setup() {
   const patient = await makePatient(org.owner, client.id);
   const sp = (await org.owner.post('/services', { code: 'DSP', name: 'Scale and polish', category: 'DENTAL', priceMinor: 800000 })).body;
   await org.owner.call('put', '/dental/prices', { items: [{ code: 'SP', serviceId: sp.id }] });
-  const lab = (await org.owner.post('/lab-tests', { code: 'CBC', name: 'Blood count', category: 'HAEMATOLOGY', priceMinor: 300000, analytes: [{ code: 'A', name: 'A' }] })).body;
+  const lab = (await org.owner.post('/lab-tests', { code: 'WCBC', name: 'Blood count', category: 'HAEMATOLOGY', priceMinor: 300000, analytes: [{ code: 'A', name: 'A' }] })).body;
   const product = (await org.owner.post('/products', { name: 'Wellness tabs', strengthValue: 10, strengthUnit: 'mg', dispensingUnit: 'tablet', minDispenseIncrement: 1, sellPriceMinor: 1000 })).body;
   const plan = await org.owner.post('/wellness/plans', {
     name: 'Gold',

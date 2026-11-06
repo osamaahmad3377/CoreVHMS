@@ -21,6 +21,7 @@ import { ApiError, api } from '@/lib/api';
 import { fmtDate, fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { Supplier } from '@/lib/types';
+import { DeleteRecordButton } from '@/components/delete-record';
 
 interface SupplierAccount { supplier: Supplier; receivedMinor: number; paidMinor: number; returnedMinor: number; balanceMinor: number; receipts: { id: string; receiptNo: string; receivedAt: string; totalMinor: number; supplierInvoiceNo: string | null }[] }
 
@@ -76,6 +77,7 @@ function SupplierDialog({ supplier, open, onOpenChange }: { supplier: Supplier |
           </fieldset>
         </form>
         <DialogFooter>
+          {supplier && <DeleteRecordButton className="text-destructive hover:text-destructive sm:mr-auto" name={supplier.name} path={`/suppliers/${supplier.id}`} invalidate={[['suppliers']]} onDeleted={() => onOpenChange(false)} />}
           <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
           {editable && <Button type="submit" form="supplier-form" loading={m.isPending}>Save</Button>}
         </DialogFooter>

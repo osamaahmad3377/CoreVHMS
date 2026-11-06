@@ -2,7 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ROUTES, enumLabel } from '@vcms/shared';
 import { AlertTriangle, CheckCircle2, Edit, Plus, Trash2 } from 'lucide-react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirm } from '@/components/confirm';
@@ -22,6 +22,7 @@ import type { ProductDetail, Species } from '@/lib/types';
 
 function Detail() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const { can, currency } = useSession();
   const qc = useQueryClient();
   const confirm = useConfirm();
@@ -142,7 +143,7 @@ function Detail() {
           </CardContent>
         </Card>
       </div>
-      {edit && <ProductDialog product={p} open={edit} onOpenChange={setEdit} onSaved={refresh} />}
+      {edit && <ProductDialog product={p} open={edit} onOpenChange={setEdit} onSaved={refresh} onDeleted={() => router.replace('/pharmacy/formulary')} />}
     </>
   );
 }

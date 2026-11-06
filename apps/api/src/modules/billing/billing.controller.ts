@@ -156,6 +156,18 @@ export class BillingController {
     return this.config.saveService(null, body);
   }
 
+  @Get('services/:id/deletion-check')
+  @RequirePermissions('settings.manage')
+  serviceDeletionCheck(@Param('id', UUID) id: string) {
+    return this.config.serviceDeletionCheck(id);
+  }
+
+  @Delete('services/:id')
+  @RequirePermissions('settings.manage')
+  removeService(@Param('id', UUID) id: string) {
+    return this.config.removeService(id);
+  }
+
   @Patch('services/:id')
   @RequirePermissions('settings.manage')
   updateService(@Param('id', UUID) id: string, @Body(zp(serviceSchema)) body: z.infer<typeof serviceSchema>) {

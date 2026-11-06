@@ -132,8 +132,8 @@ export class PosService {
     const defaultBp = rates.find((r) => r.isDefault)?.rateBasisPoints ?? 0;
     const bp = (id: string | null) => rates.find((r) => r.id === id)?.rateBasisPoints ?? defaultBp;
 
-    // Usable stock (available status, not expired) at the branch's default location.
-    const location = ctx.branchId ? await this.inventory.defaultLocation(db, ctx.branchId) : null;
+    // Usable stock (available status, not expired) at the branch's default location, once its stock is set up.
+    const location = ctx.branchId ? await this.inventory.trackingLocation(db, ctx.branchId) : null;
     const tracked = products.filter((p) => p.trackStock).map((p) => p.id);
     const today = new Date(new Date().toISOString().slice(0, 10));
     const levels =

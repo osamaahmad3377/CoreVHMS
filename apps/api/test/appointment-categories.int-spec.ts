@@ -17,7 +17,7 @@ describe('Appointment categories', () => {
     expect(t.body).toMatchObject({ category: 'CONSULTATION', categoryId: senior.body.id });
 
     // A type given only a built-in kind goes into that kind's category.
-    const groom = await org.owner.post('/appointment-types', { name: 'Nail trim', category: 'GROOMING', durationMinutes: 15 });
+    const groom = await org.owner.post('/appointment-types', { name: 'Claw clip', category: 'GROOMING', durationMinutes: 15 });
     const grooming = start.find((c: any) => c.name === 'Grooming');
     expect(groom.body).toMatchObject({ category: 'GROOMING', categoryId: grooming.id });
 

@@ -7,9 +7,13 @@ import type { ScopedTx } from '../../common/prisma/tenant-extension';
 import { conflict } from '../../common/http/errors';
 import { AuditService, diff } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
+import { assertDeletable, deleteOrExplain, deletionCheck, usage } from '../../common/deletion/deletion';
 import { notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { REAL_STAFF } from '../users/system-account';
+
+const TYPE_INSTEAD = 'Switch it off instead (untick “Active”) — it can no longer be booked, and past appointments keep it.';
+const RESOURCE_INSTEAD = 'Switch it off instead (untick “Active”) — it can no longer be booked, and past bookings keep it.';
 
 /** Configuration for scheduling: appointment types, bookable resources, rosters and leave. */
 @Injectable()
@@ -139,6 +143,53 @@ export class ScheduleConfigService {
       await this.audit.record({ action: 'resource.created', entityType: 'Resource', entityId: r.id, summary: r.name }, tx);
       return r;
     });
+  }
+
+  // ── Deleting types and resources added by mistake ──
+  private typeHistory(id: string) {
+    return usage([
+      ['appointment', 'appointments', this.prisma.db.appointment.count({ where: { appointmentTypeId: id } })],
+      ['waiting-list entry', 'waiting-list entries', this.prisma.db.waitlistEntry.count({ where: { appointmentTypeId: id } })],
+    ]);
+  }
+
+  async typeDeletionCheck(id: string) {
+    if (!(await this.prisma.db.appointmentType.findUnique({ where: { id }, select: { id: true } }))) throw notFound('Appointment type');
+    return deletionCheck(await this.typeHistory(id), TYPE_INSTEAD);
+  }
+
+  async removeType(id: string) {
+    const t = await this.prisma.db.appointmentType.findUnique({ where: { id } });
+    if (!t) throw notFound('Appointment type');
+    assertDeletable(t.name, deletionCheck(await this.typeHistory(id), TYPE_INSTEAD));
+    await this.prisma.db.$transaction(async (tx) => {
+      await deleteOrExplain(t.name, TYPE_INSTEAD, () => tx.appointmentType.delete({ where: { id } }));
+      await this.audit.record({ action: 'appointment_type.deleted', entityType: 'AppointmentType', entityId: id, summary: `${t.name} deleted — never booked` }, tx);
+    });
+    return { ok: true };
+  }
+
+  private resourceHistory(id: string) {
+    return usage([
+      ['booking', 'bookings', this.prisma.db.appointmentResource.count({ where: { resourceId: id } })],
+      ['surgery', 'surgeries', this.prisma.db.surgery.count({ where: { theatreId: id } })],
+    ]);
+  }
+
+  async resourceDeletionCheck(id: string) {
+    if (!(await this.prisma.db.resource.findUnique({ where: { id }, select: { id: true } }))) throw notFound('Resource');
+    return deletionCheck(await this.resourceHistory(id), RESOURCE_INSTEAD);
+  }
+
+  async removeResource(id: string) {
+    const r = await this.prisma.db.resource.findUnique({ where: { id } });
+    if (!r) throw notFound('Resource');
+    assertDeletable(r.name, deletionCheck(await this.resourceHistory(id), RESOURCE_INSTEAD));
+    await this.prisma.db.$transaction(async (tx) => {
+      await deleteOrExplain(r.name, RESOURCE_INSTEAD, () => tx.resource.delete({ where: { id } }));
+      await this.audit.record({ action: 'resource.deleted', entityType: 'Resource', entityId: id, summary: `${r.name} deleted — never booked` }, tx);
+    });
+    return { ok: true };
   }
 
   async updateResource(id: string, input: Partial<{ name: string; type: ResourceType; isActive: boolean }>) {

@@ -21,6 +21,7 @@ import { api } from '@/lib/api';
 import { fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { Service, TaxRate } from '@/lib/types';
+import { DeleteRecordButton } from '@/components/delete-record';
 
 function ServiceDialog({ service, open, onOpenChange }: { service: Service | null; open: boolean; onOpenChange: (o: boolean) => void }) {
   const qc = useQueryClient();
@@ -61,6 +62,7 @@ function ServiceDialog({ service, open, onOpenChange }: { service: Service | nul
         </div>
         {service && <label className="flex items-center gap-2 text-sm"><Checkbox checked={f.isActive} onCheckedChange={(v) => setF({ ...f, isActive: !!v })} /> Active</label>}
         <DialogFooter>
+          {service && <DeleteRecordButton className="text-destructive hover:text-destructive sm:mr-auto" name={service.name} path={`/services/${service.id}`} invalidate={[['services'], ['appointment-types']]} onDeleted={() => onOpenChange(false)} />}
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button loading={m.isPending} disabled={!f.code.trim() || !f.name.trim() || price === null} onClick={() => { setError(null); m.mutate(); }}>Save</Button>
         </DialogFooter>

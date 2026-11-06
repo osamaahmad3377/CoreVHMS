@@ -25,6 +25,7 @@ import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import type { Product, ProductCategory } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { DeleteRecordButton } from '@/components/delete-record';
 
 export type ProductType = (typeof PRODUCT_TYPES)[number];
 const CLINICAL = new Set<string>(PRESCRIBABLE_PRODUCT_TYPES);
@@ -89,7 +90,7 @@ function typeDefaults(type: ProductType) {
   };
 }
 
-export function ProductDialog({ product, open, onOpenChange, onSaved, defaultType, initialName }: { product: Product | null; open: boolean; onOpenChange: (o: boolean) => void; onSaved?: (p: Product) => void; defaultType?: ProductType; initialName?: string }) {
+export function ProductDialog({ product, open, onOpenChange, onSaved, onDeleted, defaultType, initialName }: { product: Product | null; open: boolean; onOpenChange: (o: boolean) => void; onSaved?: (p: Product) => void; /** After the product was deleted (it had never been used); the dialog closes either way. */ onDeleted?: () => void; defaultType?: ProductType; initialName?: string }) {
   const { currency, can } = useSession();
   const qc = useQueryClient();
   const [step, setStep] = useState<'type' | 'details'>(product || defaultType ? 'details' : 'type');
@@ -287,6 +288,7 @@ export function ProductDialog({ product, open, onOpenChange, onSaved, defaultTyp
         )}
         <DialogFooter>
           {step === 'details' && !product && !defaultType && <Button variant="outline" className="mr-auto" onClick={() => setStep('type')}><ArrowLeft /> Change type</Button>}
+          {product && <DeleteRecordButton className="text-destructive hover:text-destructive sm:mr-auto" name={product.name} path={`/products/${product.id}`} invalidate={[['products'], ['stock']]} onDeleted={() => { onOpenChange(false); onDeleted?.(); }} />}
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           {step === 'details' && (
             <Button disabled={!f.name.trim() || !(Number(f.minDispenseIncrement) > 0) || !reorderValid} loading={save.isPending} onClick={() => { setError(null); save.mutate(); }}>Save product</Button>

@@ -17,6 +17,7 @@ import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import type { LabAnalyte, LabTest, Species } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { DeleteRecordButton } from '@/components/delete-record';
 
 type AnalyteDraft = { id?: string; code: string; name: string; unit: string; resultType: 'NUMERIC' | 'TEXT' | 'OPTION'; options: string; decimals: number };
 
@@ -24,7 +25,7 @@ function toDraft(a: LabAnalyte): AnalyteDraft {
   return { id: a.id, code: a.code, name: a.name, unit: a.unit ?? '', resultType: a.resultType, options: a.options.join(', '), decimals: a.decimals };
 }
 
-function TestEditor({ test, onSaved }: { test: (LabTest & { analytes: LabAnalyte[] }) | null; onSaved: (id: string) => void }) {
+function TestEditor({ test, onSaved, onDeleted }: { test: (LabTest & { analytes: LabAnalyte[] }) | null; onSaved: (id: string) => void; onDeleted?: () => void }) {
   const { currency } = useSession();
   const qc = useQueryClient();
   const [f, setF] = useState({ code: '', name: '', category: 'HAEMATOLOGY', sampleType: 'WHOLE_BLOOD_EDTA', performedBy: 'IN_HOUSE', externalLabName: '', modality: '', price: '', turnaroundHours: '', instructions: '', isActive: true });
@@ -111,7 +112,7 @@ function TestEditor({ test, onSaved }: { test: (LabTest & { analytes: LabAnalyte
         )}
         <Field label="Collection / preparation instructions" htmlFor="lt-i"><Input id="lt-i" value={f.instructions} onChange={set('instructions')} /></Field>
         {test && <label className="flex items-center gap-2 text-sm"><Checkbox checked={f.isActive} onCheckedChange={(v) => setF((s) => ({ ...s, isActive: v === true }))} /> Available to order</label>}
-        <div className="flex justify-end"><Button loading={save.isPending} disabled={!f.code.trim() || !f.name.trim()} onClick={() => { setError(null); save.mutate(); }}>Save test</Button></div>
+        <div className="flex flex-wrap justify-end gap-2">{test && <DeleteRecordButton className="mr-auto text-destructive hover:text-destructive" name={test.name} path={`/lab-tests/${test.id}`} invalidate={[['lab-tests']]} onDeleted={onDeleted} />}<Button loading={save.isPending} disabled={!f.code.trim() || !f.name.trim()} onClick={() => { setError(null); save.mutate(); }}>Save test</Button></div>
       </CardContent>
     </Card>
   );
@@ -209,7 +210,7 @@ export default function CataloguePage() {
           {selected === 'new' && <TestEditor test={null} onSaved={(id) => setSelected(id)} />}
           {selected && selected !== 'new' && (detail.isLoading ? <LoadingRows /> : detail.data && (
             <>
-              <TestEditor test={detail.data} onSaved={() => detail.refetch()} />
+              <TestEditor test={detail.data} onSaved={() => detail.refetch()} onDeleted={() => setSelected(null)} />
               <Intervals test={detail.data} />
             </>
           ))}

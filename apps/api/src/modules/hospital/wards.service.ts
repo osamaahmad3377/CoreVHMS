@@ -2,8 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { WardType } from '@prisma/client';
 import { AuditService, diff } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
+import { assertDeletable, deleteOrExplain, deletionCheck, usage } from '../../common/deletion/deletion';
 import { conflict, notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
+
+const WARD_INSTEAD = 'Switch it off instead (untick “Active”) — it is hidden from the ward board, and past hospital stays keep it.';
 
 @Injectable()
 export class WardsService {
@@ -71,5 +74,43 @@ export class WardsService {
       if (e?.code === 'P2025') throw notFound('Cage');
       throw e;
     }
+  }
+
+  // ── Deleting wards and cages added by mistake (never used for a hospital stay) ──
+  private wardHistory(where: { wardId: string } | { cageId: string }) {
+    return usage([['hospital stay', 'hospital stays', this.prisma.db.admission.count({ where })]]);
+  }
+
+  async wardDeletionCheck(id: string) {
+    if (!(await this.prisma.db.ward.findUnique({ where: { id }, select: { id: true } }))) throw notFound('Ward');
+    return deletionCheck(await this.wardHistory({ wardId: id }), WARD_INSTEAD);
+  }
+
+  /** Deletes a ward that has never had a patient; its cages go with it. */
+  async removeWard(id: string) {
+    const w = await this.prisma.db.ward.findUnique({ where: { id }, include: { _count: { select: { cages: true } } } });
+    if (!w) throw notFound('Ward');
+    assertDeletable(w.name, deletionCheck(await this.wardHistory({ wardId: id }), WARD_INSTEAD));
+    await this.prisma.db.$transaction(async (tx) => {
+      await deleteOrExplain(w.name, WARD_INSTEAD, () => tx.ward.delete({ where: { id } }));
+      await this.audit.record({ action: 'ward.deleted', entityType: 'Ward', entityId: id, summary: `${w.name} and its ${w._count.cages} cage(s) deleted — never used` }, tx);
+    });
+    return { ok: true };
+  }
+
+  async cageDeletionCheck(id: string) {
+    if (!(await this.prisma.db.cage.findUnique({ where: { id }, select: { id: true } }))) throw notFound('Cage');
+    return deletionCheck(await this.wardHistory({ cageId: id }), WARD_INSTEAD);
+  }
+
+  async removeCage(id: string) {
+    const c = await this.prisma.db.cage.findUnique({ where: { id } });
+    if (!c) throw notFound('Cage');
+    assertDeletable(c.name, deletionCheck(await this.wardHistory({ cageId: id }), WARD_INSTEAD));
+    await this.prisma.db.$transaction(async (tx) => {
+      await deleteOrExplain(c.name, WARD_INSTEAD, () => tx.cage.delete({ where: { id } }));
+      await this.audit.record({ action: 'cage.deleted', entityType: 'Ward', entityId: c.wardId, summary: `${c.name} deleted — never used` }, tx);
+    });
+    return { ok: true };
   }
 }
