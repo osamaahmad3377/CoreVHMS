@@ -133,6 +133,9 @@ export const STARTER_STORE_ROOMS: { name: string; type: LocationType; isDefault:
 ];
 
 /** Stock → Suppliers: for things bought over the counter when there is no regular supplier. */
+/** The till drawer each branch starts with. */
+export const STARTER_CASH_DRAWER = 'Reception';
+
 export const STARTER_SUPPLIER = {
   name: 'Local Purchase',
   paymentTermsDays: 0,

@@ -263,3 +263,36 @@ export interface HostInfo {
   clinic?: { name: string; status: ClinicStatus; branding?: Branding };
   baseDomain?: string;
 }
+
+// ── Starter set-up for an existing clinic (super admin) ──
+
+/** The parts of the new-clinic starter set-up, in the order they are added. */
+export const STARTER_SECTIONS = ['services', 'homeVisits', 'appointmentTypes', 'dentalPrices', 'labTests', 'supplier', 'cashDrawer', 'resources', 'wards', 'boarding', 'storeRooms'] as const;
+export type StarterSection = (typeof STARTER_SECTIONS)[number];
+
+export const STARTER_SECTION_LABELS: Record<StarterSection, string> = {
+  services: 'Services & prices (price 0)',
+  homeVisits: 'Home-visit fees',
+  appointmentTypes: 'Appointment types (incl. grooming)',
+  dentalPrices: 'Dental prices',
+  labTests: 'Test catalogue',
+  supplier: 'Supplier “Local Purchase”',
+  cashDrawer: 'Cash drawer',
+  resources: 'Rooms, theatres & equipment',
+  wards: 'Hospital wards & cages',
+  boarding: 'Boarding kennels',
+  storeRooms: 'Store rooms',
+};
+
+/** What the starter set-up would add to a clinic: only what it does not have yet (matched by code or name). */
+export interface StarterPlanSection {
+  key: StarterSection;
+  label: string;
+  /** Names of what would be added (per branch, prefixed with the branch when the clinic has several). */
+  items: string[];
+  /** Why something is not added, e.g. “already set”. */
+  note?: string | null;
+}
+
+export const starterApplySchema = z.object({ sections: z.array(z.enum(STARTER_SECTIONS)).min(1, 'Choose at least one part') });
+export type StarterApplyInput = z.infer<typeof starterApplySchema>;

@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import type { Plan, Tenant } from '@prisma/client';
-import { STORAGE_PACK_GB, clinicBill, discountLabel, paymentState, type ClinicDiscountInput, type ClinicBillingInput, type ClinicOverview, type ClinicPlanInput, type ClinicUsage, type CreateClinicInput, type PlanFeature, type PlanRequestView, type PlatformClinic } from '@vcms/shared';
+import { STARTER_SECTIONS, STARTER_SECTION_LABELS, STORAGE_PACK_GB, clinicBill, type StarterSection, discountLabel, paymentState, type ClinicDiscountInput, type ClinicBillingInput, type ClinicOverview, type ClinicPlanInput, type ClinicUsage, type CreateClinicInput, type PlanFeature, type PlanRequestView, type PlatformClinic } from '@vcms/shared';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { randomToken, sha256 } from '../../common/crypto/crypto';
@@ -554,6 +554,43 @@ export class PlatformClinicsService implements OnModuleInit, OnModuleDestroy {
     });
     await this.audit.record({ action: 'platform.clinic_owner_password_reset', entityType: 'Tenant', entityId: id, summary: t.ownerEmail, organizationId: null });
     return { clinic: toClinic(t), temporaryPassword: password, expiresAt: expiresAt.toISOString() };
+  }
+
+  // ── Starter set-up for an existing clinic ──
+
+  /** The clinic's organization, inside its own database (it must be set up). */
+  private async starterTarget(id: string) {
+    const t = await this.find(id);
+    if (!['ACTIVE', 'SUSPENDED'].includes(t.status) || !t.organizationId) throw ruleViolation('NOT_READY', 'The clinic is not set up yet');
+    return { t, organizationId: t.organizationId };
+  }
+
+  /** What “Add starter set-up” would add to this clinic — only what it does not have yet. */
+  async starterPlan(id: string) {
+    const { t, organizationId } = await this.starterTarget(id);
+    return RequestContext.runInTenant(tenantRef(t), () => this.prisma.raw.$transaction((tx) => this.bootstrap.starterPlan(tx, organizationId)));
+  }
+
+  /** Adds the chosen parts of the starter set-up (only what is missing), recorded in the clinic's and NextCore's audit. */
+  async addStarter(id: string, sections: StarterSection[]) {
+    const { t, organizationId } = await this.starterTarget(id);
+    const added = await RequestContext.runInTenant(tenantRef(t), () =>
+      this.prisma.raw.$transaction(
+        async (tx) => {
+          const counts = await this.bootstrap.addStarter(tx, organizationId, sections);
+          const total = Object.values(counts).reduce((n, c) => n + c, 0);
+          if (total) {
+            const summary = STARTER_SECTIONS.filter((k) => counts[k]).map((k) => `${STARTER_SECTION_LABELS[k]}: ${counts[k]}`).join(' · ');
+            await this.audit.record({ action: 'organization.starter_setup_added', entityType: 'Organization', entityId: organizationId, organizationId, summary: `Added by NextCore super admin — ${summary}`, actorUserId: null, actorName: 'NextCore super admin' }, tx);
+          }
+          return counts;
+        },
+        { timeout: 60_000 },
+      ),
+    );
+    const total = Object.values(added).reduce((n, c) => n + c, 0);
+    await this.audit.record({ action: 'platform.clinic_starter_setup_added', entityType: 'Tenant', entityId: id, summary: `${t.slug}: ${total} item(s) added`, organizationId: null });
+    return { added, total, plan: await this.starterPlan(id) };
   }
 
   // ── Set-up ──

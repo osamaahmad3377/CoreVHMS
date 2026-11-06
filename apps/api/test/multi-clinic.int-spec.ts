@@ -186,6 +186,50 @@ describe('Multi-clinic hosting', () => {
     expect((await alpha.owner.get(`/platform/clinics/${alpha.id}/overview`)).status).toBe(403);
   });
 
+  it('adds the starter set-up to an existing clinic: a preview first, then only the chosen parts and only what is missing', async () => {
+    const plan = async () => (await superAdmin.get(`/platform/clinics/${alpha.id}/starter-setup`)).body as { key: string; items: string[]; note: string | null }[];
+    const section = (p: { key: string; items: string[] }[], key: string) => p.find((x) => x.key === key)!.items;
+    // Set up as a new clinic: nothing is missing.
+    expect((await plan()).every((x) => x.items.length === 0)).toBe(true);
+
+    // An older clinic: some starter items were never there (here: deleted), one exists under its own code.
+    const services = (await alpha.owner.get('/services')).body as any[];
+    expect((await alpha.owner.del(`/services/${services.find((x) => x.code === 'CERT').id}`)).status).toBe(200);
+    const microchip = services.find((x) => x.code === 'MICROCHIP');
+    expect((await alpha.owner.del(`/services/${microchip.id}`)).status).toBe(200);
+    expect((await alpha.owner.post('/services', { code: 'CHIP', name: microchip.name.toUpperCase(), category: 'PROCEDURE', priceMinor: 150000, isActive: true })).status).toBe(201);
+    const isolation = ((await alpha.owner.get('/wards')).body as any[]).find((w) => w.name === 'Isolation');
+    expect((await alpha.owner.del(`/wards/${isolation.id}`)).status).toBe(200);
+
+    const before = await plan();
+    expect(section(before, 'services')).toEqual(['Certificate']); // the clinic's own “MICROCHIP…” (code CHIP) counts as there
+    expect(section(before, 'wards')).toEqual(['Isolation (2 cages)']);
+    expect((await alpha.owner.get(`/platform/clinics/${alpha.id}/starter-setup`)).status).toBe(403);
+    expect((await superAdmin.post(`/platform/clinics/${alpha.id}/starter-setup`, { sections: [] })).status).toBe(400);
+
+    // Only the chosen part is added.
+    const r = await superAdmin.post(`/platform/clinics/${alpha.id}/starter-setup`, { sections: ['services'] });
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ total: 1, added: { services: 1, wards: 0 } });
+    expect(section(r.body.plan, 'services')).toEqual([]);
+    expect(section(r.body.plan, 'wards')).toEqual(['Isolation (2 cages)']);
+    const cert = ((await alpha.owner.get('/services')).body as any[]).find((x) => x.code === 'CERT');
+    expect(cert).toMatchObject({ name: 'Certificate', priceMinor: 0 });
+
+    // Running it again adds nothing; the ward comes back when chosen, with its cages and daily fee.
+    expect((await superAdmin.post(`/platform/clinics/${alpha.id}/starter-setup`, { sections: ['services'] })).body.total).toBe(0);
+    expect((await superAdmin.post(`/platform/clinics/${alpha.id}/starter-setup`, { sections: ['wards'] })).body.added.wards).toBe(1);
+    const ward = ((await alpha.owner.get('/wards')).body as any[]).find((w) => w.name === 'Isolation');
+    expect(ward.cages).toHaveLength(2);
+    expect(ward.dailyService).not.toBeNull();
+
+    // Recorded in the clinic's own audit log and in NextCore's.
+    const audit = (await alpha.owner.get('/audit-events?action=organization.starter_setup_added')).body.data as any[];
+    expect(audit.map((a) => a.summary)).toEqual(expect.arrayContaining([expect.stringContaining('Services & prices (price 0): 1')]));
+    const events = (await superAdmin.get(`/platform/clinics/${alpha.id}/overview`)).body.events.map((e: any) => e.action);
+    expect(events).toContain('platform.clinic_starter_setup_added');
+  });
+
   describe('plans and limits', () => {
     const setPlan = (id: string, body: Record<string, unknown>) => superAdmin.call('put', `/platform/clinics/${id}/plan`, body);
     const planByName = async (name: string) => ((await superAdmin.get('/platform/plans')).body as any[]).find((p) => p.name === name);

@@ -35,6 +35,7 @@ import { ClinicDiscountCard } from '@/components/platform/clinic-discount-card';
 import { ClinicBillingCard, ClinicPlanCard } from '@/components/platform/clinic-plan-card';
 import { ClinicActionsMenu, CopyButton, OwnerAccessDialog, StatusBadge, shortAddress, useClinicActions, type OwnerAccess } from '@/components/platform/clinic-ui';
 import { BillBreakdown, amount } from '@/components/platform/plan-ui';
+import { StarterSetupCard } from '@/components/platform/starter-setup';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -316,6 +317,7 @@ function ClinicPage({ id }: { id: string }) {
                 )}
               </CardContent>
             </Card>
+            {live && <StarterSetupCard clinicId={c.id} clinicName={c.name} />}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><History className="h-4 w-4" /> Recent activity</CardTitle>

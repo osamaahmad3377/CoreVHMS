@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query, Req, Res } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { clinicAddressSchema, clinicBillingSchema, clinicDiscountInputSchema, clinicPlanSchema, createClinicSchema, paymentListSchema, planInputSchema, recordPaymentSchema, voidPaymentSchema, type HostInfo } from '@vcms/shared';
+import { clinicAddressSchema, clinicBillingSchema, clinicDiscountInputSchema, clinicPlanSchema, createClinicSchema, paymentListSchema, planInputSchema, recordPaymentSchema, starterApplySchema, voidPaymentSchema, type HostInfo } from '@vcms/shared';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { Public, RequirePermissions } from '../../common/auth/decorators';
@@ -119,6 +119,22 @@ export class PlatformClinicsController {
   @RequirePermissions('platform.clinics.manage')
   ownerPassword(@Param('id', ParseUUIDPipe) id: string) {
     return this.clinics.resetOwnerPassword(id);
+  }
+
+  /** Preview of “Add starter set-up”: what each part would add to this clinic (only what it does not have yet). */
+  @Get(':id/starter-setup')
+  @RequirePermissions('platform.clinics.manage')
+  starterPlan(@Param('id', ParseUUIDPipe) id: string) {
+    return this.clinics.starterPlan(id);
+  }
+
+  /** Adds the chosen parts of the new-clinic starter set-up to an existing clinic — only what is missing. */
+  @Post(':id/starter-setup')
+  @HttpCode(200)
+  @RequirePermissions('platform.clinics.manage')
+  @ApiZodBody(starterApplySchema)
+  addStarter(@Param('id', ParseUUIDPipe) id: string, @Body(zp(starterApplySchema)) body: z.infer<typeof starterApplySchema>) {
+    return this.clinics.addStarter(id, body.sections);
   }
 
   /** One-time link that opens the clinic signed in as its System account (NextCore support access). */
