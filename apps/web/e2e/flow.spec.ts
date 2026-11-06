@@ -79,7 +79,7 @@ test.describe('Everyday flow', () => {
     // Typed and finished at once, before the 2-second autosave: the checklist still sees the notes.
     await vet.getByRole('button', { name: 'Show all steps' }).click();
     await vet.getByLabel(/Assessment/).fill('Flea allergy dermatitis');
-    await vet.getByRole('button', { name: 'Finish consultation' }).click();
+    await vet.getByRole('button', { name: 'Finish consultation' }).first().click();
     const check = vet.getByRole('dialog');
     await expect(check.getByText('Notes written')).toBeVisible();
     await check.getByRole('button', { name: 'Sign notes & finish' }).click();

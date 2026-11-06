@@ -75,6 +75,11 @@ describe('Boarding, grooming, insurance and referrals', () => {
     expect(job.status).toBe(201);
     expect(job.body).toMatchObject({ status: 'WAITING', instructions: 'Short summer cut', groomer: { id: f.vet.membershipId } });
     expect((await org.owner.get(`/appointments/${appt.body.id}`)).body.status).toBe('CHECKED_IN');
+    // A file on the grooming job also shows on the patient's Documents tab, labelled with its source.
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    expect((await org.owner.upload('/attachments', { entityType: 'GroomingJob', entityId: job.body.id, category: 'photo' }, { buffer: png, name: 'coat.png', type: 'image/png' })).status).toBe(201);
+    const docs = (await org.owner.get(`/attachments?entityType=Patient&entityId=${f.patient.id}&includeRelated=true`)).body;
+    expect(docs).toEqual([expect.objectContaining({ fileName: 'coat.png', source: expect.objectContaining({ entityType: 'GroomingJob', label: expect.stringMatching(/^Grooming /) }) })]);
     expect((await org.owner.post('/grooming/jobs', { appointmentId: appt.body.id })).status).toBe(409);
     board = (await org.owner.get(`/grooming/board?date=${day}`)).body;
     expect(board.booked.map((b: any) => b.id)).not.toContain(appt.body.id);

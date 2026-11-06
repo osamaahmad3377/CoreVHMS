@@ -1,10 +1,11 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
-import { formatVerificationCode, normaliseVerificationCode, type CertificateVerification, type HostInfo } from '@vcms/shared';
+import { formatVerificationCode, normaliseVerificationCode, type CertificateLayout, type CertificateVerification, type HostInfo } from '@vcms/shared';
 import { BadgeCheck, CalendarClock, CircleAlert, Clock, Globe, Loader2, Mail, MapPin, PawPrint, Phone, Search, ShieldCheck, ShieldX, Stethoscope, User } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { FitCertificate, type CertificateData } from './certificate-page';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { api } from '@/lib/api';
@@ -12,12 +13,12 @@ import { fmtDate, fmtDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 /** The clinic whose address this is: its name, logo and colours (public; the colours are applied by the layout). */
-function useClinic() {
+export function useClinic() {
   const q = useQuery({ queryKey: ['host-info'], queryFn: () => api.get<HostInfo>('/tenant'), staleTime: 300_000, retry: false });
   const { resolvedTheme } = useTheme();
   const b = q.data?.clinic?.branding;
   const logo = resolvedTheme === 'dark' ? (b?.logoDarkUrl ?? b?.logoUrl) : b?.logoUrl;
-  return { name: b?.brandName ?? q.data?.clinic?.name ?? null, logo: logo ?? null };
+  return { name: b?.brandName ?? q.data?.clinic?.name ?? null, logo: logo ?? null, color: b?.primaryColor ?? null };
 }
 
 /** Type or scan a code (barcode scanners type it in and press Enter). */
@@ -169,12 +170,36 @@ export function VerifyResult({ code }: { code: string }) {
   );
 }
 
+
+/** The certificate as printed, for the owner behind the link (patient certificates that are still in force). */
+export function CertificateCopy({ code }: { code: string }) {
+  const { logo } = useClinic();
+  const q = useQuery({
+    queryKey: ['verify-document', code],
+    queryFn: () => api.get<{ fields: Record<string, string>; table: CertificateData['table']; layout: CertificateLayout; qrValue: string; barcodeValue: string }>(`/public/certificates/${encodeURIComponent(code)}/document`),
+    retry: false,
+  });
+  if (!q.data) return null;
+  const d = q.data;
+  return (
+    <section className="grid gap-3 rounded-2xl surface-strong p-5 shadow-card" aria-label="The certificate">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-semibold">The certificate</p>
+        <Button variant="outline" size="sm" onClick={() => window.print()}>Print</Button>
+      </div>
+      <div className="overflow-hidden rounded-lg border bg-white p-2">
+        <FitCertificate layout={d.layout} data={{ fields: d.fields, table: d.table, qrValue: d.qrValue, barcodeValue: d.barcodeValue, logoUrl: logo }} maxWidth={620} />
+      </div>
+    </section>
+  );
+}
+
 /** The clinic's logo and name over the page, then whatever the page shows. */
-export function VerifyShell({ children, title = 'Certificate verification' }: { children: React.ReactNode; title?: string }) {
+export function VerifyShell({ children, title = 'Certificate verification', note = 'Certificates carry a QR code and a verification code. Anyone can check one here, without signing in.', wide }: { children: React.ReactNode; title?: string; note?: string; wide?: boolean }) {
   const { name, logo } = useClinic();
   return (
     <div className="app-canvas min-h-screen">
-      <div className="mx-auto w-full max-w-2xl px-4 pb-16 pt-8 sm:pt-12">
+      <div className={cn('mx-auto w-full px-4 pb-16 pt-8 sm:pt-12', wide ? 'max-w-4xl' : 'max-w-2xl')}>
         <header className="mb-6 flex flex-col items-center gap-3 text-center sm:mb-8">
           {logo ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -192,7 +217,7 @@ export function VerifyShell({ children, title = 'Certificate verification' }: { 
           </div>
         </header>
         {children}
-        <p className="mt-8 text-center text-xs text-muted-foreground">Certificates carry a QR code and a verification code. Anyone can check one here, without signing in.</p>
+        <p className="mt-8 text-center text-xs text-muted-foreground">{note}</p>
       </div>
     </div>
   );

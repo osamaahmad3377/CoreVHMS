@@ -86,6 +86,7 @@ const sourceIdOf = (e: ClientEvent): string =>
   : 'prescriptionId' in e ? e.prescriptionId
   : 'surgeryId' in e ? e.surgeryId
   : 'estimateId' in e ? e.estimateId
+  : 'certificateId' in e ? e.certificateId
   : e.clientId;
 
 
@@ -611,6 +612,8 @@ export class AutomationsService implements OnModuleInit {
         return pick(await db.surgery.findFirst({ where: trigger === 'SURGERY_COMPLETED' ? { status: 'COMPLETED' } : {}, orderBy: { scheduledAt: 'desc' }, select: { id: true } }));
       case 'Prescription':
         return pick(await db.prescription.findFirst({ where: { status: { in: ['DISPENSED', 'PARTIALLY_DISPENSED'] } }, orderBy: { updatedAt: 'desc' }, select: { id: true } }));
+      case 'Certificate':
+        return pick(await db.certificate.findFirst({ where: { subject: 'PATIENT', status: 'ISSUED', clientId: { not: null } }, orderBy: { issuedAt: 'desc' }, select: { id: true } }));
       case 'Estimate':
         return pick(await db.estimate.findFirst({ orderBy: { createdAt: 'desc' }, select: { id: true } }));
       case 'Invoice':

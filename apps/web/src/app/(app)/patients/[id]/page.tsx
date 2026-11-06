@@ -1,4 +1,5 @@
 'use client';
+import { PatientDiary } from '@/components/diary/patient-diary';
 import { PatientCertificates } from '@/components/certificates/patient-certificates';
 import { useUnits } from '@/lib/units';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -65,6 +66,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Textarea } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
+import { PatientBoarding } from '@/components/boarding/patient-boarding';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api } from '@/lib/api';
 import { fmtDate, fmtDateTime, fmtWeight } from '@/lib/format';
@@ -326,7 +328,9 @@ function PatientRecord() {
           {can('preventive.read') && <TabsTrigger value="care">Care plan</TabsTrigger>}
           {moduleOn('wellness') && can('wellness.read') && <TabsTrigger value="wellness">Wellness plan</TabsTrigger>}
           {moduleOn('dental') && can('clinical.read') && <TabsTrigger value="dental">Dental</TabsTrigger>}
+          {moduleOn('boarding') && can('boarding.read') && <TabsTrigger value="boarding">Boarding & grooming</TabsTrigger>}
           {can('certificates.read') && <TabsTrigger value="certificates">Certificates</TabsTrigger>}
+          {can('preventive.read') && <TabsTrigger value="diary">Diary</TabsTrigger>}
           {farmAnimal && can('livestock.read') && <TabsTrigger value="farm">Farm</TabsTrigger>}
           {can('insurance.read') && <TabsTrigger value="insurance">Insurance</TabsTrigger>}
           <TabsTrigger value="weight">Weight</TabsTrigger>
@@ -447,6 +451,16 @@ function PatientRecord() {
         {moduleOn('wellness') && can('wellness.read') && (
           <TabsContent value="wellness">
             <PatientWellnessTab patientId={p.id} patientName={p.name} active={active} />
+          </TabsContent>
+        )}
+        {can('preventive.read') && (
+          <TabsContent value="diary">
+            <PatientDiary patientId={p.id} patientName={p.name} />
+          </TabsContent>
+        )}
+        {moduleOn('boarding') && can('boarding.read') && (
+          <TabsContent value="boarding">
+            <PatientBoarding patientId={p.id} />
           </TabsContent>
         )}
         {can('certificates.read') && (

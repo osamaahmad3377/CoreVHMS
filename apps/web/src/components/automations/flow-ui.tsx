@@ -1,6 +1,7 @@
 'use client';
 import { CHECK_INFO, TRIGGER_INFO, type AutomationStep, type AutomationTrigger, type TriggerGroup } from '@vcms/shared';
 import {
+  Award,
   BedDouble,
   Bell,
   CalendarCheck,
@@ -50,6 +51,7 @@ export const TRIGGER_ICONS: Record<AutomationTrigger, Icon> = {
   CARE_DUE: Syringe,
   CLIENT_REGISTERED: UserPlus,
   PET_BIRTHDAY: Cake,
+  CERTIFICATE_ISSUED: Award,
   PATIENT_ADMITTED: BedDouble,
   SURGERY_UPCOMING: Scissors,
   SURGERY_COMPLETED: Scissors,

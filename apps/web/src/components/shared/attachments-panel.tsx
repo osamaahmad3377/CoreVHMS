@@ -21,6 +21,10 @@ const SOURCE_HREF: Record<string, (id: string) => string> = {
   Admission: (id) => `/hospital/admissions/${id}`,
   Surgery: (id) => `/surgery/${id}`,
   DiagnosticOrder: (id) => `/lab/orders/${id}`,
+  BoardingStay: (id) => `/boarding/stays/${id}`,
+  GroomingJob: (id) => `/boarding/grooming/${id}`,
+  InsuranceClaim: (id) => `/insurance/claims/${id}`,
+  Referral: (id) => `/insurance/referrals/${id}`,
 };
 
 /**

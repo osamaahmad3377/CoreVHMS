@@ -392,6 +392,9 @@ model Organization {
   dentalCharts              DentalChart[]
   certificateTemplates      CertificateTemplate[]
   certificates              Certificate[]
+  serologyTests             SerologyTest[]
+  diaryLinks                PatientDiaryLink[]
+  diarySettings             DiarySettings?
   dentalToothFindings       DentalToothFinding[]
   dentalProcedures          DentalProcedure[]
   dentalChartAddenda        DentalChartAddendum[]
@@ -1148,6 +1151,8 @@ model Patient {
   wellnessEnrolments WellnessEnrolment[]
   dentalCharts       DentalChart[]
   certificates       Certificate[]
+  serologyTests      SerologyTest[]
+  diaryLinks         PatientDiaryLink[]
 
   @@unique([organizationId, number])
   @@index([organizationId, status, name])
@@ -5773,4 +5778,80 @@ model Certificate {
   @@index([organizationId, issuedAt])
   @@index([patientId])
   @@index([membershipId])
+}
+
+// ── Pet diary ──
+
+enum SerologyStatus {
+  PLANNED
+  COMPLETED
+  VOIDED
+}
+
+enum SerologyOutcome {
+  SATISFACTORY
+  UNSATISFACTORY
+}
+
+/// A rabies antibody (titre) test for a patient: planned (a future test) or taken, with its result. A result is
+/// permanent — it can only be voided, with a reason (database trigger), never edited or deleted.
+model SerologyTest {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  patientId      String           @db.Uuid
+  status         SerologyStatus   @default(COMPLETED)
+  plannedFor     DateTime?        @db.Date
+  sampleDate     DateTime?        @db.Date
+  laboratory     String?
+  reference      String?
+  resultValue    Decimal?         @db.Decimal(10, 3)
+  resultUnit     String           @default("IU/mL")
+  outcome        SerologyOutcome?
+  /// From the destination's rules, entered by the vet (no country rules are built in).
+  validFrom      DateTime?        @db.Date
+  validUntil     DateTime?        @db.Date
+  notes          String?
+  recordedById   String           @db.Uuid
+  recordedByName String
+  voidedAt       DateTime?        @db.Timestamptz(3)
+  voidedByName   String?
+  voidedReason   String?
+  createdAt      DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime         @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  patient      Patient      @relation(fields: [patientId], references: [id], onDelete: Restrict)
+
+  @@index([patientId, status])
+  @@index([organizationId, plannedFor])
+}
+
+/// The owner's private link to their pet's online diary (the QR code and the message after a visit). One active link per
+/// patient; resetting it stops the old one working. The random token is the only thing that opens the page.
+model PatientDiaryLink {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  patientId      String    @db.Uuid
+  token          String    @unique
+  createdByName  String
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  revokedAt      DateTime? @db.Timestamptz(3)
+  lastViewedAt   DateTime? @db.Timestamptz(3)
+  viewCount      Int       @default(0)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  patient      Patient      @relation(fields: [patientId], references: [id], onDelete: Restrict)
+
+  @@index([patientId, revokedAt])
+}
+
+/// How the clinic's pet diary looks (Settings → Pet diary). One row per clinic; the shape is checked in code.
+model DiarySettings {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @unique @db.Uuid
+  config         Json
+  updatedByName  String?
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 }

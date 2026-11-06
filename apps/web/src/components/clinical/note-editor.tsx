@@ -12,7 +12,7 @@ import { Button } from '../ui/button';
 import { Input, NativeSelect, Textarea } from '../ui/input';
 import { Label } from '../ui/label';
 import { NoteSection } from './note-section';
-import { PastButton, usePastRecords } from './past-records';
+import { PastButton, usePastRecords, type PastTab } from './past-records';
 import { QuickPicks } from './quick-picks';
 import { useNotePhrases, useTemplates } from '@/hooks/use-catalog';
 import { api } from '@/lib/api';
@@ -24,6 +24,22 @@ import { cn } from '@/lib/utils';
 type Content = Pick<ClinicalNote, 'presentingComplaint' | 'history' | 'subjective' | 'objective' | 'assessment' | 'plan' | 'followUpInstructions'> & {
   examFindings: ExamFinding[];
   templateId: string | null;
+};
+
+/** Quick descriptions to tap when a system is abnormal; the vet can add words after them. */
+const ABNORMAL_PICKS: Record<string, string[]> = {
+  default: ['Mild', 'Moderate', 'Severe', 'Painful', 'Swollen', 'Red / inflamed', 'Discharge'],
+  'General appearance': ['Dull', 'Depressed', 'Thin', 'Overweight', 'Dehydrated', 'Weak'],
+  Eyes: ['Discharge', 'Red', 'Cloudy', 'Squinting', 'Ulcer', 'Swollen eyelid'],
+  Ears: ['Red', 'Brown discharge', 'Smelly', 'Painful', 'Head shaking', 'Swollen'],
+  'Oral cavity & teeth': ['Tartar', 'Gingivitis', 'Broken tooth', 'Pale gums', 'Ulcers', 'Bad breath'],
+  'Lymph nodes': ['Enlarged', 'Painful', 'Firm'],
+  Cardiovascular: ['Murmur', 'Fast rate', 'Slow rate', 'Irregular rhythm', 'Weak pulse'],
+  Respiratory: ['Fast breathing', 'Laboured', 'Wheeze', 'Crackles', 'Cough'],
+  Abdomen: ['Painful', 'Tense', 'Distended', 'Mass felt', 'Fluid'],
+  Musculoskeletal: ['Limping', 'Painful joint', 'Swollen joint', 'Reduced movement', 'Muscle loss'],
+  Neurological: ['Weak', 'Wobbly', 'Head tilt', 'Seizure history', 'Reduced reflexes'],
+  'Skin & coat': ['Itchy', 'Red', 'Hair loss', 'Scabs', 'Fleas seen', 'Lump', 'Wound'],
 };
 
 const DEFAULT_SYSTEMS = ['General appearance', 'Eyes', 'Ears', 'Oral cavity & teeth', 'Lymph nodes', 'Cardiovascular', 'Respiratory', 'Abdomen', 'Musculoskeletal', 'Neurological', 'Skin & coat'];
@@ -59,7 +75,7 @@ function fromNote(n: ClinicalNote | null, chiefComplaint?: string | null): Conte
 /** S/O/A/P letters stay as small grey prefixes; the words say what to write. */
 const FIELDS: { key: keyof Content; letter?: string; label: string; hint: string; rows: number }[] = [
   { key: 'presentingComplaint', label: 'Presenting complaint', hint: 'Why the animal is here today (filled in from the booking or check-in)', rows: 2 },
-  { key: 'history', label: 'Past history', hint: 'Earlier illnesses, vaccinations, diet, home, medicines already given', rows: 3 },
+  { key: 'history', label: 'Past history', hint: 'Earlier illnesses, vaccinations, diet, home, medicines already given', rows: 6 },
   { key: 'subjective', letter: 'S', label: 'History — what the owner tells you', hint: 'What the owner noticed this time: since when, eating, drinking, vomiting, energy', rows: 3 },
   { key: 'objective', letter: 'O', label: 'Examination findings', hint: 'What you found when you examined: temperature, heart, lungs, abdomen. Record only what you examined.', rows: 3 },
   { key: 'assessment', letter: 'A', label: 'Assessment — likely problem', hint: 'What you think is wrong, and other possible causes', rows: 3 },
@@ -82,6 +98,8 @@ export interface StepContext {
   content: Content;
   done: Record<string, boolean>;
   goStep: (id: string) => void;
+  /** Adds text under what is already written in a note field (e.g. the medicines given, into the plan). */
+  append: (field: keyof Content, text: string) => void;
 }
 
 export interface WorkflowStep {
@@ -90,7 +108,11 @@ export interface WorkflowStep {
   hint: string;
   fields?: (keyof Content)[];
   /** Content shown before the step's note fields, e.g. the tests ordered before writing the diagnosis. */
-  lead?: React.ReactNode;
+  lead?: React.ReactNode | ((ctx: StepContext) => React.ReactNode);
+  /** A button placed beside a field's name (next to its "Past" tools). */
+  fieldActions?: Partial<Record<keyof Content, (ctx: StepContext) => React.ReactNode>>;
+  /** The earlier records most useful in this step: one button opens them beside the visit. */
+  past?: PastTab;
   /** Show the physical-examination checklist in this step. */
   exam?: boolean;
   /** The step's other content, e.g. the vital-signs form or the prescriptions list. A function gets the note as written so far. */
@@ -343,7 +365,7 @@ export function NoteEditor({
     set('objective', current.trim() ? `${current.trimEnd()}\n${text}` : text);
   };
 
-  const renderField = (f: (typeof FIELDS)[number]) => (
+  const renderField = (f: (typeof FIELDS)[number], action?: React.ReactNode) => (
     <div key={f.key} className="grid gap-1.5">
       <div className="flex flex-wrap items-center gap-2">
         <Label htmlFor={`n-${f.key}`}>
@@ -356,10 +378,12 @@ export function NoteEditor({
               <Activity /> Insert vitals
             </Button>
           )}
+          {action}
           {past && (NOTE_PHRASE_FIELDS as readonly string[]).includes(f.key) && <PastTools field={f.key as NotePhraseField} value={String(content[f.key] ?? '')} onFill={(t) => set(f.key, t)} />}
         </div>
       </div>
-      {picksOn && (NOTE_PHRASE_FIELDS as readonly string[]).includes(f.key) && (
+      {/* Once the examination checklist is started it is the one way to tap findings; the text box stays for extra words. */}
+      {picksOn && !(f.key === 'objective' && content.examFindings.length > 0) && (NOTE_PHRASE_FIELDS as readonly string[]).includes(f.key) && (
         <QuickPicks field={f.key as NotePhraseField} value={String(content[f.key] ?? '')} onChange={(v) => set(f.key, v)} phrases={phrases.data ?? []} />
       )}
       <Textarea id={`n-${f.key}`} rows={f.rows} placeholder={f.hint} value={String(content[f.key] ?? '')} onChange={(e) => set(f.key, e.target.value)} />
@@ -406,65 +430,106 @@ export function NoteEditor({
     if (typeof window !== 'undefined') document.getElementById('consult-steps')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  const append = (field: keyof Content, text: string) => {
+    const prev = String(content[field] ?? '');
+    set(field, prev.trim() ? `${prev.trimEnd()}\n${text}` : text);
+  };
+
   const examBlock = (
-      <fieldset className="rounded-xl surface-flat p-3">
-        <legend className="px-1 text-sm font-medium">Physical examination</legend>
-        {findings.length === 0 ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-xs text-muted-foreground">Structured findings by body system (optional).</p>
-            <Button type="button" size="sm" variant="outline" onClick={() => set('examFindings', DEFAULT_SYSTEMS.map((system) => ({ system, status: 'NOT_EXAMINED', notes: '' })))}>
-              Add examination checklist
+    <fieldset className="rounded-xl surface-flat p-3">
+      <legend className="px-1 text-sm font-medium">Physical examination</legend>
+      {findings.length === 0 ? (
+        <div className="grid gap-2">
+          <p className="text-sm text-muted-foreground">Start with everything marked Normal, then tap only the systems where you found something wrong.</p>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="lg" onClick={() => set('examFindings', DEFAULT_SYSTEMS.map((system) => ({ system, status: 'NORMAL' as const, notes: '' })))}>
+              <CheckCircle2 /> Start examination — all normal
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => set('examFindings', DEFAULT_SYSTEMS.map((system) => ({ system, status: 'NOT_EXAMINED' as const, notes: '' })))}>
+              Start with nothing marked
             </Button>
           </div>
-        ) : (
-          <div className="grid gap-1.5">
-            <div className="flex flex-wrap gap-2 pb-1">
-              <Button type="button" size="sm" variant="ghost" onClick={() => set('examFindings', findings.map((f) => (f.status === 'NOT_EXAMINED' ? { ...f, status: 'NORMAL' as const } : f)))}>
-                Mark unexamined as normal
-              </Button>
-              <NativeSelect
-                aria-label="Add body system"
-                className="h-8 w-48 text-xs"
-                value=""
-                onChange={(e) => e.target.value && set('examFindings', [...findings, { system: e.target.value, status: 'NOT_EXAMINED', notes: '' }])}
-              >
-                <option value="">Add system…</option>
-                {EXAM_SYSTEMS.filter((s) => !findings.some((f) => f.system === s)).map((s) => <option key={s}>{s}</option>)}
-              </NativeSelect>
-            </div>
-            {findings.map((f, i) => (
-              <div key={f.system} className="grid grid-cols-[160px_150px_1fr] items-center gap-2 max-sm:grid-cols-2">
-                <span className="text-sm">{f.system}</span>
-                <NativeSelect
-                  aria-label={`${f.system} finding`}
-                  className={cn('h-8 text-xs', f.status === 'ABNORMAL' && 'border-warning text-warning', f.status === 'NORMAL' && 'text-success')}
-                  value={f.status}
-                  onChange={(e) => setFinding(i, { status: e.target.value as ExamFinding['status'] })}
-                >
-                  <option value="NOT_EXAMINED">Not examined</option>
-                  <option value="NORMAL">Normal</option>
-                  <option value="ABNORMAL">Abnormal</option>
-                </NativeSelect>
-                <Input aria-label={`${f.system} notes`} className="h-8 text-xs max-sm:col-span-2" placeholder={f.status === 'ABNORMAL' ? 'Describe the abnormality' : 'Notes'} value={f.notes ?? ''} onChange={(e) => setFinding(i, { notes: e.target.value })} />
-              </div>
-            ))}
+        </div>
+      ) : (
+        <div className="grid gap-2">
+          <div className="flex flex-wrap items-center gap-2 pb-1 text-xs text-muted-foreground">
+            <span aria-live="polite">
+              {findings.filter((f) => f.status === 'NORMAL').length} normal · {findings.filter((f) => f.status === 'ABNORMAL').length} abnormal · {findings.filter((f) => f.status === 'NOT_EXAMINED').length} not examined
+            </span>
+            <Button type="button" size="sm" variant="ghost" onClick={() => set('examFindings', findings.map((f) => (f.status === 'NOT_EXAMINED' ? { ...f, status: 'NORMAL' as const } : f)))}>
+              Mark the rest normal
+            </Button>
+            <NativeSelect
+              aria-label="Add body system"
+              className="ml-auto h-8 w-48 text-xs"
+              value=""
+              onChange={(e) => e.target.value && set('examFindings', [...findings, { system: e.target.value, status: 'NORMAL', notes: '' }])}
+            >
+              <option value="">Add system…</option>
+              {EXAM_SYSTEMS.filter((s) => !findings.some((f) => f.system === s)).map((s) => <option key={s}>{s}</option>)}
+            </NativeSelect>
           </div>
-        )}
-      </fieldset>
+          {findings.map((f, i) => (
+            <div key={f.system} className={cn('grid gap-2 rounded-lg border p-2', f.status === 'ABNORMAL' ? 'border-warning/60 bg-warning/5' : 'border-transparent')}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-medium">{f.system}</span>
+                <div role="radiogroup" aria-label={`${f.system} finding`} className="flex gap-1">
+                  {([['NORMAL', 'Normal', 'bg-success text-white border-success'], ['ABNORMAL', 'Abnormal', 'bg-warning text-warning-foreground border-warning'], ['NOT_EXAMINED', 'Not examined', 'bg-muted text-foreground border-foreground/20']] as const).map(([value, label, on]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={f.status === value}
+                      onClick={() => setFinding(i, { status: value })}
+                      className={cn('h-10 min-w-[5.5rem] rounded-lg border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', f.status === value ? on : 'border-border bg-card text-muted-foreground hover:bg-muted')}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {f.status === 'ABNORMAL' && (
+                <div className="grid gap-1.5">
+                  <div className="flex flex-wrap gap-1.5">
+                    {(ABNORMAL_PICKS[f.system] ?? ABNORMAL_PICKS.default).map((t) => {
+                      const has = (f.notes ?? '').includes(t);
+                      return (
+                        <button
+                          key={t}
+                          type="button"
+                          aria-pressed={has}
+                          onClick={() => setFinding(i, { notes: has ? (f.notes ?? '').split(', ').filter((x) => x !== t).join(', ') : [f.notes, t].filter((x) => x && x.trim()).join(', ') })}
+                          className={cn('h-8 rounded-pill border px-3 text-xs font-medium', has ? 'border-warning bg-warning/20' : 'border-border bg-card hover:bg-muted')}
+                        >
+                          {t}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <Input aria-label={`${f.system} notes`} className="h-9 text-sm" placeholder="Describe what you found" value={f.notes ?? ''} onChange={(e) => setFinding(i, { notes: e.target.value })} />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </fieldset>
   );
 
+  const stepCtx: StepContext = { content, done: Object.fromEntries(steps.map((x) => [x.id, stepDone(x)])), goStep, append };
   const stepBody = (st: WorkflowStep, n: number) => (
     <div className="grid gap-5">
       {(showAll || steps.length > 0) && (
         <div className="flex flex-wrap items-baseline gap-x-3">
           <h2 className="text-base font-semibold">{st.title}</h2>
           <span className="text-xs text-muted-foreground">Step {n + 1} of {steps.length} · {st.hint}</span>
+          {st.past && <PastButton tab={st.past} label="Past records" className="ml-auto" />}
         </div>
       )}
-      {st.lead}
-      {st.fields?.map((k) => renderField(FIELDS.find((f) => f.key === k)!))}
+      {typeof st.lead === 'function' ? st.lead(stepCtx) : st.lead}
+      {st.fields?.map((k) => renderField(FIELDS.find((f) => f.key === k)!, st.fieldActions?.[k]?.(stepCtx)))}
       {st.exam && examBlock}
-      {typeof st.extra === 'function' ? st.extra({ content, done: Object.fromEntries(steps.map((x) => [x.id, stepDone(x)])), goStep }) : st.extra}
+      {typeof st.extra === 'function' ? st.extra(stepCtx) : st.extra}
       {!showAll && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
           {n > 0 ? (
@@ -539,6 +604,13 @@ export function NoteEditor({
             'Not saved yet'
           )}
         </span>
+        <span className="flex items-center gap-2 text-xs text-muted-foreground" title="Tap a button to add it; tap again to remove it.">
+          <MousePointerClick className="h-3.5 w-3.5 text-primary" /> Quick picks {picksOn ? 'on' : 'off'}
+          <button type="button" onClick={togglePicks} className="font-medium text-primary hover:underline">{picksOn ? 'Hide' : 'Show'}</button>
+          {can('settings.manage') && (
+            <Link href="/settings/note-phrases" aria-label="Edit the buttons" title="Edit the buttons" className="text-primary hover:text-primary/80"><Settings2 className="h-3.5 w-3.5" /></Link>
+          )}
+        </span>
         {!amending && (
           <NativeSelect aria-label="Apply template" className="ml-auto h-8 w-56 text-xs" value="" onChange={(e) => e.target.value && applyTemplate(e.target.value)}>
             <option value="">Apply a template…</option>
@@ -548,13 +620,6 @@ export function NoteEditor({
               </option>
             ))}
           </NativeSelect>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1.5 font-medium text-foreground" title="Tap a button to add it; tap again to remove it."><MousePointerClick className="h-3.5 w-3.5 text-primary" /> Quick picks {picksOn ? 'on' : 'off'}</span>
-        <button type="button" onClick={togglePicks} className="font-medium text-primary hover:underline">{picksOn ? 'Hide buttons' : 'Show buttons'}</button>
-        {can('settings.manage') && (
-          <Link href="/settings/note-phrases" className="ml-auto flex items-center gap-1 font-medium text-primary hover:underline"><Settings2 className="h-3.5 w-3.5" /> Edit the buttons</Link>
         )}
       </div>
       {error && <FormError message={error} />}

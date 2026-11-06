@@ -15,7 +15,9 @@ import { ConsultationCharges } from '@/components/clinical/charges-card';
 import { DiagnosesPanel } from '@/components/clinical/diagnoses-panel';
 import { FinishConsultationDialog } from '@/components/clinical/finish-dialog';
 import { NoteEditor, type WorkflowStep } from '@/components/clinical/note-editor';
-import { PastButton, PastRecordsProvider } from '@/components/clinical/past-records';
+import { PastRecordsProvider } from '@/components/clinical/past-records';
+import { HistoryFromRecords } from '@/components/clinical/history-from-records';
+import { PlanFromRecords } from '@/components/clinical/plan-from-records';
 import { VisitOutcome, type OutcomeState } from '@/components/clinical/visit-outcome';
 import { VisitReview } from '@/components/clinical/visit-review';
 import { NoteView } from '@/components/clinical/note-view';
@@ -132,7 +134,7 @@ function Workspace() {
   // An open consultation is run as a guided visit; a finished one is shown as a read-only record.
   const workspace = enc.status === 'OPEN' && writable;
   const draft = drafts.find((d) => !d.amendsId) ?? null;
-  const firstTodo = !enc.vitals.length ? 'arrival' : !(draft?.history || draft?.subjective) ? 'history' : !draft?.objective ? 'exam' : !enc.diagnoses.length ? 'diagnosis' : !draft?.plan ? 'treatment' : 'advice';
+  const firstTodo = !enc.vitals.length || !(draft?.history || draft?.subjective) ? 'arrival' : !draft?.objective ? 'exam' : !enc.diagnoses.length ? 'diagnosis' : !draft?.plan ? 'treatment' : 'advice';
   const currentStep = step ?? firstTodo;
   /** Opens a step of the visit, then lets the screen draw it before doing something inside it. */
   const goStep = (id: string, then?: () => void) => {
@@ -157,8 +159,8 @@ function Workspace() {
     active && can('prescriptions.write') && { label: 'Prescribe', icon: Pill, onClick: () => (workspace ? goStep('treatment', () => setRxOpen(true)) : setRxOpen(true)) },
     active && canAny('clinical.write', 'hospital.write', 'pharmacy.dispense') && { label: 'Give medicine now', icon: Syringe, onClick: () => (workspace ? goStep('treatment', () => setGiveOpen(true)) : setGiveOpen(true)) },
     active && can('lab.read') && can('lab.order') && { label: 'Order test', icon: FlaskConical, onClick: () => (workspace ? goStep('diagnosis', () => setLabOpen(true)) : setLabOpen(true)) },
-    workspace && moduleOn('hospital') && can('hospital.write') && { label: 'Admit', icon: BedDouble, onClick: () => goStep('outcome', () => setAdmitOpen(true)) },
-    workspace && moduleOn('surgery') && can('surgery.write') && { label: 'Surgery', icon: Scissors, onClick: () => goStep('outcome', () => setSurgeryOpen(true)) },
+    workspace && moduleOn('hospital') && can('hospital.write') && { label: 'Admit', icon: BedDouble, onClick: () => goStep('treatment', () => setAdmitOpen(true)) },
+    workspace && moduleOn('surgery') && can('surgery.write') && { label: 'Surgery', icon: Scissors, onClick: () => goStep('treatment', () => setSurgeryOpen(true)) },
     active && can('appointments.write') && { label: 'Book recheck', icon: CalendarPlus, onClick: () => setFollowUp(true) },
     moduleOn('dental') && can('clinical.read') && (writable || !!dentalCharts.length) && { label: 'Dental chart', icon: Smile, onClick: openDental },
     can('certificates.issue') && { label: 'Certificate', icon: Award, onClick: () => setCertificateOpen(true) },
@@ -193,46 +195,34 @@ function Workspace() {
           );
 
   const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+  // Five steps, in the order a vet works. Each thing is recorded once, in the step where it happens.
   const workflow: WorkflowStep[] = [
     {
       id: 'arrival',
-      title: 'Arrival & vitals',
-      hint: 'Why they came, and the measurements taken',
-      fields: ['presentingComplaint'],
-      extra: (
-        <>
-          <PastRow><PastButton tab="vitals" label="Past vitals" /></PastRow>
-          <VitalsPanel ref={vitalsRef} encounterId={enc.id} vitals={enc.vitals} editable={writable} onSaved={refresh} />
-        </>
-      ),
+      title: 'Arrival & history',
+      hint: 'Why they came, the measurements, and what the owner tells you',
+      past: 'vitals',
+      // The measurements come first (the nurse or vet takes them at the door); the story is written below them.
+      lead: <VitalsPanel ref={vitalsRef} encounterId={enc.id} vitals={enc.vitals} editable={writable} onSaved={refresh} />,
+      // Beside "Past history": fills it from the animal's own records.
+      fieldActions: {
+        history: (ctx) => writable && <HistoryFromRecords patientId={enc.patient.id} encounterId={enc.id} history={ctx.content.history ?? ''} onAdd={(text) => ctx.append('history', text)} />,
+      },
+      fields: ['presentingComplaint', 'history', 'subjective'],
+      extra: <ProblemsPanel patientId={enc.patient.id} editable={writable} />,
       badge: enc.vitals.length ? plural(enc.vitals.length, 'reading') : null,
       done: enc.vitals.length > 0,
       ignoreFieldsForDone: true,
-    },
-    {
-      id: 'history',
-      title: 'History',
-      hint: 'Past history, and what the client tells you',
-      fields: ['history', 'subjective'],
-      extra: (
-        <>
-          <PastRow><PastButton tab="problems" label="Past problems" /></PastRow>
-          <ProblemsPanel patientId={enc.patient.id} editable={writable} />
-        </>
-      ),
     },
     { id: 'exam', title: 'Examination', hint: 'What you find when you examine', fields: ['objective'], exam: true },
     {
       id: 'diagnosis',
       title: 'Tests & diagnosis',
       hint: 'Order tests first, then record what you think is wrong',
+      past: 'diagnoses',
       // Tests come first: the vet orders them, then writes the assessment and diagnoses with the results in view.
       lead: (
         <>
-          <PastRow>
-            <PastButton tab="tests" label="Past tests" />
-            <PastButton tab="diagnoses" label="Past diagnoses" />
-          </PastRow>
           <LabOrdersPanel patient={enc.patient} encounterId={enc.id} editable={active} dialogOpen={labOpen} onDialogOpenChange={setLabOpen} />
           <VisitDentalCard encounterId={enc.id} editable={writable} onStart={() => setDentalOpen(true)} />
         </>
@@ -244,51 +234,41 @@ function Workspace() {
     },
     {
       id: 'treatment',
-      title: 'Treatment',
-      hint: 'Medicine given now, prescriptions, and the plan',
+      title: 'Treatment & next steps',
+      hint: 'Medicine, prescriptions, the plan — and whether they go home, are admitted, operated or referred',
+      past: 'medicines',
       fields: ['plan'],
-      extra: (
+      extra: (ctx) => (
         <>
-          <PastRow>
-            <PastButton tab="medicines" label="Past medicines given" />
-            <PastButton tab="prescriptions" label="Past prescriptions" />
-          </PastRow>
+          <PlanFromRecords patientId={enc.patient.id} encounterId={enc.id} plan={ctx.content.plan ?? ''} onAdd={(text) => ctx.append('plan', text)} />
           <AdministrationsPanel patient={enc.patient} encounterId={enc.id} editable={active} dialogOpen={giveOpen} onDialogOpenChange={setGiveOpen} />
           <PrescriptionsPanel patient={enc.patient} encounterId={enc.id} editable={active} dialogOpen={rxOpen} onDialogOpenChange={setRxOpen} />
+          <VisitOutcome
+            encounter={enc}
+            admitOpen={admitOpen}
+            onAdmitOpen={setAdmitOpen}
+            surgeryOpen={surgeryOpen}
+            onSurgeryOpen={setSurgeryOpen}
+            referOpen={referOpen}
+            onReferOpen={setReferOpen}
+            onBookFollowUp={can('appointments.write') ? () => setFollowUp(true) : undefined}
+            onState={setOutcome}
+          />
         </>
       ),
-      badge: hasPrescriptions ? 'Prescribed' : null,
-      done: hasPrescriptions,
-    },
-    {
-      id: 'outcome',
-      title: 'Next steps',
-      hint: 'Admit, operate, refer, book a recheck — or send home',
-      extra: (
-        <VisitOutcome
-          encounter={enc}
-          admitOpen={admitOpen}
-          onAdmitOpen={setAdmitOpen}
-          surgeryOpen={surgeryOpen}
-          onSurgeryOpen={setSurgeryOpen}
-          referOpen={referOpen}
-          onReferOpen={setReferOpen}
-          onBookFollowUp={can('appointments.write') ? () => setFollowUp(true) : undefined}
-          onState={setOutcome}
-        />
-      ),
-      badge: outcome.admitted ? 'Admitted' : outcome.surgeries ? 'Surgery booked' : outcome.referred ? 'Referred' : null,
-      done: outcome.admitted || outcome.surgeries > 0 || outcome.referred > 0,
+      badge: outcome.admitted ? 'Admitted' : outcome.surgeries ? 'Surgery booked' : outcome.referred ? 'Referred' : hasPrescriptions ? 'Prescribed' : null,
+      done: hasPrescriptions || outcome.admitted || outcome.surgeries > 0 || outcome.referred > 0,
     },
     {
       id: 'advice',
-      title: 'Advice & follow-up',
-      hint: 'What to tell the client, and the next visit',
+      title: 'Advice & finish',
+      hint: 'What to tell the owner, then check everything and finish',
+      past: 'documents',
       fields: ['followUpInstructions'],
-      extra: (
+      extra: (ctx) => (
         <>
-          <PastRow><PastButton tab="documents" label="Past photos & documents" /></PastRow>
-          <TasksPanel encounterId={enc.id} patientId={enc.patient.id} tasks={enc.tasks} editable={writable} onSaved={refresh} onBookFollowUp={can('appointments.write') ? () => setFollowUp(true) : undefined} />
+          {/* The recheck is booked in the previous step; here are only the reminders and files. */}
+          <TasksPanel encounterId={enc.id} patientId={enc.patient.id} tasks={enc.tasks} editable={writable} onSaved={refresh} />
           <Card id="attachments-card">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -299,16 +279,11 @@ function Workspace() {
               <AttachmentsPanel entityType="Encounter" entityId={enc.id} canWrite={writable} />
             </CardContent>
           </Card>
+          <VisitReview encounter={enc} hasPrescriptions={hasPrescriptions} outcome={outcome} ctx={ctx} onFinish={() => setFinishing(true)} />
         </>
       ),
       badge: enc.tasks.length ? plural(enc.tasks.length, 'follow-up') : null,
       done: enc.tasks.length > 0,
-    },
-    {
-      id: 'review',
-      title: 'Review & finish',
-      hint: 'Check everything, then finish the visit',
-      extra: (ctx) => <VisitReview encounter={enc} hasPrescriptions={hasPrescriptions} outcome={outcome} ctx={ctx} onFinish={() => setFinishing(true)} />,
     },
   ];
 
@@ -349,6 +324,25 @@ function Workspace() {
           )}
           {enc.status === 'OPEN' && can('clinical.write') && (
             <>
+              {/* Prescribe, order tests and the rest are in the steps below; only the rarely used ones live here. */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" aria-label="More actions">
+                    <MoreHorizontal /> More
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  {actions.filter((a) => ['History', 'Dental chart', 'Certificate'].includes(a.label)).map((a) => (
+                    <DropdownMenuItem key={a.label} onSelect={a.onClick}>
+                      <a.icon /> {a.label}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => void cancel()}>
+                    <XCircle /> Cancel consultation
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button onClick={() => setFinishing(true)}>
                 <CheckCircle2 /> Finish consultation
               </Button>
@@ -357,7 +351,7 @@ function Workspace() {
         </div>
       </div>
 
-      {actions.length > 0 && (
+      {!workspace && actions.length > 0 && (
         <div role="toolbar" aria-label="Consultation actions" className="surface mb-6 flex flex-wrap items-center gap-1 rounded-2xl p-1.5">
           {/* The four things vets do most stay in view; the rest are one tap away under More. */}
           {actions.filter((a) => PRIMARY_ACTIONS.includes(a.label)).map((a) => (

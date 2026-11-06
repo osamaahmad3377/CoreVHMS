@@ -14,12 +14,12 @@ import { cn } from '@/lib/utils';
 export function VisitReview({ encounter: e, hasPrescriptions, outcome, ctx, onFinish }: { encounter: Encounter; hasPrescriptions: boolean; outcome: OutcomeState; ctx: StepContext; onFinish: () => void }) {
   const items: { step: string; label: string; ok: boolean; okText: string; todoText: string }[] = [
     { step: 'arrival', label: 'Vital signs', ok: e.vitals.length > 0, okText: `${e.vitals.length} reading${e.vitals.length === 1 ? '' : 's'} recorded`, todoText: 'None recorded yet' },
-    { step: 'history', label: 'History', ok: !!(ctx.content.history?.trim() || ctx.content.subjective?.trim()), okText: 'Written', todoText: 'Not written yet' },
+    { step: 'arrival', label: 'History', ok: !!(ctx.content.history?.trim() || ctx.content.subjective?.trim()), okText: 'Written', todoText: 'Not written yet' },
     { step: 'exam', label: 'Examination', ok: !!ctx.content.objective?.trim() || ctx.done.exam, okText: 'Written', todoText: 'Not written yet' },
     { step: 'diagnosis', label: 'Diagnosis', ok: e.diagnoses.length > 0, okText: e.diagnoses.map((d) => d.term).join(', '), todoText: 'No diagnosis recorded' },
     { step: 'treatment', label: 'Treatment and plan', ok: !!ctx.content.plan?.trim() || hasPrescriptions, okText: hasPrescriptions ? 'Plan written, medicines prescribed' : 'Plan written', todoText: 'No plan written yet' },
     {
-      step: 'outcome',
+      step: 'treatment',
       label: 'Where next',
       ok: true,
       okText: [outcome.admitted && 'Admitted to hospital', outcome.surgeries > 0 && 'Surgery scheduled', outcome.referred > 0 && 'Referred to a specialist'].filter(Boolean).join(' · ') || 'Going home',
@@ -39,7 +39,7 @@ export function VisitReview({ encounter: e, hasPrescriptions, outcome, ctx, onFi
       </div>
       <ul className="divide-y overflow-hidden rounded-xl surface-flat">
         {items.map((i) => (
-          <li key={i.step}>
+          <li key={i.label}>
             <button type="button" onClick={() => ctx.goStep(i.step)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none">
               {i.ok ? <CheckCircle2 className="h-4 w-4 shrink-0 text-success" /> : <AlertCircle className="h-4 w-4 shrink-0 text-warning" />}
               <span className="w-44 shrink-0 text-sm font-medium">{i.label}</span>

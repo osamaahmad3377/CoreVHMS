@@ -30,6 +30,7 @@ export const AUTOMATION_TRIGGERS = [
   'SURGERY_COMPLETED',
   'ESTIMATE_SENT',
   'SCHEDULED_OFFER',
+  'CERTIFICATE_ISSUED',
 ] as const;
 export type AutomationTrigger = (typeof AUTOMATION_TRIGGERS)[number];
 
@@ -59,16 +60,16 @@ export const TRIGGER_INFO: Record<AutomationTrigger, TriggerInfo> = {
   APPOINTMENT_RESCHEDULED: { label: 'Appointment moved', when: 'an appointment is moved to another time', group: 'Appointments', variables: APPT_VARS, conditions: APPT_CONDS, checks: [] },
   APPOINTMENT_CANCELLED: { label: 'Appointment cancelled', when: 'an appointment is cancelled', group: 'Appointments', variables: APPT_VARS, conditions: APPT_CONDS, checks: ['NOT_BOOKED'] },
   APPOINTMENT_UPCOMING: { label: 'Before an appointment', when: 'an appointment is coming up', group: 'Appointments', timed: 'HOURS_BEFORE', variables: APPT_VARS, conditions: APPT_CONDS, checks: [] },
-  APPOINTMENT_COMPLETED: { label: 'Visit finished', when: 'a visit is finished', group: 'Appointments', variables: APPT_VARS, conditions: APPT_CONDS, checks: ['NOT_BOOKED'] },
+  APPOINTMENT_COMPLETED: { label: 'Visit finished', when: 'a visit is finished', group: 'Appointments', variables: [...APPT_VARS, 'diaryLink'], conditions: APPT_CONDS, checks: ['NOT_BOOKED'] },
   APPOINTMENT_NO_SHOW: { label: 'Missed appointment', when: 'a client misses an appointment', group: 'Appointments', variables: APPT_VARS, conditions: APPT_CONDS, checks: ['NOT_BOOKED'] },
   APPOINTMENT_CHECKED_IN: { label: 'Checked in', when: 'a client checks in (front desk, walk-in or tablet)', group: 'Appointments', variables: [...APPT_VARS, 'tokenNumber'], conditions: APPT_CONDS, checks: [] },
   SURGERY_UPCOMING: { label: 'Before a surgery', when: 'a surgery is coming up', group: 'Clinical', timed: 'HOURS_BEFORE', variables: [...CLIENT_VARS, 'petName', 'species', 'procedureName', 'surgeryTime', 'surgeryDate', 'branchName'], conditions: ['branch', 'contact', ...PET_CONDS], checks: [] },
-  SURGERY_COMPLETED: { label: 'Surgery finished', when: 'a surgery is finished', group: 'Clinical', variables: [...CLIENT_VARS, 'petName', 'species', 'procedureName', 'surgeryDate', 'branchName'], conditions: ['branch', 'contact', ...PET_CONDS], checks: ['NOT_BOOKED'] },
+  SURGERY_COMPLETED: { label: 'Surgery finished', when: 'a surgery is finished', group: 'Clinical', variables: [...CLIENT_VARS, 'petName', 'species', 'procedureName', 'surgeryDate', 'branchName', 'diaryLink'], conditions: ['branch', 'contact', ...PET_CONDS], checks: ['NOT_BOOKED'] },
   PRESCRIPTION_DISPENSED: { label: 'Medicine dispensed', when: 'medicine is dispensed for an animal', group: 'Clinical', variables: [...CLIENT_VARS, 'petName', 'species', 'medicines'], conditions: ['branch', 'contact', ...PET_CONDS], checks: ['NOT_BOOKED'] },
   PATIENT_ADMITTED: { label: 'Admitted to hospital', when: 'an animal is admitted to the hospital', group: 'Clinical', variables: [...CLIENT_VARS, 'petName', 'species', 'branchName', 'vetName'], conditions: ['branch', 'contact', ...PET_CONDS], checks: [] },
   LAB_RESULTS_READY: { label: 'Lab results ready', when: 'lab or X-ray results are released', group: 'Clinical', variables: [...CLIENT_VARS, 'petName', 'species', 'testNames'], conditions: ['branch', 'contact', ...PET_CONDS], checks: [] },
-  PATIENT_DISCHARGED: { label: 'Animal goes home', when: 'an animal is discharged home from the hospital', group: 'Clinical', variables: [...CLIENT_VARS, 'petName', 'species', 'homeCare', 'followUpDate'], conditions: ['branch', 'contact', ...PET_CONDS], checks: ['NOT_BOOKED'] },
-  VACCINATION_GIVEN: { label: 'Vaccination given', when: 'a vaccination is given here', group: 'Clinical', variables: [...CLIENT_VARS, 'petName', 'species', 'vaccineName', 'givenDate', 'nextDueDate'], conditions: ['contact', ...PET_CONDS], checks: [] },
+  PATIENT_DISCHARGED: { label: 'Animal goes home', when: 'an animal is discharged home from the hospital', group: 'Clinical', variables: [...CLIENT_VARS, 'petName', 'species', 'homeCare', 'followUpDate', 'diaryLink'], conditions: ['branch', 'contact', ...PET_CONDS], checks: ['NOT_BOOKED'] },
+  VACCINATION_GIVEN: { label: 'Vaccination given', when: 'a vaccination is given here', group: 'Clinical', variables: [...CLIENT_VARS, 'petName', 'species', 'vaccineName', 'givenDate', 'nextDueDate', 'diaryLink'], conditions: ['contact', ...PET_CONDS], checks: [] },
   CARE_DUE: { label: 'Vaccination or care due', when: 'a vaccination or other care is due', group: 'Clinical', timed: 'DAYS_BEFORE', variables: [...CLIENT_VARS, 'petName', 'species', 'careName', 'dueDate'], conditions: ['contact', ...PET_CONDS], checks: ['STILL_DUE', 'NOT_BOOKED'] },
   PAYMENT_RECEIVED: { label: 'Payment received', when: 'a payment is received', group: 'Money', variables: [...CLIENT_VARS, 'amount', 'receiptNumber', 'paymentDate', 'balance'], conditions: ['amountAtLeast', 'branch', 'contact'], checks: [] },
   ESTIMATE_SENT: { label: 'Estimate given', when: 'an estimate (quote) is given to a client', group: 'Money', variables: [...CLIENT_VARS, 'petName', 'estimateNumber', 'estimateTotal', 'validUntil'], conditions: ['amountAtLeast', 'branch', 'contact'], checks: ['ESTIMATE_OPEN'] },
@@ -84,6 +85,7 @@ export const TRIGGER_INFO: Record<AutomationTrigger, TriggerInfo> = {
     conditions: ['species', 'patientSex', 'ageAtLeast', 'ageUnder', 'branch', 'lastVisit', 'newClient', 'visitsAtLeast', 'spentAtLeast', 'boughtService', 'careDue', 'contact'],
     checks: ['NOT_BOOKED'],
   },
+  CERTIFICATE_ISSUED: { label: 'Certificate issued', when: 'a certificate is issued for an animal', group: 'Clinical', variables: [...CLIENT_VARS, 'petName', 'species', 'certificateTitle', 'certificateNumber', 'certificateLink', 'validUntil'], conditions: ['contact', ...PET_CONDS], checks: [] },
   PATIENT_LAPSED: { label: 'Not seen for a while', when: 'an animal has not been seen for a while', group: 'Clients & pets', timed: 'MONTHS_SINCE', variables: [...CLIENT_VARS, 'petName', 'species', 'lastVisitDate', 'monthsSince'], conditions: ['branch', 'contact', ...PET_CONDS], checks: ['NOT_BOOKED'] },
 };
 
@@ -128,6 +130,10 @@ export const AUTOMATION_VARIABLES: Record<string, { label: string; example: stri
   validUntil: { label: 'Valid until', example: '9 Nov 2026' },
   petNames: { label: 'Pet names', example: 'Tiger and Bella' },
   offerEnds: { label: 'Offer ends', example: '30 Nov 2026' },
+  diaryLink: { label: 'Pet diary link', example: 'https://happy-paws.example.com/d/Xk3t9QmV' },
+  certificateTitle: { label: 'Certificate', example: 'Vaccination certificate' },
+  certificateNumber: { label: 'Certificate number', example: 'CERT-000045' },
+  certificateLink: { label: 'Certificate link', example: 'https://happy-paws.example.com/verify/ABCD1234EFGH' },
 };
 
 // ───────────────────────────── Checks ─────────────────────────────
@@ -435,6 +441,33 @@ export type MarketingTheme = (typeof MARKETING_THEMES)[number];
 
 export const AUTOMATION_RECIPES: { key: string; icon: string; theme?: MarketingTheme; automation: AutomationDraft }[] = [
   {
+    key: 'diary-after-visit',
+    icon: 'heart',
+    automation: {
+      name: 'Pet diary link after a visit',
+      description: 'Sends the owner the link to their pet’s online diary an hour after the visit.',
+      isActive: true,
+      trigger: 'APPOINTMENT_COMPLETED',
+      conditions: [],
+      steps: [
+        { type: 'WAIT', amount: 1, unit: 'HOURS' },
+        { type: 'SEND_MESSAGE', channel: 'BEST', subject: '{{petName}}’s pet diary', body: 'Hello {{clientName}}, {{petName}}’s pet diary is up to date after today’s visit to {{clinicName}}. See vaccinations, treatments and what is due next, or print it: {{diaryLink}}' },
+      ],
+    },
+  },
+  {
+    key: 'certificate-issued',
+    icon: 'heart',
+    automation: {
+      name: 'Certificate ready',
+      description: 'Sends the owner the link to a certificate as soon as it is issued.',
+      isActive: true,
+      trigger: 'CERTIFICATE_ISSUED',
+      conditions: [],
+      steps: [{ type: 'SEND_MESSAGE', channel: 'BEST', subject: '{{petName}}’s {{certificateTitle}}', body: 'Hello {{clientName}}, {{petName}}’s {{certificateTitle}} ({{certificateNumber}}) is ready. View, check or print it here: {{certificateLink}}' }],
+    },
+  },
+  {
     key: 'rescheduled',
     icon: 'calendar',
     automation: {
@@ -529,7 +562,7 @@ export const AUTOMATION_RECIPES: { key: string; icon: string; theme?: MarketingT
       conditions: [],
       steps: [
         { type: 'WAIT', amount: 2, unit: 'HOURS' },
-        { type: 'SEND_MESSAGE', channel: 'BEST', subject: 'Thank you for visiting {{clinicName}}', body: 'Hello {{clientName}}, thank you for bringing {{petName}} to {{clinicName}} today. If you have any questions, reply here or call {{clinicPhone}}.' },
+        { type: 'SEND_MESSAGE', channel: 'BEST', subject: 'Thank you for visiting {{clinicName}}', body: 'Hello {{clientName}}, thank you for bringing {{petName}} to {{clinicName}} today. {{petName}}’s pet diary — vaccinations, treatments and more — is always up to date here: {{diaryLink}}\nIf you have any questions, reply here or call {{clinicPhone}}.' },
       ],
     },
   },
@@ -1019,6 +1052,7 @@ export const TRIGGER_DEFAULTS: Record<AutomationTrigger, TriggerDefaults> = {
   SURGERY_COMPLETED: { subject: 'How is {{petName}} after the {{procedureName}}?', body: `${hi}we hope {{petName}} is resting well after the {{procedureName}}. If anything worries you, please let us know.${help}`, taskTitle: 'Post-op call for {{petName}} ({{procedureName}})', delay: { amount: 1, unit: 'DAYS' } },
   PRESCRIPTION_DISPENSED: { subject: 'How is {{petName}} doing?', body: `${hi}how is {{petName}} getting on with the medicine ({{medicines}})? If you have any trouble giving it, let us know.${help}`, taskTitle: 'Check {{petName}}’s medicine with {{clientName}}', delay: { amount: 2, unit: 'DAYS' } },
   SCHEDULED_OFFER: { subject: 'A special offer from {{clinicName}}', body: `${hi}this month at {{clinicName}}: 15% off for {{petNames}}. The offer ends on {{offerEnds}} — reply here or call {{clinicPhone}} to book.\n{{bookingLine}}`, taskTitle: 'Call {{clientName}} about the offer', delay: null },
+  CERTIFICATE_ISSUED: { subject: '{{petName}}’s {{certificateTitle}}', body: `${hi}{{petName}}’s {{certificateTitle}} ({{certificateNumber}}) is ready. View, check or print it here: {{certificateLink}}${help}`, taskTitle: 'Give {{clientName}} the certificate for {{petName}}', delay: null },
   PATIENT_LAPSED: { subject: 'Time for {{petName}}’s check-up', body: `${hi}it has been {{monthsSince}} months since we last saw {{petName}}. A yearly check-up keeps problems small.\n{{bookingLine}}`, taskTitle: 'Call {{clientName}} to book {{petName}}’s check-up', delay: null },
 };
 
@@ -1033,7 +1067,7 @@ export const EASY_DELAYS: { label: string; value: { amount: number; unit: 'MINUT
 ];
 
 /** Recipes every clinic gets, switched on, the first time automations are used. */
-export const BASIC_AUTOMATION_KEYS = ['booked', 'reminder-24h', 'thank-you', 'missed', 'vaccine-due', 'rescheduled', 'cancelled', 'results-ready', 'payment', 'home-today', 'after-discharge', 'welcome', 'vaccinated'] as const;
+export const BASIC_AUTOMATION_KEYS = ['booked', 'reminder-24h', 'thank-you', 'missed', 'vaccine-due', 'rescheduled', 'cancelled', 'results-ready', 'payment', 'home-today', 'after-discharge', 'welcome', 'vaccinated', 'certificate-issued'] as const;
 
 type Shaped = { trigger: string; steps: readonly AutomationStep[]; conditions?: readonly { field: string }[]; sendFromHour?: number | null; sendToHour?: number | null; cooldownDays?: number | null };
 

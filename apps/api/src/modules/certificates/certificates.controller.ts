@@ -15,6 +15,7 @@ import { ApiZodBody, zp } from '../../common/http/zod';
 import { CertificateTemplatesService } from './certificate-templates.service';
 import { CertificatesService } from './certificates.service';
 
+const sendSchema = z.object({ channel: z.enum(['EMAIL', 'WHATSAPP']) });
 const prefillQuery = z.object({ kind: z.enum(CERTIFICATE_KINDS), subjectId: z.string().uuid() });
 const templateListQuery = z.object({ kind: z.enum(CERTIFICATE_KINDS).optional() });
 /** The preview takes the form as it is (required answers may still be missing). */
@@ -67,6 +68,15 @@ export class CertificatesController {
   @ApiZodBody(issueCertificateSchema)
   preview(@Body(zp(previewSchema)) body: z.infer<typeof previewSchema>) {
     return this.certificates.preview(body as z.infer<typeof issueCertificateSchema>);
+  }
+
+  /** Sends the owner the link to the certificate by email or WhatsApp. */
+  @Post(':id/send')
+  @HttpCode(200)
+  @RequirePermissions('communications.send')
+  @ApiZodBody(sendSchema)
+  send(@Param('id', ParseUUIDPipe) id: string, @Body(zp(sendSchema)) body: z.infer<typeof sendSchema>) {
+    return this.certificates.send(id, body.channel);
   }
 
   @Post(':id/revoke')
@@ -134,5 +144,12 @@ export class PublicCertificatesController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   verify(@Param('code') code: string) {
     return this.certificates.verify(code.slice(0, 40));
+  }
+
+  /** The certificate as printed (patient certificates that are still in force), for the owner's copy. */
+  @Get(':code/document')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  document(@Param('code') code: string) {
+    return this.certificates.publicDocument(code.slice(0, 40));
   }
 }

@@ -1,6 +1,9 @@
-import { MARKETING_FACT_NEEDS, formatMoney, toWhatsAppNumber, type AutomationCondition, type AutomationFacts, type AutomationTrigger } from '@vcms/shared';
+import { MARKETING_FACT_NEEDS, TRIGGER_INFO, formatMoney, toWhatsAppNumber, type AutomationCondition, type AutomationFacts, type AutomationTrigger } from '@vcms/shared';
 import { formatInTimeZone } from 'date-fns-tz';
+import { RequestContext } from '../../common/context/request-context';
 import type { PrismaService } from '../../common/prisma/prisma.service';
+import { appUrl } from '../../common/tenancy/hosts';
+import { diaryUrl, ensureDiaryLink } from '../diary/diary-link';
 import { formatNumber } from '../../common/counter/counter.service';
 import { invoiceNo } from '../billing/invoices.service';
 import { receiptNo } from '../billing/payments.service';
@@ -72,6 +75,7 @@ export const SOURCE_OF: Record<AutomationTrigger, string> = {
   SURGERY_COMPLETED: 'Surgery',
   ESTIMATE_SENT: 'Estimate',
   SCHEDULED_OFFER: 'Client',
+  CERTIFICATE_ISSUED: 'Certificate',
 };
 
 /** "Tiger", "Tiger and Bella", "Tiger, Bella and Max" ("your pets" when none). */
@@ -163,8 +167,20 @@ const petFacts = (p: { speciesId: string; sex: string; dateOfBirth: Date | null 
       }
     : { speciesId: null };
 
-/** Builds the context for a trigger and record (null when the record is gone or has no client to write to). */
+/**
+ * Builds the context for a trigger and record (null when the record is gone or has no client to write to). Messages that
+ * can carry the pet diary link get the owner's online link for the animal (made the first time it is needed).
+ */
 export async function buildContext(db: PrismaService['db'], trigger: AutomationTrigger, sourceId: string, org: OrgInfo): Promise<RunContext | null> {
+  const ctx = await buildBaseContext(db, trigger, sourceId, org);
+  if (ctx?.patientId && ctx.live && TRIGGER_INFO[trigger].variables.includes('diaryLink')) {
+    const link = await ensureDiaryLink(db, RequestContext.orgId(), ctx.patientId);
+    ctx.vars.diaryLink = diaryUrl(link.token);
+  }
+  return ctx;
+}
+
+async function buildBaseContext(db: PrismaService['db'], trigger: AutomationTrigger, sourceId: string, org: OrgInfo): Promise<RunContext | null> {
   switch (SOURCE_OF[trigger]) {
     case 'Appointment': {
       const a = await db.appointment.findUnique({
@@ -369,6 +385,33 @@ export async function buildContext(db: PrismaService['db'], trigger: AutomationT
         label: `${rx.patient.name} · ${meds}`,
         live: rx.status !== 'CANCELLED',
         why: rx.status !== 'CANCELLED' ? undefined : 'The prescription was cancelled',
+      };
+    }
+    case 'Certificate': {
+      const c = await db.certificate.findUnique({ where: { id: sourceId }, include: { client: CLIENT, patient: PATIENT } });
+      // Staff certificates have no client to write to.
+      if (!c || !c.client || !c.patient) return null;
+      const live = c.status === 'ISSUED';
+      return {
+        sourceType: 'Certificate',
+        sourceId: c.id,
+        client: c.client,
+        patientId: c.patientId,
+        branchId: c.branchId,
+        vetMembershipId: null,
+        vars: {
+          ...base(org, c.client),
+          petName: c.patient.name,
+          species: c.patient.species.name,
+          certificateTitle: c.title,
+          certificateNumber: formatNumber('CERT', c.number),
+          certificateLink: `${appUrl()}/verify/${c.verificationCode}`,
+          validUntil: c.validUntil ? dateOnly(c.validUntil) : 'no expiry',
+        },
+        facts: { ...petFacts(c.patient), branchId: c.branchId, ...reach(c.client, org) },
+        label: `${c.patient.name} · ${c.title}`,
+        live,
+        why: live ? undefined : 'The certificate has been revoked',
       };
     }
     case 'Estimate': {

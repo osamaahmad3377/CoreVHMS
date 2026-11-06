@@ -114,7 +114,7 @@ export function parseHex(raw: string): string | null {
  * typed and is applied as soon as it is a complete colour; leaving the box with an unfinished code puts back the colour
  * in use.
  */
-function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+export function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   const [draft, setDraft] = useState(value);
   // Follow changes made elsewhere (the picker, undo, another element).
   useEffect(() => setDraft(value), [value]);

@@ -58,6 +58,14 @@ export class InsuranceIntegrations implements OnModuleInit {
     }
     this.attachments.registerTarget('InsuranceClaim', { read: 'insurance.read', write: 'insurance.write', exists: async (id) => !!(await db().insuranceClaim.findUnique({ where: { id }, select: { id: true } })) });
     this.attachments.registerTarget('Referral', { read: 'insurance.read', write: 'insurance.write', exists: async (id) => !!(await db().referral.findUnique({ where: { id }, select: { id: true } })) });
+    this.attachments.registerRelated('Patient', {
+      childType: 'InsuranceClaim',
+      children: async (patientId) => (await db().insuranceClaim.findMany({ where: { patientId }, select: { id: true, number: true }, take: 500 })).map((c) => ({ id: c.id, label: `Insurance claim ${claimNo(c.number)}` })),
+    });
+    this.attachments.registerRelated('Patient', {
+      childType: 'Referral',
+      children: async (patientId) => (await db().referral.findMany({ where: { patientId }, select: { id: true, number: true }, take: 500 })).map((r) => ({ id: r.id, label: `Referral ${referralNo(r.number)}` })),
+    });
 
     this.search.register(async (q, perms) => {
       if (!perms.has('insurance.read')) return [];

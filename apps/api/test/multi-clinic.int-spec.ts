@@ -260,7 +260,7 @@ describe('Multi-clinic hosting', () => {
       expect(starter.maxAutomations).toBe(5);
       // The basic automations arrive with only the plan's number switched on.
       const list = (await lc.owner.get('/automations')).body as any[];
-      expect(list).toHaveLength(13);
+      expect(list).toHaveLength(14);
       expect(list.filter((a) => a.isActive).map((a) => a.name)).toEqual(expect.arrayContaining(['Appointment booked confirmation', 'Appointment reminder the day before']));
       expect(list.filter((a) => a.isActive)).toHaveLength(5);
       expect((await lc.owner.get('/organization/plan')).body).toMatchObject({ usage: { automations: 5 }, entitlements: { maxAutomations: 5 } });

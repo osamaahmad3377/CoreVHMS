@@ -20,11 +20,13 @@ import { randomInt } from 'node:crypto';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { CounterService, formatNumber } from '../../common/counter/counter.service';
+import { ClientEvents } from '../../common/events/client-events';
 import { sha256 } from '../../common/crypto/crypto';
 import { forbidden, notFound, ruleViolation } from '../../common/http/errors';
 import { pageArgs, paginated } from '../../common/http/pagination';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { appUrl } from '../../common/tenancy/hosts';
+import { MessagesService } from '../comms/messages.service';
 import { resolveTimezone } from '../../common/time/branch-timezone';
 import { localParts } from '../../common/time/tz';
 import { orgUnits } from '../../common/units/org-units';
@@ -69,6 +71,8 @@ export class CertificatesService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly counters: CounterService,
+    private readonly events: ClientEvents,
+    private readonly messages: MessagesService,
   ) {}
 
   private async today() {
@@ -422,6 +426,8 @@ export class CertificatesService {
       );
       return c.id;
     });
+    // The owner may be sent the link (Settings → Automations → “Certificate ready”); never undoes the certificate.
+    if (info.subject === 'PATIENT') await this.events.emit({ type: 'CERTIFICATE_ISSUED', certificateId: id });
     return this.get(id);
   }
 
@@ -449,6 +455,43 @@ export class CertificatesService {
       await this.audit.record({ action: 'certificate.revoked', entityType: 'Certificate', entityId: id, summary: `${certificateNo(c.number)}: ${reason}` }, tx);
     });
     return this.get(id);
+  }
+
+  /** Sends the owner the link to a patient certificate by email or WhatsApp. */
+  async send(id: string, channel: 'EMAIL' | 'WHATSAPP') {
+    const c = await this.prisma.db.certificate.findUnique({ where: { id }, include: { patient: { select: { name: true } } } });
+    if (!c || c.subject !== 'PATIENT' || !c.clientId || !c.patient) throw notFound('Certificate');
+    if (c.status === 'REVOKED') throw ruleViolation('REVOKED', 'A revoked certificate can’t be sent');
+    if (!this.visibleSubjects().includes('PATIENT')) throw forbidden('You can’t send this certificate');
+    const client = await this.prisma.db.client.findUnique({ where: { id: c.clientId }, select: { displayName: true } });
+    const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: RequestContext.orgId() }, select: { name: true } });
+    const m = await this.messages.sendManual({
+      clientId: c.clientId,
+      patientId: c.patientId,
+      channel,
+      subject: `${c.patient.name}’s ${c.title} — ${org.name}`,
+      body: `Hello ${client?.displayName ?? ''}, ${c.patient.name}’s ${c.title} (${certificateNo(c.number)}) from ${org.name} is ready. View, check or print it here: ${this.verifyUrl(c.verificationCode)}`,
+    });
+    return { status: m.status, channel };
+  }
+
+  /**
+   * The certificate itself, for the owner behind the link (what the QR code opens). Only patient certificates that are
+   * not revoked: it is what is on the paper copy, so anyone holding the code could already read it.
+   */
+  async publicDocument(raw: string) {
+    const code = normaliseVerificationCode(raw);
+    if (code.length !== 12) throw notFound('Certificate');
+    const c = await this.prisma.raw.certificate.findUnique({ where: { verificationCode: code } });
+    if (!c || c.subject !== 'PATIENT' || c.status === 'REVOKED') throw notFound('Certificate');
+    const data = c.data as unknown as { fields: Record<string, string>; table: CertificateVaccinationRow[] };
+    return {
+      fields: data.fields,
+      table: data.table,
+      layout: c.layout,
+      qrValue: this.verifyUrl(c.verificationCode),
+      barcodeValue: c.verificationCode,
+    };
   }
 
   /** The public check behind the QR code: is this certificate genuine, and is it still valid? */

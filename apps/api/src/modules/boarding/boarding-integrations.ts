@@ -60,6 +60,15 @@ export class BoardingIntegrations implements OnModuleInit {
     }
     this.attachments.registerTarget('BoardingStay', { read: 'boarding.read', write: 'boarding.write', exists: async (id) => !!(await db().boardingStay.findUnique({ where: { id }, select: { id: true } })) });
     this.attachments.registerTarget('GroomingJob', { read: 'boarding.read', write: 'boarding.write', exists: async (id) => !!(await db().groomingJob.findUnique({ where: { id }, select: { id: true } })) });
+    // Files on boarding stays and grooming jobs also appear (read-only) on the patient's Documents tab.
+    this.attachments.registerRelated('Patient', {
+      childType: 'BoardingStay',
+      children: async (patientId) => (await db().boardingStay.findMany({ where: { patientId }, select: { id: true, number: true }, take: 500 })).map((s) => ({ id: s.id, label: `Boarding ${stayNo(s.number)}` })),
+    });
+    this.attachments.registerRelated('Patient', {
+      childType: 'GroomingJob',
+      children: async (patientId) => (await db().groomingJob.findMany({ where: { patientId }, select: { id: true, number: true }, take: 500 })).map((j) => ({ id: j.id, label: `Grooming ${groomingNo(j.number)}` })),
+    });
 
     this.search.register(async (q, perms) => {
       if (!perms.has('boarding.read')) return [];

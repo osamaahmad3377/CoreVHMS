@@ -9,6 +9,7 @@ import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import { CertificateStateBadge } from '@/components/certificates/badges';
 import { CertificatePage, FitCertificate, type CertificateData } from '@/components/certificates/certificate-page';
+import { SendToOwner } from '@/components/diary/send-buttons';
 import { IssueCertificateDialog } from '@/components/certificates/issue-dialog';
 import type { CertificateDetail } from '@/components/certificates/types';
 import { FormError } from '@/components/forms/form-error';
@@ -124,6 +125,7 @@ function CertificateView() {
         actions={
           <>
             <Button variant="outline" size="sm" onClick={copy}><Copy /> Verification link</Button>
+            {c.subject === 'PATIENT' && c.status === 'ISSUED' && <SendToOwner path={`/certificates/${c.id}/send`} />}
             {mayIssue && c.status === 'ISSUED' && <Button variant="outline" size="sm" onClick={() => setCorrecting(true)}><FilePenLine /> Correct</Button>}
             {mayIssue && c.status === 'ISSUED' && <Button variant="outline" size="sm" className="text-destructive" onClick={() => setRevoking(true)}><Ban /> Revoke</Button>}
             <Button size="sm" onClick={() => window.print()}><Printer /> Print</Button>

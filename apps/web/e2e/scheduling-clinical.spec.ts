@@ -82,4 +82,43 @@ test.describe('Clinical day: book → check in → consult → sign', () => {
     await triage.getByRole('button', { name: 'Save triage' }).click();
     await expect(page.locator('li', { hasText: 'E2E: hit by car' }).first().getByText('Very urgent')).toBeVisible();
   });
+
+  test('a consultation is five steps, with no repeated action bar', async ({ page }) => {
+    await login(page, 'vet@demo.pk');
+    const id = await page.evaluate(async () => (await (await fetch('/api/v1/encounters?status=OPEN&pageSize=1')).json()).data[0]?.id as string | undefined);
+    test.skip(!id, 'No open consultation in this clinic');
+    await page.goto(`/consultations/${id}`);
+    await expect(page).toHaveURL(/\/consultations\/[0-9a-f-]{36}/);
+    const steps = page.getByRole('navigation', { name: 'Consultation steps' });
+    for (const name of ['Arrival & history', 'Examination', 'Tests & diagnosis', 'Treatment & next steps', 'Advice & finish']) await expect(steps.getByText(name)).toBeVisible();
+    await expect(steps.getByRole('listitem')).toHaveCount(5);
+    // Prescribe, order test and the rest are inside the steps, not repeated in a bar above them.
+    await expect(page.getByRole('toolbar', { name: 'Consultation actions' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'More actions' })).toBeVisible();
+  });
+
+  test('the examination starts all normal and the vet taps only what is abnormal', async ({ page }) => {
+    await login(page, 'vet@demo.pk');
+    const call = (method: string, path: string, body?: unknown) =>
+      page.evaluate(
+        async ([method, path, body]) => {
+          const csrf = document.cookie.split('; ').find((c) => c.startsWith('vcms_csrf='))?.split('=')[1] ?? '';
+          const r = await fetch(`/api/v1${path}`, { method, headers: { 'content-type': 'application/json', 'x-csrf-token': csrf }, body: body ? JSON.stringify(body) : undefined });
+          return r.json();
+        },
+        [method, path, body] as [string, string, unknown],
+      );
+    const patient = (await call('GET', '/patients?q=Toto&pageSize=1')).data[0];
+    const enc = await call('POST', '/encounters', { patientId: patient.id, chiefComplaint: 'E2E exam check' });
+    await page.goto(`/consultations/${enc.id}`);
+    await page.getByRole('navigation', { name: 'Consultation steps' }).getByText('Examination').click();
+    await page.getByRole('button', { name: 'Start examination — all normal' }).click();
+    await expect(page.getByText(/14 normal · 0 abnormal · 0 not examined|11 normal · 0 abnormal · 0 not examined/)).toBeVisible();
+    await page.getByRole('radiogroup', { name: 'Skin & coat finding' }).getByRole('radio', { name: 'Abnormal' }).click();
+    await page.getByRole('button', { name: 'Itchy' }).click();
+    await expect(page.getByLabel('Skin & coat notes')).toHaveValue('Itchy');
+    await expect(page.getByText(/1 abnormal/)).toBeVisible();
+    await expect(page.getByText(/Saved automatically/)).toBeVisible({ timeout: 10_000 });
+    await call('POST', `/encounters/${enc.id}/cancel`, { reason: 'E2E cleanup' });
+  });
 });

@@ -20,7 +20,9 @@ export type ClientEvent =
   | { type: 'APPOINTMENT_CHECKED_IN'; appointmentId: string }
   | { type: 'PRESCRIPTION_DISPENSED'; prescriptionId: string }
   | { type: 'SURGERY_COMPLETED'; surgeryId: string }
-  | { type: 'ESTIMATE_SENT'; estimateId: string };
+  | { type: 'ESTIMATE_SENT'; estimateId: string }
+  /** A certificate was issued for an animal (the owner may be sent the link to it). */
+  | { type: 'CERTIFICATE_ISSUED'; certificateId: string };
 
 export type ClientEventHandler = (event: ClientEvent) => Promise<void>;
 
