@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import type { Plan, Tenant } from '@prisma/client';
-import { STARTER_SECTIONS, STARTER_SECTION_LABELS, STORAGE_PACK_GB, clinicBill, type StarterSection, discountLabel, paymentState, type ClinicDiscountInput, type ClinicBillingInput, type ClinicOverview, type ClinicPlanInput, type ClinicUsage, type CreateClinicInput, type PlanFeature, type PlanRequestView, type PlatformClinic } from '@vcms/shared';
-import { AuditService } from '../../common/audit/audit.service';
+import { STARTER_SECTIONS, STARTER_SECTION_LABELS, type ClinicDetailsInput, type ClinicDetailsView, type ClinicOwnerInput, STORAGE_PACK_GB, clinicBill, type StarterSection, discountLabel, paymentState, type ClinicDiscountInput, type ClinicBillingInput, type ClinicOverview, type ClinicPlanInput, type ClinicUsage, type CreateClinicInput, type PlanFeature, type PlanRequestView, type PlatformClinic } from '@vcms/shared';
+import { AuditService, diff } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { randomToken, sha256 } from '../../common/crypto/crypto';
 import { generateTemporaryPassword, hashPassword } from '../../common/crypto/password';
@@ -536,10 +536,7 @@ export class PlatformClinicsService implements OnModuleInit, OnModuleDestroy {
     const expiresAt = new Date(Date.now() + TEMP_PASSWORD_DAYS * 86400_000);
     await RequestContext.runInTenant(tenantRef(t), async () => {
       const raw = this.prisma.raw;
-      // The clinic may since have changed the owner's email: fall back to its longest-standing owner.
-      const user =
-        (await raw.user.findUnique({ where: { email: t.ownerEmail } })) ??
-        (await raw.membership.findFirst({ where: { ...(t.organizationId ? { organizationId: t.organizationId } : {}), roles: { some: { role: { key: 'owner' } } }, ...REAL_STAFF }, orderBy: { createdAt: 'asc' }, include: { user: true } }))?.user;
+      const user = await this.ownerUser(t);
       if (!user) throw notFound('Owner account');
       await raw.$transaction(async (tx) => {
         await tx.user.update({
@@ -554,6 +551,106 @@ export class PlatformClinicsService implements OnModuleInit, OnModuleDestroy {
     });
     await this.audit.record({ action: 'platform.clinic_owner_password_reset', entityType: 'Tenant', entityId: id, summary: t.ownerEmail, organizationId: null });
     return { clinic: toClinic(t), temporaryPassword: password, expiresAt: expiresAt.toISOString() };
+  }
+
+  // ── Clinic and owner details ──
+
+  /** The owner's account in the clinic's database (run inside it). The clinic may since have changed the owner's
+   * email itself: then its longest-standing owner. */
+  private async ownerUser(t: Tenant) {
+    const raw = this.prisma.raw;
+    return (
+      (await raw.user.findUnique({ where: { email: t.ownerEmail } })) ??
+      (await raw.membership.findFirst({ where: { ...(t.organizationId ? { organizationId: t.organizationId } : {}), roles: { some: { role: { key: 'owner' } } }, ...REAL_STAFF }, orderBy: { createdAt: 'asc' }, include: { user: true } }))?.user ??
+      null
+    );
+  }
+
+  private isSetUp(t: Tenant): t is Tenant & { organizationId: string } {
+    return !!t.organizationId && ['ACTIVE', 'SUSPENDED'].includes(t.status);
+  }
+
+  /** The clinic's details and owner as the clinic itself has them now (read from its own database). */
+  async details(id: string): Promise<ClinicDetailsView> {
+    const t = await this.find(id);
+    const blank = { legalName: null, registrationNumber: null, taxNumber: null, email: null, phone: null, website: null, addressLine1: null, addressLine2: null, city: null, state: null, postcode: null };
+    if (!this.isSetUp(t)) return { setUp: false, clinic: { name: t.name, ...blank }, owner: { name: t.ownerName, email: t.ownerEmail, lastLoginAt: null } };
+    return RequestContext.runInTenant(tenantRef(t), async () => {
+      const o = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: t.organizationId } });
+      const user = await this.ownerUser(t);
+      const clinic = { name: o.name, ...Object.fromEntries(Object.keys(blank).map((k) => [k, (o as Record<string, unknown>)[k] ?? null])) } as ClinicDetailsView['clinic'];
+      return { setUp: true, clinic, owner: { name: user?.name ?? t.ownerName, email: user?.email ?? t.ownerEmail, lastLoginAt: user?.lastLoginAt?.toISOString() ?? null } };
+    });
+  }
+
+  /** Changes the clinic's details in its own database (as Settings → Clinic details would) and NextCore's record. */
+  async updateDetails(id: string, input: ClinicDetailsInput) {
+    const t = await this.find(id);
+    let changed: string[] = Object.keys(input).filter((k) => k === 'name' && input.name !== t.name);
+    if (this.isSetUp(t)) {
+      changed = await RequestContext.runInTenant(tenantRef(t), () =>
+        this.prisma.raw.$transaction(async (tx) => {
+          const before = await tx.organization.findUniqueOrThrow({ where: { id: t.organizationId } });
+          const after = await tx.organization.update({ where: { id: t.organizationId }, data: input });
+          const changes = diff(before, after, Object.keys(input)) as Record<string, unknown> | undefined;
+          const keys = Object.keys(changes ?? {});
+          if (keys.length) {
+            await this.audit.record({ action: 'organization.updated', entityType: 'Organization', entityId: t.organizationId, organizationId: t.organizationId, summary: 'Changed by NextCore super admin', changes, actorUserId: null, actorName: 'NextCore super admin' }, tx);
+          }
+          return keys;
+        }),
+      );
+    }
+    if (changed.length) {
+      await this.prisma.control.$transaction(async (tx) => {
+        if (input.name !== t.name) await tx.tenant.update({ where: { id }, data: { name: input.name } });
+        await this.audit.record({ action: 'platform.clinic_details_changed', entityType: 'Tenant', entityId: id, summary: `${t.slug}: ${changed.join(', ')}${input.name !== t.name ? ` (name “${t.name}” → “${input.name}”)` : ''}`, organizationId: null }, tx);
+      });
+    }
+    return this.details(id);
+  }
+
+  /**
+   * Changes the owner's name and sign-in email — on their account in the clinic and on NextCore's record. A new
+   * email is told about at both addresses, so the owner is never surprised by it.
+   */
+  async updateOwner(id: string, input: ClinicOwnerInput) {
+    const t = await this.find(id);
+    let before = { name: t.ownerName, email: t.ownerEmail };
+    if (this.isSetUp(t)) {
+      before = await RequestContext.runInTenant(tenantRef(t), async () => {
+        const raw = this.prisma.raw;
+        const user = await this.ownerUser(t);
+        if (!user) throw notFound('Owner account');
+        if (input.email !== user.email && (await raw.user.findUnique({ where: { email: input.email } }))) {
+          throw conflict('Someone at this clinic already signs in with that email. Use a different one.');
+        }
+        await raw.$transaction(async (tx) => {
+          await tx.user.update({ where: { id: user.id }, data: { name: input.name, email: input.email } });
+          const changes = diff(user, { ...user, ...input }, ['name', 'email']);
+          await this.audit.record({ action: 'user.updated', entityType: 'User', entityId: user.id, organizationId: t.organizationId, summary: 'Clinic owner’s details changed by NextCore super admin', changes, actorUserId: null, actorName: 'NextCore super admin' }, tx);
+        });
+        return { name: user.name, email: user.email };
+      });
+    }
+    if (before.name === input.name && before.email === input.email && t.ownerName === input.name && t.ownerEmail === input.email) return this.details(id);
+    await this.prisma.control.$transaction(async (tx) => {
+      await tx.tenant.update({ where: { id }, data: { ownerName: input.name, ownerEmail: input.email } });
+      const parts = [before.name !== input.name && `name “${before.name}” → “${input.name}”`, before.email !== input.email && `email ${before.email} → ${input.email}`].filter(Boolean);
+      await this.audit.record({ action: 'platform.clinic_owner_changed', entityType: 'Tenant', entityId: id, summary: `${t.slug}: ${parts.join(', ') || 'owner record updated'}`, organizationId: null }, tx);
+    });
+    if (this.isSetUp(t) && before.email !== input.email) {
+      const subject = `Your sign-in email for ${t.name} was changed`;
+      const text = `NextCore support changed the email you sign in with at ${t.name} (${addressFor(t.slug)}) from ${before.email} to ${input.email}. Your password is unchanged. If you did not ask for this, reply to this email or contact NextCore support straight away.`;
+      for (const to of [before.email, input.email]) {
+        try {
+          await this.mail.send({ to, subject, text: `Hello ${input.name},\n\n${text}\n\nNextCore VCMS`, html: layout(escapeHtml(subject), `<p>Hello ${escapeHtml(input.name)},</p><p>${escapeHtml(text)}</p>`) });
+        } catch (e) {
+          this.log.warn(`Owner email change notice to ${to} failed: ${(e as Error).message}`);
+        }
+      }
+    }
+    return this.details(id);
   }
 
   // ── Starter set-up for an existing clinic ──

@@ -17,6 +17,7 @@ import {
   Mail,
   PauseCircle,
   PawPrint,
+  Pencil,
   Play,
   ReceiptText,
   RotateCcw,
@@ -36,6 +37,7 @@ import { ClinicBillingCard, ClinicPlanCard } from '@/components/platform/clinic-
 import { ClinicActionsMenu, CopyButton, OwnerAccessDialog, StatusBadge, shortAddress, useClinicActions, type OwnerAccess } from '@/components/platform/clinic-ui';
 import { BillBreakdown, amount } from '@/components/platform/plan-ui';
 import { StarterSetupCard } from '@/components/platform/starter-setup';
+import { ClinicDetailsDialog, OwnerDialog, addressLine, useClinicDetails } from '@/components/platform/clinic-details-edit';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -131,6 +133,8 @@ function ClinicPage({ id }: { id: string }) {
   const setTab = (t: string) => router.replace(t === 'overview' ? pathname : `${pathname}?tab=${t}`, { scroll: false });
   const [access, setAccess] = useState<OwnerAccess | null>(null);
   const [paying, setPaying] = useState(false);
+  const [editing, setEditing] = useState<null | 'clinic' | 'owner'>(null);
+  const details = useClinicDetails(id);
   const { run, pending } = useClinicActions(setAccess);
   const billing = useBillingActions();
   const q = useQuery({
@@ -273,10 +277,17 @@ function ClinicPage({ id }: { id: string }) {
         <TabsContent value="overview" className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
           <div className="grid content-start gap-4">
             <Card>
-              <CardHeader><CardTitle>Clinic details</CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle>Clinic details</CardTitle>
+                {details.data && <Button size="sm" variant="outline" onClick={() => setEditing('clinic')}><Pencil /> Edit</Button>}
+              </CardHeader>
               <CardContent>
                 <dl className="grid gap-3">
-                  <Detail label="Clinic name">{c.name}</Detail>
+                  <Detail label="Clinic name">{details.data?.clinic.name ?? c.name}</Detail>
+                  {details.data?.clinic.legalName && <Detail label="Legal name">{details.data.clinic.legalName}</Detail>}
+                  {details.data?.setUp && <Detail label="Phone">{details.data.clinic.phone ?? '—'}</Detail>}
+                  {details.data?.setUp && <Detail label="Email">{details.data.clinic.email ?? '—'}</Detail>}
+                  {details.data?.setUp && <Detail label="Address">{addressLine(details.data.clinic) ?? '—'}</Detail>}
                   <Detail label="Web address"><span className="inline-flex items-center gap-1"><a href={c.address} target="_blank" rel="noreferrer" className="break-all text-primary hover:underline">{shortAddress(c.address)}</a><CopyButton text={c.address} what="Address" /></span></Detail>
                   <Detail label="Country">{country}</Detail>
                   <Detail label="Plan">{c.planName ? `${c.planName}${c.extraFeatures.length || c.removedFeatures.length || c.staffLimitOverride != null || c.branchLimitOverride != null || c.storageLimitOverrideGb != null ? ' (with changes for this clinic)' : ''}` : 'No plan — no limits'}</Detail>
@@ -305,11 +316,15 @@ function ClinicPage({ id }: { id: string }) {
           </div>
           <div className="grid content-start gap-4">
             <Card>
-              <CardHeader><CardTitle className="flex items-center gap-2"><UserRound className="h-4 w-4" /> Owner</CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><UserRound className="h-4 w-4" /> Owner</CardTitle>
+                {details.data && <Button size="sm" variant="outline" onClick={() => setEditing('owner')}><Pencil /> Edit</Button>}
+              </CardHeader>
               <CardContent className="grid gap-3 text-sm">
                 <div>
-                  <p className="font-medium">{c.ownerName}</p>
-                  <div className="flex items-center gap-1"><a href={`mailto:${c.ownerEmail}`} className="break-all text-primary hover:underline">{c.ownerEmail}</a><CopyButton text={c.ownerEmail} what="Email" /></div>
+                  <p className="font-medium">{details.data?.owner.name ?? c.ownerName}</p>
+                  <div className="flex items-center gap-1"><a href={`mailto:${details.data?.owner.email ?? c.ownerEmail}`} className="break-all text-primary hover:underline">{details.data?.owner.email ?? c.ownerEmail}</a><CopyButton text={details.data?.owner.email ?? c.ownerEmail} what="Email" /></div>
+                  {details.data?.owner.lastLoginAt && <p className="text-xs text-muted-foreground">Last signed in {fmtRelative(details.data.owner.lastLoginAt)}</p>}
                 </div>
                 <p className="text-xs text-muted-foreground">{c.ownerAccess === 'INVITATION' ? 'The owner was emailed a link to choose a password.' : 'The owner was given a temporary password.'}</p>
                 {c.status === 'ACTIVE' && (
@@ -417,6 +432,8 @@ function ClinicPage({ id }: { id: string }) {
       </Tabs>
 
       <OwnerAccessDialog result={access} onClose={() => setAccess(null)} />
+      {editing === 'clinic' && details.data && <ClinicDetailsDialog clinicId={c.id} details={details.data} onOpenChange={(o) => !o && setEditing(null)} />}
+      {editing === 'owner' && details.data && <OwnerDialog clinicId={c.id} details={details.data} onOpenChange={(o) => !o && setEditing(null)} />}
       <RecordPaymentDialog clinic={c} open={paying} onOpenChange={setPaying} />
     </>
   );

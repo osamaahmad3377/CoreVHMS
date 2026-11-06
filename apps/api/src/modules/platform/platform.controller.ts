@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query, Req, Res } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { clinicAddressSchema, clinicBillingSchema, clinicDiscountInputSchema, clinicPlanSchema, createClinicSchema, paymentListSchema, planInputSchema, recordPaymentSchema, starterApplySchema, voidPaymentSchema, type HostInfo } from '@vcms/shared';
+import { clinicAddressSchema, clinicBillingSchema, clinicDiscountInputSchema, clinicPlanSchema, createClinicSchema, paymentListSchema, planInputSchema, recordPaymentSchema, starterApplySchema, clinicDetailsSchema, clinicOwnerSchema, voidPaymentSchema, type HostInfo } from '@vcms/shared';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { Public, RequirePermissions } from '../../common/auth/decorators';
@@ -119,6 +119,28 @@ export class PlatformClinicsController {
   @RequirePermissions('platform.clinics.manage')
   ownerPassword(@Param('id', ParseUUIDPipe) id: string) {
     return this.clinics.resetOwnerPassword(id);
+  }
+
+  /** The clinic's details and owner, as the clinic has them now. */
+  @Get(':id/details')
+  @RequirePermissions('platform.clinics.manage')
+  details(@Param('id', ParseUUIDPipe) id: string) {
+    return this.clinics.details(id);
+  }
+
+  @Put(':id/details')
+  @RequirePermissions('platform.clinics.manage')
+  @ApiZodBody(clinicDetailsSchema)
+  updateDetails(@Param('id', ParseUUIDPipe) id: string, @Body(zp(clinicDetailsSchema)) body: z.infer<typeof clinicDetailsSchema>) {
+    return this.clinics.updateDetails(id, body);
+  }
+
+  /** The owner's name and sign-in email (both addresses are told when the email changes). */
+  @Put(':id/owner')
+  @RequirePermissions('platform.clinics.manage')
+  @ApiZodBody(clinicOwnerSchema)
+  updateOwner(@Param('id', ParseUUIDPipe) id: string, @Body(zp(clinicOwnerSchema)) body: z.infer<typeof clinicOwnerSchema>) {
+    return this.clinics.updateOwner(id, body);
   }
 
   /** Preview of “Add starter set-up”: what each part would add to this clinic (only what it does not have yet). */

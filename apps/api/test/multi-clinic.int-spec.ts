@@ -186,6 +186,44 @@ describe('Multi-clinic hosting', () => {
     expect((await alpha.owner.get(`/platform/clinics/${alpha.id}/overview`)).status).toBe(403);
   });
 
+  it('lets the super admin correct a clinic’s details and its owner’s name and sign-in email', async () => {
+    const url = `/platform/clinics/${alpha.id}`;
+    const now = (await superAdmin.get(`${url}/details`)).body;
+    expect(now).toMatchObject({ setUp: true, clinic: { name: 'Alpha Paws', phone: null }, owner: { name: 'Ali Owner', email: 'ali@alpha.test' } });
+    expect((await alpha.owner.get(`${url}/details`)).status).toBe(403);
+    expect((await superAdmin.call('put', `${url}/details`, { name: 'A' })).status).toBe(400);
+
+    // Clinic details change in the clinic's own database (its Settings show them) and on NextCore's record.
+    const saved = await superAdmin.call('put', `${url}/details`, { name: 'Alpha Paws Vet Clinic', phone: '0300 1234567', city: 'Lahore', addressLine1: '12 Main Boulevard' });
+    expect(saved.status).toBe(200);
+    expect(saved.body.clinic).toMatchObject({ name: 'Alpha Paws Vet Clinic', phone: '0300 1234567', city: 'Lahore' });
+    expect((await alpha.owner.get('/organization')).body).toMatchObject({ name: 'Alpha Paws Vet Clinic', phone: '0300 1234567', addressLine1: '12 Main Boulevard' });
+    expect((await superAdmin.get(url)).body.name).toBe('Alpha Paws Vet Clinic');
+    const clinicAudit = (await alpha.owner.get('/audit-events?action=organization.updated')).body.data as any[];
+    expect(clinicAudit[0]).toMatchObject({ actorName: 'NextCore super admin' });
+
+    // The owner's sign-in email: the old one stops working, the new one works with the same password, and both
+    // addresses are told.
+    expect((await superAdmin.call('put', `${url}/owner`, { name: 'Ali Khan', email: 'not-an-email' })).status).toBe(400);
+    const owner = await superAdmin.call('put', `${url}/owner`, { name: 'Ali Khan', email: 'Ali.Khan@Alpha.test' });
+    expect(owner.status).toBe(200);
+    expect(owner.body.owner).toMatchObject({ name: 'Ali Khan', email: 'ali.khan@alpha.test' });
+    expect((await client('alpha-paws').login('ali@alpha.test')).status).toBe(401);
+    const signedIn = client('alpha-paws');
+    expect((await signedIn.login('ali.khan@alpha.test')).status).toBe(200);
+    expect(signedIn.session.user.name).toBe('Ali Khan');
+    for (const to of ['ali@alpha.test', 'ali.khan@alpha.test']) {
+      expect(mail().outbox.filter((m) => m.to === to).pop()?.subject).toBe('Your sign-in email for Alpha Paws Vet Clinic was changed');
+    }
+    const events = (await superAdmin.get(`${url}/overview`)).body.events.map((e: any) => e.action);
+    expect(events).toEqual(expect.arrayContaining(['platform.clinic_details_changed', 'platform.clinic_owner_changed']));
+
+    // Put things back for the tests that follow.
+    await superAdmin.call('put', `${url}/details`, { ...saved.body.clinic, name: 'Alpha Paws' });
+    expect((await superAdmin.call('put', `${url}/owner`, { name: 'Ali Owner', email: 'ali@alpha.test' })).status).toBe(200);
+    expect((await alpha.owner.login('ali@alpha.test')).status).toBe(200);
+  });
+
   it('adds the starter set-up to an existing clinic: a preview first, then only the chosen parts and only what is missing', async () => {
     const plan = async () => (await superAdmin.get(`/platform/clinics/${alpha.id}/starter-setup`)).body as { key: string; items: string[]; note: string | null }[];
     const section = (p: { key: string; items: string[] }[], key: string) => p.find((x) => x.key === key)!.items;

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Branding } from '../branding';
 import { BILLING_CYCLES, type BillingCycle, type ClinicBill, type DiscountType, type Entitlements, type PlanFeature } from '../plans';
+import { organizationUpdateSchema } from './admin';
 import { optText } from './common';
 
 /** A clinic's subdomain: 3–30 lowercase letters, numbers and single hyphens, starting with a letter. */
@@ -296,3 +297,25 @@ export interface StarterPlanSection {
 
 export const starterApplySchema = z.object({ sections: z.array(z.enum(STARTER_SECTIONS)).min(1, 'Choose at least one part') });
 export type StarterApplyInput = z.infer<typeof starterApplySchema>;
+
+// ── Clinic and owner details (super admin) ──
+
+/** The clinic's own details, as in its Settings → Clinic details (country and web address are fixed once set up). */
+export const clinicDetailsSchema = organizationUpdateSchema
+  .pick({ legalName: true, registrationNumber: true, taxNumber: true, email: true, phone: true, website: true, addressLine1: true, addressLine2: true, city: true, state: true, postcode: true })
+  .extend({ name: z.string().trim().min(2, 'Enter the clinic name').max(160) });
+export type ClinicDetailsInput = z.infer<typeof clinicDetailsSchema>;
+
+/** The clinic owner's name and sign-in email. */
+export const clinicOwnerSchema = z.object({
+  name: z.string().trim().min(2, 'Enter the owner’s name').max(120),
+  email: z.string().trim().toLowerCase().email('Enter a valid email address').max(254),
+});
+export type ClinicOwnerInput = z.infer<typeof clinicOwnerSchema>;
+
+export interface ClinicDetailsView {
+  /** False while the clinic is still being set up: only the name and owner can be changed (used when set-up runs). */
+  setUp: boolean;
+  clinic: { name: string } & Record<Exclude<keyof ClinicDetailsInput, 'name'>, string | null>;
+  owner: { name: string; email: string; lastLoginAt: string | null };
+}
