@@ -23,7 +23,7 @@ export interface SafetyWarning {
 }
 
 /** Hook run inside the dispensing transaction (inventory registers stock deduction here in M5). */
-export type DispenseHook = (tx: ScopedTx, e: { dispensationId: string; product: Product; quantity: number; batchNumber?: string | null; branchId: string }) => Promise<void>;
+export type DispenseHook = (tx: ScopedTx, e: { dispensationId: string; product: Product; quantity: number; batchNumber?: string | null; branchId: string; stockOverride?: boolean }) => Promise<void>;
 
 const include = {
   patient: {
@@ -414,7 +414,7 @@ export class PrescriptionsService {
     return this.get(id);
   }
 
-  async dispense(id: string, input: { lines: { itemId: string; quantity: number; batchNumber?: string | null; expiryDate?: Date | null }[]; notes?: string | null }) {
+  async dispense(id: string, input: { lines: { itemId: string; quantity: number; batchNumber?: string | null; expiryDate?: Date | null }[]; notes?: string | null; stockOverrideReason?: string | null }) {
     const ctx = RequestContext.require();
     const rx = await this.prisma.db.prescription.findUnique({ where: { id }, include: { items: { include: { product: true } }, patient: { include: { species: true } } } });
     if (!rx) throw notFound('Prescription');
@@ -443,13 +443,13 @@ export class PrescriptionsService {
             quantity: line.quantity,
             batchNumber: line.batchNumber,
             expiryDate: line.expiryDate ?? null,
-            notes: input.notes,
+            notes: [input.notes, input.stockOverrideReason && `Handed out without stock: ${input.stockOverrideReason}`].filter(Boolean).join('\n') || null,
             dispensedById: ctx.userId!,
             dispensedByName: ctx.userName ?? 'Unknown',
           },
         });
         await tx.prescriptionItem.update({ where: { id: item.id }, data: { quantityDispensed: { increment: line.quantity } } });
-        for (const hook of this.dispenseHooks) await hook(tx, { dispensationId: d.id, product, quantity: line.quantity, batchNumber: line.batchNumber, branchId: ctx.branchId ?? rx.branchId });
+        for (const hook of this.dispenseHooks) await hook(tx, { dispensationId: d.id, product, quantity: line.quantity, batchNumber: line.batchNumber, branchId: ctx.branchId ?? rx.branchId, stockOverride: !!input.stockOverrideReason });
         // Course is assumed to finish after the prescribed duration; withdrawal runs from the last dose.
         const lastDose = new Date(Date.now() + (item.durationDays ?? 0) * 86400_000);
         await this.withdrawals.record(tx, { patientId: rx.patientId, speciesId: rx.patient.speciesId, productId: product.id, sourceType: 'DISPENSATION', sourceId: d.id, treatedAt: lastDose });
@@ -463,7 +463,7 @@ export class PrescriptionsService {
           action: 'prescription.dispensed',
           entityType: 'Prescription',
           entityId: id,
-          summary: `${prescriptionNo(rx.number)}: ${input.lines.map((l) => `${rxItemName(rx.items.find((i) => i.id === l.itemId)!)} × ${l.quantity}${l.batchNumber ? ` (batch ${l.batchNumber})` : ''}`).join('; ')}`,
+          summary: `${prescriptionNo(rx.number)}: ${input.lines.map((l) => `${rxItemName(rx.items.find((i) => i.id === l.itemId)!)} × ${l.quantity}${l.batchNumber ? ` (batch ${l.batchNumber})` : ''}`).join('; ')}${input.stockOverrideReason ? ` (handed out without stock: ${input.stockOverrideReason})` : ''}`,
         },
         tx,
       );

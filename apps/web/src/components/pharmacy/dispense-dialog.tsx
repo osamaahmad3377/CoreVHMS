@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { allergyMatches } from '@vcms/shared';
-import { ShieldAlert } from 'lucide-react';
+import { PackageX, ShieldAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Field } from '../forms/field';
@@ -10,7 +10,8 @@ import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Input } from '../ui/input';
 import { BatchPicker, type BatchChoice } from './batch-picker';
-import { api } from '@/lib/api';
+import { StockNote } from './stock-note';
+import { ApiError, api } from '@/lib/api';
 import { qtyUnit } from '@/lib/labels';
 import type { Prescription } from '@/lib/types';
 
@@ -27,8 +28,15 @@ export function DispenseDialog({ rx, open, onOpenChange, onDispensed }: { rx: Pr
   const qc = useQueryClient();
   const [lines, setLines] = useState<Record<string, Line>>({});
   const [error, setError] = useState<string | null>(null);
+  /** Medicines short of stock, by item (from the stock check, or from the server when it refused). */
+  const [short, setShort] = useState<Record<string, string | null>>({});
+  const [serverShort, setServerShort] = useState<string | null>(null);
+  const [stockReason, setStockReason] = useState('');
   useEffect(() => {
     if (open) {
+      setShort({});
+      setServerShort(null);
+      setStockReason('');
       setLines(Object.fromEntries(rx.items.filter((i) => !i.outside).map((i) => [i.id, { quantity: i.remaining > 0 ? String(Math.min(i.remaining, i.quantity)) : '0', batchNumber: '', expiryDate: '' }])));
       setError(null);
     }
@@ -40,6 +48,7 @@ export function DispenseDialog({ rx, open, onOpenChange, onDispensed }: { rx: Pr
         lines: Object.entries(lines)
           .filter(([, l]) => Number(l.quantity) > 0)
           .map(([itemId, l]) => ({ itemId, quantity: Number(l.quantity), batchNumber: l.batchNumber || null, expiryDate: l.expiryDate || null })),
+        stockOverrideReason: needsReason ? stockReason.trim() : null,
       }),
     onSuccess: (r) => {
       toast.success(`${r.prescriptionNo}: ${r.status === 'DISPENSED' ? 'fully dispensed' : 'partly dispensed'}`, {
@@ -52,8 +61,15 @@ export function DispenseDialog({ rx, open, onOpenChange, onDispensed }: { rx: Pr
       onOpenChange(false);
       onDispensed?.(r);
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => {
+      if (e instanceof ApiError && e.code === 'INSUFFICIENT_STOCK') {
+        setServerShort(e.message);
+        qc.invalidateQueries({ queryKey: ['product-batches'] });
+      } else setError(e.message);
+    },
   });
+  const shortTexts = rx.items.filter((i) => Number(lines[i.id]?.quantity) > 0 && short[i.id]).map((i) => short[i.id]!);
+  const needsReason = shortTexts.length > 0 || !!serverShort;
   const allergies = rx.patient.alerts.filter((a) => a.type === 'ALLERGY' || a.type === 'MEDICATION');
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -97,13 +113,27 @@ export function DispenseDialog({ rx, open, onOpenChange, onDispensed }: { rx: Pr
                     <BatchPicker id={`db-${i.id}`} productId={i.productId!} quantity={Number(l.quantity) || undefined} value={l} onChange={(v) => setLine(i.id, v)} />
                   </div>
                 )}
+                {i.remaining > 0 && l && Number(l.quantity) > 0 && (
+                  <StockNote quiet productId={i.productId} quantity={Number(l.quantity)} onShort={(t) => setShort((s) => (s[i.id] === t ? s : { ...s, [i.id]: t }))} />
+                )}
               </div>
             );
           })}
         </div>
+        {needsReason && (
+          <div className="grid gap-2 rounded-md border border-warning/40 bg-warning/10 p-3">
+            <p className="flex items-start gap-2 text-sm font-medium">
+              <PackageX className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+              <span>
+                {shortTexts.length ? shortTexts.join(' ') : serverShort} You can still hand {shortTexts.length > 1 ? 'them' : 'it'} out — the stock will show the shortfall until it is received or counted.
+              </span>
+            </p>
+            <Input placeholder="Reason, e.g. delivery not entered yet" value={stockReason} onChange={(e) => setStockReason(e.target.value)} aria-label="Reason for handing out without stock" />
+          </div>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button loading={m.isPending} disabled={!Object.values(lines).some((l) => Number(l.quantity) > 0)} onClick={() => { setError(null); m.mutate(); }}>Dispense</Button>
+          <Button loading={m.isPending} disabled={!Object.values(lines).some((l) => Number(l.quantity) > 0) || (needsReason && !stockReason.trim())} onClick={() => { setError(null); m.mutate(); }}>Dispense</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

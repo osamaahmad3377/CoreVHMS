@@ -11,6 +11,7 @@ import { Checkbox } from '../ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Input, NativeSelect } from '../ui/input';
 import { ProductPicker } from './product-picker';
+import { StockNote } from './stock-note';
 import { ApiError, api } from '@/lib/api';
 import { fmtMoney } from '@/lib/format';
 import { routeLabel } from '@/lib/labels';
@@ -68,7 +69,7 @@ function suggestedBill(l: Line): number | null {
 }
 const billText = (l: Line) => (l.billTouched ? l.bill : String(suggestedBill(l) ?? ''));
 
-const lineReady = (l: Line) => !!l.product && Number(l.dose) > 0 && (!l.notGiven || !!l.reasonNotGiven.trim()) && (!l.needsOverride || !!l.overrideReason.trim()) && (!l.stockShort || !!l.stockOverrideReason.trim());
+const lineReady = (l: Line) => !!l.product && Number(l.dose) > 0 && (!l.notGiven || !!l.reasonNotGiven.trim()) && (!l.needsOverride || !!l.overrideReason.trim()) && (!l.stockShort || l.notGiven || !!l.stockOverrideReason.trim());
 const amount = (n: number) => String(Math.round(n * 100) / 100);
 /** "Only 2 vials in stock, 3 needed" from the stock error's details. */
 function stockText(l: Line, details: unknown) {
@@ -124,7 +125,7 @@ export function AdministerDialog({ open, onOpenChange, patientId, encounterId }:
           notes: l.notes,
           reasonNotGiven: l.reasonNotGiven,
           overrideReason: l.overrideReason || null,
-          stockOverrideReason: l.stockShort ? l.stockOverrideReason : null,
+          stockOverrideReason: l.stockShort && !l.notGiven ? l.stockOverrideReason : null,
           billQuantity: billQty,
         });
         saved++;
@@ -133,7 +134,10 @@ export function AdministerDialog({ open, onOpenChange, patientId, encounterId }:
         setLines((ls) => ls.filter((x) => x.key !== l.key));
       } catch (e) {
         if (e instanceof ApiError && e.code === 'SAFETY_OVERRIDE_REQUIRED') update(l.key, { needsOverride: e.message });
-        else if (e instanceof ApiError && e.code === 'INSUFFICIENT_STOCK') update(l.key, { stockShort: stockText(l, e.details) });
+        else if (e instanceof ApiError && e.code === 'INSUFFICIENT_STOCK') {
+          update(l.key, { stockShort: stockText(l, e.details) });
+          qc.invalidateQueries({ queryKey: ['product-batches'] });
+        }
         else update(l.key, { error: (e as Error).message });
         break;
       }
@@ -196,12 +200,6 @@ function MedicineRow({ line: l, index, many, onChange, onRemove }: { line: Line;
           <Input placeholder="Reason for giving despite the alert" value={l.overrideReason} onChange={set('overrideReason')} aria-label="Override reason" />
         </div>
       )}
-      {l.stockShort && (
-        <div className="grid gap-2 rounded-md border border-warning/40 bg-warning/10 p-3">
-          <p className="flex items-start gap-2 text-sm font-medium"><PackageX className="mt-0.5 h-4 w-4 shrink-0 text-warning" /> <span>{l.stockShort} You can still record it as given — the stock will show the shortfall until it is received or counted.</span></p>
-          <Input placeholder="Reason, e.g. stock not entered yet" value={l.stockOverrideReason} onChange={set('stockOverrideReason')} aria-label="Reason for giving without stock" />
-        </div>
-      )}
       <Field label="Product" htmlFor={id('p')} required>
         <ProductPicker
           id={id('p')}
@@ -217,6 +215,13 @@ function MedicineRow({ line: l, index, many, onChange, onRemove }: { line: Line;
         </Field>
         <Field label="Site" htmlFor={id('s')}><Input id={id('s')} placeholder="e.g. L flank" value={l.site} onChange={set('site')} /></Field>
       </div>
+      {l.product && !l.notGiven && <StockNote quiet productId={l.product.id} quantity={suggestedBill(l)} onShort={(t) => onChange({ stockShort: t })} />}
+      {l.stockShort && !l.notGiven && (
+        <div className="grid gap-2 rounded-md border border-warning/40 bg-warning/10 p-3">
+          <p className="flex items-start gap-2 text-sm font-medium"><PackageX className="mt-0.5 h-4 w-4 shrink-0 text-warning" /> <span>{l.stockShort} You can still record it as given — the stock will show the shortfall until it is received or counted.</span></p>
+          <Input placeholder="Reason, e.g. stock not entered yet" value={l.stockOverrideReason} onChange={set('stockOverrideReason')} aria-label="Reason for giving without stock" />
+        </div>
+      )}
       <div className="grid gap-3 sm:grid-cols-[11rem_minmax(0,1fr)]">
         {l.product && !l.notGiven && (
           <Field

@@ -134,6 +134,8 @@ export const dispenseSchema = z.object({
     .min(1)
     .max(20),
   notes: optText(1000),
+  /** Why the medicines were handed out although stock shows not enough; the shortfall is booked as negative stock. */
+  stockOverrideReason: optText(500),
 });
 
 export const administrationSchema = z.object({

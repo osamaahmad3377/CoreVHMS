@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input, NativeSelect, Textarea } from '../ui/input';
 import { Label } from '../ui/label';
 import { ProductPicker, productStrength } from './product-picker';
+import { StockNote } from './stock-note';
 import { useDebounce } from '@/hooks/use-debounce';
 import { ApiError, api } from '@/lib/api';
 import { qtyUnit, routeLabel } from '@/lib/labels';
@@ -129,6 +130,13 @@ function LineEditor({ line, patientId, weightKg, alerts, onChange, onRemove, onE
             </Field>
           ) : (
             <ProductPicker value={line.product} prescribable alerts={alerts} onChange={(p) => set({ product: p, doseUnit: p?.strengthUnit ? `${p.strengthUnit}/kg` : p?.dispensingUnit ?? 'mg/kg', route: p?.form === 'INJECTION' ? 'SC' : p?.form === 'TOPICAL' ? 'TOPICAL' : 'PO' })} />
+          )}
+          {!line.outside && line.product && (
+            <StockNote
+              productId={line.product.id}
+              quantity={Number(line.quantity) || e?.quantity || null}
+              after="You can still prescribe it — the pharmacy is asked for a reason when handing it out."
+            />
           )}
           <button
             type="button"

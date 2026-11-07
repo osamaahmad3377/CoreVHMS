@@ -84,6 +84,27 @@ describe('Inventory & procurement', () => {
     expect((await give({ productId: other.body.id, stockOverrideReason: 'Borrowed from the clinic next door' })).status).toBe(201);
   });
 
+  it('hands out a prescription without enough stock only with a reason, and names the short product', async () => {
+    const org = await registerOrg();
+    const vet = await staff(org, 'veterinarian', { isClinician: true });
+    const f = await stockFixture(org);
+    const patient = await makePatient(org.owner, (await makeClient(org.owner)).id);
+    await org.owner.post('/stock/receipts', { supplierId: f.supplierId, locationId: f.locationId, lines: [{ productId: f.product.id, batchNumber: 'B1', quantity: 2, unitCostMinor: 100 }] });
+    const rx = await vet.client.post('/prescriptions', { patientId: patient.id, items: [rxItem(f.product.id, { quantity: 5 })], authorize: true });
+    const lines = [{ itemId: rx.body.items[0].id, quantity: 5 }];
+    const blocked = await org.owner.post(`/prescriptions/${rx.body.id}/dispense`, { lines });
+    expect(blocked.body.error).toMatchObject({ code: 'INSUFFICIENT_STOCK', details: { available: 2, required: 5, productId: f.product.id } });
+    expect(blocked.body.error.message).toContain(f.product.name);
+    const ok = await org.owner.post(`/prescriptions/${rx.body.id}/dispense`, { lines, stockOverrideReason: 'Delivery arrived, not entered yet' });
+    expect(ok.status).toBe(200);
+    expect(ok.body.status).toBe('DISPENSED');
+    expect(Number((await prisma().stockLevel.findFirstOrThrow({ where: { productId: f.product.id } })).quantity)).toBe(-3);
+    const d = await prisma().dispensation.findFirstOrThrow({ where: { item: { prescriptionId: rx.body.id } } });
+    expect(d.notes).toContain('Handed out without stock: Delivery arrived, not entered yet');
+    const audit = await prisma().auditEvent.findFirstOrThrow({ where: { action: 'prescription.dispensed', entityId: rx.body.id } });
+    expect(audit.summary).toContain('handed out without stock');
+  });
+
   it('blocks dispensing beyond usable stock unless the organization allows negative stock', async () => {
     const org = await registerOrg();
     const vet = await staff(org, 'veterinarian', { isClinician: true });

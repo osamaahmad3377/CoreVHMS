@@ -75,7 +75,7 @@ export class BillingIntegrations implements OnModuleInit {
 
   onModuleInit() {
     this.prescriptions.registerDispenseHook(async (tx, e) => {
-      const issued = await this.inventory.issueForEvent(tx, { productId: e.product.id, quantity: e.quantity, branchId: e.branchId, type: 'DISPENSE', referenceType: 'Dispensation', referenceId: e.dispensationId, preferredBatchNumber: e.batchNumber });
+      const issued = await this.inventory.issueForEvent(tx, { productId: e.product.id, quantity: e.quantity, branchId: e.branchId, type: 'DISPENSE', referenceType: 'Dispensation', referenceId: e.dispensationId, preferredBatchNumber: e.batchNumber, allowShortfall: e.stockOverride });
       if (issued.length) await tx.dispensation.update({ where: { id: e.dispensationId }, data: traceability(issued) });
       const d = await tx.dispensation.findUniqueOrThrow({ where: { id: e.dispensationId }, include: { item: { include: { prescription: true } } } });
       await this.charges.capture(tx, {

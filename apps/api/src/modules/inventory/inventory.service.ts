@@ -133,9 +133,19 @@ export class InventoryService {
     try {
       return await this.engine.issueFefo(tx, { ...event, locationId: location.id, allowNegative: org.allowNegativeStock || !!allowShortfall });
     } catch (err) {
+      const res = err instanceof HttpException ? (err.getResponse() as { code?: string; details?: { available?: number } }) : null;
+      if (res?.code !== 'INSUFFICIENT_STOCK') throw err;
       // No batch of this product at the location to book the shortfall against (checked before anything is written).
-      if (allowShortfall && err instanceof HttpException && (err.getResponse() as { code?: string }).code === 'INSUFFICIENT_STOCK') return [];
-      throw err;
+      if (allowShortfall) return [];
+      // Name the product, so a sale or dispensing with several lines says which one is short.
+      const available = Math.max(0, res.details?.available ?? 0);
+      throw ruleViolation('INSUFFICIENT_STOCK', `Not enough ${product.name} in stock: ${available} ${product.dispensingUnit} available, ${e.quantity} needed`, {
+        available,
+        required: e.quantity,
+        productId: product.id,
+        productName: product.name,
+        unit: product.dispensingUnit,
+      });
     }
   }
 

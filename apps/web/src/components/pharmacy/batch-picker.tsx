@@ -61,7 +61,9 @@ export function BatchPicker({ id, productId, value, onChange, quantity }: { id: 
   }
 
   const chosen = batches.find((b) => b.batchNumber === value.batchNumber);
-  const short = chosen && quantity && quantity > chosen.onHand;
+  const total = batches.reduce((s, b) => s + b.onHand, 0);
+  // Not enough in this batch, but the other batches make up the rest (a shortage overall is warned about elsewhere).
+  const short = chosen && quantity && quantity > chosen.onHand && quantity <= total + 1e-9;
   return (
     <Field
       label="Batch"
