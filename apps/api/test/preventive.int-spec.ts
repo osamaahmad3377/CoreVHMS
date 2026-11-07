@@ -19,6 +19,86 @@ async function setup() {
 describe('Preventive care', () => {
   afterAll(closeApp);
 
+  it('offers vaccines from stock and dewormers from the clinic’s list, with what is on hand, and keeps the product chosen', async () => {
+    const s = await setup();
+    await s.vet.client.post(`/care-protocols/${s.protocol.id}/status`, { status: 'APPROVED' });
+    // Stock: 6 doses of the vaccine at this branch.
+    const db = prisma();
+    const store = await db.stockLocation.findFirstOrThrow({ where: { organizationId: s.org.orgId, isDefault: true } });
+    const supplier = await db.supplier.findFirstOrThrow({ where: { organizationId: s.org.orgId } });
+    expect((await s.org.owner.post('/stock/receipts', { supplierId: supplier.id, locationId: store.id, lines: [{ productId: s.vaccine.id, batchNumber: 'V1', expiryDate: daysFrom(300), quantity: 6, unitCostMinor: 1000 }] })).status).toBe(201);
+
+    const vaccines = (await s.vet.client.get('/care-options?kind=VACCINATION')).body;
+    expect(vaccines.products).toEqual([expect.objectContaining({ id: s.vaccine.id, name: 'Test vaccine', onHand: 6 })]);
+    expect(vaccines.protocols.map((p: any) => p.productId)).toContain(s.vaccine.id);
+
+    // A dewormer the clinic adds itself: a deworming schedule with its product, approved by a vet.
+    const tablet = await s.org.owner.post('/products', { name: 'Test dewormer tablet', type: 'MEDICINE', dispensingUnit: 'tablet', minDispenseIncrement: 1, sellPriceMinor: 300 });
+    const dewormer = await s.vet.client.post('/care-protocols', { name: 'Test dewormer', kind: 'DEWORMING', productId: tablet.body.id, intervalDays: 90, source: 'Test clinic policy' });
+    expect((await s.vet.client.get('/care-options?kind=DEWORMING')).body.protocols).toHaveLength(0); // not approved yet
+    await s.vet.client.post(`/care-protocols/${dewormer.body.id}/status`, { status: 'APPROVED' });
+    const worming = (await s.vet.client.get('/care-options?kind=DEWORMING')).body;
+    expect(worming.protocols.map((p: any) => p.name)).toEqual(['Test dewormer']);
+    expect(worming.products).toEqual([expect.objectContaining({ name: 'Test dewormer tablet', onHand: 0 })]);
+
+    // The vaccine chosen from stock stays on the entry (recording starts with it); a non-vaccine is refused.
+    expect((await s.vet.client.post('/care-items', { patientId: s.patient.id, kind: 'VACCINATION', productId: tablet.body.id, title: 'Wrong', dueDate: daysFrom(0) })).body.error.code).toBe('NOT_A_VACCINE');
+    const item = await s.vet.client.post('/care-items', { patientId: s.patient.id, kind: 'VACCINATION', productId: s.vaccine.id, title: 'Test vaccine', dueDate: daysFrom(0), repeatEvery: 1, repeatUnit: 'YEAR' });
+    expect(item.status).toBe(201);
+    expect(item.body.productId).toBe(s.vaccine.id);
+    await s.vet.client.post(`/care-items/${item.body.id}/complete`, { mode: 'DONE' });
+    const next = await db.careItem.findFirstOrThrow({ where: { previousItemId: item.body.id } });
+    expect(next.productId).toBe(s.vaccine.id);
+  });
+
+  it('gives a dewormer its own price: a service in Services & prices, charged once when recorded (the tablet included)', async () => {
+    const s = await setup();
+    const db = prisma();
+    const tablet = await s.org.owner.post('/products', { name: 'Priced dewormer tablet', type: 'MEDICINE', dispensingUnit: 'tablet', minDispenseIncrement: 1, sellPriceMinor: 300 });
+    const body = { name: 'Priced dewormer', kind: 'DEWORMING', productId: tablet.body.id, intervalDays: 90, source: 'Test clinic policy' };
+    const created = await s.vet.client.post('/care-protocols', { ...body, priceMinor: 50000 });
+    expect(created.status).toBe(201);
+    const service = (await s.org.owner.get('/services')).body.find((x: any) => x.name === 'Deworming: Priced dewormer');
+    expect(service).toMatchObject({ code: 'DEWORM-1', priceMinor: 50000, isActive: true });
+    await s.vet.client.post(`/care-protocols/${created.body.id}/status`, { status: 'APPROVED' });
+
+    // A new price alone keeps the approval; it is the same service.
+    const repriced = await s.vet.client.patch(`/care-protocols/${created.body.id}`, { ...body, priceMinor: 60000 });
+    expect(repriced.body.status).toBe('APPROVED');
+    expect((await db.service.findUniqueOrThrow({ where: { id: service.id } })).priceMinor).toBe(60000);
+    const listed = (await s.vet.client.get('/care-protocols')).body.find((p: any) => p.id === created.body.id);
+    expect(listed.service).toMatchObject({ id: service.id, priceMinor: 60000 });
+
+    // Given here: the price is charged once; the tablet's own charge is waived (included).
+    const store = await db.stockLocation.findFirstOrThrow({ where: { organizationId: s.org.orgId, isDefault: true } });
+    const supplier = await db.supplier.findFirstOrThrow({ where: { organizationId: s.org.orgId } });
+    await s.org.owner.post('/stock/receipts', { supplierId: supplier.id, locationId: store.id, lines: [{ productId: tablet.body.id, batchNumber: 'D1', expiryDate: daysFrom(300), quantity: 10, unitCostMinor: 100 }] });
+    const item = await s.vet.client.post('/care-items', { patientId: s.patient.id, protocolId: created.body.id, productId: tablet.body.id, kind: 'DEWORMING', title: 'Priced dewormer', dueDate: daysFrom(0) });
+    const done = await s.vet.client.post(`/care-items/${item.body.id}/complete`, { mode: 'ADMINISTER', productId: tablet.body.id, dose: 1, doseUnit: 'tablet', route: 'PO' });
+    expect(done.status).toBe(200);
+    const charges = (await s.org.owner.get(`/charges?clientId=${s.client.id}&status=ALL`)).body.data;
+    expect(charges.filter((c: any) => c.status === 'PENDING').map((c: any) => [c.kind, c.description, c.unitPriceMinor])).toEqual([['SERVICE', 'Deworming: Priced dewormer', 60000]]);
+    expect(charges.find((c: any) => c.kind === 'PRODUCT')).toMatchObject({ status: 'WAIVED', waivedReason: 'Included in Deworming: Priced dewormer' });
+
+    // Given elsewhere: nothing to charge.
+    const next = await db.careItem.findFirstOrThrow({ where: { previousItemId: item.body.id } });
+    await s.vet.client.post(`/care-items/${next.id}/complete`, { mode: 'ELSEWHERE', productName: 'Bought at a pharmacy' });
+    expect((await s.org.owner.get(`/charges?clientId=${s.client.id}&status=ALL`)).body.data).toHaveLength(2);
+  });
+
+  it('gives a vaccine its own price the same way: “Vaccination: …” in Services & prices, the vaccine from stock included', async () => {
+    const s = await setup();
+    const priced = await s.vet.client.patch(`/care-protocols/${s.protocol.id}`, { name: 'Core vaccine', kind: 'VACCINATION', speciesId: await speciesId(s.org.owner), productId: s.vaccine.id, firstDueAgeWeeks: 8, intervalDays: 365, source: 'Test protocol (clinic policy document v1)', priceMinor: 150000 });
+    expect(priced.status).toBe(200);
+    const service = (await s.org.owner.get('/services')).body.find((x: any) => x.name === 'Vaccination: Core vaccine');
+    expect(service).toMatchObject({ code: 'VACC-1', category: 'VACCINATION', priceMinor: 150000 });
+    await s.vet.client.post(`/care-protocols/${s.protocol.id}/status`, { status: 'APPROVED' });
+    const item = await s.vet.client.post('/care-items', { patientId: s.patient.id, protocolId: s.protocol.id, productId: s.vaccine.id, kind: 'VACCINATION', title: 'Core vaccine', dueDate: daysFrom(0) });
+    await s.vet.client.post(`/care-items/${item.body.id}/complete`, { mode: 'ADMINISTER', productId: s.vaccine.id, dose: 1, doseUnit: 'dose', route: 'SC' });
+    const charges = (await s.org.owner.get(`/charges?clientId=${s.client.id}&status=ALL`)).body.data;
+    expect(charges.filter((c: any) => c.status === 'PENDING').map((c: any) => [c.description, c.unitPriceMinor])).toEqual([['Vaccination: Core vaccine', 150000]]);
+  });
+
   it('requires a source and a vet review before a protocol is used', async () => {
     const s = await setup();
     expect((await s.vet.client.post('/care-protocols', { name: 'x', kind: 'DEWORMING', intervalDays: 90 })).status).toBe(400);

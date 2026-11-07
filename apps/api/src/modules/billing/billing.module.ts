@@ -15,9 +15,10 @@ import { InvoicesService } from './invoices.service';
 import { PosReturnsService } from './pos-returns.service';
 import { PosService } from './pos.service';
 import { CashService, EstimatesAndExpensesService, PaymentsService } from './payments.service';
+import { PreventiveModule } from '../preventive/preventive.module';
 
 @Module({
-  imports: [InventoryModule, PharmacyModule, LabModule, ClinicalModule, PatientsModule, ClientsModule],
+  imports: [InventoryModule, PharmacyModule, LabModule, ClinicalModule, PatientsModule, ClientsModule, PreventiveModule],
   controllers: [BillingController, ReceiptsController],
   providers: [BillingConfigService, ChargeCaptureService, InvoicesService, PaymentsService, CashService, EstimatesAndExpensesService, PosService, PosReturnsService, ReceiptSettingsService, BillingIntegrations],
   exports: [ChargeCaptureService, InvoicesService, PaymentsService],

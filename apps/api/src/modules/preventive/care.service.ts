@@ -47,8 +47,17 @@ export function shapeItem<T extends { status: string; dueDate: Date; deferredUnt
  * each patient's care plan, completion (through pharmacy administration when the clinic gives it),
  * deferral, cancellation and recurring scheduling.
  */
+/** Runs when a care item is recorded as done, in the same transaction (billing charges a schedule's price here). */
+export type CareCompletedHook = (tx: ScopedTx, item: CareItemRow, ctx: { encounterId: string | null }) => Promise<void>;
+type CareItemRow = Prisma.CareItemGetPayload<object>;
+
 @Injectable()
 export class CareService {
+  private readonly completedHooks: CareCompletedHook[] = [];
+  registerCompletedHook(h: CareCompletedHook) {
+    this.completedHooks.push(h);
+  }
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -61,12 +70,13 @@ export class CareService {
   listProtocols(includeRetired = false) {
     return this.prisma.db.careProtocol.findMany({
       where: includeRetired ? {} : { status: { not: 'RETIRED' } },
-      include: { species: { select: { id: true, name: true } }, product: { select: { id: true, name: true } }, _count: { select: { items: true } } },
+      include: { species: { select: { id: true, name: true } }, product: { select: { id: true, name: true } }, service: { select: { id: true, code: true, name: true, priceMinor: true, isActive: true } }, _count: { select: { items: true } } },
       orderBy: [{ status: 'asc' }, { name: 'asc' }],
     });
   }
 
-  async saveProtocol(id: string | null, input: { name: string; kind: CareKind; speciesId?: string | null; productId?: string | null; firstDueAgeWeeks?: number | null; intervalDays?: number | null; source: string; notes?: string | null }) {
+  async saveProtocol(id: string | null, withPrice: { name: string; kind: CareKind; speciesId?: string | null; productId?: string | null; firstDueAgeWeeks?: number | null; intervalDays?: number | null; source: string; notes?: string | null; priceMinor?: number | null }) {
+    const { priceMinor, ...input } = withPrice;
     const db = this.prisma.db;
     if (input.speciesId && !(await db.species.findUnique({ where: { id: input.speciesId } }))) throw notFound('Species');
     if (input.productId && !(await db.product.findUnique({ where: { id: input.productId } }))) throw notFound('Product');
@@ -76,15 +86,46 @@ export class CareService {
         const before = await tx.careProtocol.findUnique({ where: { id } });
         if (!before) throw notFound('Protocol');
         if (before.status === 'RETIRED') throw ruleViolation('RETIRED', 'Retired protocols cannot be edited');
-        // Editing an approved protocol sends it back for review.
-        const after = await tx.careProtocol.update({ where: { id }, data: { ...input, status: 'DRAFT', reviewedByName: null, reviewedAt: null } });
-        await this.audit.record({ action: 'care_protocol.updated', entityType: 'Organization', entityId: ctx.organizationId!, summary: after.name, changes: diff(before, after, Object.keys(input)) }, tx);
-        return after;
+        // Changing the schedule itself sends an approved protocol back for review; a new price alone does not.
+        const clinical = (Object.keys(input) as (keyof typeof input)[]).some((k) => String(input[k] ?? '') !== String((before as Record<string, unknown>)[k] ?? ''));
+        const after = await tx.careProtocol.update({ where: { id }, data: clinical ? { ...input, status: 'DRAFT', reviewedByName: null, reviewedAt: null } : input });
+        if (clinical) await this.audit.record({ action: 'care_protocol.updated', entityType: 'Organization', entityId: ctx.organizationId!, summary: after.name, changes: diff(before, after, Object.keys(input)) }, tx);
+        return this.savePrice(tx, after, priceMinor);
       }
       const p = await tx.careProtocol.create({ data: { ...input, organizationId: ctx.organizationId!, createdByName: ctx.userName } });
       await this.audit.record({ action: 'care_protocol.created', entityType: 'Organization', entityId: ctx.organizationId!, summary: p.name }, tx);
-      return p;
+      return this.savePrice(tx, p, priceMinor);
     });
+  }
+
+  /**
+   * A schedule's price lives in Settings → Services & prices as its own service (e.g. “Deworming: Praziquantel”), so
+   * it is edited in either place and charged like any other service. Undefined = leave it; null = no price.
+   */
+  private async savePrice(tx: ScopedTx, p: CareProtocol, priceMinor: number | null | undefined) {
+    if (priceMinor === undefined) return p;
+    const label = p.kind === 'DEWORMING' ? 'Deworming' : p.kind === 'VACCINATION' ? 'Vaccination' : 'Care';
+    if (priceMinor === null) {
+      if (!p.serviceId) return p;
+      return tx.careProtocol.update({ where: { id: p.id }, data: { serviceId: null } });
+    }
+    const existing = p.serviceId ? await tx.service.findUnique({ where: { id: p.serviceId } }) : null;
+    if (existing) {
+      if (existing.priceMinor !== priceMinor || !existing.isActive) {
+        await tx.service.update({ where: { id: existing.id }, data: { priceMinor, isActive: true } });
+        await this.audit.record({ action: 'service.updated', entityType: 'Service', entityId: existing.id, summary: `${existing.code} ${existing.name}`, changes: { priceMinor: { from: existing.priceMinor, to: priceMinor } } }, tx);
+      }
+      return p;
+    }
+    const prefix = p.kind === 'DEWORMING' ? 'DEWORM' : p.kind === 'VACCINATION' ? 'VACC' : 'CARE';
+    const taken = new Set((await tx.service.findMany({ where: { code: { startsWith: `${prefix}-` } }, select: { code: true } })).map((x) => x.code));
+    let n = 1;
+    while (taken.has(`${prefix}-${n}`)) n++;
+    const service = await tx.service.create({
+      data: { organizationId: p.organizationId, code: `${prefix}-${n}`, name: `${label}: ${p.name}`.slice(0, 160), category: p.kind === 'VACCINATION' ? 'VACCINATION' : 'PROCEDURE', priceMinor },
+    });
+    await this.audit.record({ action: 'service.created', entityType: 'Service', entityId: service.id, summary: `${service.code} ${service.name} — price of the ${label.toLowerCase()} schedule` }, tx);
+    return tx.careProtocol.update({ where: { id: p.id }, data: { serviceId: service.id } });
   }
 
   async setProtocolStatus(id: string, status: 'APPROVED' | 'RETIRED') {
@@ -111,6 +152,32 @@ export class CareService {
       return byAge > today ? byAge : today;
     }
     return today;
+  }
+
+  /**
+   * What can be chosen when adding a patient for vaccination or deworming: the approved schedules of that kind and
+   * the products behind them — for vaccination every active vaccine in stock — each with the quantity on hand at
+   * this branch.
+   */
+  async careOptions(kind: 'VACCINATION' | 'DEWORMING') {
+    const db = this.prisma.db;
+    const protocols = await db.careProtocol.findMany({
+      where: { status: 'APPROVED', kind },
+      select: { id: true, name: true, kind: true, speciesId: true, productId: true, intervalDays: true, species: { select: { id: true, name: true } } },
+      orderBy: { name: 'asc' },
+    });
+    const linked = protocols.map((p) => p.productId).filter((x): x is string => !!x);
+    const products = await db.product.findMany({
+      where: kind === 'VACCINATION' ? { type: 'VACCINE', isActive: true } : { id: { in: linked }, isActive: true },
+      select: { id: true, name: true, dispensingUnit: true },
+      orderBy: { name: 'asc' },
+    });
+    const branchId = RequestContext.get()?.branchId;
+    const levels = products.length
+      ? await db.stockLevel.findMany({ where: { productId: { in: products.map((p) => p.id) }, ...(branchId ? { location: { branchId } } : {}) }, select: { productId: true, quantity: true } })
+      : [];
+    const onHand = (id: string) => levels.filter((l) => l.productId === id).reduce((n, l) => n + Number(l.quantity), 0);
+    return { protocols, products: products.map((p) => ({ ...p, onHand: onHand(p.id) })) };
   }
 
   /** Adds approved protocols that apply to the patient's species and are not yet in its plan. Returns created count. */
@@ -166,10 +233,15 @@ export class CareService {
     return { items: withBatch, availableProtocols: protocols.filter((p) => !open.has(p.id)) };
   }
 
-  async addItem(input: { patientId: string; protocolId?: string | null; kind: CareKind; title: string; dueDate: Date; notes?: string | null } & RepeatInput) {
+  async addItem(input: { patientId: string; protocolId?: string | null; productId?: string | null; kind: CareKind; title: string; dueDate: Date; notes?: string | null } & RepeatInput) {
     const patient = await this.prisma.db.patient.findUnique({ where: { id: input.patientId } });
     if (!patient) throw notFound('Patient');
     if (input.protocolId && !(await this.prisma.db.careProtocol.findUnique({ where: { id: input.protocolId } }))) throw notFound('Protocol');
+    if (input.productId) {
+      const product = await this.prisma.db.product.findUnique({ where: { id: input.productId }, select: { type: true, isActive: true } });
+      if (!product || !product.isActive) throw notFound('Product');
+      if (input.kind === 'VACCINATION' && product.type !== 'VACCINE') throw ruleViolation('NOT_A_VACCINE', 'Choose a vaccine from stock');
+    }
     const today = await branchToday(this.prisma);
     try {
       return await this.prisma.db.$transaction(async (tx) => {
@@ -212,7 +284,7 @@ export class CareService {
    */
   async scheduleNext(
     tx: ScopedTx,
-    item: { id: string; organizationId: string; patientId: string; protocolId: string | null; kind: CareKind; title: string; repeatEvery?: number | null; repeatUnit?: CareRepeatUnit | null; repeatTimes?: number | null; repeatUntil?: Date | null },
+    item: { id: string; organizationId: string; patientId: string; protocolId: string | null; productId?: string | null; kind: CareKind; title: string; repeatEvery?: number | null; repeatUnit?: CareRepeatUnit | null; repeatTimes?: number | null; repeatUntil?: Date | null },
     completedAt: Date,
   ) {
     if (item.repeatEvery === 0) return null;
@@ -227,6 +299,7 @@ export class CareService {
           organizationId: item.organizationId,
           patientId: item.patientId,
           protocolId: item.protocolId,
+          productId: item.productId ?? null,
           kind: item.kind,
           title: item.title,
           dueDate: due,
@@ -246,12 +319,12 @@ export class CareService {
     // Count the interval from the calendar day it was given in the branch, not the UTC day.
     const givenOn = localDateOnly(completedAt, await resolveTimezone(this.prisma));
     return tx.careItem.create({
-      data: { organizationId: item.organizationId, patientId: item.patientId, protocolId: p.id, kind: p.kind, title: p.name, dueDate: addDays(givenOn, p.intervalDays), previousItemId: item.id, createdByName: 'System (recurring)' },
+      data: { organizationId: item.organizationId, patientId: item.patientId, protocolId: p.id, productId: item.productId ?? p.productId, kind: p.kind, title: p.name, dueDate: addDays(givenOn, p.intervalDays), previousItemId: item.id, createdByName: 'System (recurring)' },
     });
   }
 
   /** Marks an open item completed inside a transaction (shared by all completion paths). Idempotent per administration. */
-  async markCompleted(tx: ScopedTx, itemId: string, data: { completedAt: Date; administrationId?: string | null; givenElsewhere?: boolean; productName?: string | null; batchNumber?: string | null; notes?: string | null }) {
+  async markCompleted(tx: ScopedTx, itemId: string, data: { completedAt: Date; administrationId?: string | null; givenElsewhere?: boolean; productName?: string | null; batchNumber?: string | null; notes?: string | null; encounterId?: string | null }) {
     // Batch left empty → the one actually issued from stock (first-expiring), recorded on the administration
     // by the stock hook. Completed items are locked, so it has to be stored now.
     let batchNumber = data.batchNumber || null;
@@ -263,6 +336,8 @@ export class CareService {
     if (!r.count) return false;
     const item = await tx.careItem.findUniqueOrThrow({ where: { id: itemId } });
     await this.scheduleNext(tx, item, data.completedAt);
+    const encounterId = data.encounterId ?? (item.administrationId ? ((await tx.medicationAdministration.findUnique({ where: { id: item.administrationId }, select: { encounterId: true } }))?.encounterId ?? null) : null);
+    for (const h of this.completedHooks) await h(tx, item, { encounterId });
     await this.audit.record({ action: 'care_item.completed', entityType: 'Patient', entityId: item.patientId, summary: `${item.title}${data.givenElsewhere ? ' (given elsewhere)' : ''}${batchNumber ? ` batch ${batchNumber}` : ''}` }, tx);
     return true;
   }
@@ -276,14 +351,14 @@ export class CareService {
       await this.administrations.record(
         { patientId: item.patientId, encounterId: input.encounterId ?? null, productId: input.productId!, status: 'GIVEN', dose: input.dose!, doseUnit: input.doseUnit!, route: input.route!, site: input.site ?? null, batchNumber: input.batchNumber ?? null, expiryDate: input.expiryDate ?? null, notes: input.notes ?? null, administeredAt: at, overrideReason: input.overrideReason ?? null },
         async (tx, a) => {
-          const done = await this.markCompleted(tx, id, { completedAt: at, administrationId: a.id, batchNumber: input.batchNumber, notes: input.notes });
+          const done = await this.markCompleted(tx, id, { completedAt: at, administrationId: a.id, batchNumber: input.batchNumber, notes: input.notes, encounterId: input.encounterId ?? null });
           // The administration hook may already have completed it (same product); anything else is a conflict.
           if (!done && (await tx.careItem.findUniqueOrThrow({ where: { id } })).administrationId !== a.id) throw conflict('This care item was completed by someone else');
         },
       );
     } else {
       await this.prisma.db.$transaction(async (tx) => {
-        const done = await this.markCompleted(tx, id, { completedAt: at, givenElsewhere: input.mode === 'ELSEWHERE', productName: input.productName, batchNumber: input.batchNumber, notes: input.notes });
+        const done = await this.markCompleted(tx, id, { completedAt: at, givenElsewhere: input.mode === 'ELSEWHERE', productName: input.productName, batchNumber: input.batchNumber, notes: input.notes, encounterId: input.encounterId ?? null });
         if (!done) throw conflict('This care item was completed by someone else');
       });
     }

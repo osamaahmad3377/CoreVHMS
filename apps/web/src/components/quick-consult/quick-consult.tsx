@@ -16,7 +16,7 @@ import { useQuickNote } from './use-quick-note';
 import { VisitMore } from './visit-more';
 import { ClinicalRecordView, OwnerSummary, type VisitDoc } from './visit-documents';
 import { PreventivePanel, PreventiveTiles, type PreventiveKind } from './preventive-reasons';
-import { answersToText, reasonIcon, useVisitReasons, type VisitReason } from './visit-reasons';
+import { answersToText, combineReasons, reasonIcon, useVisitReasons, type VisitReason } from './visit-reasons';
 import type { ClinicHeader } from '../billing/invoice-document';
 import { vitalsText } from '../clinical/note-editor';
 import { HistoryFromRecords } from '../clinical/history-from-records';
@@ -38,7 +38,7 @@ import { cn } from '@/lib/utils';
 /* ───────────────────────── The visit, in the order the vet runs it ───────────────────────── */
 
 const STEPS = [
-  { short: 'Reason', title: (n: string) => `Why is ${n} here today?`, hint: 'Choose the closest reason. It decides which questions follow.' },
+  { short: 'Reason', title: (n: string) => `Why is ${n} here today?`, hint: 'Choose every reason that applies — tap again to remove one. The questions follow from what you choose.' },
   { short: 'History', title: (n: string) => `Ask the owner about ${n}`, hint: 'Ask each question and tap the answer. The history is written for you.' },
   { short: 'Measurements', title: (n: string) => `Measure ${n}`, hint: 'Enter what you measured and press Enter. Leave out what you didn’t.' },
   { short: 'Examination', title: (n: string) => `Examine ${n}`, hint: 'One tap if everything is normal. Then tap only what isn’t.' },
@@ -60,7 +60,10 @@ const SURE: Record<string, string> = { CONFIRMED: 'sure', PROVISIONAL: 'likely',
 /** What the vet has chosen so far. Kept on this computer per visit, so a refresh or an interruption loses nothing. */
 interface Flow {
   step: number;
-  reasonId: string | null;
+  /** The chosen consultation templates, in the order they were tapped (several reasons in one visit). */
+  reasonIds: string[];
+  /** Vaccination and/or deworming chosen as reasons. */
+  care: PreventiveKind[];
   reasonText: string;
   answers: Record<string, string[]>;
   ownerExtra: string;
@@ -178,9 +181,12 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
   const name = enc.patient.name;
 
   // Start where the vet left off; a visit begun in the detailed view keeps everything already written.
-  const [flow, setFlow] = useState<Flow>(() => ({
+  const [flow, setFlow] = useState<Flow>(() => {
+    const saved = loadFlow(enc.id) as (Partial<Flow> & { reasonId?: string | null }) | null;
+    const f: Flow = {
     step: 0,
-    reasonId: null,
+    reasonIds: [],
+    care: [],
     reasonText: draft?.presentingComplaint || enc.chiefComplaint || '',
     answers: {},
     ownerExtra: draft?.subjective ?? '',
@@ -191,12 +197,19 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
     advice: [],
     adviceExtra: draft?.followUpInstructions ?? '',
     noRecheck: false,
-    ...loadFlow(enc.id),
-  }));
+    ...saved,
+    };
+    // A visit started before several reasons were possible kept a single one.
+    if (!saved?.reasonIds && saved?.reasonId) f.reasonIds = [saved.reasonId];
+    return f;
+  });
   const patch = (p: Partial<Flow>) => setFlow((f) => ({ ...f, ...p }));
   useEffect(() => saveFlow(enc.id, flow), [enc.id, flow]);
   const visitReasons = useVisitReasons(enc.patient.species.category);
-  const reason = visitReasons.reasons.find((r) => r.id === flow.reasonId) ?? null;
+  const chosen = flow.reasonIds.map((id) => visitReasons.reasons.find((r) => r.id === id)).filter((r): r is VisitReason => !!r);
+  // All chosen templates as one: their questions, exam buttons, diagnoses and advice together.
+  const reason = useMemo(() => combineReasons(chosen), [chosen.map((r) => r.id).join()]); // eslint-disable-line react-hooks/exhaustive-deps
+  const careNames = flow.care.map((k) => (k === 'VACCINATION' ? 'Vaccination' : 'Deworming'));
   const step = flow.step;
   const go = (s: number) => {
     patch({ step: Math.max(0, Math.min(LAST, s)) });
@@ -211,7 +224,12 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
   }, [done.lines, flow.planExtra, flow.nothingToday]);
   const adviceText = flow.advice.map(sentence).join(' ');
   const composed = {
-    presentingComplaint: [reason?.complaint, reason && flow.reasonText.trim() === reason.complaint ? '' : flow.reasonText].map((s) => (s ?? '').trim()).filter(Boolean).join(': '),
+    presentingComplaint: (() => {
+      const names = [...careNames, ...chosen.map((r) => r.complaint || r.name)];
+      const own = flow.reasonText.trim();
+      const extra = own && !names.some((n) => n.toLowerCase() === own.toLowerCase()) && own !== reason?.complaint ? own : '';
+      return [names.join(', '), extra].filter(Boolean).join(': ');
+    })(),
     subjective: joinText(ownerText, flow.ownerExtra),
     objective: flow.examExtra.trim(),
     assessment: flow.assessExtra.trim(),
@@ -241,30 +259,43 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
   const [doc, setDoc] = useState<'record' | 'owner'>('record');
 
   // Vaccination / deworming: always on step 1; tapping one shows what is due to record (or asks to add it first).
-  const [care, setCare] = useState<PreventiveKind | null>(null);
-  const [careAdding, setCareAdding] = useState(false);
-  const pickCare = async (k: PreventiveKind) => {
-    setCare(k);
-    if (!flow.reasonText.trim()) patch({ reasonText: k === 'VACCINATION' ? 'Vaccination' : 'Deworming' });
+  const [careAdding, setCareAdding] = useState<PreventiveKind | null>(null);
+  const toggleCare = async (k: PreventiveKind) => {
+    if (flow.care.includes(k)) return patch({ care: flow.care.filter((x) => x !== k) });
+    patch({ care: [...flow.care, k] });
     const plan = await qc.fetchQuery({ queryKey: ['care-plan', enc.patient.id], queryFn: () => api.get<{ items: CareItem[] }>(`/patients/${enc.patient.id}/care-plan`) });
-    if (!plan.items.some((i) => i.kind === k && (i.status === 'DUE' || i.status === 'DEFERRED'))) setCareAdding(true);
+    if (!plan.items.some((i) => i.kind === k && (i.status === 'DUE' || i.status === 'DEFERRED'))) setCareAdding(k);
   };
+  // Vaccination / deworming on their own: no consultation fee (the vaccine or dewormer given is still charged).
+  const preventiveOnly = flow.care.length > 0 && chosen.length === 0;
+  useEffect(() => {
+    if (visitReasons.isLoading || enc.status !== 'OPEN') return;
+    const want = !preventiveOnly;
+    if ((enc.chargeConsultation ?? true) === want) return;
+    api.patch(`/encounters/${enc.id}`, { chargeConsultation: want }).then(onRefresh, (e: Error) => toast.error(e.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preventiveOnly, enc.chargeConsultation, visitReasons.isLoading]);
 
   const pickReason = (r: VisitReason) => {
+    // Tap again to take a reason off; what was already written stays.
+    if (flow.reasonIds.includes(r.id)) {
+      const rest = flow.reasonIds.filter((x) => x !== r.id);
+      patch({ reasonIds: rest });
+      qn.update({ templateId: rest[0] ?? null });
+      return;
+    }
     // The template's own note text fills only boxes that are still empty; the owner's words are kept.
     const t = r.template;
     setFlow((f) => ({
       ...f,
-      reasonId: r.id,
-      step: 1,
+      reasonIds: [...f.reasonIds, r.id],
       ownerExtra: f.ownerExtra || t.subjective || '',
       examExtra: f.examExtra || t.objective || '',
       assessExtra: f.assessExtra || t.assessment || '',
       planExtra: f.planExtra || t.plan || '',
     }));
     if (t.assessment) setShowReasoning(true);
-    qn.update({ templateId: t.id });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (!flow.reasonIds.length) qn.update({ templateId: t.id });
   };
   const answer = (qid: string, label: string, multi?: boolean) =>
     setFlow((f) => {
@@ -323,7 +354,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
     : '';
   const measurements = enc.vitals[0] ? vitalsText(enc.vitals[0]) : '';
   const nextVisit = booked ? `${branchTime(booked.startsAt, tz, 'EEEE d MMMM')} at ${branchTime(booked.startsAt, tz)}${booked.clinician ? ` with ${booked.clinician.name}` : ''}` : null;
-  const stepDone = [!!reason || !!care, !!composed.subjective, enc.vitals.length > 0, findings.length > 0 || !!flow.examExtra.trim(), shownDx.length > 0, planLines.length > 0, !!composed.followUpInstructions && (!!booked || flow.noRecheck), false];
+  const stepDone = [chosen.length > 0 || flow.care.length > 0, !!composed.subjective, enc.vitals.length > 0, findings.length > 0 || !!flow.examExtra.trim(), shownDx.length > 0, planLines.length > 0, !!composed.followUpInstructions && (!!booked || flow.noRecheck), false];
   const followUpType = types.data?.find((t) => t.category === 'FOLLOW_UP' && t.isActive !== false);
   const late = elapsed >= TARGET_MINUTES;
   const wordsWritten = words(ownerText) + words(examSummary) + words(done.lines.join(' ')) + words(adviceText) + words(qn.note.history);
@@ -435,7 +466,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                   <>
                     {visitReasons.isLoading && <LoadingRows rows={3} />}
                     <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 2xl:grid-cols-4">
-                      <PreventiveTiles selected={care} onSelect={(k) => void pickCare(k)} />
+                      <PreventiveTiles selected={flow.care} onSelect={(k) => void toggleCare(k)} />
                       {visitReasons.reasons.map((r) => {
                         const Icon = reasonIcon(r.icon);
                         return (
@@ -443,21 +474,33 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                           key={r.id}
                           type="button"
                           onClick={() => pickReason(r)}
-                          aria-pressed={flow.reasonId === r.id}
+                          aria-pressed={flow.reasonIds.includes(r.id)}
                           className={cn(
                             'flex items-center gap-3 rounded-xl border p-3.5 text-left transition-all active:scale-[0.98]',
-                            flow.reasonId === r.id ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-border bg-background hover:border-primary/50 hover:bg-primary/5',
+                            flow.reasonIds.includes(r.id) ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-border bg-background hover:border-primary/50 hover:bg-primary/5',
                           )}
                         >
-                          <span className={cn('grid h-10 w-10 shrink-0 place-items-center rounded-lg', flow.reasonId === r.id ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary')}>
-                            <Icon className="h-5 w-5" />
+                          <span className={cn('grid h-10 w-10 shrink-0 place-items-center rounded-lg', flow.reasonIds.includes(r.id) ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary')}>
+                            {flow.reasonIds.includes(r.id) ? <Check className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
                           </span>
                           <span className="text-[15px] font-medium leading-tight">{r.name}</span>
                         </button>
                         );
                       })}
                     </div>
-                    {care && <PreventivePanel kind={care} enc={enc} adding={careAdding} onAddingChange={setCareAdding} />}
+                    {(flow.care.length > 0 || chosen.length > 0) && (
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-muted/50 px-4 py-2.5 text-sm" aria-live="polite">
+                        <span className="font-medium">
+                          {flow.care.length + chosen.length === 1 ? 'Reason' : `${flow.care.length + chosen.length} reasons`}: {[...careNames, ...chosen.map((r) => r.name)].join(' · ')}
+                        </span>
+                        <span className={cn('text-xs', preventiveOnly ? 'font-medium text-success' : 'text-muted-foreground')}>
+                          {preventiveOnly ? 'No consultation fee — only the vaccine or dewormer given is charged.' : 'The consultation fee applies.'}
+                        </span>
+                      </div>
+                    )}
+                    {flow.care.map((k) => (
+                      <PreventivePanel key={k} kind={k} enc={enc} adding={careAdding === k} onAddingChange={(o) => setCareAdding(o ? k : null)} />
+                    ))}
                     {can('settings.manage') && (
                       <Link href="/settings/templates" className="-mt-3 w-fit text-xs font-medium text-primary hover:underline">
                         Edit these templates and their questions
@@ -478,7 +521,11 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                 {/* 2 — History */}
                 {step === 1 && (
                   <>
-                    {!reason ? (
+                    {!reason && flow.care.length > 0 ? (
+                      <p className="rounded-lg border border-dashed p-4 text-[15px] text-muted-foreground">
+                        {careNames.join(' and ')} — no questions to ask. Write anything the owner tells you below.
+                      </p>
+                    ) : !reason ? (
                       <p className="rounded-lg border border-dashed p-4">
                         Choose the reason for the visit first.{' '}
                         <button type="button" className="font-medium text-primary underline" onClick={() => go(0)}>
@@ -498,8 +545,16 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                         )}
                       </p>
                     ) : (
+                      <div className="grid gap-4">
+                      {(chosen.length > 1 ? chosen : [reason]).map((group) => {
+                        // A question two templates both ask is shown once, under the first.
+                        const qs = group.questions.filter((q) => reason.questions.some((x) => x.id === q.id));
+                        if (!qs.length) return null;
+                        return (
+                      <section key={group.id} aria-label={group.name} className="grid gap-2">
+                        {chosen.length > 1 && <h3 className="text-sm font-semibold text-muted-foreground">{group.name}</h3>}
                       <div className="grid divide-y divide-border/60 rounded-xl border">
-                        {reason.questions.map((question) => (
+                        {qs.map((question) => (
                           <div key={question.id} className="grid gap-2.5 p-4 sm:grid-cols-[11rem_minmax(0,1fr)] sm:items-center">
                             <span className="text-[15px] font-medium">
                               {question.ask}
@@ -514,6 +569,10 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                             </div>
                           </div>
                         ))}
+                      </div>
+                      </section>
+                        );
+                      })}
                       </div>
                     )}
                     <Extra id="qc-owner" label="Anything else the owner said" value={flow.ownerExtra} onChange={(v) => patch({ ownerExtra: v })} placeholder="Tap Speak and say it, or type" />

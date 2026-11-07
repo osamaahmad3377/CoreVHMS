@@ -70,6 +70,7 @@ export class BillingConfigService {
       ['wellness allowance', 'wellness allowances', db.wellnessEntitlement.count({ where })],
       ['dental procedure', 'dental procedures', db.dentalProcedure.count({ where })],
       ['dental price', 'dental prices', db.dentalProcedurePrice.count({ where })],
+      ['vaccination or deworming schedule', 'vaccination or deworming schedules', db.careProtocol.count({ where })],
     ]);
     if (org.homeVisitCalloutServiceId === id || org.homeVisitPerKmServiceId === id) used.push('the home-visit fees (Settings → Home visits)');
     return used;

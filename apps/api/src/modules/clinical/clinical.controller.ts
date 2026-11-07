@@ -57,7 +57,7 @@ export class ClinicalController {
   @RequirePermissions('clinical.write')
   update(
     @Param('id', UUID) id: string,
-    @Body(zp(z.object({ chiefComplaint: z.string().max(500).nullish(), type: z.enum(ENCOUNTER_TYPES).optional(), clinicianId: z.string().uuid().nullish() }))) body: any,
+    @Body(zp(z.object({ chiefComplaint: z.string().max(500).nullish(), type: z.enum(ENCOUNTER_TYPES).optional(), clinicianId: z.string().uuid().nullish(), chargeConsultation: z.boolean().optional() }))) body: any,
   ) {
     return this.encounters.update(id, body);
   }

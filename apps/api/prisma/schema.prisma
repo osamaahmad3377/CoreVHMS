@@ -1656,6 +1656,8 @@ model Encounter {
   type           EncounterType   @default(CONSULTATION)
   status         EncounterStatus @default(OPEN)
   chiefComplaint String?
+  /// False for a vaccination / deworming-only visit: no consultation fee when it is completed (the product given is still charged).
+  chargeConsultation Boolean     @default(true)
   startedAt      DateTime        @default(now()) @db.Timestamptz(3)
   completedAt    DateTime?       @db.Timestamptz(3)
   createdById    String?         @db.Uuid
@@ -2068,6 +2070,7 @@ model Product {
   surgeryItems    SurgeryItem[]
 
   careProtocols CareProtocol[]
+  careItems     CareItem[]
 
   groupTreatments GroupTreatment[]
   fieldVisitItems FieldVisitItem[]
@@ -2981,6 +2984,7 @@ model Service {
   wellnessEntitlements WellnessEntitlement[]
   dentalProcedures     DentalProcedure[]
   dentalPrices         DentalProcedurePrice[]
+  careProtocols        CareProtocol[]
 
   @@unique([organizationId, code])
 }
@@ -3809,6 +3813,8 @@ model CareProtocol {
   kind             CareKind
   speciesId        String?            @db.Uuid
   productId        String?            @db.Uuid
+  /// Its price: a service in Settings → Services & prices, charged once when the item is recorded as done here.
+  serviceId        String?            @db.Uuid
   firstDueAgeWeeks Int?
   intervalDays     Int?
   source           String
@@ -3823,6 +3829,7 @@ model CareProtocol {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   species      Species?     @relation(fields: [speciesId], references: [id], onDelete: Restrict)
   product      Product?     @relation(fields: [productId], references: [id], onDelete: SetNull)
+  service      Service?     @relation(fields: [serviceId], references: [id], onDelete: SetNull)
   items        CareItem[]
 
   @@index([organizationId, status])
@@ -3849,6 +3856,7 @@ model CareItem {
   organizationId    String          @db.Uuid
   patientId         String          @db.Uuid
   protocolId        String?         @db.Uuid
+  productId         String?         @db.Uuid
   kind              CareKind
   title             String
   dueDate           DateTime        @db.Date
@@ -3880,6 +3888,8 @@ model CareItem {
   organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   patient      Patient       @relation(fields: [patientId], references: [id], onDelete: Restrict)
   protocol     CareProtocol? @relation(fields: [protocolId], references: [id], onDelete: SetNull)
+  /// The vaccine or dewormer chosen from stock when the patient was added; recording it starts with this product.
+  product      Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, status, dueDate])
   @@index([patientId, dueDate])

@@ -275,14 +275,23 @@ export class EncountersService {
     }
   }
 
-  async update(id: string, input: { chiefComplaint?: string | null; type?: EncounterType; clinicianId?: string | null }) {
+  async update(id: string, input: { chiefComplaint?: string | null; type?: EncounterType; clinicianId?: string | null; chargeConsultation?: boolean }) {
     const e = await this.prisma.db.encounter.findUnique({ where: { id } });
     if (!e) throw notFound('Encounter');
     if (e.status !== 'OPEN') throw ruleViolation('ENCOUNTER_CLOSED', 'This consultation is closed');
     const clinicianId = input.clinicianId !== undefined ? await this.clinicianFor(input.clinicianId) : undefined;
     return this.prisma.db.$transaction(async (tx) => {
-      const after = await tx.encounter.update({ where: { id }, data: { chiefComplaint: input.chiefComplaint, type: input.type, clinicianId } });
-      await this.audit.record({ action: 'encounter.updated', entityType: 'Encounter', entityId: id }, tx);
+      const after = await tx.encounter.update({ where: { id }, data: { chiefComplaint: input.chiefComplaint, type: input.type, clinicianId, chargeConsultation: input.chargeConsultation } });
+      const fee = input.chargeConsultation !== undefined && input.chargeConsultation !== e.chargeConsultation;
+      await this.audit.record(
+        {
+          action: 'encounter.updated',
+          entityType: 'Encounter',
+          entityId: id,
+          summary: fee ? (input.chargeConsultation ? 'Consultation fee will be charged' : 'No consultation fee — vaccination / deworming only') : undefined,
+        },
+        tx,
+      );
       return after;
     });
   }

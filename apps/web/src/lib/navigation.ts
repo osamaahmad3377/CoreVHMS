@@ -1,6 +1,7 @@
 import type { OptionalModule, Permission } from '@vcms/shared';
 import { hasFeature, type Entitlements, type PlanFeature } from '@vcms/shared';
 import {
+  Bug,
   Award,
   Activity,
   BarChart3,
@@ -94,6 +95,7 @@ export const NAV: NavSection[] = [
       { label: 'Hospital', href: '/hospital', icon: Bed, anyOf: ['hospital.read'], feature: 'hospital', ready: true, module: 'hospital' },
       { label: 'Surgery', href: '/surgery', icon: HeartPulse, anyOf: ['surgery.read'], feature: 'surgery', ready: true, module: 'surgery' },
       { label: 'Vaccines & reminders', href: '/preventive', icon: Syringe, anyOf: ['preventive.read'], ready: true },
+      { label: 'Deworming', href: '/deworming', icon: Bug, anyOf: ['preventive.read'], ready: true },
       { label: 'Certificates', href: '/certificates', icon: Award, anyOf: ['certificates.read', 'certificates.staff'], ready: true },
       { label: 'Dental', href: '/dental', icon: Smile, anyOf: ['clinical.read'], ready: true, module: 'dental' },
       { label: 'Wellness plans', href: '/wellness', icon: HeartHandshake, anyOf: ['wellness.read', 'wellness.manage'], ready: true, module: 'wellness' },

@@ -196,6 +196,7 @@ export class FormularyService {
       ['herd treatment', 'herd treatments', db.groupTreatment.count({ where })],
       ['farm visit item', 'farm visit items', db.fieldVisitItem.count({ where })],
       ['care protocol', 'care protocols', db.careProtocol.count({ where })],
+      ['vaccination or deworming entry', 'vaccination or deworming entries', db.careItem.count({ where })],
       ['wellness plan item', 'wellness plan items', db.wellnessPlanItem.count({ where })],
       ['wellness allowance', 'wellness allowances', db.wellnessEntitlement.count({ where })],
       ['charge', 'charges', db.charge.count({ where })],

@@ -18,6 +18,8 @@ export const careProtocolSchema = z
     intervalDays: optInt(1, 3650),
     source: reqText(500),
     notes: optText(1000),
+    /** Its price in minor units: kept as a service in Settings → Services & prices (null = no price of its own). */
+    priceMinor: z.number().int().min(0).max(1_000_000_000).nullish(),
   })
   .refine((p) => p.intervalDays || p.firstDueAgeWeeks != null, { path: ['intervalDays'], message: 'Give a repeat interval, a first-dose age, or both' });
 
@@ -25,6 +27,8 @@ export const careItemSchema = z
   .object({
     patientId: z.string().uuid(),
     protocolId: optUuid(),
+    /** The vaccine or dewormer chosen from stock (recording it starts with this product). */
+    productId: optUuid(),
     kind: z.enum(CARE_KINDS),
     title: reqText(160),
     dueDate: z.coerce.date(),

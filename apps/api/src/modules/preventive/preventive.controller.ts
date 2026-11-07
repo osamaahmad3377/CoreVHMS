@@ -31,6 +31,13 @@ export class PreventiveController {
     private readonly audit: AuditService,
   ) {}
 
+  /** Vaccines (from stock) or dewormers to choose from when adding a patient, with what is on hand. */
+  @Get('care-options')
+  @RequirePermissions('preventive.read')
+  careOptions(@Query(zp(z.object({ kind: z.enum(['VACCINATION', 'DEWORMING']) }))) q: { kind: 'VACCINATION' | 'DEWORMING' }) {
+    return this.care.careOptions(q.kind);
+  }
+
   @Get('care-protocols')
   @RequireAnyPermission('preventive.read', 'settings.manage')
   protocols(@Query('all') all?: string) {

@@ -51,7 +51,8 @@ export function CompleteDialog({ item, onClose, encounterId, onRecorded }: { ite
   }, [item, prescribable, can]);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
   // Prefill from the protocol's product, and dose, unit and route from the last time this animal had it.
-  const protocolProductId = item?.protocol?.productId ?? null;
+  // The product chosen from stock when the patient was added, else the schedule's own product.
+  const protocolProductId = item?.productId ?? item?.protocol?.productId ?? null;
   const protocolProduct = useQuery({ queryKey: ['product', protocolProductId], queryFn: () => api.get<Product>(`/products/${protocolProductId}`), enabled: !!item && !!protocolProductId && can('clinical.write') });
   const previous = useQuery({ queryKey: ['administrations', item?.patientId, 'care'], queryFn: () => api.get<Administration[]>(`/patients/${item!.patientId}/administrations`), enabled: !!item && !!protocolProductId && can('clinical.read') });
   useEffect(() => {
@@ -112,7 +113,7 @@ export function CompleteDialog({ item, onClose, encounterId, onRecorded }: { ite
         </div>
         {mode === 'ADMINISTER' && (
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Product" htmlFor="cc-prod" required className="sm:col-span-2" hint={protocolProductId && product?.id === protocolProductId ? 'From the protocol' : undefined}><ProductPicker id="cc-prod" value={product} onChange={(p) => { setProduct(p); setF((s) => ({ ...s, batchNumber: '', expiryDate: '', doseUnit: p ? s.doseUnit || p.dispensingUnit : s.doseUnit })); }} prescribable /></Field>
+            <Field label="Product" htmlFor="cc-prod" required className="sm:col-span-2" hint={protocolProductId && product?.id === protocolProductId ? (item.productId ? 'Chosen from stock when added' : 'From the protocol') : undefined}><ProductPicker id="cc-prod" value={product} onChange={(p) => { setProduct(p); setF((s) => ({ ...s, batchNumber: '', expiryDate: '', doseUnit: p ? s.doseUnit || p.dispensingUnit : s.doseUnit })); }} prescribable /></Field>
             <Field label="Dose" htmlFor="cc-dose" required><Input id="cc-dose" inputMode="decimal" value={f.dose} onChange={set('dose')} /></Field>
             <div className="grid grid-cols-2 gap-2">
               <Field label="Unit" htmlFor="cc-unit" required><Input id="cc-unit" value={f.doseUnit} onChange={set('doseUnit')} /></Field>

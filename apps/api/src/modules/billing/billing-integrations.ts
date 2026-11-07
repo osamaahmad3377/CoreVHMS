@@ -18,6 +18,7 @@ import { PatientTimelineService } from '../patients/patient-timeline.service';
 import { AdministrationsService } from '../pharmacy/administrations.service';
 import { PrescriptionsService } from '../pharmacy/prescriptions.service';
 import { SearchService } from '../search/search.service';
+import { CareService } from '../preventive/care.service';
 import { ChargeCaptureService, chargeAmount } from './charge-capture.service';
 import { ClientPrivacyService } from '../clients/client-privacy.service';
 
@@ -69,6 +70,7 @@ export class BillingIntegrations implements OnModuleInit {
     private readonly dashboard: DashboardService,
     private readonly timeline: PatientTimelineService,
     private readonly search: SearchService,
+    private readonly care: CareService,
   ) {}
 
   onModuleInit() {
@@ -108,6 +110,9 @@ export class BillingIntegrations implements OnModuleInit {
         if (issued.length) await tx.medicationAdministration.update({ where: { id: a.id }, data: traceability(issued) });
       }
       if (a.prescriptionItemId) return; // charged when the prescription was dispensed
+      // A dewormer (or vaccine) whose schedule has its own price: the product is included in that price.
+      const priced = await tx.careItem.findFirst({ where: { administrationId: a.id, protocol: { service: { isActive: true } } }, select: { id: true } });
+      if (priced) return;
       const owner = await tx.patientOwnership.findFirst({ where: { patientId: a.patientId, endedAt: null, isPrimary: true } });
       if (!owner || !(billed > 0)) return;
       const quantity = billed;
@@ -125,6 +130,34 @@ export class BillingIntegrations implements OnModuleInit {
         unitPriceMinor: product.sellPriceMinor ?? 0,
         taxRateBasisPoints: await this.charges.taxFor(tx, product.taxRateId),
       });
+    });
+
+    // A schedule with a price (e.g. a dewormer): charged once when recorded as done here, not when given elsewhere.
+    // The product given is included in that price, so its own charge is waived.
+    this.care.registerCompletedHook(async (tx, item, ctx) => {
+      if (item.givenElsewhere || !item.protocolId) return;
+      const p = await tx.careProtocol.findUnique({ where: { id: item.protocolId }, include: { service: true } });
+      const service = p?.service;
+      if (!service || !service.isActive) return;
+      const owner = await tx.patientOwnership.findFirst({ where: { patientId: item.patientId, endedAt: null, isPrimary: true } });
+      if (!owner) return;
+      const visit = ctx.encounterId ? await tx.encounter.findUnique({ where: { id: ctx.encounterId }, select: { branchId: true } }) : null;
+      const branchId = visit?.branchId ?? RequestContext.get()?.branchId ?? (await tx.branch.findFirstOrThrow({ orderBy: { createdAt: 'asc' }, select: { id: true } })).id;
+      await this.charges.capture(tx, {
+        sourceType: 'CareItem',
+        sourceId: item.id,
+        clientId: owner.clientId,
+        patientId: item.patientId,
+        encounterId: ctx.encounterId,
+        branchId,
+        kind: 'SERVICE',
+        serviceId: service.id,
+        description: service.name,
+        quantity: 1,
+        unitPriceMinor: service.priceMinor,
+        taxRateBasisPoints: await this.charges.taxFor(tx, service.taxRateId),
+      });
+      if (item.administrationId) await this.charges.waiveForSource(tx, 'Administration', [item.administrationId], `Included in ${service.name}`);
     });
 
     this.labOrders.registerCreatedHook(async (tx, e) => {
@@ -153,6 +186,8 @@ export class BillingIntegrations implements OnModuleInit {
 
     this.encounters.registerCompletedHook(async (tx, encounterId) => {
       const enc = await tx.encounter.findUniqueOrThrow({ where: { id: encounterId }, include: { appointment: { include: { appointmentType: { include: { service: true } } } } } });
+      // A vaccination / deworming-only visit has no consultation fee; what is given is charged on its own.
+      if (!enc.chargeConsultation) return;
       const service = enc.appointment?.appointmentType.service;
       if (!service || !service.isActive) return;
       await this.charges.capture(tx, {

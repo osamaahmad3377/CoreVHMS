@@ -42,6 +42,7 @@ test.describe('Clinical day: book → check in → consult → sign', () => {
     // Quick consult: the booking reason is kept in the owner's words; a template decides the questions.
     await expect(page.locator('#qc-reason')).toHaveValue('E2E: ear scratching');
     await page.getByRole('button', { name: 'Ear problem' }).click();
+    await step(page, 'History');
     await page.getByRole('button', { name: 'Left', exact: true }).click();
     await page.locator('#qc-owner').fill('Scratching left ear for 5 days.');
     await expect(page.getByText(/Left side\./).first()).toBeVisible(); // written from the tapped answer
@@ -103,6 +104,41 @@ test.describe('Clinical day: book → check in → consult → sign', () => {
     await expect(steps.getByRole('listitem')).toHaveCount(8);
     for (const name of ['Reason', 'History', 'Measurements', 'Examination', 'Diagnosis', 'Treatment', 'Owner advice', 'Review & sign']) await expect(steps.getByText(name, { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'More for this visit' })).toBeVisible();
+  });
+
+  test('several reasons at once: vaccination with no consultation fee, then two problems whose questions are both asked', async ({ page }) => {
+    await login(page, 'vet@demo.pk');
+    const call = (method: string, path: string, body?: unknown) =>
+      page.evaluate(
+        async ([method, path, body]) => {
+          const csrf = document.cookie.split('; ').find((c) => c.startsWith('vcms_csrf='))?.split('=')[1] ?? '';
+          const r = await fetch(`/api/v1${path}`, { method, headers: { 'content-type': 'application/json', 'x-csrf-token': csrf }, body: body ? JSON.stringify(body) : undefined });
+          return r.json();
+        },
+        [method, path, body] as [string, string, unknown],
+      );
+    const patient = (await call('GET', '/patients?q=Toto&pageSize=1')).data[0];
+    const enc = await call('POST', '/encounters', { patientId: patient.id, chiefComplaint: '' });
+    try {
+      await page.goto(`/consultations/${enc.id}`);
+      await page.getByRole('button', { name: 'Vaccination', exact: true }).click();
+      const dialog = page.getByRole('dialog');
+      if (await dialog.isVisible().catch(() => false)) await page.keyboard.press('Escape');
+      await expect(page.getByText('No consultation fee — only the vaccine or dewormer given is charged.')).toBeVisible();
+      await expect.poll(async () => (await call('GET', `/encounters/${enc.id}`)).chargeConsultation).toBe(false);
+
+      await page.getByRole('button', { name: 'Ear problem' }).click();
+      await page.getByRole('button', { name: /Vomiting/ }).first().click();
+      await expect(page.getByText(/3 reasons: Vaccination · Ear problem · Vomiting/)).toBeVisible();
+      await expect(page.getByText('The consultation fee applies.')).toBeVisible();
+      await expect.poll(async () => (await call('GET', `/encounters/${enc.id}`)).chargeConsultation).toBe(true);
+
+      await step(page, 'History');
+      await expect(page.getByRole('region', { name: 'Ear problem' })).toBeVisible();
+      await expect(page.getByRole('region', { name: /Vomiting/ })).toBeVisible();
+    } finally {
+      await call('POST', `/encounters/${enc.id}/cancel`, { reason: 'E2E cleanup' });
+    }
   });
 
   test('the examination starts all normal and the vet taps only what is abnormal', async ({ page }) => {

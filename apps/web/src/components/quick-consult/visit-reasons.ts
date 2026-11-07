@@ -54,3 +54,28 @@ export function useVisitReasons(speciesCategory?: string | null) {
     .map((t) => ({ id: t.id, name: t.name, icon: t.icon, complaint: t.presentingComplaint ?? '', examSystems: t.examSystems, questions: t.questions ?? [], diagnoses: t.diagnoses ?? [], advice: t.advice ?? [], template: t }));
   return { reasons, isLoading: q.isLoading, error: q.error };
 }
+
+/**
+ * Several reasons for one visit (e.g. vomiting and an ear problem) as one: every template's questions — a question
+ * both ask (same wording) only once — their examination buttons, suggested diagnoses and advice together.
+ */
+export function combineReasons(list: VisitReason[]): VisitReason | null {
+  if (!list.length) return null;
+  if (list.length === 1) return list[0];
+  const norm = (s: string) => s.trim().toLowerCase();
+  const unique = (xs: string[]) => xs.filter((x, i) => xs.findIndex((y) => norm(y) === norm(x)) === i);
+  const questions: TemplateQuestionRow[] = [];
+  for (const q of list.flatMap((r) => r.questions)) if (!questions.some((x) => norm(x.ask) === norm(q.ask))) questions.push(q);
+  return {
+    id: list.map((r) => r.id).join('+'),
+    name: list.map((r) => r.name).join(' + '),
+    icon: list[0].icon,
+    complaint: list.map((r) => r.complaint || r.name).join(', '),
+    // A template without its own buttons uses the standard set, so the visit does too.
+    examSystems: list.some((r) => !r.examSystems.length) ? [] : unique(list.flatMap((r) => r.examSystems)),
+    questions,
+    diagnoses: unique(list.flatMap((r) => r.diagnoses)),
+    advice: unique(list.flatMap((r) => r.advice)),
+    template: list[0].template,
+  };
+}

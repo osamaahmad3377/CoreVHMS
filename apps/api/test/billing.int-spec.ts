@@ -49,6 +49,26 @@ describe('Billing, payments & finance', () => {
     expect(await prisma().charge.count({ where: { sourceType: 'Encounter', sourceId: consult[0].sourceId } })).toBe(1);
   });
 
+  it('charges no consultation fee for a vaccination / deworming-only visit, and does again when another reason is added', async () => {
+    const s = await setup();
+    const f = await schedulingFixture(s.org);
+    await s.org.owner.patch(`/appointment-types/${f.typeId}`, { serviceId: s.service.id });
+    const visit = async (charge: boolean[]) => {
+      const a = await s.org.owner.post('/appointments', booking(s.org, f, karachi(futureDate(3 + charge.length), '11:00')));
+      await f.vet.client.post(`/appointments/${a.body.id}/status`, { action: 'start' });
+      const enc = (await s.org.owner.get(`/encounters?status=OPEN&patientId=${f.patient.id}`)).body.data[0];
+      for (const c of charge) expect((await f.vet.client.patch(`/encounters/${enc.id}`, { chargeConsultation: c })).status).toBe(200);
+      await f.vet.client.post(`/encounters/${enc.id}/complete`);
+      return (await s.org.owner.get(`/charges?encounterId=${enc.id}`)).body.data.filter((x: any) => x.sourceType === 'Encounter');
+    };
+    // Vaccination only: no fee.
+    expect(await visit([false])).toHaveLength(0);
+    // Vaccination, then the vet adds another reason (e.g. vomiting): the fee is back.
+    expect(await visit([false, true])).toHaveLength(1);
+    const audit = (await s.org.owner.get('/audit-events?action=encounter.updated')).body.data.map((x: any) => x.summary);
+    expect(audit).toEqual(expect.arrayContaining(['No consultation fee — vaccination / deworming only', 'Consultation fee will be charged']));
+  });
+
   it('builds invoices from charges, numbers them only when issued, and freezes issued invoices', async () => {
     const s = await setup({ tax: 1000 });
     const product = await s.org.owner.post('/products', { name: 'Tabs', strengthValue: 1, strengthUnit: 'mg', dispensingUnit: 'tablet', minDispenseIncrement: 1, sellPriceMinor: 1000 });

@@ -23,20 +23,20 @@ const KINDS: Record<PreventiveKind, { label: string; icon: typeof Syringe; recor
 const tile = 'flex items-center gap-3 rounded-xl border p-3.5 text-left transition-all active:scale-[0.98]';
 
 /**
- * Vaccination and deworming, always first among the reasons for the visit. They belong to preventive care, not to
- * a consultation template: tapping one shows the animal's open vaccinations (or dewormings) to record as given in
- * this visit — or, when there is none, asks to add the animal for one first.
+ * Vaccination and deworming, always first among the reasons for the visit (with any others: tap to add, tap again
+ * to remove). They belong to preventive care, not to a consultation template: choosing one shows the animal's open
+ * vaccinations (or dewormings) to record as given in this visit — or, when there is none, asks to add one first.
  */
-export function PreventiveTiles({ selected, onSelect }: { selected: PreventiveKind | null; onSelect: (k: PreventiveKind) => void }) {
+export function PreventiveTiles({ selected, onSelect }: { selected: PreventiveKind[]; onSelect: (k: PreventiveKind) => void }) {
   return (
     <>
       {(Object.keys(KINDS) as PreventiveKind[]).map((k) => {
         const { label, icon: Icon } = KINDS[k];
-        const on = selected === k;
+        const on = selected.includes(k);
         return (
           <button key={k} type="button" onClick={() => onSelect(k)} aria-pressed={on} className={cn(tile, on ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-border bg-background hover:border-primary/50 hover:bg-primary/5')}>
             <span className={cn('grid h-10 w-10 shrink-0 place-items-center rounded-lg', on ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary')}>
-              <Icon className="h-5 w-5" />
+              {on ? <CheckCircle2 className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
             </span>
             <span className="text-[15px] font-medium leading-tight">{label}</span>
           </button>

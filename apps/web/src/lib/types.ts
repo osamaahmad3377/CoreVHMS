@@ -473,6 +473,8 @@ export interface Encounter {
   type: string;
   status: string;
   chiefComplaint: string | null;
+  /** False for a vaccination / deworming-only visit: no consultation fee. */
+  chargeConsultation?: boolean;
   startedAt: string;
   completedAt: string | null;
   patientId: string;
@@ -1325,6 +1327,8 @@ export interface CareProtocol {
   productId: string | null;
   species: { id: string; name: string } | null;
   product: { id: string; name: string } | null;
+  /** Its price, kept as a service in Settings → Services & prices. */
+  service?: { id: string; code: string; name: string; priceMinor: number; isActive: boolean } | null;
   firstDueAgeWeeks: number | null;
   intervalDays: number | null;
   source: string;
@@ -1340,6 +1344,8 @@ export interface CareItem {
   patientId: string;
   protocolId: string | null;
   protocol?: { id: string; name: string; intervalDays: number | null; productId: string | null } | null;
+  /** The vaccine or dewormer chosen from stock when the patient was added. */
+  productId?: string | null;
   kind: string;
   title: string;
   dueDate: string;
