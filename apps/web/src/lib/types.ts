@@ -222,7 +222,10 @@ export interface AppointmentType {
   isActive: boolean;
   /** The clinic's own category (its kind is `category`). */
   categoryId?: string | null;
-  categoryRef?: { id: string; name: string; kind: string; isActive: boolean } | null;
+  categoryRef?: { id: string; name: string; kind: string; isActive: boolean; sortOrder?: number } | null;
+  /** The consultation template: the questions, examination, diagnoses and advice for this type of visit. */
+  templateId?: string | null;
+  template?: { id: string; name: string; icon: string; speciesCategory: string | null; isActive: boolean; _count?: { questions: number } } | null;
 }
 
 export interface AppointmentTypeCategory {
@@ -480,7 +483,7 @@ export interface Encounter {
   patientId: string;
   appointmentId: string | null;
   clinician: { id: string; name: string } | null;
-  appointment: { id: string; number: number; status: string; reason: string | null; location?: 'CLINIC' | 'HOME'; visitAddress?: string | null; appointmentType: { name: string } } | null;
+  appointment: { id: string; number: number; status: string; reason: string | null; location?: 'CLINIC' | 'HOME'; visitAddress?: string | null; appointmentType: { id?: string; name: string; categoryId?: string | null } } | null;
   patient: import('@/components/patients/patient-banner').BannerPatient & { species: { id: string; name: string; category: string } };
   client: { id: string; displayName: string; mobilePhone: string | null };
   notes: ClinicalNote[];

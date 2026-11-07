@@ -127,15 +127,75 @@ test.describe('Clinical day: book → check in → consult → sign', () => {
       await expect(page.getByText('No consultation fee — only the vaccination is charged.')).toBeVisible();
       await expect.poll(async () => (await call('GET', `/encounters/${enc.id}`)).chargeConsultation).toBe(false);
 
+      await page.getByRole('group', { name: 'Category' }).getByRole('button', { name: 'Consultation', exact: true }).click();
       await page.getByRole('button', { name: 'Ear problem' }).click();
       await page.getByRole('button', { name: /Vomiting/ }).first().click();
-      await expect(page.getByText(/3 reasons: Vaccination · Ear problem · Vomiting/)).toBeVisible();
+      await expect(page.getByRole('list', { name: 'Selected reasons' }).getByRole('listitem')).toHaveText(['Vaccination', 'Ear problem', /Vomiting/]);
       await expect(page.getByText('The consultation fee applies.')).toBeVisible();
       await expect.poll(async () => (await call('GET', `/encounters/${enc.id}`)).chargeConsultation).toBe(true);
 
       await step(page, 'History');
       await expect(page.getByRole('region', { name: 'Ear problem' })).toBeVisible();
       await expect(page.getByRole('region', { name: /Vomiting/ })).toBeVisible();
+    } finally {
+      await call('POST', `/encounters/${enc.id}/cancel`, { reason: 'E2E cleanup' });
+    }
+  });
+
+  test('step 1: choose the category, then the appointment type with its questions', async ({ page }) => {
+    await login(page, 'vet@demo.pk');
+    const call = (method: string, path: string, body?: unknown) =>
+      page.evaluate(
+        async ([method, path, body]) => {
+          const csrf = document.cookie.split('; ').find((c) => c.startsWith('vcms_csrf='))?.split('=')[1] ?? '';
+          const r = await fetch(`/api/v1${path}`, { method, headers: { 'content-type': 'application/json', 'x-csrf-token': csrf }, body: body ? JSON.stringify(body) : undefined });
+          return r.json();
+        },
+        [method, path, body] as [string, string, unknown],
+      );
+    const types = (await call('GET', '/appointment-types')) as { name: string; categoryRef: { name: string; kind: string } | null; template: unknown }[];
+    const followUp = types.find((t) => t.categoryRef?.kind === 'FOLLOW_UP');
+    test.skip(!followUp, 'No follow-up appointment type in this clinic');
+    const patient = (await call('GET', '/patients?q=Toto&pageSize=1')).data[0];
+    const enc = await call('POST', '/encounters', { patientId: patient.id, chiefComplaint: '' });
+    try {
+      await page.goto(`/consultations/${enc.id}`);
+      const categories = page.getByRole('group', { name: 'Category' });
+      for (const name of ['Consultation', 'Vaccination', 'Grooming']) await expect(categories.getByRole('button', { name, exact: true })).toBeVisible();
+      // Nothing is open until a category is chosen; tapping it again deselects it.
+      await expect(page.getByText('Choose a category above, or search for an appointment type.')).toBeVisible();
+      const consultation = categories.getByRole('button', { name: /^Consultation(\s*\d+)?$/ });
+      await consultation.click();
+      await expect(page.getByRole('heading', { name: 'Appointment type · Consultation' })).toBeVisible();
+      await consultation.click();
+      await expect(page.getByText('Choose a category above, or search for an appointment type.')).toBeVisible();
+      await expect(consultation).toHaveAttribute('aria-pressed', 'false');
+      await consultation.click();
+      const typeTiles = page.getByRole('group', { name: 'Appointment types' });
+      await expect(typeTiles.getByRole('button', { name: 'Ear problem' })).toBeVisible();
+      await typeTiles.getByRole('button', { name: 'Ear problem' }).click();
+      await expect(categories.getByRole('button', { name: /^Consultation\s*1$/ })).toBeVisible();
+      // Another category: its own types; what was chosen stays chosen.
+      await categories.getByRole('button', { name: followUp!.categoryRef!.name, exact: true }).click();
+      await expect(page.getByRole('heading', { name: `Appointment type · ${followUp!.categoryRef!.name}` })).toBeVisible();
+      await expect(typeTiles.getByRole('button', { name: 'Ear problem' })).toHaveCount(0);
+      await typeTiles.getByRole('button', { name: followUp!.name, exact: true }).click();
+      await expect(page.getByRole('list', { name: 'Selected reasons' }).getByRole('listitem')).toHaveText(['Ear problem', followUp!.name]);
+      // The search finds an appointment type in any category.
+      const search = page.getByRole('searchbox', { name: 'Search appointment types' });
+      await search.fill('ear');
+      await expect(typeTiles.getByRole('button', { name: 'Ear problem' })).toHaveAttribute('aria-pressed', 'true');
+      await search.fill('zzz-nothing');
+      await expect(page.getByText('No appointment type matches “zzz-nothing”.')).toBeVisible();
+      await search.fill('');
+      await step(page, 'History');
+      await expect(page.getByRole('region', { name: 'Ear problem' })).toBeVisible();
+      // Deselecting Consultation takes its appointment type off.
+      await step(page, 'Reason');
+      await consultation.click();
+      await expect(page.getByRole('heading', { name: 'Appointment type · Consultation' })).toBeVisible();
+      await consultation.click();
+      await expect(page.getByRole('list', { name: 'Selected reasons' }).getByRole('listitem')).toHaveText([followUp!.name]);
     } finally {
       await call('POST', `/encounters/${enc.id}/cancel`, { reason: 'E2E cleanup' });
     }
@@ -167,7 +227,7 @@ test.describe('Clinical day: book → check in → consult → sign', () => {
       await expect.poll(async () => (await call('GET', `/charges?encounterId=${enc.id}`)).data.map((c: { description: string }) => c.description)).toEqual([svc!.name]);
       // Tap again: off the bill.
       await panel.getByRole('button', { name: new RegExp(`^${svc!.name}`) }).click();
-      await expect(panel.getByText('Tap each service done.', { exact: false })).toBeVisible();
+      await expect(panel.getByText(/Added to the bill/)).toHaveCount(0);
     } finally {
       await call('POST', `/encounters/${enc.id}/cancel`, { reason: 'E2E cleanup' });
     }

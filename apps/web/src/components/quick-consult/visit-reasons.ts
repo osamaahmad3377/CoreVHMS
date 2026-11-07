@@ -1,12 +1,15 @@
 'use client';
 import { answersToText, type TemplateIcon, type TemplateQuestionRow } from '@vcms/shared';
-import { Baby, Bandage, BatteryLow, Beef, Bone, Brain, Droplets, Ear, Eye, FileText, HeartPulse, PawPrint, PenLine, RotateCcw, Scissors, Smile, Soup, Stethoscope, Thermometer, Wind, type LucideIcon } from 'lucide-react';
-import { useTemplates } from '@/hooks/use-catalog';
+import { Ambulance, Baby, Bandage, BatteryLow, Beef, Bone, Brain, Bug, Droplets, Ear, Eye, FileText, FlaskConical, HeartPulse, PawPrint, PenLine, RotateCcw, Scissors, Smile, Soup, Stethoscope, Syringe, Thermometer, Truck, Wind, type LucideIcon } from 'lucide-react';
+import { useAppointmentTypes, useTemplates } from '@/hooks/use-catalog';
 import type { ClinicalTemplateRow } from '@/lib/types';
 
+/** Vaccination, deworming and grooming: chosen by their category alone (no questions; their own panel instead). */
+export type CareKind = 'VACCINATION' | 'DEWORMING' | 'GROOMING';
+
 /**
- * A reason for the visit in the guided consultation = one of the clinic's consultation templates
- * (Settings → Consultation templates), with its questions for the owner, exam focus, diagnoses and advice.
+ * A reason for the visit in the guided consultation = one of the clinic's appointment types (Settings → Appointment
+ * types), with its consultation questions for the owner, exam focus, diagnoses and advice when it has them.
  */
 export interface VisitReason {
   id: string;
@@ -18,8 +21,42 @@ export interface VisitReason {
   questions: TemplateQuestionRow[];
   diagnoses: string[];
   advice: string[];
-  template: ClinicalTemplateRow;
+  template: ClinicalTemplateRow | null;
+  /** The category it is chosen under in step 1. */
+  categoryId: string;
 }
+
+/** A category in step 1: tap to see its appointment types — or, for vaccination / deworming / grooming, to choose it. */
+export interface VisitCategory {
+  id: string;
+  name: string;
+  kind: string;
+  care: CareKind | null;
+}
+
+/** Which care panel a category opens: by what it works like, and by name for deworming (it works like vaccination). */
+export function careOf(c: { name: string; kind: string }): CareKind | null {
+  if (c.kind === 'GROOMING') return 'GROOMING';
+  if (/deworm/i.test(c.name)) return 'DEWORMING';
+  if (c.kind === 'VACCINATION') return 'VACCINATION';
+  return null;
+}
+
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  CONSULTATION: Stethoscope,
+  VACCINATION: Syringe,
+  DEWORMING: Bug,
+  GROOMING: Scissors,
+  FOLLOW_UP: RotateCcw,
+  SURGERY: HeartPulse,
+  DENTAL: Smile,
+  DIAGNOSTICS: FlaskConical,
+  EMERGENCY: Ambulance,
+  FIELD_VISIT: Truck,
+};
+export const categoryIcon = (c: VisitCategory): LucideIcon => CATEGORY_ICONS[c.care ?? c.kind] ?? FileText;
+
+const CARE_NAMES: Record<CareKind, string> = { VACCINATION: 'Vaccination', DEWORMING: 'Deworming', GROOMING: 'Grooming' };
 export { answersToText };
 
 export const TEMPLATE_ICON_COMPONENTS: Record<TemplateIcon, LucideIcon> = {
@@ -46,13 +83,56 @@ export const TEMPLATE_ICON_COMPONENTS: Record<TemplateIcon, LucideIcon> = {
 };
 export const reasonIcon = (icon: string): LucideIcon => TEMPLATE_ICON_COMPONENTS[icon as TemplateIcon] ?? FileText;
 
-/** The clinic's active templates for this kind of animal, as reasons for the visit. */
+const fromTemplate = (t: ClinicalTemplateRow | null) => ({
+  icon: t?.icon ?? 'file',
+  complaint: t?.presentingComplaint ?? '',
+  examSystems: t?.examSystems ?? [],
+  questions: t?.questions ?? [],
+  diagnoses: t?.diagnoses ?? [],
+  advice: t?.advice ?? [],
+  template: t,
+});
+
+/**
+ * The clinic's categories and active appointment types for this kind of animal, as reasons for the visit. A
+ * template not (yet) used by any type is offered under Consultation, so no questions are lost.
+ */
 export function useVisitReasons(speciesCategory?: string | null) {
-  const q = useTemplates();
-  const reasons: VisitReason[] = (q.data ?? [])
-    .filter((t) => t.isActive && (!t.speciesCategory || !speciesCategory || t.speciesCategory === speciesCategory))
-    .map((t) => ({ id: t.id, name: t.name, icon: t.icon, complaint: t.presentingComplaint ?? '', examSystems: t.examSystems, questions: t.questions ?? [], diagnoses: t.diagnoses ?? [], advice: t.advice ?? [], template: t }));
-  return { reasons, isLoading: q.isLoading, error: q.error };
+  const types = useAppointmentTypes();
+  const templates = useTemplates();
+  const byId = new Map((templates.data ?? []).map((t) => [t.id, t]));
+  const forAnimal = (t: ClinicalTemplateRow | null | undefined) => !t?.speciesCategory || !speciesCategory || t.speciesCategory === speciesCategory;
+
+  // Categories in the clinic's order (the types come sorted by category).
+  const all: VisitCategory[] = [];
+  for (const t of types.data ?? []) {
+    const c = t.categoryRef && t.categoryRef.isActive ? t.categoryRef : { id: `kind:${t.category}`, name: CARE_NAMES[t.category as CareKind] ?? t.category.charAt(0) + t.category.slice(1).toLowerCase().replace('_', ' '), kind: t.category };
+    if (!all.some((x) => x.id === c.id)) all.push({ id: c.id, name: c.name, kind: c.kind, care: careOf(c) });
+  }
+  const consultation = all.find((c) => !c.care && c.kind === 'CONSULTATION') ?? { id: 'kind:CONSULTATION', name: 'Consultation', kind: 'CONSULTATION', care: null };
+
+  const reasons: VisitReason[] = [];
+  for (const t of types.data ?? []) {
+    const tpl = t.templateId ? (byId.get(t.templateId) ?? null) : null;
+    if (!forAnimal(tpl)) continue;
+    const categoryId = t.categoryRef && t.categoryRef.isActive ? t.categoryRef.id : `kind:${t.category}`;
+    reasons.push({ id: t.id, name: t.name, categoryId, ...fromTemplate(tpl) });
+  }
+  const used = new Set((types.data ?? []).map((t) => t.templateId).filter(Boolean));
+  for (const tpl of templates.data ?? []) {
+    if (tpl.isActive && !used.has(tpl.id) && forAnimal(tpl)) reasons.push({ id: tpl.id, name: tpl.name, categoryId: consultation.id, ...fromTemplate(tpl) });
+  }
+
+  // Vaccination, deworming and grooming are always there (one tile each); other categories when they have a type.
+  const categories: VisitCategory[] = [];
+  for (const c of [...all, ...(all.includes(consultation) ? [] : [consultation])]) {
+    if (c.care ? categories.some((x) => x.care === c.care) : !reasons.some((r) => r.categoryId === c.id)) continue;
+    categories.push(c);
+  }
+  for (const k of ['VACCINATION', 'DEWORMING', 'GROOMING'] as CareKind[]) {
+    if (!categories.some((c) => c.care === k)) categories.push({ id: `care:${k}`, name: CARE_NAMES[k], kind: k, care: k });
+  }
+  return { reasons, categories, isLoading: types.isLoading || templates.isLoading, error: types.error ?? templates.error };
 }
 
 /**
@@ -77,5 +157,6 @@ export function combineReasons(list: VisitReason[]): VisitReason | null {
     diagnoses: unique(list.flatMap((r) => r.diagnoses)),
     advice: unique(list.flatMap((r) => r.advice)),
     template: list[0].template,
+    categoryId: list[0].categoryId,
   };
 }

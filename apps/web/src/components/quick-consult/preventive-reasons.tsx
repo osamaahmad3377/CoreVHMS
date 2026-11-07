@@ -24,32 +24,12 @@ export const KINDS: Record<PreventiveKind, { label: string; icon: typeof Syringe
   GROOMING: { label: 'Grooming', icon: Scissors, record: '' },
 };
 
-const tile = 'flex items-center gap-3 rounded-xl border p-3.5 text-left transition-all active:scale-[0.98]';
-
 /**
- * Vaccination, deworming and grooming, always first among the reasons for the visit (with any others: tap to add,
- * tap again to remove). They are not consultation templates: vaccination or deworming shows the animal's open
- * vaccinations (or dewormings) to record as given in this visit — or, when there is none, asks to add one first;
- * grooming shows the clinic's grooming services from Services & prices to tick off.
+ * Vaccination, deworming and grooming are categories in step 1 (tap to add, tap again to remove). They are not
+ * consultation questions: vaccination or deworming shows the animal's open vaccinations (or dewormings) to record as
+ * given in this visit — or, when there is none, asks to add one first; grooming shows the clinic's grooming services
+ * from Services & prices to tick off.
  */
-export function PreventiveTiles({ selected, onSelect }: { selected: PreventiveKind[]; onSelect: (k: PreventiveKind) => void }) {
-  return (
-    <>
-      {(Object.keys(KINDS) as PreventiveKind[]).map((k) => {
-        const { label, icon: Icon } = KINDS[k];
-        const on = selected.includes(k);
-        return (
-          <button key={k} type="button" onClick={() => onSelect(k)} aria-pressed={on} className={cn(tile, on ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-border bg-background hover:border-primary/50 hover:bg-primary/5')}>
-            <span className={cn('grid h-10 w-10 shrink-0 place-items-center rounded-lg', on ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary')}>
-              {on ? <CheckCircle2 className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
-            </span>
-            <span className="text-[15px] font-medium leading-tight">{label}</span>
-          </button>
-        );
-      })}
-    </>
-  );
-}
 
 /** What is due for the chosen kind, with “Record vaccination” for each; “Add … for vaccination” when nothing is. */
 export function PreventivePanel(props: { kind: PreventiveKind; enc: Encounter; adding: boolean; onAddingChange: (o: boolean) => void }) {
@@ -186,16 +166,12 @@ function GroomingPanel({ enc }: { enc: Encounter }) {
               );
             })}
           </div>
-          <p className={cn('text-sm', added.length ? 'font-medium text-success' : 'text-muted-foreground')}>
-            {added.length ? (
-              <>
-                <CheckCircle2 className="mr-1.5 inline h-4 w-4 align-[-3px]" />
-                Added to the bill: {added.map((a) => a.description).join(', ')} · {fmtMoney(total, currency)}
-              </>
-            ) : (
-              'Tap each service done. It is added to the bill straight away.'
-            )}
-          </p>
+          {added.length > 0 && (
+            <p className="text-sm font-medium text-success">
+              <CheckCircle2 className="mr-1.5 inline h-4 w-4 align-[-3px]" />
+              Added to the bill: {added.map((a) => a.description).join(', ')} · {fmtMoney(total, currency)}
+            </p>
+          )}
           {can('settings.manage') && (
             <Link href="/settings/services" className="w-fit text-xs font-medium text-primary hover:underline">
               Change grooming services and prices

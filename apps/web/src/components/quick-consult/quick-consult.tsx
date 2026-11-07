@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ArrowRight, Ban, CalendarCheck, CalendarPlus, Check, CheckCircle2, CloudOff, FileText, FlaskConical, Loader2, Pencil, Pill, Printer, Stethoscope, Syringe, Timer, UserRound } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Ban, CalendarCheck, CalendarPlus, Check, CheckCircle2, CloudOff, FileText, FlaskConical, Loader2, Pencil, Pill, Printer, Stethoscope, Syringe, Timer, UserRound, X } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -15,8 +15,9 @@ import { usePatientContext } from './use-patient-context';
 import { useQuickNote } from './use-quick-note';
 import { VisitMore } from './visit-more';
 import { ClinicalRecordView, OwnerSummary, type VisitDoc } from './visit-documents';
-import { KINDS, PreventivePanel, PreventiveTiles, fetchGrooming, groomingKey, type PreventiveKind } from './preventive-reasons';
-import { answersToText, combineReasons, reasonIcon, useVisitReasons, type VisitReason } from './visit-reasons';
+import { KINDS, PreventivePanel, fetchGrooming, groomingKey, type PreventiveKind } from './preventive-reasons';
+import { ReasonPicker } from './reason-picker';
+import { answersToText, combineReasons, useVisitReasons, type CareKind, type VisitReason } from './visit-reasons';
 import type { ClinicHeader } from '../billing/invoice-document';
 import { vitalsText } from '../clinical/note-editor';
 import { HistoryFromRecords } from '../clinical/history-from-records';
@@ -38,7 +39,7 @@ import { cn } from '@/lib/utils';
 /* ───────────────────────── The visit, in the order the vet runs it ───────────────────────── */
 
 const STEPS = [
-  { short: 'Reason', title: (n: string) => `Why is ${n} here today?`, hint: 'Choose every reason that applies — tap again to remove one. The questions follow from what you choose.' },
+  { short: 'Reason', title: (n: string) => `Why is ${n} here today?`, hint: '' },
   { short: 'History', title: (n: string) => `Ask the owner about ${n}`, hint: 'Ask each question and tap the answer. The history is written for you.' },
   { short: 'Measurements', title: (n: string) => `Measure ${n}`, hint: 'Enter what you measured and press Enter. Leave out what you didn’t.' },
   { short: 'Examination', title: (n: string) => `Examine ${n}`, hint: 'One tap if everything is normal. Then tap only what isn’t.' },
@@ -60,8 +61,10 @@ const SURE: Record<string, string> = { CONFIRMED: 'sure', PROVISIONAL: 'likely',
 /** What the vet has chosen so far. Kept on this computer per visit, so a refresh or an interruption loses nothing. */
 interface Flow {
   step: number;
-  /** The chosen consultation templates, in the order they were tapped (several reasons in one visit). */
+  /** The chosen appointment types, in the order they were tapped (several reasons in one visit). */
   reasonIds: string[];
+  /** The category whose appointment types are shown in step 1. */
+  category?: string;
   /** Vaccination, deworming and/or grooming chosen as reasons. */
   care: PreventiveKind[];
   reasonText: string;
@@ -208,7 +211,8 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
   const patch = (p: Partial<Flow>) => setFlow((f) => ({ ...f, ...p }));
   useEffect(() => saveFlow(enc.id, flow), [enc.id, flow]);
   const visitReasons = useVisitReasons(enc.patient.species.category);
-  const chosen = flow.reasonIds.map((id) => visitReasons.reasons.find((r) => r.id === id)).filter((r): r is VisitReason => !!r);
+  // (A visit begun before types and templates were one kept template ids.)
+  const chosen = flow.reasonIds.map((id) => visitReasons.reasons.find((r) => r.id === id) ?? visitReasons.reasons.find((r) => r.template?.id === id)).filter((r): r is VisitReason => !!r);
   // All chosen templates as one: their questions, exam buttons, diagnoses and advice together.
   const reason = useMemo(() => combineReasons(chosen), [chosen.map((r) => r.id).join()]); // eslint-disable-line react-hooks/exhaustive-deps
   const careNames = flow.care.map((k) => KINDS[k].label);
@@ -289,7 +293,8 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
     if (flow.reasonIds.includes(r.id)) {
       const rest = flow.reasonIds.filter((x) => x !== r.id);
       patch({ reasonIds: rest });
-      qn.update({ templateId: rest[0] ?? null });
+      const next = chosen.find((c) => c.id !== r.id && c.template);
+      qn.update({ templateId: next?.template?.id ?? null });
       return;
     }
     // The template's own note text fills only boxes that are still empty; the owner's words are kept.
@@ -297,14 +302,50 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
     setFlow((f) => ({
       ...f,
       reasonIds: [...f.reasonIds, r.id],
-      ownerExtra: f.ownerExtra || t.subjective || '',
-      examExtra: f.examExtra || t.objective || '',
-      assessExtra: f.assessExtra || t.assessment || '',
-      planExtra: f.planExtra || t.plan || '',
+      ownerExtra: f.ownerExtra || t?.subjective || '',
+      examExtra: f.examExtra || t?.objective || '',
+      assessExtra: f.assessExtra || t?.assessment || '',
+      planExtra: f.planExtra || t?.plan || '',
     }));
-    if (t.assessment) setShowReasoning(true);
-    if (!flow.reasonIds.length) qn.update({ templateId: t.id });
+    if (t?.assessment) setShowReasoning(true);
+    if (t && !chosen.some((c) => c.template)) qn.update({ templateId: t.id });
   };
+
+  // Step 1: the category, then its appointment types. Nothing is open until a category is tapped
+  // (or a booked/chosen type's category); '' means the vet closed it.
+  const bookedType = enc.appointment?.appointmentType;
+  const openCategory =
+    flow.category === ''
+      ? undefined
+      : visitReasons.categories.find((c) => c.id === flow.category && !c.care) ??
+        visitReasons.categories.find((c) => !c.care && chosen.some((r) => r.categoryId === c.id)) ??
+        visitReasons.categories.find((c) => !c.care && c.id === bookedType?.categoryId);
+  // Tapping the open category again deselects it: it closes and its appointment types come off.
+  const tapCategory = (id: string) => {
+    if (openCategory?.id !== id) return patch({ category: id });
+    const rest = chosen.filter((r) => r.categoryId !== id);
+    patch({ category: '', reasonIds: rest.map((r) => r.id) });
+    if (rest.length !== chosen.length) qn.update({ templateId: rest.find((r) => r.template)?.template?.id ?? null });
+  };
+  // A visit from a booking starts with the booked appointment type chosen (once, before anything else is chosen).
+  const preselected = useRef(false);
+  useEffect(() => {
+    if (preselected.current || visitReasons.isLoading || enc.status !== 'OPEN') return;
+    preselected.current = true;
+    if (flow.reasonIds.length || flow.care.length || !bookedType?.id) return;
+    const r = visitReasons.reasons.find((x) => x.id === bookedType.id);
+    const care = visitReasons.categories.find((c) => c.id === (r?.categoryId ?? bookedType.categoryId))?.care;
+    if (care) patch({ care: [care] });
+    else if (r) pickReason(r);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visitReasons.isLoading]);
+  // On a narrow screen the steps scroll sideways: keep the current one in view.
+  const stepsRef = useRef<HTMLOListElement>(null);
+  useEffect(() => {
+    const ol = stepsRef.current;
+    const li = ol?.children[step] as HTMLElement | undefined;
+    if (ol && li && ol.scrollWidth > ol.clientWidth) ol.scrollTo({ left: li.offsetLeft - (ol.clientWidth - li.clientWidth) / 2, behavior: 'smooth' });
+  }, [step]);
   const answer = (qid: string, label: string, multi?: boolean) =>
     setFlow((f) => {
       const cur = f.answers[qid] ?? [];
@@ -431,17 +472,17 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
         <PatientBanner patient={enc.patient} className="mb-3" />
         <WithdrawalBanner patientId={enc.patient.id} />
 
-        <div className="grid gap-5 lg:grid-cols-[13rem_minmax(0,1fr)] xl:grid-cols-[13rem_minmax(0,1fr)_19rem]">
-          {/* Steps: where we are, what is done; any step can be reopened. */}
-          <nav aria-label="Consultation steps" className="lg:sticky lg:top-20 lg:self-start">
-            <ol className="flex gap-1 overflow-x-auto pb-1 lg:grid lg:overflow-visible lg:pb-0">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-5 xl:grid-cols-[minmax(0,1fr)_19rem]">
+          {/* Steps, across the top: where we are, what is done; any step can be reopened. */}
+          <nav aria-label="Consultation steps" className="min-w-0 rounded-xl border border-border/70 bg-background/80 p-1.5 shadow-sm xl:col-span-2">
+            <ol ref={stepsRef} className="relative flex items-center gap-1 overflow-x-auto [scrollbar-width:none] lg:justify-between 2xl:justify-start">
               {STEPS.map((s, i) => (
-                <li key={s.short} className="shrink-0">
+                <li key={s.short} className="flex items-center gap-1 2xl:flex-1 2xl:last:flex-none">
                   <button
                     type="button"
                     onClick={() => go(i)}
                     aria-current={i === step ? 'step' : undefined}
-                    className={cn('flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors', i === step ? 'bg-primary/10 font-semibold text-primary' : 'text-foreground/80 hover:bg-muted')}
+                    className={cn('flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm transition-colors', i === step ? 'bg-primary/10 font-semibold text-primary' : 'text-foreground/80 hover:bg-muted')}
                   >
                     <span
                       className={cn(
@@ -453,6 +494,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                     </span>
                     <span className="whitespace-nowrap">{s.short}</span>
                   </button>
+                  {i < STEPS.length - 1 && <span aria-hidden className={cn('hidden h-px min-w-3 flex-1 2xl:block', stepDone[i] ? 'bg-success/50' : 'bg-border')} />}
                 </li>
               ))}
             </ol>
@@ -460,47 +502,43 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
 
           <main className="min-w-0">
             <div className="rounded-2xl surface-flat p-5 shadow-card sm:p-6">
-              <header className="mb-5 border-b border-border/60 pb-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-primary">
-                  Step {step + 1} of {STEPS.length}
-                </p>
-                <h1 className="mt-1 text-2xl font-semibold tracking-tight">{STEPS[step].title(name)}</h1>
-                <p className="mt-1 text-[15px] text-muted-foreground">{STEPS[step].hint}</p>
+              <header className="mb-5">
+                <h1 className="text-xl font-semibold tracking-tight">{STEPS[step].title(name)}</h1>
+                {STEPS[step].hint && <p className="mt-1 text-sm text-muted-foreground">{STEPS[step].hint}</p>}
               </header>
 
-              <div className="grid gap-6">
+              <div className={cn('grid', step === 0 ? 'gap-5' : 'gap-6')}>
                 {/* 1 — Reason */}
                 {step === 0 && (
                   <>
                     {visitReasons.isLoading && <LoadingRows rows={3} />}
-                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 2xl:grid-cols-4">
-                      <PreventiveTiles selected={flow.care} onSelect={(k) => void toggleCare(k)} />
-                      {visitReasons.reasons.map((r) => {
-                        const Icon = reasonIcon(r.icon);
-                        return (
-                        <button
-                          key={r.id}
-                          type="button"
-                          onClick={() => pickReason(r)}
-                          aria-pressed={flow.reasonIds.includes(r.id)}
-                          className={cn(
-                            'flex items-center gap-3 rounded-xl border p-3.5 text-left transition-all active:scale-[0.98]',
-                            flow.reasonIds.includes(r.id) ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-border bg-background hover:border-primary/50 hover:bg-primary/5',
-                          )}
-                        >
-                          <span className={cn('grid h-10 w-10 shrink-0 place-items-center rounded-lg', flow.reasonIds.includes(r.id) ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary')}>
-                            {flow.reasonIds.includes(r.id) ? <Check className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
-                          </span>
-                          <span className="text-[15px] font-medium leading-tight">{r.name}</span>
-                        </button>
-                        );
-                      })}
-                    </div>
+                    <ReasonPicker
+                      categories={visitReasons.categories}
+                      reasons={visitReasons.reasons}
+                      chosenIds={flow.reasonIds}
+                      care={flow.care.filter((k): k is CareKind => k === 'VACCINATION' || k === 'DEWORMING' || k === 'GROOMING')}
+                      openCategoryId={openCategory?.id}
+                      onTapCategory={tapCategory}
+                      onToggleCare={(k) => void toggleCare(k)}
+                      onPickReason={pickReason}
+                      editHref={can('settings.manage') ? '/settings/appointment-types' : undefined}
+                    />
                     {(flow.care.length > 0 || chosen.length > 0) && (
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-muted/50 px-4 py-2.5 text-sm" aria-live="polite">
-                        <span className="font-medium">
-                          {flow.care.length + chosen.length === 1 ? 'Reason' : `${flow.care.length + chosen.length} reasons`}: {[...careNames, ...chosen.map((r) => r.name)].join(' · ')}
-                        </span>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg bg-muted/40 px-3 py-2" aria-live="polite">
+                        <h2 className="text-sm font-medium text-muted-foreground">Selected</h2>
+                        <ul className="flex flex-1 flex-wrap gap-1.5" aria-label="Selected reasons">
+                          {[
+                            ...flow.care.map((k, i) => ({ key: k, name: careNames[i], remove: () => void toggleCare(k) })),
+                            ...chosen.map((r) => ({ key: r.id, name: r.name, remove: () => pickReason(r) })),
+                          ].map((x) => (
+                            <li key={x.key} className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-background pl-2.5 pr-1 text-sm font-medium">
+                              {x.name}
+                              <button type="button" aria-label={`Remove ${x.name}`} onClick={x.remove} className="grid h-5 w-5 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground">
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
                         <span className={cn('text-xs', preventiveOnly ? 'font-medium text-success' : 'text-muted-foreground')}>
                           {preventiveOnly ? `No consultation fee — only the ${listOf(careNames.map((n) => n.toLowerCase()))} is charged.` : 'The consultation fee applies.'}
                         </span>
@@ -509,17 +547,12 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                     {flow.care.map((k) => (
                       <PreventivePanel key={k} kind={k} enc={enc} adding={careAdding === k} onAddingChange={(o) => setCareAdding(o ? k : null)} />
                     ))}
-                    {can('settings.manage') && (
-                      <Link href="/settings/templates" className="-mt-3 w-fit text-xs font-medium text-primary hover:underline">
-                        Edit these templates and their questions
-                      </Link>
-                    )}
                     <div className="grid gap-1.5">
-                      <label htmlFor="qc-reason" className="text-sm font-medium">
-                        In the owner’s words <span className="font-normal text-muted-foreground">· optional</span>
+                      <label htmlFor="qc-reason" className="text-sm font-medium text-muted-foreground">
+                        In the owner’s words <span className="font-normal">· optional</span>
                       </label>
                       <div className="flex gap-2">
-                        <Input id="qc-reason" className="h-11 text-[15px]" placeholder="e.g. Vomiting since last night" value={flow.reasonText} onChange={(e) => patch({ reasonText: e.target.value })} />
+                        <Input id="qc-reason" className="h-10 text-sm" placeholder="e.g. Vomiting since last night" value={flow.reasonText} onChange={(e) => patch({ reasonText: e.target.value })} />
                         <DictateButton label="reason for visit" onText={(t) => patch({ reasonText: t })} />
                       </div>
                     </div>
@@ -542,12 +575,12 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                       </p>
                     ) : !reason.questions.length ? (
                       <p className="rounded-lg border border-dashed p-4 text-[15px] text-muted-foreground">
-                        The “{reason.name}” template has no questions yet — write what the owner tells you below.
+                        “{reason.name}” has no questions yet — write what the owner tells you below.
                         {can('settings.manage') && (
                           <>
                             {' '}
-                            <Link href="/settings/templates" className="font-medium text-primary underline">
-                              Add questions to this template
+                            <Link href={reason.template ? `/settings/templates?id=${reason.template.id}` : '/settings/appointment-types'} className="font-medium text-primary underline">
+                              Add questions to this appointment type
                             </Link>
                           </>
                         )}
@@ -780,7 +813,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
             </div>
           </main>
 
-          <aside className="lg:col-span-2 xl:sticky xl:top-20 xl:col-span-1 xl:max-h-[calc(100vh-6rem)] xl:self-start xl:overflow-y-auto">
+          <aside className="xl:sticky xl:top-20 xl:col-span-1 xl:max-h-[calc(100vh-6rem)] xl:self-start xl:overflow-y-auto">
             <Companion step={step} enc={enc} ctx={ctx} reason={reason} wordsWritten={wordsWritten} onOpenHistory={() => setHistoryOpen(true)} checklist={checklist} />
             {/* Fills the past history from the animal's own records (shown in the record). */}
             <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-border/70 px-3.5 py-2.5 text-xs text-muted-foreground">
@@ -796,11 +829,6 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
             <Button size="lg" variant="outline" disabled={step === 0} onClick={() => go(step - 1)}>
               <ArrowLeft /> Back
             </Button>
-            <div className="hidden flex-1 items-center gap-1 sm:flex" aria-hidden>
-              {STEPS.map((s, i) => (
-                <span key={s.short} className={cn('h-1.5 flex-1 rounded-full', i === step ? 'bg-primary' : stepDone[i] ? 'bg-success' : 'bg-muted')} />
-              ))}
-            </div>
             {step < LAST ? (
               <div className="ml-auto flex items-center gap-3">
                 <button type="button" onClick={() => go(step + 1)} className="text-sm text-muted-foreground hover:text-foreground hover:underline">

@@ -1317,6 +1317,10 @@ model AppointmentType {
   categoryId  String?                  @db.Uuid
   categoryRef AppointmentTypeCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
+  /// The consultation template (questions, exam, diagnoses, advice) the vet uses for this type of visit.
+  templateId String?           @db.Uuid
+  template   ClinicalTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
   @@unique([organizationId, name])
 }
 
@@ -1871,8 +1875,9 @@ model ClinicalTemplate {
   createdAt           DateTime         @default(now()) @db.Timestamptz(3)
   updatedAt           DateTime         @updatedAt @db.Timestamptz(3)
 
-  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  questions    TemplateQuestion[]
+  organization     Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  questions        TemplateQuestion[]
+  appointmentTypes AppointmentType[]
 
   @@unique([organizationId, name])
 }

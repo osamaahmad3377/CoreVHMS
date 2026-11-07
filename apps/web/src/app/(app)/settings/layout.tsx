@@ -4,7 +4,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/page';
 import { RequirePermission } from '@/components/require';
 import { NativeSelect } from '@/components/ui/input';
-import { SETTINGS_GROUPS, visibleSettings } from '@/lib/navigation';
+import { SETTINGS_GROUPS, settingsMenuHref, visibleSettings } from '@/lib/navigation';
 import { useSession } from '@/lib/session';
 import { cn } from '@/lib/utils';
 
@@ -14,7 +14,8 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
   const { canAny, session } = useSession();
   // Pages for services the clinic does not offer (Settings → Services you offer) are hidden.
   const items = visibleSettings(canAny, session.organization?.enabledModules, !!session.entitlements);
-  const current = items.find((i) => pathname.startsWith(i.href));
+  const menuHref = settingsMenuHref(pathname);
+  const current = items.find((i) => i.href === menuHref);
   // The certificate designer needs the whole width.
   if (/^\/settings\/certificate-templates\/[^/]+$/.test(pathname)) return <RequirePermission anyOf={['certificates.templates']}>{children}</RequirePermission>;
   return (
@@ -42,7 +43,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
               <div key={g} className="grid gap-0.5">
                 <p className="px-3 pb-1 text-2xs font-semibold uppercase tracking-wide text-muted-foreground/80">{g}</p>
                 {inGroup.map((i) => {
-                  const active = pathname.startsWith(i.href);
+                  const active = i.href === menuHref;
                   return (
                     <Link
                       key={i.href}

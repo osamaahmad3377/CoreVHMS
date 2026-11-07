@@ -158,7 +158,7 @@ export type SettingsGroup = 'Your clinic' | 'Staff & access' | 'Prices & billing
 export const SETTINGS_GROUPS: SettingsGroup[] = ['Your clinic', 'Staff & access', 'Prices & billing', 'Rooms & spaces', 'Clinical setup', 'Integrations', 'Automations'];
 
 /** Settings pages, grouped the way an owner thinks about them; `hint` is the one-line description on the Settings home page. */
-export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyOf: Permission[]; group: SettingsGroup; hint: string; module?: OptionalModule; /** Only where the installation has plans (multi-clinic hosting). */ plansOnly?: boolean }[] = [
+export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyOf: Permission[]; group: SettingsGroup; hint: string; module?: OptionalModule; /** Only where the installation has plans (multi-clinic hosting). */ plansOnly?: boolean; /** Not in the menu: opened from the page named here (whose menu item stays highlighted). */ partOf?: string }[] = [
   { label: 'Clinic details', href: '/settings/organization', icon: Building2, anyOf: ['org.manage'], group: 'Your clinic', hint: 'Name, address, phone and tax number' },
   { label: 'Branding', href: '/settings/branding', icon: Palette, anyOf: ['branding.manage'], group: 'Your clinic', hint: 'Logo, colours and the name staff see (owner only)' },
   { label: 'Your plan', href: '/settings/plan', icon: LayoutList, anyOf: ['org.manage'], group: 'Your clinic', hint: 'Your current plan, what it includes, and how many staff, branches and automations you use' },
@@ -172,14 +172,15 @@ export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyO
   { label: 'Staff accounts', href: '/settings/staff', icon: Users, anyOf: ['users.read'], group: 'Staff & access', hint: 'Add staff, reset passwords, suspend access' },
   { label: 'Roles & permissions', href: '/settings/roles', icon: Shield, anyOf: ['roles.manage', 'users.read'], group: 'Staff & access', hint: 'What each job is allowed to see and do (advanced)' },
   { label: 'Services & prices', href: '/settings/services', icon: Receipt, anyOf: ['settings.manage'], group: 'Prices & billing', hint: 'Your price list: consultations, vaccinations, procedures' },
-  { label: 'Appointment types', href: '/settings/appointment-types', icon: CalendarDays, anyOf: ['settings.manage'], group: 'Prices & billing', hint: 'What can be booked, how long it takes and what it charges' },
+  { label: 'Appointment types', href: '/settings/appointment-types', icon: CalendarDays, anyOf: ['settings.manage'], group: 'Prices & billing', hint: 'What can be booked, what it charges, and the questions the vet asks in the consultation' },
   { label: 'Tax & payments', href: '/settings/billing', icon: Receipt, anyOf: ['settings.manage'], group: 'Prices & billing', hint: 'Sales tax, days to pay, cash drawer rules' },
   { label: 'Rooms & equipment', href: '/settings/resources', icon: Bed, anyOf: ['settings.manage'], group: 'Rooms & spaces', hint: 'Consult rooms, theatre and equipment that can be booked' },
   { label: 'Hospital wards & cages', href: '/settings/wards', icon: Bed, anyOf: ['settings.manage'], group: 'Rooms & spaces', hint: 'Where admitted patients stay and the daily fee', module: 'hospital' },
   { label: 'Boarding kennels', href: '/settings/boarding-units', icon: Bed, anyOf: ['settings.manage'], group: 'Rooms & spaces', hint: 'Kennels and catteries for boarding, and the nightly price', module: 'boarding' },
   { label: 'Certificate templates', href: '/settings/certificate-templates', icon: Award, anyOf: ['certificates.templates'], group: 'Clinical setup', hint: 'Design vaccination, health, travel and staff certificates — drag and drop' },
   { label: 'Pet diary', href: '/settings/pet-diary', icon: BookOpen, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Design the printed health book and the owner’s online diary; send links automatically' },
-  { label: 'Consultation templates', href: '/settings/templates', icon: FileText, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Ready-made note layouts for common visits' },
+  // Part of Appointment types: each type's consultation questions.
+  { label: 'Consultation questions', href: '/settings/templates', icon: FileText, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'The questions, examination, diagnoses and advice for each appointment type', partOf: '/settings/appointment-types' },
   { label: 'Quick note phrases', href: '/settings/note-phrases', icon: FileText, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'The buttons vets tap in consultation notes instead of typing' },
   { label: 'Species & breeds', href: '/settings/species', icon: PawPrint, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Already filled in; add a breed if one is missing' },
   { label: 'Normal vital-sign ranges', href: '/settings/vital-references', icon: Activity, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Normal temperature, heart rate… per species, to flag readings' },
@@ -206,7 +207,13 @@ export function visibleNav(canAny: (...p: Permission[]) => boolean, modules?: re
 
 /** Settings pages the user may open, without those of switched-off modules. */
 export function visibleSettings(canAny: (...p: Permission[]) => boolean, modules?: readonly OptionalModule[], hasPlans = false) {
-  return SETTINGS_NAV.filter((i) => (!i.plansOnly || hasPlans) && moduleOn(i.module, modules) && canAny(...i.anyOf));
+  return SETTINGS_NAV.filter((i) => !i.partOf && (!i.plansOnly || hasPlans) && moduleOn(i.module, modules) && canAny(...i.anyOf));
+}
+
+/** The settings menu item for a page: its own, or the page it is part of. */
+export function settingsMenuHref(pathname: string) {
+  const own = SETTINGS_NAV.filter((i) => pathname.startsWith(i.href)).sort((a, b) => b.href.length - a.href.length)[0];
+  return own?.partOf ?? own?.href;
 }
 
 export function moduleOn(module: OptionalModule | undefined, enabled?: readonly OptionalModule[]) {

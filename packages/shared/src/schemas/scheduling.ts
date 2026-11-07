@@ -12,6 +12,8 @@ export const appointmentTypeSchema = z.object({
   priceMinor: optInt(0, 1_000_000_000),
   /** Billable service charged when a consultation of this type is completed. */
   serviceId: optUuid(),
+  /** The consultation template (questions for the owner, examination, diagnoses, advice) used for this type. */
+  templateId: optUuid(),
   requiresClinician: z.boolean().default(true),
   allowOnlineBooking: z.boolean().default(false),
   isActive: z.boolean().default(true),

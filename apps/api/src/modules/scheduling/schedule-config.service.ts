@@ -16,6 +16,9 @@ const TYPE_INSTEAD = 'Switch it off instead (untick “Active”) — it can no 
 const RESOURCE_INSTEAD = 'Switch it off instead (untick “Active”) — it can no longer be booked, and past bookings keep it.';
 
 /** Configuration for scheduling: appointment types, bookable resources, rosters and leave. */
+/** A starter template that belongs to a starter type of another name. */
+const TEMPLATE_TYPE_ALIASES: Record<string, string> = { 'general consultation': 'Consultation', 'recheck / follow-up': 'Follow-up' };
+
 @Injectable()
 export class ScheduleConfigService {
   constructor(
@@ -28,7 +31,11 @@ export class ScheduleConfigService {
     return this.prisma.db.appointmentType.findMany({
       where: includeInactive ? {} : { isActive: true },
       // The linked service is what gets charged; its price is the one to show when booking.
-      include: { service: { select: { id: true, code: true, name: true, priceMinor: true, isActive: true } }, categoryRef: { select: { id: true, name: true, kind: true, isActive: true } } },
+      include: {
+        service: { select: { id: true, code: true, name: true, priceMinor: true, isActive: true } },
+        categoryRef: { select: { id: true, name: true, kind: true, isActive: true, sortOrder: true } },
+        template: { select: { id: true, name: true, icon: true, speciesCategory: true, isActive: true, _count: { select: { questions: true } } } },
+      },
       orderBy: [{ isActive: 'desc' }, { categoryRef: { sortOrder: 'asc' } }, { category: 'asc' }, { name: 'asc' }],
     });
   }
@@ -44,12 +51,49 @@ export class ScheduleConfigService {
     return {};
   }
 
-  private async assertService(serviceId?: string | null) {
+  private async assertService(serviceId?: string | null, templateId?: string | null) {
     if (serviceId && !(await this.prisma.db.service.findUnique({ where: { id: serviceId } }))) throw notFound('Service');
+    if (templateId && !(await this.prisma.db.clinicalTemplate.findUnique({ where: { id: templateId } }))) throw notFound('Consultation template');
+  }
+
+  /**
+   * Appointment types and consultation templates are one thing: a new template gets its appointment type — the type
+   * of the same name when there is one without a template, otherwise a new type in the Consultation category, charged
+   * like the clinic's consultation.
+   */
+  async typeForTemplate(tx: ScopedTx, t: { id: string; organizationId: string; name: string; isActive: boolean }) {
+    if (await tx.appointmentType.findFirst({ where: { templateId: t.id } })) return;
+    const same = await tx.appointmentType.findFirst({ where: { name: { equals: t.name, mode: 'insensitive' } } });
+    if (same) {
+      if (!same.templateId) await tx.appointmentType.update({ where: { id: same.id }, data: { templateId: t.id } });
+      return;
+    }
+    // Starter templates whose type has another name.
+    const alias = TEMPLATE_TYPE_ALIASES[t.name.toLowerCase()];
+    const aliased = alias && (await tx.appointmentType.findFirst({ where: { name: { equals: alias, mode: 'insensitive' }, templateId: null } }));
+    if (aliased) {
+      await tx.appointmentType.update({ where: { id: aliased.id }, data: { templateId: t.id } });
+      return;
+    }
+    const consult = await tx.appointmentType.findFirst({ where: { category: 'CONSULTATION', serviceId: { not: null } }, orderBy: [{ isActive: 'desc' }, { createdAt: 'asc' }] });
+    const named = await tx.appointmentType.findFirst({ where: { category: 'CONSULTATION', serviceId: { not: null }, name: { equals: 'Consultation', mode: 'insensitive' } } });
+    const created = await tx.appointmentType.create({
+      data: {
+        organizationId: t.organizationId,
+        name: t.name,
+        category: 'CONSULTATION',
+        categoryId: await categoryForKind(tx, t.organizationId, 'CONSULTATION'),
+        durationMinutes: 15,
+        serviceId: (named ?? consult)?.serviceId ?? null,
+        isActive: t.isActive,
+        templateId: t.id,
+      },
+    });
+    await this.audit.record({ action: 'appointment_type.created', entityType: 'AppointmentType', entityId: created.id, summary: `${created.name} (with its consultation template)` }, tx);
   }
 
   async createType(input: AppointmentTypeInput) {
-    await this.assertService(input.serviceId);
+    await this.assertService(input.serviceId, input.templateId);
     return this.prisma.db.$transaction(async (tx) => {
       const t = await tx.appointmentType.create({ data: { ...input, ...(await this.resolveCategory(tx, { ...input, category: input.category ?? 'CONSULTATION' })), organizationId: RequestContext.orgId() } });
       await this.audit.record({ action: 'appointment_type.created', entityType: 'AppointmentType', entityId: t.id, summary: t.name }, tx);
@@ -58,7 +102,7 @@ export class ScheduleConfigService {
   }
 
   async updateType(id: string, input: Partial<AppointmentTypeInput>) {
-    await this.assertService(input.serviceId);
+    await this.assertService(input.serviceId, input.templateId);
     return this.prisma.db.$transaction(async (tx) => {
       const before = await tx.appointmentType.findUnique({ where: { id } });
       if (!before) throw notFound('Appointment type');

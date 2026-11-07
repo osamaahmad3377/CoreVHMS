@@ -1,8 +1,10 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { answersToText, enumLabel, EXAM_SYSTEMS, SPECIES_CATEGORIES, STANDARD_EXAM_SYSTEMS, TEMPLATE_ICONS, type TemplateIcon } from '@vcms/shared';
-import { ArrowDown, ArrowUp, Check, Copy, Eye, FileText, MessageSquareText, Plus, RotateCcw, Save, Stethoscope, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { ArrowDown, ArrowLeft, ArrowUp, Check, Copy, Eye, FileText, MessageSquareText, Plus, RotateCcw, Save, Stethoscope, X } from 'lucide-react';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Field } from '@/components/forms/field';
 import { FormError } from '@/components/forms/form-error';
@@ -12,6 +14,7 @@ import { RequirePermission } from '@/components/require';
 import { Button } from '@/components/ui/button';
 import { Checkbox, Switch } from '@/components/ui/checkbox';
 import { Input, NativeSelect, Textarea } from '@/components/ui/input';
+import { useAppointmentTypes } from '@/hooks/use-catalog';
 import { api } from '@/lib/api';
 import type { ClinicalTemplateRow } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -277,14 +280,14 @@ function Editor({ initial, onSaved, onCancel }: { initial: Draft; onSaved: (id: 
   return (
     <div className="grid gap-5 rounded-2xl surface-flat p-5 shadow-card">
       <div className="flex flex-wrap items-center gap-2">
-        <h3 className="text-base font-semibold">{d.id ? initial.name : 'New template'}</h3>
+        <h3 className="text-base font-semibold">{d.id ? initial.name : 'New questions'}</h3>
         <label className="ml-auto flex items-center gap-2 text-sm">
           <Switch checked={d.isActive} onCheckedChange={(v) => set({ isActive: v })} aria-label="Template in use" /> In use
         </label>
       </div>
       {error && <FormError message={error} />}
 
-      <Section title="Template">
+      <Section title="Name and animals">
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Name" htmlFor="t-name" required>
             <Input id="t-name" value={d.name} maxLength={100} onChange={(e) => set({ name: e.target.value })} placeholder="e.g. Tick fever" />
@@ -414,7 +417,7 @@ function Editor({ initial, onSaved, onCancel }: { initial: Draft; onSaved: (id: 
           Cancel
         </Button>
         <Button type="button" loading={save.isPending} disabled={!d.name.trim()} onClick={() => save.mutate()}>
-          <Save /> Save template
+          <Save /> Save questions
         </Button>
       </div>
     </div>
@@ -424,7 +427,10 @@ function Editor({ initial, onSaved, onCancel }: { initial: Draft; onSaved: (id: 
 function Page() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['clinical-templates', 'all'], queryFn: () => api.get<ClinicalTemplateRow[]>('/clinical-templates?all=true') });
-  const [selected, setSelected] = useState<string | 'new' | null>(null);
+  // Opened from an appointment type: its questions straight away.
+  const [selected, setSelected] = useState<string | 'new' | null>(useSearchParams().get('id'));
+  const types = useAppointmentTypes(true);
+  const usedBy = (templateId: string) => (types.data ?? []).filter((t) => t.templateId === templateId).map((t) => t.name);
   const [copyOf, setCopyOf] = useState<ClinicalTemplateRow | null>(null);
   const rows = useMemo(() => q.data ?? [], [q.data]);
   useEffect(() => {
@@ -451,11 +457,14 @@ function Page() {
 
   return (
     <div className="grid gap-4">
+      <Link href="/settings/appointment-types" className="flex w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline">
+        <ArrowLeft className="h-4 w-4" /> Appointment types
+      </Link>
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
-          <h2 className="text-lg font-semibold">Consultation templates</h2>
+          <h2 className="text-lg font-semibold">Consultation questions</h2>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Each template is a reason for a visit. In a quick consultation the vet taps a template, then asks its questions — every answer is a button that writes a sentence in the history — and gets its examination focus, usual diagnoses and advice. Templates can also fill in note text. Add your own templates and questions, or change the standard ones.
+            The questions for each appointment type. In a consultation the vet picks the category and the appointment type, then asks its questions — every answer is a button that writes a sentence in the history — and gets its examination buttons, usual diagnoses and advice. A new set of questions becomes an appointment type of the same name.
           </p>
         </div>
         <Button variant="outline" loading={restore.isPending} onClick={() => restore.mutate()}>
@@ -467,7 +476,7 @@ function Page() {
             setSelected('new');
           }}
         >
-          <Plus /> New template
+          <Plus /> New questions
         </Button>
       </div>
 
@@ -493,6 +502,12 @@ function Page() {
                           {t.speciesCategory && ` · ${enumLabel(t.speciesCategory)}`}
                           {!t.isActive && ' · not in use'}
                         </span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {(() => {
+                            const names = usedBy(t.id).filter((x) => x !== t.name);
+                            return types.isLoading ? '' : names.length ? `For: ${names.join(', ')}` : usedBy(t.id).length ? '' : 'Not used by an appointment type';
+                          })()}
+                        </span>
                       </span>
                     </button>
                     <Switch checked={t.isActive} onCheckedChange={() => toggle.mutate(t)} aria-label={`${t.name} in use`} />
@@ -500,7 +515,7 @@ function Page() {
                 </li>
               );
             })}
-            {!rows.length && <EmptyState icon={FileText} title="No templates" className="py-6" />}
+            {!rows.length && <EmptyState icon={FileText} title="No questions yet" className="py-6" />}
           </ul>
 
           <div className="min-w-0">
@@ -534,7 +549,7 @@ function Page() {
                 />
               </>
             ) : (
-              <EmptyState icon={FileText} title="Select or create a template" description="Choose a template on the left to see and change its questions." />
+              <EmptyState icon={FileText} title="Choose a set of questions" description="Choose one on the left to see and change its questions." />
             )}
           </div>
         </div>
@@ -546,7 +561,9 @@ function Page() {
 export default function TemplatesPage() {
   return (
     <RequirePermission anyOf={['settings.manage']}>
-      <Page />
+      <Suspense>
+        <Page />
+      </Suspense>
     </RequirePermission>
   );
 }

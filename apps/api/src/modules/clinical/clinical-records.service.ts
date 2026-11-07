@@ -12,12 +12,26 @@ import { numericVitals } from './encounters.service';
 
 type Flag = 'LOW' | 'HIGH';
 
+/** Runs in the same transaction when a consultation template is created. */
+export type TemplateCreatedHook = (tx: ScopedTx, template: { id: string; organizationId: string; name: string; isActive: boolean }) => Promise<void>;
+
 @Injectable()
 export class ClinicalRecordsService {
+  private readonly templateCreatedHooks: TemplateCreatedHook[] = [];
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
   ) {}
+
+  /** Scheduling registers here so each new template gets its appointment type. */
+  registerTemplateCreatedHook(h: TemplateCreatedHook) {
+    this.templateCreatedHooks.push(h);
+  }
+
+  private async templateCreated(tx: ScopedTx, t: { id: string; organizationId: string; name: string; isActive: boolean }) {
+    for (const h of this.templateCreatedHooks) await h(tx, t);
+  }
 
   // ── Vitals ──
 
@@ -214,6 +228,7 @@ export class ClinicalRecordsService {
           data: { organizationId, name: st.name, icon: st.icon, presentingComplaint: st.presentingComplaint || null, examSystems: st.examSystems ?? [], diagnoses: st.diagnoses ?? [], advice: st.advice },
         });
         await this.writeQuestions(tx, organizationId, t.id, questions);
+        await this.templateCreated(tx, t);
       }
       added += 1;
     }
@@ -259,6 +274,7 @@ export class ClinicalRecordsService {
       }
       const t = await tx.clinicalTemplate.create({ data: { ...data, organizationId: orgId } });
       if (questions?.length) await this.writeQuestions(tx, orgId, t.id, questions);
+      await this.templateCreated(tx, t);
       await this.audit.record({ action: 'template.created', entityType: 'ClinicalTemplate', entityId: t.id, summary: `${t.name}${questions?.length ? ` (${questions.length} questions)` : ''}` }, tx);
       return tx.clinicalTemplate.findUniqueOrThrow({ where: { id: t.id }, include: this.templateInclude });
     });

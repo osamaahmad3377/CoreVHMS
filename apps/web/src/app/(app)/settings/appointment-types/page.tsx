@@ -1,7 +1,9 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { APPOINTMENT_CATEGORIES, APPOINTMENT_KIND_HINTS, enumLabel, fromMinor } from '@vcms/shared';
-import { CalendarRange, Edit, Eye, EyeOff, Plus, Tags, Trash2 } from 'lucide-react';
+import { CalendarRange, Edit, Eye, EyeOff, MessageSquareText, Plus, Tags, Trash2 } from 'lucide-react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { MoneyInput, parseMoney } from '@/components/billing/money';
@@ -20,7 +22,7 @@ import { useAppointmentTypes } from '@/hooks/use-catalog';
 import { api } from '@/lib/api';
 import { fmtMoney } from '@/lib/format';
 import { usePortalEnabled, useSession } from '@/lib/session';
-import type { AppointmentType, AppointmentTypeCategory, Service } from '@/lib/types';
+import type { AppointmentType, AppointmentTypeCategory, ClinicalTemplateRow, Service } from '@/lib/types';
 import { useConfirm } from '@/components/confirm';
 import { DeleteRecordButton } from '@/components/delete-record';
 
@@ -30,6 +32,8 @@ const DURATIONS = [10, 15, 20, 30, 45, 60, 90, 120];
 /** The price-list group a new price for this kind of appointment goes in. */
 const SERVICE_GROUP: Record<string, string> = { CONSULTATION: 'CONSULTATION', FOLLOW_UP: 'CONSULTATION', EMERGENCY: 'CONSULTATION', VACCINATION: 'VACCINATION', SURGERY: 'SURGERY', DENTAL: 'DENTAL', DIAGNOSTICS: 'DIAGNOSTIC', GROOMING: 'GROOMING', FIELD_VISIT: 'FIELD_VISIT' };
 const NEW_PRICE = '__new__';
+const NEW_QUESTIONS = '__new__';
+const questionsLabel = (n: number) => (n ? `${n} question${n === 1 ? '' : 's'}` : 'no questions yet');
 
 function TypeDialog({ type, open, onOpenChange }: { type: AppointmentType | null; open: boolean; onOpenChange: (o: boolean) => void }) {
   const { currency } = useSession();
@@ -40,13 +44,17 @@ function TypeDialog({ type, open, onOpenChange }: { type: AppointmentType | null
     durationMinutes: type?.durationMinutes ?? 15,
     color: type?.color ?? SWATCHES[0],
     serviceId: type?.serviceId ?? '',
+    templateId: type?.templateId ?? '',
     requiresClinician: type?.requiresClinician ?? true,
     allowOnlineBooking: type?.allowOnlineBooking ?? false,
     isActive: type?.isActive ?? true,
   });
   const [error, setError] = useState<string | null>(null);
   const portal = usePortalEnabled();
+  const router = useRouter();
   const services = useQuery({ queryKey: ['services', 'all'], queryFn: () => api.get<Service[]>('/services?all=true') });
+  const templates = useQuery({ queryKey: ['clinical-templates', 'all'], queryFn: () => api.get<ClinicalTemplateRow[]>('/clinical-templates?all=true') });
+  const newQuestions = f.templateId === NEW_QUESTIONS;
   const linked = (services.data ?? []).find((x) => x.id === f.serviceId) ?? null;
   // The charge's price can be changed right here (it is the same price as in Services & prices).
   const [price, setPrice] = useState('');
@@ -78,15 +86,22 @@ function TypeDialog({ type, open, onOpenChange }: { type: AppointmentType | null
       } else if (linked && parsedPrice !== null && parsedPrice !== linked.priceMinor) {
         await api.patch(`/services/${linked.id}`, { code: linked.code, name: linked.name, category: linked.category, priceMinor: parsedPrice, taxRateId: linked.taxRateId, isActive: linked.isActive });
       }
-      const { categoryId, ...rest } = f;
-      const body = { ...rest, serviceId, categoryId: categoryId || null };
-      return type ? api.patch(`/appointment-types/${type.id}`, body) : api.post('/appointment-types', body);
+      const { categoryId, templateId, ...rest } = f;
+      const body = { ...rest, serviceId, categoryId: categoryId || null, templateId: templateId && templateId !== NEW_QUESTIONS ? templateId : null };
+      const saved = await (type ? api.patch<AppointmentType>(`/appointment-types/${type.id}`, body) : api.post<AppointmentType>('/appointment-types', body));
+      if (!newQuestions) return null;
+      // New questions for this type: an empty set under its name, opened straight away to add the questions.
+      const tpl = await api.post<ClinicalTemplateRow>('/clinical-templates', { name: f.name.trim(), examSystems: [], questions: [] });
+      await api.patch(`/appointment-types/${saved.id}`, { templateId: tpl.id });
+      return tpl.id;
     },
-    onSuccess: () => {
-      toast.success(`${f.name.trim()} saved`);
+    onSuccess: (newTemplateId) => {
+      toast.success(newTemplateId ? `${f.name.trim()} saved — now add its questions` : `${f.name.trim()} saved`);
       qc.invalidateQueries({ queryKey: ['appointment-types'] });
       qc.invalidateQueries({ queryKey: ['services'] });
+      qc.invalidateQueries({ queryKey: ['clinical-templates'] });
       onOpenChange(false);
+      if (newTemplateId) router.push(`/settings/templates?id=${newTemplateId}`);
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -96,7 +111,7 @@ function TypeDialog({ type, open, onOpenChange }: { type: AppointmentType | null
       <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>{type ? `Edit ${type.name}` : 'Add an appointment type'}</DialogTitle>
-          <DialogDescription>Something clients can be booked for: how long it takes, its colour in the calendar, and what is charged.</DialogDescription>
+          <DialogDescription>Something clients can be booked for: how long it takes, what is charged, and the questions the vet asks.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
           {error && <FormError message={error} />}
@@ -131,6 +146,21 @@ function TypeDialog({ type, open, onOpenChange }: { type: AppointmentType | null
               </NativeSelect>
               {(creatingPrice || linked) && (
                 <MoneyInput aria-label="Price" currency={currency} value={price} onChange={(e) => setPrice(e.target.value)} className={cn(priceInvalid && 'border-destructive')} />
+              )}
+            </div>
+          </Field>
+
+          <Field label="Consultation questions" htmlFor="at-tpl" hint="Asked in the first step of the consultation, with the examination buttons, usual diagnoses and advice that go with them.">
+            <div className="flex flex-wrap items-center gap-2">
+              <NativeSelect id="at-tpl" className="min-w-0 flex-1" value={f.templateId} onChange={(e) => setF({ ...f, templateId: e.target.value })}>
+                <option value="">None — no questions</option>
+                <option value={NEW_QUESTIONS}>+ New questions for “{f.name.trim() || 'this type'}”</option>
+                {(templates.data ?? []).filter((t) => t.isActive || t.id === f.templateId).map((t) => (
+                  <option key={t.id} value={t.id}>{t.name} · {questionsLabel(t.questions?.length ?? 0)}</option>
+                ))}
+              </NativeSelect>
+              {f.templateId && !newQuestions && (
+                <Link href={`/settings/templates?id=${f.templateId}`} className="text-sm font-medium text-primary hover:underline">Change the questions</Link>
               )}
             </div>
           </Field>
@@ -300,7 +330,7 @@ export default function AppointmentTypesPage() {
         <CardHeader>
           <div className="min-w-0">
             <CardTitle>Appointment types</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">What clients can be booked for — how long each takes, its colour in the calendar, and what is charged when the visit is finished.</p>
+            <p className="mt-1 text-sm text-muted-foreground">What clients can be booked for — how long each takes, what is charged, and the questions the vet asks. In a consultation the vet picks the category, then the appointment type.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={() => setManaging(true)}><Tags /> Categories</Button>
@@ -326,6 +356,7 @@ export default function AppointmentTypesPage() {
                         <span className={cn('block truncate text-sm font-medium', !t.isActive && 'text-muted-foreground')}>{t.name}</span>
                         <span className="block truncate text-xs text-muted-foreground">
                           {t.durationMinutes} min
+                          {t.template && ` · ${questionsLabel(t.template._count?.questions ?? 0)}`}
                           {!t.requiresClinician && ' · no vet needed'}
                           {portal && t.allowOnlineBooking && ' · bookable online'}
                         </span>
@@ -340,6 +371,11 @@ export default function AppointmentTypesPage() {
                           <span className="text-xs text-muted-foreground">No charge</span>
                         )}
                       </span>
+                      {t.template && (
+                        <Button asChild size="sm" variant="outline" className="hidden sm:inline-flex">
+                          <Link href={`/settings/templates?id=${t.template.id}`} aria-label={`Questions for ${t.name}`}><MessageSquareText /> Questions</Link>
+                        </Button>
+                      )}
                       <Switch checked={t.isActive} disabled={toggle.isPending} onCheckedChange={() => toggle.mutate(t)} aria-label={`${t.name} can be booked`} />
                       <Button size="icon-sm" variant="ghost" aria-label={`Edit ${t.name}`} onClick={() => setDlg({ open: true, type: t, key: Date.now() })}><Edit /></Button>
                     </li>
