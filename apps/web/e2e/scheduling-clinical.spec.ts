@@ -124,7 +124,7 @@ test.describe('Clinical day: book → check in → consult → sign', () => {
       await page.getByRole('button', { name: 'Vaccination', exact: true }).click();
       const dialog = page.getByRole('dialog');
       if (await dialog.isVisible().catch(() => false)) await page.keyboard.press('Escape');
-      await expect(page.getByText('No consultation fee — only the vaccine or dewormer given is charged.')).toBeVisible();
+      await expect(page.getByText('No consultation fee — only the vaccination is charged.')).toBeVisible();
       await expect.poll(async () => (await call('GET', `/encounters/${enc.id}`)).chargeConsultation).toBe(false);
 
       await page.getByRole('button', { name: 'Ear problem' }).click();
@@ -136,6 +136,38 @@ test.describe('Clinical day: book → check in → consult → sign', () => {
       await step(page, 'History');
       await expect(page.getByRole('region', { name: 'Ear problem' })).toBeVisible();
       await expect(page.getByRole('region', { name: /Vomiting/ })).toBeVisible();
+    } finally {
+      await call('POST', `/encounters/${enc.id}/cancel`, { reason: 'E2E cleanup' });
+    }
+  });
+
+  test('grooming in step 1: the clinic’s grooming services and prices, added to the bill, no consultation fee', async ({ page }) => {
+    await login(page, 'vet@demo.pk');
+    const call = (method: string, path: string, body?: unknown) =>
+      page.evaluate(
+        async ([method, path, body]) => {
+          const csrf = document.cookie.split('; ').find((c) => c.startsWith('vcms_csrf='))?.split('=')[1] ?? '';
+          const r = await fetch(`/api/v1${path}`, { method, headers: { 'content-type': 'application/json', 'x-csrf-token': csrf }, body: body ? JSON.stringify(body) : undefined });
+          return r.json();
+        },
+        [method, path, body] as [string, string, unknown],
+      );
+    const patient = (await call('GET', '/patients?q=Toto&pageSize=1')).data[0];
+    const enc = await call('POST', '/encounters', { patientId: patient.id, chiefComplaint: '' });
+    try {
+      const { options } = await call('GET', `/encounters/${enc.id}/services?category=GROOMING`);
+      const svc = (options as { name: string; priceMinor: number }[]).find((o) => o.priceMinor > 0);
+      test.skip(!svc, 'No priced grooming service in this clinic');
+      await page.goto(`/consultations/${enc.id}`);
+      await page.getByRole('button', { name: 'Grooming', exact: true }).click();
+      const panel = page.getByRole('region', { name: 'Grooming' });
+      await panel.getByRole('button', { name: new RegExp(`^${svc!.name}`) }).click();
+      await expect(panel.getByText(new RegExp(`Added to the bill: ${svc!.name}`))).toBeVisible();
+      await expect(page.getByText('No consultation fee — only the grooming is charged.')).toBeVisible();
+      await expect.poll(async () => (await call('GET', `/charges?encounterId=${enc.id}`)).data.map((c: { description: string }) => c.description)).toEqual([svc!.name]);
+      // Tap again: off the bill.
+      await panel.getByRole('button', { name: new RegExp(`^${svc!.name}`) }).click();
+      await expect(panel.getByText('Tap each service done.', { exact: false })).toBeVisible();
     } finally {
       await call('POST', `/encounters/${enc.id}/cancel`, { reason: 'E2E cleanup' });
     }

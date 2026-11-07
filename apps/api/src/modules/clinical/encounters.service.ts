@@ -38,10 +38,16 @@ export type EncounterHook = (tx: ScopedTx, encounterId: string) => Promise<void>
 @Injectable()
 export class EncountersService {
   private readonly completedHooks: EncounterHook[] = [];
+  private readonly cancelledHooks: EncounterHook[] = [];
 
   /** Billing registers here to capture the consultation fee when a consultation is completed. */
   registerCompletedHook(h: EncounterHook) {
     this.completedHooks.push(h);
+  }
+
+  /** Billing registers here to take off what was charged during a consultation that is then cancelled. */
+  registerCancelledHook(h: EncounterHook) {
+    this.cancelledHooks.push(h);
   }
 
   constructor(
@@ -288,7 +294,7 @@ export class EncountersService {
           action: 'encounter.updated',
           entityType: 'Encounter',
           entityId: id,
-          summary: fee ? (input.chargeConsultation ? 'Consultation fee will be charged' : 'No consultation fee — vaccination / deworming only') : undefined,
+          summary: fee ? (input.chargeConsultation ? 'Consultation fee will be charged' : 'No consultation fee — vaccination, deworming or grooming only') : undefined,
         },
         tx,
       );
@@ -329,6 +335,7 @@ export class EncountersService {
     await this.prisma.db.$transaction(async (tx) => {
       await tx.encounter.update({ where: { id }, data: { status: 'CANCELLED', completedAt: new Date() } });
       await this.audit.record({ action: 'encounter.cancelled', entityType: 'Encounter', entityId: id, summary: reason }, tx);
+      for (const h of this.cancelledHooks) await h(tx, id);
     });
     return { ok: true };
   }

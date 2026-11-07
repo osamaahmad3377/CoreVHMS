@@ -15,7 +15,7 @@ import { usePatientContext } from './use-patient-context';
 import { useQuickNote } from './use-quick-note';
 import { VisitMore } from './visit-more';
 import { ClinicalRecordView, OwnerSummary, type VisitDoc } from './visit-documents';
-import { PreventivePanel, PreventiveTiles, type PreventiveKind } from './preventive-reasons';
+import { KINDS, PreventivePanel, PreventiveTiles, fetchGrooming, groomingKey, type PreventiveKind } from './preventive-reasons';
 import { answersToText, combineReasons, reasonIcon, useVisitReasons, type VisitReason } from './visit-reasons';
 import type { ClinicHeader } from '../billing/invoice-document';
 import { vitalsText } from '../clinical/note-editor';
@@ -62,7 +62,7 @@ interface Flow {
   step: number;
   /** The chosen consultation templates, in the order they were tapped (several reasons in one visit). */
   reasonIds: string[];
-  /** Vaccination and/or deworming chosen as reasons. */
+  /** Vaccination, deworming and/or grooming chosen as reasons. */
   care: PreventiveKind[];
   reasonText: string;
   answers: Record<string, string[]>;
@@ -102,6 +102,8 @@ function clearFlow(id: string) {
 
 const joinText = (...parts: string[]) => parts.map((p) => p.trim()).filter(Boolean).join('\n');
 const sentence = (s: string) => (/[.!?]$/.test(s.trim()) ? s.trim() : `${s.trim()}.`);
+/** “a”, “a and b”, “a, b and c”. */
+const listOf = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
 const words = (s: string) => (s.trim() ? s.trim().split(/\s+/).length : 0);
 
 function useElapsed(startedAt: string) {
@@ -209,7 +211,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
   const chosen = flow.reasonIds.map((id) => visitReasons.reasons.find((r) => r.id === id)).filter((r): r is VisitReason => !!r);
   // All chosen templates as one: their questions, exam buttons, diagnoses and advice together.
   const reason = useMemo(() => combineReasons(chosen), [chosen.map((r) => r.id).join()]); // eslint-disable-line react-hooks/exhaustive-deps
-  const careNames = flow.care.map((k) => (k === 'VACCINATION' ? 'Vaccination' : 'Deworming'));
+  const careNames = flow.care.map((k) => KINDS[k].label);
   const step = flow.step;
   const go = (s: number) => {
     patch({ step: Math.max(0, Math.min(LAST, s)) });
@@ -218,10 +220,14 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
 
   /* The note is written from the taps: each part = what the taps say + the vet's own words. */
   const ownerText = reason ? answersToText(reason, flow.answers) : '';
+  // Grooming done in this visit goes into the plan, like medicines given.
+  const grooming = useQuery({ queryKey: groomingKey(enc.id), queryFn: () => fetchGrooming(enc.id), enabled: flow.care.includes('GROOMING') });
+  const groomed = flow.care.includes('GROOMING') ? (grooming.data?.added ?? []).map((a) => a.description) : [];
+  const doneLines = useMemo(() => [...(groomed.length ? [`Grooming done: ${groomed.join(', ')}`] : []), ...done.lines], [groomed.join(), done.lines]); // eslint-disable-line react-hooks/exhaustive-deps
   const planLines = useMemo(() => {
-    const own = flow.planExtra.split('\n').filter((l) => l.trim() && !done.lines.includes(l.trim()) && l.trim() !== 'No treatment needed today.');
-    return [...done.lines, ...(flow.nothingToday ? ['No treatment needed today.'] : []), ...own];
-  }, [done.lines, flow.planExtra, flow.nothingToday]);
+    const own = flow.planExtra.split('\n').filter((l) => l.trim() && !doneLines.includes(l.trim()) && !l.trim().startsWith('Grooming done:') && l.trim() !== 'No treatment needed today.');
+    return [...doneLines, ...(flow.nothingToday ? ['No treatment needed today.'] : []), ...own];
+  }, [doneLines, flow.planExtra, flow.nothingToday]);
   const adviceText = flow.advice.map(sentence).join(' ');
   const composed = {
     presentingComplaint: (() => {
@@ -258,15 +264,17 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
   const [showReasoning, setShowReasoning] = useState(!!flow.assessExtra);
   const [doc, setDoc] = useState<'record' | 'owner'>('record');
 
-  // Vaccination / deworming: always on step 1; tapping one shows what is due to record (or asks to add it first).
+  // Vaccination / deworming / grooming: always on step 1. Vaccination or deworming shows what is due to record (or
+  // asks to add it first); grooming shows the clinic's grooming services to tick off.
   const [careAdding, setCareAdding] = useState<PreventiveKind | null>(null);
   const toggleCare = async (k: PreventiveKind) => {
     if (flow.care.includes(k)) return patch({ care: flow.care.filter((x) => x !== k) });
     patch({ care: [...flow.care, k] });
+    if (k === 'GROOMING') return;
     const plan = await qc.fetchQuery({ queryKey: ['care-plan', enc.patient.id], queryFn: () => api.get<{ items: CareItem[] }>(`/patients/${enc.patient.id}/care-plan`) });
     if (!plan.items.some((i) => i.kind === k && (i.status === 'DUE' || i.status === 'DEFERRED'))) setCareAdding(k);
   };
-  // Vaccination / deworming on their own: no consultation fee (the vaccine or dewormer given is still charged).
+  // Vaccination / deworming / grooming on their own: no consultation fee (what is given or done is still charged).
   const preventiveOnly = flow.care.length > 0 && chosen.length === 0;
   useEffect(() => {
     if (visitReasons.isLoading || enc.status !== 'OPEN') return;
@@ -494,7 +502,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                           {flow.care.length + chosen.length === 1 ? 'Reason' : `${flow.care.length + chosen.length} reasons`}: {[...careNames, ...chosen.map((r) => r.name)].join(' · ')}
                         </span>
                         <span className={cn('text-xs', preventiveOnly ? 'font-medium text-success' : 'text-muted-foreground')}>
-                          {preventiveOnly ? 'No consultation fee — only the vaccine or dewormer given is charged.' : 'The consultation fee applies.'}
+                          {preventiveOnly ? `No consultation fee — only the ${listOf(careNames.map((n) => n.toLowerCase()))} is charged.` : 'The consultation fee applies.'}
                         </span>
                       </div>
                     )}
@@ -523,7 +531,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                   <>
                     {!reason && flow.care.length > 0 ? (
                       <p className="rounded-lg border border-dashed p-4 text-[15px] text-muted-foreground">
-                        {careNames.join(' and ')} — no questions to ask. Write anything the owner tells you below.
+                        {listOf(careNames)} — no questions to ask. Write anything the owner tells you below.
                       </p>
                     ) : !reason ? (
                       <p className="rounded-lg border border-dashed p-4">

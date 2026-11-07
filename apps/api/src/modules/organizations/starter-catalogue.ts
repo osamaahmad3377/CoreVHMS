@@ -78,11 +78,11 @@ export const STARTER_DENTAL_PRICES = DENTAL_PROCEDURES.map((p) => ({ code: p.cod
 export const STARTER_HOME_VISIT = { calloutCode: 'HV-CALLOUT', perKmCode: 'HV-KM' };
 
 /** What can be booked on the calendar. Durations are booking defaults the clinic changes in Settings → Appointment types. */
-export const STARTER_APPOINTMENT_TYPES: { name: string; kind: AppointmentCategory; durationMinutes: number; color: string; serviceCode: string | null; allowOnlineBooking?: boolean }[] = [
+export const STARTER_APPOINTMENT_TYPES: { name: string; kind: AppointmentCategory; /** A starter category by name (else the kind's usual one). */ category?: string; durationMinutes: number; color: string; serviceCode: string | null; allowOnlineBooking?: boolean }[] = [
   { name: 'Consultation', kind: 'CONSULTATION', durationMinutes: 20, color: '#0d7a70', serviceCode: 'CONSULT', allowOnlineBooking: true },
   { name: 'Follow-up', kind: 'FOLLOW_UP', durationMinutes: 15, color: '#7c3aed', serviceCode: 'FOLLOWUP', allowOnlineBooking: true },
   { name: 'Vaccination', kind: 'VACCINATION', durationMinutes: 15, color: '#2563eb', serviceCode: 'VACCINATION', allowOnlineBooking: true },
-  { name: 'Deworming', kind: 'OTHER', durationMinutes: 15, color: '#65a30d', serviceCode: 'DEWORMING' },
+  { name: 'Deworming', kind: 'VACCINATION', category: 'Deworming', durationMinutes: 15, color: '#65a30d', serviceCode: 'DEWORMING' },
   { name: 'Health check', kind: 'CONSULTATION', durationMinutes: 20, color: '#0891b2', serviceCode: 'HEALTHCHECK', allowOnlineBooking: true },
   { name: 'Emergency', kind: 'EMERGENCY', durationMinutes: 30, color: '#dc2626', serviceCode: 'EMERGENCY' },
   { name: 'Surgery', kind: 'SURGERY', durationMinutes: 90, color: '#b45309', serviceCode: null },

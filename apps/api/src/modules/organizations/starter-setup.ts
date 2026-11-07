@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { DENTAL_PROCEDURES, STARTER_SECTIONS, STARTER_SECTION_LABELS, type StarterPlanSection, type StarterSection } from '@vcms/shared';
-import { categoryForKind } from '../scheduling/appointment-categories';
+import { categoryForKind, categoryNamed } from '../scheduling/appointment-categories';
 import {
   STARTER_APPOINTMENT_TYPES,
   STARTER_BOARDING_UNITS,
@@ -132,7 +132,7 @@ export async function applyStarter(tx: Tx, organizationId: string, sections: rea
   if (on.has('appointmentTypes')) {
     for (const t of m.appointmentTypes) {
       await tx.appointmentType.create({
-        data: { organizationId, name: t.name, category: t.kind, categoryId: await categoryForKind(tx, organizationId, t.kind), durationMinutes: t.durationMinutes, color: t.color, serviceId: svc(t.serviceCode), allowOnlineBooking: t.allowOnlineBooking ?? false },
+        data: { organizationId, name: t.name, category: t.kind, categoryId: t.category ? await categoryNamed(tx, organizationId, t.category, t.kind) : await categoryForKind(tx, organizationId, t.kind), durationMinutes: t.durationMinutes, color: t.color, serviceId: svc(t.serviceCode), allowOnlineBooking: t.allowOnlineBooking ?? false },
       });
       added.appointmentTypes++;
     }

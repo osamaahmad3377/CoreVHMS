@@ -1,9 +1,11 @@
 import type { AppointmentCategory } from '@prisma/client';
 
-/** The categories every clinic starts with — one per built-in kind. The clinic can rename, hide or add to them. */
+/** The categories every clinic starts with — one per built-in kind, plus Deworming. The clinic can rename, hide or add to them. */
 export const DEFAULT_APPOINTMENT_CATEGORIES: { name: string; kind: AppointmentCategory; sortOrder: number }[] = [
   { name: 'Consultation', kind: 'CONSULTATION', sortOrder: 10 },
   { name: 'Vaccination', kind: 'VACCINATION', sortOrder: 20 },
+  // Preventive care like vaccination (offered on the waiting-room screen); deworming has its own name.
+  { name: 'Deworming', kind: 'VACCINATION', sortOrder: 25 },
   { name: 'Follow-up', kind: 'FOLLOW_UP', sortOrder: 30 },
   { name: 'Surgery', kind: 'SURGERY', sortOrder: 40 },
   { name: 'Dental', kind: 'DENTAL', sortOrder: 50 },
@@ -24,6 +26,7 @@ type Tx = { appointmentTypeCategory: any };
 export async function categoryForKind(tx: Tx, organizationId: string, kind: AppointmentCategory) {
   const found = await tx.appointmentTypeCategory.findFirst({ where: { organizationId, kind }, orderBy: [{ isActive: 'desc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }] });
   if (found) return found.id;
+  // The first starter category of that kind (Vaccination, not Deworming).
   const d = DEFAULT_APPOINTMENT_CATEGORIES.find((c) => c.kind === kind)!;
   const created = await tx.appointmentTypeCategory.upsert({
     where: { organizationId_name: { organizationId, name: d.name } },
@@ -31,4 +34,10 @@ export async function categoryForKind(tx: Tx, organizationId: string, kind: Appo
     update: {},
   });
   return created.id;
+}
+
+/** A starter category by its name (e.g. Deworming), else the usual one for the kind. */
+export async function categoryNamed(tx: Tx, organizationId: string, name: string, kind: AppointmentCategory) {
+  const found = await tx.appointmentTypeCategory.findFirst({ where: { organizationId, name } });
+  return found?.id ?? categoryForKind(tx, organizationId, kind);
 }

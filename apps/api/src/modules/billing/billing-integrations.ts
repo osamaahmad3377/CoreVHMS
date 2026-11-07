@@ -206,6 +206,12 @@ export class BillingIntegrations implements OnModuleInit {
       });
     });
 
+    // Services added during a consultation (e.g. grooming) come off the bill if the consultation is cancelled.
+    this.encounters.registerCancelledHook(async (tx, encounterId) => {
+      const rows = await tx.charge.findMany({ where: { encounterId, sourceType: 'VisitService', status: 'PENDING' }, select: { sourceId: true } });
+      await this.charges.waiveForSource(tx, 'VisitService', rows.map((r) => r.sourceId), 'Consultation cancelled');
+    });
+
     // Merges
     for (const [name, fn] of [
       ['charges', (tx: any, s: string, m: string) => tx.charge.updateMany({ where: { clientId: m }, data: { clientId: s } })],

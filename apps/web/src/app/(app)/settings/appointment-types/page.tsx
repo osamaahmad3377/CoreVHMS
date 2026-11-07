@@ -1,19 +1,18 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { APPOINTMENT_CATEGORIES, APPOINTMENT_KIND_HINTS, enumLabel } from '@vcms/shared';
+import { APPOINTMENT_CATEGORIES, APPOINTMENT_KIND_HINTS, enumLabel, fromMinor } from '@vcms/shared';
 import { CalendarRange, Edit, Eye, EyeOff, Plus, Tags, Trash2 } from 'lucide-react';
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { DataTable } from '@/components/data-table';
+import { MoneyInput, parseMoney } from '@/components/billing/money';
+import { codeFromName } from '@/components/billing/service-code';
 import { Field } from '@/components/forms/field';
 import { FormError } from '@/components/forms/form-error';
-import { EmptyState } from '@/components/page';
+import { EmptyState, LoadingRows } from '@/components/page';
 import { RequirePermission } from '@/components/require';
-import { StatusBadge } from '@/components/status';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { Input, NativeSelect } from '@/components/ui/input';
@@ -25,6 +24,13 @@ import type { AppointmentType, AppointmentTypeCategory, Service } from '@/lib/ty
 import { useConfirm } from '@/components/confirm';
 import { DeleteRecordButton } from '@/components/delete-record';
 
+/** Colours that read well on the calendar; any other colour can still be picked. */
+const SWATCHES = ['#0d7a70', '#2563eb', '#7c3aed', '#db2777', '#dc2626', '#ea580c', '#d97706', '#65a30d', '#0891b2', '#475569'];
+const DURATIONS = [10, 15, 20, 30, 45, 60, 90, 120];
+/** The price-list group a new price for this kind of appointment goes in. */
+const SERVICE_GROUP: Record<string, string> = { CONSULTATION: 'CONSULTATION', FOLLOW_UP: 'CONSULTATION', EMERGENCY: 'CONSULTATION', VACCINATION: 'VACCINATION', SURGERY: 'SURGERY', DENTAL: 'DENTAL', DIAGNOSTICS: 'DIAGNOSTIC', GROOMING: 'GROOMING', FIELD_VISIT: 'FIELD_VISIT' };
+const NEW_PRICE = '__new__';
+
 function TypeDialog({ type, open, onOpenChange }: { type: AppointmentType | null; open: boolean; onOpenChange: (o: boolean) => void }) {
   const { currency } = useSession();
   const qc = useQueryClient();
@@ -32,7 +38,7 @@ function TypeDialog({ type, open, onOpenChange }: { type: AppointmentType | null
     name: type?.name ?? '',
     categoryId: type?.categoryId ?? '',
     durationMinutes: type?.durationMinutes ?? 15,
-    color: type?.color ?? '#0d7a70',
+    color: type?.color ?? SWATCHES[0],
     serviceId: type?.serviceId ?? '',
     requiresClinician: type?.requiresClinician ?? true,
     allowOnlineBooking: type?.allowOnlineBooking ?? false,
@@ -40,8 +46,12 @@ function TypeDialog({ type, open, onOpenChange }: { type: AppointmentType | null
   });
   const [error, setError] = useState<string | null>(null);
   const portal = usePortalEnabled();
-  const services = useQuery({ queryKey: ['services', 'active'], queryFn: () => api.get<Service[]>('/services') });
+  const services = useQuery({ queryKey: ['services', 'all'], queryFn: () => api.get<Service[]>('/services?all=true') });
   const linked = (services.data ?? []).find((x) => x.id === f.serviceId) ?? null;
+  // The charge's price can be changed right here (it is the same price as in Services & prices).
+  const [price, setPrice] = useState('');
+  useEffect(() => setPrice(linked ? fromMinor(linked.priceMinor, currency) : ''), [linked?.id, linked?.priceMinor, currency]); // eslint-disable-line react-hooks/exhaustive-deps
+  const parsedPrice = parseMoney(price, currency);
   const categories = useCategories(true);
   const choices = (categories.data ?? []).filter((c) => c.isActive || c.id === f.categoryId);
   const chosen = choices.find((c) => c.id === f.categoryId);
@@ -51,64 +61,116 @@ function TypeDialog({ type, open, onOpenChange }: { type: AppointmentType | null
   useEffect(() => {
     if (fallbackId) setF((cur) => (cur.categoryId ? cur : { ...cur, categoryId: fallbackId }));
   }, [fallbackId]);
+  const creatingPrice = f.serviceId === NEW_PRICE;
   const save = useMutation({
-    mutationFn: () => {
-      // The price comes from the linked service (one price to maintain); the old indicative price is left as it is.
-      const { serviceId, categoryId, ...rest } = f;
-      const body = { ...rest, serviceId: serviceId || null, categoryId: categoryId || null };
+    mutationFn: async () => {
+      let serviceId = f.serviceId || null;
+      if (creatingPrice) {
+        // A new price for this type: added to Services & prices under the type's name.
+        const created = await api.post<Service>('/services', {
+          code: codeFromName(f.name, (services.data ?? []).map((x) => x.code)),
+          name: f.name.trim(),
+          category: SERVICE_GROUP[chosen?.kind ?? ''] ?? 'OTHER',
+          priceMinor: parsedPrice ?? 0,
+          isActive: true,
+        });
+        serviceId = created.id;
+      } else if (linked && parsedPrice !== null && parsedPrice !== linked.priceMinor) {
+        await api.patch(`/services/${linked.id}`, { code: linked.code, name: linked.name, category: linked.category, priceMinor: parsedPrice, taxRateId: linked.taxRateId, isActive: linked.isActive });
+      }
+      const { categoryId, ...rest } = f;
+      const body = { ...rest, serviceId, categoryId: categoryId || null };
       return type ? api.patch(`/appointment-types/${type.id}`, body) : api.post('/appointment-types', body);
     },
     onSuccess: () => {
-      toast.success('Appointment type saved');
+      toast.success(`${f.name.trim()} saved`);
       qc.invalidateQueries({ queryKey: ['appointment-types'] });
       qc.invalidateQueries({ queryKey: ['services'] });
       onOpenChange(false);
     },
     onError: (e: Error) => setError(e.message),
   });
+  const priceInvalid = (creatingPrice || !!linked) && price.trim() !== '' && parsedPrice === null;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent size="lg">
         <DialogHeader>
-          <DialogTitle>{type ? `Edit ${type.name}` : 'Add appointment type'}</DialogTitle>
+          <DialogTitle>{type ? `Edit ${type.name}` : 'Add an appointment type'}</DialogTitle>
+          <DialogDescription>Something clients can be booked for: how long it takes, its colour in the calendar, and what is charged.</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-3">
+        <div className="grid gap-4">
           {error && <FormError message={error} />}
-          <Field label="Name" htmlFor="at-n" required><Input id="at-n" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Name" htmlFor="at-n" required><Input id="at-n" value={f.name} autoFocus={!type} placeholder="e.g. Puppy check" onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
             <Field label="Category" htmlFor="at-c" hint={chosen && chosen.name !== enumLabel(chosen.kind) ? `Works like ${enumLabel(chosen.kind).toLowerCase()}` : undefined}>
               <NativeSelect id="at-c" value={f.categoryId} onChange={(e) => setF({ ...f, categoryId: e.target.value })}>
                 {choices.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </NativeSelect>
             </Field>
-            <Field label="Duration (minutes)" htmlFor="at-d" required><Input id="at-d" type="number" min={5} max={600} step={5} value={f.durationMinutes} onChange={(e) => setF({ ...f, durationMinutes: Number(e.target.value) })} /></Field>
-            <Field label="Charge for this appointment" htmlFor="at-svc" hint="Added to the bill automatically when the visit is finished." className="col-span-2">
-              <NativeSelect id="at-svc" value={f.serviceId} onChange={(e) => setF({ ...f, serviceId: e.target.value })}>
-                <option value="">Not billed automatically</option>
-                {(services.data ?? []).filter((x) => x.isActive || x.id === f.serviceId).map((x) => <option key={x.id} value={x.id}>{x.name} ({fmtMoney(x.priceMinor, currency)})</option>)}
-              </NativeSelect>
-            </Field>
-            {linked && (
-              <p className="col-span-2 rounded-md bg-muted/50 px-3 py-2 text-sm">
-                Charge for this appointment: <b>{linked.name}</b> — <span className="tabular">{fmtMoney(linked.priceMinor, currency)}</span> ·{' '}
-                <Link className="font-medium text-primary hover:underline" href="/settings/services">Edit price</Link>
-              </p>
-            )}
-            <Field label="Colour" htmlFor="at-col"><Input id="at-col" type="color" className="h-9 p-1" value={f.color} onChange={(e) => setF({ ...f, color: e.target.value })} /></Field>
           </div>
-          <div className="grid gap-2 text-sm">
-            <label className="flex items-center gap-2"><Checkbox checked={f.requiresClinician} onCheckedChange={(v) => setF({ ...f, requiresClinician: v === true })} /> Requires a clinician</label>
-            {portal && <label className="flex items-center gap-2"><Checkbox checked={f.allowOnlineBooking} onCheckedChange={(v) => setF({ ...f, allowOnlineBooking: v === true })} /> Available for online booking (client portal)</label>}
-            {type && <label className="flex items-center gap-2"><Checkbox checked={f.isActive} onCheckedChange={(v) => setF({ ...f, isActive: v === true })} /> Active</label>}
+
+          <Field label="How long it takes" htmlFor="at-d" required>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {DURATIONS.map((d) => (
+                <button key={d} type="button" aria-pressed={f.durationMinutes === d} onClick={() => setF({ ...f, durationMinutes: d })} className={cn('h-9 min-w-[3.5rem] rounded-pill border px-3 text-sm font-medium tabular transition-colors', f.durationMinutes === d ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card hover:bg-muted')}>
+                  {d < 60 ? `${d} min` : `${d / 60} h`}
+                </button>
+              ))}
+              <span className="ml-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+                or <Input id="at-d" type="number" min={5} max={600} step={5} className="h-9 w-20" value={f.durationMinutes} onChange={(e) => setF({ ...f, durationMinutes: Number(e.target.value) })} /> min
+              </span>
+            </div>
+          </Field>
+
+          <Field label="What is charged" htmlFor="at-svc" hint="Added to the bill when the visit is finished. The price is the same one as in Services & prices.">
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_11rem]">
+              <NativeSelect id="at-svc" value={f.serviceId} onChange={(e) => setF({ ...f, serviceId: e.target.value })}>
+                <option value="">Nothing — no automatic charge</option>
+                <option value={NEW_PRICE}>+ A new price for “{f.name.trim() || 'this type'}”</option>
+                {(services.data ?? []).filter((x) => x.isActive || x.id === f.serviceId).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+              </NativeSelect>
+              {(creatingPrice || linked) && (
+                <MoneyInput aria-label="Price" currency={currency} value={price} onChange={(e) => setPrice(e.target.value)} className={cn(priceInvalid && 'border-destructive')} />
+              )}
+            </div>
+          </Field>
+
+          <Field label="Colour in the calendar" htmlFor="at-col">
+            <div className="flex flex-wrap items-center gap-2">
+              {SWATCHES.map((c) => (
+                <button key={c} type="button" aria-label={`Colour ${c}`} aria-pressed={f.color.toLowerCase() === c} onClick={() => setF({ ...f, color: c })} className={cn('h-8 w-8 rounded-full border-2 transition-transform hover:scale-110', f.color.toLowerCase() === c ? 'border-foreground ring-2 ring-offset-2 ring-foreground/30' : 'border-transparent')} style={{ backgroundColor: c }} />
+              ))}
+              <label className="ml-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                Other <Input id="at-col" type="color" className="h-8 w-10 p-0.5" value={f.color} onChange={(e) => setF({ ...f, color: e.target.value })} />
+              </label>
+            </div>
+          </Field>
+
+          <div className="grid gap-2">
+            <Toggle label="A vet must be booked" hint="The appointment takes time in a vet’s diary. Switch off for things like nail trims done by staff." checked={f.requiresClinician} onChange={(v) => setF({ ...f, requiresClinician: v })} />
+            {portal && <Toggle label="Clients can book it online" hint="Shown on your online booking page and in the client portal." checked={f.allowOnlineBooking} onChange={(v) => setF({ ...f, allowOnlineBooking: v })} />}
+            {type && <Toggle label="Can be booked" hint="Switched off: hidden when booking; past appointments keep it." checked={f.isActive} onChange={(v) => setF({ ...f, isActive: v })} />}
           </div>
         </div>
         <DialogFooter>
           {type && <DeleteRecordButton className="text-destructive hover:text-destructive sm:mr-auto" name={type.name} path={`/appointment-types/${type.id}`} invalidate={[['appointment-types']]} onDeleted={() => onOpenChange(false)} />}
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button disabled={!f.name.trim()} loading={save.isPending} onClick={() => { setError(null); save.mutate(); }}>Save</Button>
+          <Button disabled={!f.name.trim() || priceInvalid || f.durationMinutes < 5} loading={save.isPending} onClick={() => { setError(null); save.mutate(); }}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function Toggle({ label, hint, checked, onChange }: { label: string; hint: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm">
+      <span className="min-w-0">
+        <span className="font-medium">{label}</span>
+        <span className="block text-xs text-muted-foreground">{hint}</span>
+      </span>
+      <Switch checked={checked} onCheckedChange={onChange} aria-label={label} />
+    </label>
   );
 }
 
@@ -217,32 +279,76 @@ export default function AppointmentTypesPage() {
   const { currency } = useSession();
   const portal = usePortalEnabled();
   const q = useAppointmentTypes(true);
+  const qc = useQueryClient();
   const [dlg, setDlg] = useState<{ open: boolean; type: AppointmentType | null; key: number }>({ open: false, type: null, key: 0 });
   const [managing, setManaging] = useState(false);
+  const toggle = useMutation({
+    mutationFn: (t: AppointmentType) => api.patch(`/appointment-types/${t.id}`, { isActive: !t.isActive }),
+    onSuccess: (_r, t) => {
+      toast.success(`${t.name} ${t.isActive ? 'can no longer be booked' : 'can be booked again'}`);
+      qc.invalidateQueries({ queryKey: ['appointment-types'] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const types = q.data ?? [];
+  // Grouped by the clinic's categories, in their order; types without one under their kind's name.
+  const groupName = (t: AppointmentType) => t.categoryRef?.name ?? enumLabel(t.category);
+  const groups = [...new Set(types.map(groupName))].map((name) => ({ name, rows: types.filter((t) => groupName(t) === name) }));
   return (
     <RequirePermission anyOf={['settings.manage']}>
       <Card>
         <CardHeader>
-          <CardTitle>Appointment types</CardTitle>
+          <div className="min-w-0">
+            <CardTitle>Appointment types</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">What clients can be booked for — how long each takes, its colour in the calendar, and what is charged when the visit is finished.</p>
+          </div>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={() => setManaging(true)}><Tags /> Categories</Button>
             <Button size="sm" onClick={() => setDlg({ open: true, type: null, key: Date.now() })}><Plus /> Add appointment type</Button>
           </div>
         </CardHeader>
-        <DataTable
-          query={q}
-          rowKey={(t) => t.id}
-          empty={<EmptyState icon={CalendarRange} title="No appointment types" description="Create at least one type before booking appointments." />}
-          columns={[
-            { key: 'name', header: 'Name', cell: (t) => <span className="flex items-center gap-2 font-medium"><span className="h-3 w-3 rounded-full" style={{ backgroundColor: t.color }} />{t.name}</span> },
-            { key: 'cat', header: 'Category', cell: (t) => t.categoryRef?.name ?? enumLabel(t.category) },
-            { key: 'dur', header: 'Duration', cell: (t) => `${t.durationMinutes} min` },
-            { key: 'price', header: 'Charge', cell: (t) => (t.service ? <span className="text-sm">{t.service.name} · <span className="tabular">{fmtMoney(t.service.priceMinor, currency)}</span></span> : <span className="text-xs text-muted-foreground">Not billed automatically</span>) },
-            { key: 'opts', header: 'Options', cell: (t) => <span className="text-xs text-muted-foreground">{[t.requiresClinician && 'Clinician', portal && t.allowOnlineBooking && 'Online'].filter(Boolean).join(' · ')}</span> },
-            { key: 'st', header: 'Status', cell: (t) => <StatusBadge status={t.isActive ? 'ACTIVE' : 'ARCHIVED'} /> },
-            { key: 'act', header: '', className: 'text-right', cell: (t) => <Button size="icon-sm" variant="ghost" aria-label={`Edit ${t.name}`} onClick={() => setDlg({ open: true, type: t, key: Date.now() })}><Edit /></Button> },
-          ]}
-        />
+        {q.isLoading ? (
+          <LoadingRows rows={5} />
+        ) : !types.length ? (
+          <EmptyState icon={CalendarRange} title="No appointment types" description="Add at least one before booking appointments." />
+        ) : (
+          <div className="grid gap-5 p-4">
+            {groups.map((g) => (
+              <section key={g.name} aria-label={g.name}>
+                <h3 className="mb-1.5 flex items-baseline gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {g.name} <span className="font-normal normal-case tracking-normal">· {g.rows.length}</span>
+                </h3>
+                <ul className="divide-y rounded-xl border">
+                  {g.rows.map((t) => (
+                    <li key={t.id} className={cn('flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5', !t.isActive && 'bg-muted/40')}>
+                      <span className="h-8 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: t.color }} aria-hidden />
+                      <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setDlg({ open: true, type: t, key: Date.now() })}>
+                        <span className={cn('block truncate text-sm font-medium', !t.isActive && 'text-muted-foreground')}>{t.name}</span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {t.durationMinutes} min
+                          {!t.requiresClinician && ' · no vet needed'}
+                          {portal && t.allowOnlineBooking && ' · bookable online'}
+                        </span>
+                      </button>
+                      <span className="text-right text-sm">
+                        {t.service ? (
+                          <>
+                            <span className="tabular font-medium">{fmtMoney(t.service.priceMinor, currency)}</span>
+                            <span className="block text-xs text-muted-foreground">{t.service.name}</span>
+                          </>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">No charge</span>
+                        )}
+                      </span>
+                      <Switch checked={t.isActive} disabled={toggle.isPending} onCheckedChange={() => toggle.mutate(t)} aria-label={`${t.name} can be booked`} />
+                      <Button size="icon-sm" variant="ghost" aria-label={`Edit ${t.name}`} onClick={() => setDlg({ open: true, type: t, key: Date.now() })}><Edit /></Button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+        )}
       </Card>
       <CategoriesDialog open={managing} onOpenChange={setManaging} />
       {dlg.open && <TypeDialog key={dlg.key} type={dlg.type} open={dlg.open} onOpenChange={(open) => setDlg((d) => ({ ...d, open }))} />}

@@ -1,3 +1,5 @@
+import { VisitServicesController } from './visit-services.controller';
+import { VisitServicesService } from './visit-services.service';
 import { Module } from '@nestjs/common';
 import { ClientsModule } from '../clients/clients.module';
 import { ClinicalModule } from '../clinical/clinical.module';
@@ -19,8 +21,8 @@ import { PreventiveModule } from '../preventive/preventive.module';
 
 @Module({
   imports: [InventoryModule, PharmacyModule, LabModule, ClinicalModule, PatientsModule, ClientsModule, PreventiveModule],
-  controllers: [BillingController, ReceiptsController],
-  providers: [BillingConfigService, ChargeCaptureService, InvoicesService, PaymentsService, CashService, EstimatesAndExpensesService, PosService, PosReturnsService, ReceiptSettingsService, BillingIntegrations],
+  controllers: [BillingController, ReceiptsController, VisitServicesController],
+  providers: [BillingConfigService, ChargeCaptureService, InvoicesService, PaymentsService, CashService, EstimatesAndExpensesService, PosService, PosReturnsService, ReceiptSettingsService, BillingIntegrations, VisitServicesService],
   exports: [ChargeCaptureService, InvoicesService, PaymentsService],
 })
 export class BillingModule {}

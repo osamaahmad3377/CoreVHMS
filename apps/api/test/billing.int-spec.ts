@@ -66,7 +66,45 @@ describe('Billing, payments & finance', () => {
     // Vaccination, then the vet adds another reason (e.g. vomiting): the fee is back.
     expect(await visit([false, true])).toHaveLength(1);
     const audit = (await s.org.owner.get('/audit-events?action=encounter.updated')).body.data.map((x: any) => x.summary);
-    expect(audit).toEqual(expect.arrayContaining(['No consultation fee — vaccination / deworming only', 'Consultation fee will be charged']));
+    expect(audit).toEqual(expect.arrayContaining(['No consultation fee — vaccination, deworming or grooming only', 'Consultation fee will be charged']));
+  });
+
+  it('adds grooming services from Services & prices to a consultation bill, once each, and takes them off again', async () => {
+    const s = await setup();
+    const f = await schedulingFixture(s.org);
+    const nails = (await s.org.owner.post('/services', { code: 'T-NAILS', name: 'Test nail trim', category: 'GROOMING', priceMinor: 1500 })).body;
+    const ears = (await s.org.owner.post('/services', { code: 'T-EARS', name: 'Test ear clean', category: 'GROOMING', priceMinor: 2000 })).body;
+    const free = (await s.org.owner.post('/services', { code: 'BRUSH', name: 'Brush out', category: 'GROOMING', priceMinor: 0 })).body;
+    await s.org.owner.post('/services', { code: 'OFF', name: 'Old groom', category: 'GROOMING', priceMinor: 900, isActive: false });
+    const a = await s.org.owner.post('/appointments', booking(s.org, f, karachi(futureDate(4), '09:00')));
+    await f.vet.client.post(`/appointments/${a.body.id}/status`, { action: 'start' });
+    const enc = (await s.org.owner.get(`/encounters?status=OPEN&patientId=${f.patient.id}`)).body.data[0];
+    const url = `/encounters/${enc.id}/services`;
+
+    let list = (await f.vet.client.get(`${url}?category=GROOMING`)).body;
+    // The clinic's grooming group (starter services included), switched-off ones left out.
+    expect(list.options.map((o: any) => o.id)).toEqual(expect.arrayContaining([nails.id, ears.id, free.id]));
+    expect(list.options.map((o: any) => o.name)).not.toContain('Old groom');
+    expect(list.options.every((o: any) => typeof o.priceMinor === 'number')).toBe(true);
+    expect((await f.vet.client.post(url, { serviceId: nails.id })).status).toBe(201);
+    await f.vet.client.post(url, { serviceId: nails.id }); // tapped twice: still once
+    await f.vet.client.post(url, { serviceId: ears.id });
+    expect((await f.vet.client.post(url, { serviceId: free.id })).body.error.code).toBe('NO_PRICE');
+    list = (await f.vet.client.get(`${url}?category=GROOMING`)).body;
+    expect(list.added.map((x: any) => [x.description, x.unitPriceMinor])).toEqual([['Test nail trim', 1500], ['Test ear clean', 2000]]);
+    const charges = (await s.org.owner.get(`/charges?encounterId=${enc.id}`)).body.data;
+    expect(charges.map((c: any) => [c.kind, c.unitPriceMinor, c.sourceType]).sort()).toEqual([['SERVICE', 1500, 'VisitService'], ['SERVICE', 2000, 'VisitService']]);
+
+    // Tapped again: off the bill.
+    const earLine = list.added.find((x: any) => x.serviceId === ears.id);
+    expect((await f.vet.client.del(`${url}/${earLine.id}`)).status).toBe(200);
+    list = (await f.vet.client.get(`${url}?category=GROOMING`)).body;
+    expect(list.added.map((x: any) => x.description)).toEqual(['Test nail trim']);
+
+    // A cancelled consultation takes its grooming off the bill too.
+    await f.vet.client.post(`/encounters/${enc.id}/cancel`, { reason: 'Owner left' });
+    expect((await s.org.owner.get(`/charges?encounterId=${enc.id}`)).body.data).toHaveLength(0);
+    expect((await f.vet.client.post(url, { serviceId: nails.id })).body.error.code).toBe('ENCOUNTER_CLOSED');
   });
 
   it('builds invoices from charges, numbers them only when issued, and freezes issued invoices', async () => {

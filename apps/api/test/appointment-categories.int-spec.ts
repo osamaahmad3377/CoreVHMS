@@ -3,10 +3,14 @@ import { closeApp, registerOrg, staff } from './helpers';
 describe('Appointment categories', () => {
   afterAll(closeApp);
 
-  it('starts every clinic with the ten built-in categories, and lets it add, rename, hide and remove its own', async () => {
+  it('starts every clinic with the built-in categories and Deworming, and lets it add, rename, hide and remove its own', async () => {
     const org = await registerOrg();
     const start = (await org.owner.get('/appointment-categories')).body;
-    expect(start.map((c: any) => c.name)).toEqual(['Consultation', 'Vaccination', 'Follow-up', 'Surgery', 'Dental', 'Diagnostics', 'Grooming', 'Emergency', 'Field visit', 'Other']);
+    expect(start.map((c: any) => c.name)).toEqual(['Consultation', 'Vaccination', 'Deworming', 'Follow-up', 'Surgery', 'Dental', 'Diagnostics', 'Grooming', 'Emergency', 'Field visit', 'Other']);
+    // Deworming is preventive care like vaccination, and the starter Deworming appointment type is in it.
+    expect(start.find((c: any) => c.name === 'Deworming')).toMatchObject({ kind: 'VACCINATION' });
+    const deworming = ((await org.owner.get('/appointment-types?all=true')).body as any[]).find((t) => t.name === 'Deworming');
+    expect(deworming).toMatchObject({ category: 'VACCINATION', categoryRef: { name: 'Deworming' } });
 
     // A new category works like a built-in kind; appointment types in it take that kind.
     const senior = await org.owner.post('/appointment-categories', { name: 'Senior care', kind: 'CONSULTATION', sortOrder: 15 });
