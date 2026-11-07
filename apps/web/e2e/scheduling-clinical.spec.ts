@@ -95,14 +95,14 @@ test.describe('Clinical day: book → check in → consult → sign', () => {
     await expect(page.locator('li', { hasText: 'E2E: hit by car' }).first().getByText('Very urgent')).toBeVisible();
   });
 
-  test('an open consultation opens as Quick consult: eight steps and a More menu', async ({ page }) => {
+  test('an open consultation opens as Quick consult: nine steps (tests before the diagnosis) and a More menu', async ({ page }) => {
     await login(page, 'vet@demo.pk');
     const id = await page.evaluate(async () => (await (await fetch('/api/v1/encounters?status=OPEN&pageSize=1')).json()).data[0]?.id as string | undefined);
     test.skip(!id, 'No open consultation in this clinic');
     await page.goto(`/consultations/${id}`);
     const steps = page.getByRole('navigation', { name: 'Consultation steps' });
-    await expect(steps.getByRole('listitem')).toHaveCount(8);
-    for (const name of ['Reason', 'History', 'Measurements', 'Examination', 'Diagnosis', 'Treatment', 'Owner advice', 'Review & sign']) await expect(steps.getByText(name, { exact: true })).toBeVisible();
+    await expect(steps.getByRole('listitem')).toHaveCount(9);
+    for (const name of ['Reason', 'History', 'Measurements', 'Examination', 'Tests & X-rays', 'Diagnosis', 'Treatment', 'Owner advice', 'Review & sign']) await expect(steps.getByText(name, { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'More for this visit' })).toBeVisible();
   });
 

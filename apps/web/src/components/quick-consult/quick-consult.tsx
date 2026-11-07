@@ -43,8 +43,9 @@ const STEPS = [
   { short: 'History', title: (n: string) => `Ask the owner about ${n}`, hint: 'Ask each question and tap the answer. The history is written for you.' },
   { short: 'Measurements', title: (n: string) => `Measure ${n}`, hint: 'Enter what you measured and press Enter. Leave out what you didn’t.' },
   { short: 'Examination', title: (n: string) => `Examine ${n}`, hint: 'One tap if everything is normal. Then tap only what isn’t.' },
+  { short: 'Tests & X-rays', title: (n: string) => `Tests and X-rays for ${n}`, hint: 'Order any tests or X-rays before you decide on the diagnosis. Skip if none are needed.' },
   { short: 'Diagnosis', title: () => 'What is your diagnosis?', hint: 'Tap a suggestion or type your own. Tap its label to say how sure you are.' },
-  { short: 'Treatment', title: (n: string) => `Treatment for ${n}`, hint: 'Everything you give, prescribe or test is added to the plan automatically.' },
+  { short: 'Treatment', title: (n: string) => `Treatment for ${n}`, hint: 'Everything you give or prescribe is added to the plan automatically.' },
   { short: 'Owner advice', title: () => 'Advice for the owner', hint: 'Tap the advice you gave and decide on the next visit.' },
   { short: 'Review & sign', title: () => 'Review and sign', hint: 'The complete record and the owner’s summary. Change anything, then sign.' },
 ] as const;
@@ -61,6 +62,8 @@ const SURE: Record<string, string> = { CONFIRMED: 'sure', PROVISIONAL: 'likely',
 /** What the vet has chosen so far. Kept on this computer per visit, so a refresh or an interruption loses nothing. */
 interface Flow {
   step: number;
+  /** 2 = with the Tests & X-rays step (step numbers after Examination moved up by one). */
+  v?: number;
   /** The chosen appointment types, in the order they were tapped (several reasons in one visit). */
   reasonIds: string[];
   /** The category whose appointment types are shown in step 1. */
@@ -83,7 +86,10 @@ const storeKey = (id: string) => `vcms.quick-consult.${id}`;
 function loadFlow(id: string): Partial<Flow> | null {
   try {
     const raw = localStorage.getItem(storeKey(id));
-    return raw ? (JSON.parse(raw) as Partial<Flow>) : null;
+    const f = raw ? (JSON.parse(raw) as Partial<Flow>) : null;
+    // Saved before Tests & X-rays was added: the steps after Examination are one further on now.
+    if (f && f.v !== 2 && typeof f.step === 'number' && f.step >= 4) f.step += 1;
+    return f ? { ...f, v: 2 } : null;
   } catch {
     return null;
   }
@@ -202,6 +208,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
     advice: [],
     adviceExtra: draft?.followUpInstructions ?? '',
     noRecheck: false,
+    v: 2,
     ...saved,
     };
     // A visit started before several reasons were possible kept a single one.
@@ -403,7 +410,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
     : '';
   const measurements = enc.vitals[0] ? vitalsText(enc.vitals[0]) : '';
   const nextVisit = booked ? `${branchTime(booked.startsAt, tz, 'EEEE d MMMM')} at ${branchTime(booked.startsAt, tz)}${booked.clinician ? ` with ${booked.clinician.name}` : ''}` : null;
-  const stepDone = [chosen.length > 0 || flow.care.length > 0, !!composed.subjective, enc.vitals.length > 0, findings.length > 0 || !!flow.examExtra.trim(), shownDx.length > 0, planLines.length > 0, !!composed.followUpInstructions && (!!booked || flow.noRecheck), false];
+  const stepDone = [chosen.length > 0 || flow.care.length > 0, !!composed.subjective, enc.vitals.length > 0, findings.length > 0 || !!flow.examExtra.trim(), done.counts.tests > 0, shownDx.length > 0, planLines.length > 0, !!composed.followUpInstructions && (!!booked || flow.noRecheck), false];
   const followUpType = types.data?.find((t) => t.category === 'FOLLOW_UP' && t.isActive !== false);
   const late = elapsed >= TARGET_MINUTES;
   const wordsWritten = words(ownerText) + words(examSummary) + words(done.lines.join(' ')) + words(adviceText) + words(qn.note.history);
@@ -475,14 +482,14 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
         <div className="grid grid-cols-[minmax(0,1fr)] gap-5 xl:grid-cols-[minmax(0,1fr)_19rem]">
           {/* Steps, across the top: where we are, what is done; any step can be reopened. */}
           <nav aria-label="Consultation steps" className="min-w-0 rounded-xl border border-border/70 bg-background/80 p-1.5 shadow-sm xl:col-span-2">
-            <ol ref={stepsRef} className="relative flex items-center gap-1 overflow-x-auto [scrollbar-width:none] lg:justify-between 2xl:justify-start">
+            <ol ref={stepsRef} className="relative flex items-start gap-1 overflow-x-auto [scrollbar-width:none] lg:justify-between 2xl:justify-start">
               {STEPS.map((s, i) => (
-                <li key={s.short} className="flex items-center gap-1 2xl:flex-1 2xl:last:flex-none">
+                <li key={s.short} className="flex items-start gap-1 2xl:flex-1 2xl:last:flex-none">
                   <button
                     type="button"
                     onClick={() => go(i)}
                     aria-current={i === step ? 'step' : undefined}
-                    className={cn('flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm transition-colors', i === step ? 'bg-primary/10 font-semibold text-primary' : 'text-foreground/80 hover:bg-muted')}
+                    className={cn('flex shrink-0 flex-col items-center gap-1 rounded-lg px-2 py-1.5 text-xs transition-colors', i === step ? 'bg-primary/10 font-semibold text-primary' : 'text-foreground/80 hover:bg-muted')}
                   >
                     <span
                       className={cn(
@@ -494,7 +501,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                     </span>
                     <span className="whitespace-nowrap">{s.short}</span>
                   </button>
-                  {i < STEPS.length - 1 && <span aria-hidden className={cn('hidden h-px min-w-3 flex-1 2xl:block', stepDone[i] ? 'bg-success/50' : 'bg-border')} />}
+                  {i < STEPS.length - 1 && <span aria-hidden className={cn('mt-[18px] hidden h-px min-w-3 flex-1 2xl:block', stepDone[i] ? 'bg-success/50' : 'bg-border')} />}
                 </li>
               ))}
             </ol>
@@ -633,34 +640,34 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                   </>
                 )}
 
-                {/* 5 — Diagnosis */}
-                {step === 4 && (
+                {/* 5 — Tests & X-rays: ordered before the diagnosis; results come back to this visit. */}
+                {step === 4 &&
+                  (can('lab.read') ? (
+                    <LabOrdersPanel patient={enc.patient} encounterId={enc.id} editable={can('lab.order')} dialogOpen={labOpen} onDialogOpenChange={setLabOpen} />
+                  ) : (
+                    <p className="rounded-lg bg-muted/40 px-4 py-3 text-sm text-muted-foreground">You can’t see or order tests. Skip this step.</p>
+                  ))}
+
+                {/* 6 — Diagnosis */}
+                {step === 5 && (
                   <>
                     <QuickDiagnoses encounterId={enc.id} patientId={enc.patient.id} diagnoses={enc.diagnoses} editable onSaved={onRefresh} suggestions={reason?.diagnoses} />
-                    <div className="flex flex-wrap gap-2">
-                      {can('lab.read') && can('lab.order') && (
-                        <Button type="button" variant="outline" onClick={() => setLabOpen(true)}>
-                          <FlaskConical /> Order a test to confirm
-                        </Button>
-                      )}
-                      {!showReasoning && (
-                        <Button type="button" variant="ghost" onClick={() => setShowReasoning(true)}>
-                          <Pencil /> Add clinical reasoning
-                        </Button>
-                      )}
-                    </div>
+                    {!showReasoning && (
+                      <Button type="button" variant="ghost" className="w-fit" onClick={() => setShowReasoning(true)}>
+                        <Pencil /> Add clinical reasoning
+                      </Button>
+                    )}
                     {showReasoning && <Extra id="qc-assess" label="Clinical reasoning" value={flow.assessExtra} onChange={(v) => patch({ assessExtra: v })} placeholder="Why you think so, other possible causes" />}
                   </>
                 )}
 
-                {/* 6 — Treatment */}
-                {step === 5 && (
+                {/* 7 — Treatment */}
+                {step === 6 && (
                   <>
-                    <div className="grid grid-cols-2 gap-2.5 xl:grid-cols-4">
+                    <div className="grid grid-cols-3 gap-2.5">
                       {[
                         canAny('clinical.write', 'hospital.write', 'pharmacy.dispense') && { icon: Syringe, label: 'Give now', sub: 'Injection or tablet in the clinic', count: done.counts.given, onClick: () => setGiveOpen(true) },
                         can('prescriptions.write') && { icon: Pill, label: 'Prescribe', sub: 'Medicine to take home', count: done.counts.prescriptions, onClick: () => setRxOpen(true) },
-                        can('lab.read') && can('lab.order') && { icon: FlaskConical, label: 'Order a test', sub: 'Blood, urine, imaging', count: done.counts.tests, onClick: () => setLabOpen(true) },
                         { icon: Ban, label: 'No treatment', sub: 'Advice only today', count: flow.nothingToday ? 1 : 0, onClick: () => patch({ nothingToday: !flow.nothingToday }) },
                       ]
                         .filter((t): t is { icon: typeof Pill; label: string; sub: string; count: number; onClick: () => void } => !!t)
@@ -680,10 +687,9 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                           </button>
                         ))}
                     </div>
-                    <div className="grid gap-3 2xl:grid-cols-3">
+                    <div className="grid gap-3 2xl:grid-cols-2">
                       <AdministrationsPanel patient={enc.patient} encounterId={enc.id} editable dialogOpen={giveOpen} onDialogOpenChange={setGiveOpen} />
                       <PrescriptionsPanel patient={enc.patient} encounterId={enc.id} editable dialogOpen={rxOpen} onDialogOpenChange={setRxOpen} />
-                      <LabOrdersPanel patient={enc.patient} encounterId={enc.id} editable dialogOpen={labOpen} onDialogOpenChange={setLabOpen} />
                     </div>
                     <details className="rounded-xl border px-4 py-3" open={outcome.admitted || outcome.surgeries > 0 || outcome.referred > 0 || undefined}>
                       <summary className="cursor-pointer text-[15px] font-medium">Admit, book surgery or refer</summary>
@@ -706,8 +712,8 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                   </>
                 )}
 
-                {/* 7 — Owner advice & next visit */}
-                {step === 6 && (
+                {/* 8 — Owner advice & next visit */}
+                {step === 7 && (
                   <>
                     {reason && reason.advice.length > 0 && (
                       <div className="grid gap-2">
@@ -758,7 +764,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                   </>
                 )}
 
-                {/* 8 — Review & sign */}
+                {/* 9 — Review & sign */}
                 {step === LAST && (
                   <>
                     <div className="flex flex-wrap items-center gap-2">
