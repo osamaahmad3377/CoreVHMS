@@ -23,7 +23,25 @@ const OTHER = 'other';
  * protocols for that species, or any other by name) and when it is due. A protocol vaccine repeats by itself
  * after it is given; the item then shows in "Due & overdue" and reminders go out as usual.
  */
-export function AddVaccinationDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+export function AddVaccinationDialog({
+  open,
+  onOpenChange,
+  patient: fixedPatient,
+  kind,
+  onAdded,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  /** Already known (e.g. from a consultation): the patient picker is not shown. */
+  patient?: PickedPatient | null;
+  /** Vaccination (default) or deworming: only that kind of protocol is offered. */
+  kind?: 'VACCINATION' | 'DEWORMING';
+  onAdded?: (item: CareItem) => void;
+}) {
+  // Without a kind (the vaccination list page) every approved protocol is offered, vaccinations first.
+  const worming = kind === 'DEWORMING';
+  const what = worming ? 'deworming' : 'vaccination';
+  const thing = worming ? 'Dewormer' : 'Vaccine';
   const qc = useQueryClient();
   const { session } = useSession();
   const today = localDate(new Date(), session.branch?.timezone ?? 'UTC');
@@ -38,7 +56,7 @@ export function AddVaccinationDialog({ open, onOpenChange }: { open: boolean; on
 
   useEffect(() => {
     if (open) {
-      setPatient(null);
+      setPatient(fixedPatient ?? null);
       setChoice('');
       setTitle('');
       setDueDate(today);
@@ -54,13 +72,13 @@ export function AddVaccinationDialog({ open, onOpenChange }: { open: boolean; on
   const protocols = useQuery({ queryKey: ['care-protocols', 'approved'], queryFn: () => api.get<CareProtocol[]>('/care-protocols'), enabled: open, staleTime: 60_000 });
   /** Approved protocols for the patient's species (or for every species), vaccinations first. */
   const options = useMemo(() => {
-    const list = (protocols.data ?? []).filter((p) => p.status === 'APPROVED' && (!p.speciesId || !patient || p.speciesId === patient.species.id));
+    const list = (protocols.data ?? []).filter((p) => p.status === 'APPROVED' && (!kind || p.kind === kind) && (!p.speciesId || !patient || p.speciesId === patient.species.id));
     const groups = new Map<string, CareProtocol[]>();
     for (const p of [...list].sort((a, b) => (a.kind === 'VACCINATION' ? 0 : 1) - (b.kind === 'VACCINATION' ? 0 : 1) || a.name.localeCompare(b.name))) {
       groups.set(p.kind, [...(groups.get(p.kind) ?? []), p]);
     }
     return groups;
-  }, [protocols.data, patient]);
+  }, [protocols.data, patient, kind]);
 
   /** The patient's open items by protocol, so a vaccine they are already down for cannot be added twice. */
   const plan = useQuery({
@@ -91,16 +109,17 @@ export function AddVaccinationDialog({ open, onOpenChange }: { open: boolean; on
 
   const m = useMutation({
     mutationFn: () =>
-      api.post('/care-items', {
+      api.post<CareItem>('/care-items', {
         patientId: patient!.id,
         protocolId: protocol?.id ?? null,
-        kind: protocol?.kind ?? 'VACCINATION',
+        kind: protocol?.kind ?? kind ?? 'VACCINATION',
         title: name,
         dueDate,
         notes: notes.trim() || null,
         ...repeatPayload(repeat, !!protocol),
       }),
-    onSuccess: () => {
+    onSuccess: (item) => {
+      onAdded?.(item);
       toast.success(`${patient!.name} added: ${name}, due ${fmtDate(dueDate)}`, {
         description: dueDate > today ? 'It shows under “Due within 7 days” or “All open” as the date comes closer.' : undefined,
       });
@@ -123,20 +142,22 @@ export function AddVaccinationDialog({ open, onOpenChange }: { open: boolean; on
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="md">
         <DialogHeader>
-          <DialogTitle>Add patient for vaccination</DialogTitle>
-          <DialogDescription>The patient joins the vaccination list with a due date, and the owner gets the usual reminders.</DialogDescription>
+          <DialogTitle>{fixedPatient ? `Add ${fixedPatient.name} for ${what}` : `Add patient for ${what}`}</DialogTitle>
+          <DialogDescription>{fixedPatient ? `Choose the ${thing.toLowerCase()}. It is due today — record it as given once it is done, and the next one is scheduled automatically.` : `The patient joins the ${what} list with a due date, and the owner gets the usual reminders.`}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
           {error && <FormError message={error} />}
-          <Field label="Patient" htmlFor="av-patient" required error={tried && missing.patient ? 'Choose the patient' : undefined}>
-            <PatientPicker id="av-patient" value={patient} onChange={setPatient} invalid={tried && missing.patient} allowCreate />
-          </Field>
+          {!fixedPatient && (
+            <Field label="Patient" htmlFor="av-patient" required error={tried && missing.patient ? 'Choose the patient' : undefined}>
+              <PatientPicker id="av-patient" value={patient} onChange={setPatient} invalid={tried && missing.patient} allowCreate />
+            </Field>
+          )}
           <Field
-            label="Vaccine"
+            label={thing}
             htmlFor="av-vaccine"
             required
-            error={tried && missing.vaccine ? (choice === OTHER ? 'Type the vaccine name' : 'Choose the vaccine') : undefined}
-            hint={protocols.data && !options.size ? 'No approved protocols yet for this species — type the vaccine name under “Other”.' : undefined}
+            error={tried && missing.vaccine ? (choice === OTHER ? `Type the ${thing.toLowerCase()} name` : `Choose the ${thing.toLowerCase()}`) : undefined}
+            hint={protocols.data && !options.size ? `No approved protocols yet for this species — type the ${thing.toLowerCase()} name under “Other”.` : undefined}
           >
             <NativeSelect id="av-vaccine" value={choice} onChange={(e) => setChoice(e.target.value)} aria-invalid={tried && missing.vaccine && choice !== OTHER}>
               <option value="">{protocols.isLoading ? 'Loading…' : 'Choose…'}</option>
@@ -154,12 +175,12 @@ export function AddVaccinationDialog({ open, onOpenChange }: { open: boolean; on
                   })}
                 </optgroup>
               ))}
-              <option value={OTHER}>Other vaccine (type the name)</option>
+              <option value={OTHER}>Other {thing.toLowerCase()} (type the name)</option>
             </NativeSelect>
           </Field>
           {choice === OTHER && (
-            <Field label="Vaccine name" htmlFor="av-title" required>
-              <Input id="av-title" value={title} maxLength={160} autoFocus placeholder="e.g. Rabies booster" onChange={(e) => setTitle(e.target.value)} aria-invalid={tried && missing.vaccine} />
+            <Field label={`${thing} name`} htmlFor="av-title" required>
+              <Input id="av-title" value={title} maxLength={160} autoFocus placeholder={worming ? 'e.g. Praziquantel tablet' : 'e.g. Rabies booster'} onChange={(e) => setTitle(e.target.value)} aria-invalid={tried && missing.vaccine} />
             </Field>
           )}
           <Field label="Due" htmlFor="av-due" required hint="Today if it is being given now." error={tried && missing.due ? 'Choose the due date' : undefined}>
@@ -175,7 +196,7 @@ export function AddVaccinationDialog({ open, onOpenChange }: { open: boolean; on
             Cancel
           </Button>
           <Button loading={m.isPending} onClick={submit}>
-            Add to vaccination list
+            {fixedPatient ? 'Add' : `Add to ${what} list`}
           </Button>
         </DialogFooter>
       </DialogContent>

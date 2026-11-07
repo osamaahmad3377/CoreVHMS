@@ -15,6 +15,7 @@ import { usePatientContext } from './use-patient-context';
 import { useQuickNote } from './use-quick-note';
 import { VisitMore } from './visit-more';
 import { ClinicalRecordView, OwnerSummary, type VisitDoc } from './visit-documents';
+import { PreventivePanel, PreventiveTiles, type PreventiveKind } from './preventive-reasons';
 import { answersToText, reasonIcon, useVisitReasons, type VisitReason } from './visit-reasons';
 import type { ClinicHeader } from '../billing/invoice-document';
 import { vitalsText } from '../clinical/note-editor';
@@ -31,7 +32,7 @@ import { useAppointmentTypes } from '@/hooks/use-catalog';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { branchTime, shiftDate, todayIn } from '@/lib/time';
-import type { Appointment, Encounter } from '@/lib/types';
+import type { Appointment, CareItem, Encounter } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 /* ───────────────────────── The visit, in the order the vet runs it ───────────────────────── */
@@ -239,6 +240,16 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
   const [showReasoning, setShowReasoning] = useState(!!flow.assessExtra);
   const [doc, setDoc] = useState<'record' | 'owner'>('record');
 
+  // Vaccination / deworming: always on step 1; tapping one shows what is due to record (or asks to add it first).
+  const [care, setCare] = useState<PreventiveKind | null>(null);
+  const [careAdding, setCareAdding] = useState(false);
+  const pickCare = async (k: PreventiveKind) => {
+    setCare(k);
+    if (!flow.reasonText.trim()) patch({ reasonText: k === 'VACCINATION' ? 'Vaccination' : 'Deworming' });
+    const plan = await qc.fetchQuery({ queryKey: ['care-plan', enc.patient.id], queryFn: () => api.get<{ items: CareItem[] }>(`/patients/${enc.patient.id}/care-plan`) });
+    if (!plan.items.some((i) => i.kind === k && (i.status === 'DUE' || i.status === 'DEFERRED'))) setCareAdding(true);
+  };
+
   const pickReason = (r: VisitReason) => {
     // The template's own note text fills only boxes that are still empty; the owner's words are kept.
     const t = r.template;
@@ -312,7 +323,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
     : '';
   const measurements = enc.vitals[0] ? vitalsText(enc.vitals[0]) : '';
   const nextVisit = booked ? `${branchTime(booked.startsAt, tz, 'EEEE d MMMM')} at ${branchTime(booked.startsAt, tz)}${booked.clinician ? ` with ${booked.clinician.name}` : ''}` : null;
-  const stepDone = [!!reason, !!composed.subjective, enc.vitals.length > 0, findings.length > 0 || !!flow.examExtra.trim(), shownDx.length > 0, planLines.length > 0, !!composed.followUpInstructions && (!!booked || flow.noRecheck), false];
+  const stepDone = [!!reason || !!care, !!composed.subjective, enc.vitals.length > 0, findings.length > 0 || !!flow.examExtra.trim(), shownDx.length > 0, planLines.length > 0, !!composed.followUpInstructions && (!!booked || flow.noRecheck), false];
   const followUpType = types.data?.find((t) => t.category === 'FOLLOW_UP' && t.isActive !== false);
   const late = elapsed >= TARGET_MINUTES;
   const wordsWritten = words(ownerText) + words(examSummary) + words(done.lines.join(' ')) + words(adviceText) + words(qn.note.history);
@@ -424,6 +435,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                   <>
                     {visitReasons.isLoading && <LoadingRows rows={3} />}
                     <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 2xl:grid-cols-4">
+                      <PreventiveTiles selected={care} onSelect={(k) => void pickCare(k)} />
                       {visitReasons.reasons.map((r) => {
                         const Icon = reasonIcon(r.icon);
                         return (
@@ -445,6 +457,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                         );
                       })}
                     </div>
+                    {care && <PreventivePanel kind={care} enc={enc} adding={careAdding} onAddingChange={setCareAdding} />}
                     {can('settings.manage') && (
                       <Link href="/settings/templates" className="-mt-3 w-fit text-xs font-medium text-primary hover:underline">
                         Edit these templates and their questions

@@ -29,7 +29,8 @@ export function CareStatusBadge({ item }: { item: Pick<CareItem, 'status' | 'ove
   return <Badge variant={v[item.status]}>{enumLabel(item.status)}</Badge>;
 }
 
-function CompleteDialog({ item, onClose }: { item: CareItem | null; onClose: () => void }) {
+/** Records a care item as done; from a consultation (`encounterId`) the dose given is part of that visit. */
+export function CompleteDialog({ item, onClose, encounterId, onRecorded }: { item: CareItem | null; onClose: () => void; encounterId?: string; onRecorded?: () => void }) {
   const qc = useQueryClient();
   const { can } = useSession();
   const [mode, setMode] = useState<'ADMINISTER' | 'ELSEWHERE' | 'DONE'>('ADMINISTER');
@@ -78,11 +79,14 @@ function CompleteDialog({ item, onClose }: { item: CareItem | null; onClose: () 
         notes: f.notes || null,
         completedAt: f.completedAt ? new Date(f.completedAt).toISOString() : null,
         overrideReason: override || null,
+        encounterId: encounterId ?? null,
       }),
     onSuccess: () => {
       toast.success(`${item!.title} recorded`);
       qc.invalidateQueries({ queryKey: ['care-plan'] });
       qc.invalidateQueries({ queryKey: ['care-items'] });
+      qc.invalidateQueries({ queryKey: ['administrations'] });
+      onRecorded?.();
       onClose();
     },
     onError: (e: Error) => {
