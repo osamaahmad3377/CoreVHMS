@@ -7,7 +7,7 @@ import type { ScopedTx } from '../../common/prisma/tenant-extension';
 import { allergyMatches } from './prescriptions.service';
 import { WithdrawalService } from './withdrawal.service';
 
-export type AdministrationHook = (tx: ScopedTx, e: { administrationId: string; productId: string; dose: number; doseUnit: string; batchNumber?: string | null; branchId: string; billQuantity?: number | null }) => Promise<void>;
+export type AdministrationHook = (tx: ScopedTx, e: { administrationId: string; productId: string; dose: number; doseUnit: string; batchNumber?: string | null; branchId: string; billQuantity?: number | null; stockOverride?: boolean }) => Promise<void>;
 
 /** Medication given in the clinic (injections, in-clinic doses, vaccines). */
 @Injectable()
@@ -44,6 +44,8 @@ export class AdministrationsService {
     notes?: string | null;
     administeredAt?: Date | null;
     overrideReason?: string | null;
+    /** Given although stock shows not enough: the reason, recorded with the administration and in the audit log. */
+    stockOverrideReason?: string | null;
     /** Billed amount in selling units (see administrationSchema). */
     billQuantity?: number | null;
   }, within?: (tx: ScopedTx, administration: { id: string }) => Promise<void>) {
@@ -72,12 +74,12 @@ export class AdministrationsService {
     }
     const at = input.administeredAt ?? new Date();
     if (at.getTime() > Date.now() + 5 * 60_000) throw ruleViolation('FUTURE_TIME', 'Administration time cannot be in the future');
-    const { overrideReason, billQuantity: _billQuantity, ...data } = input;
+    const { overrideReason, stockOverrideReason, billQuantity: _billQuantity, ...data } = input;
     return this.prisma.db.$transaction(async (tx) => {
       const a = await tx.medicationAdministration.create({
         data: {
           ...data,
-          notes: [data.notes, overrideReason && `Allergy override: ${overrideReason}`].filter(Boolean).join('\n') || null,
+          notes: [data.notes, overrideReason && `Allergy override: ${overrideReason}`, stockOverrideReason && `Given without stock: ${stockOverrideReason}`].filter(Boolean).join('\n') || null,
           administeredAt: at,
           organizationId: ctx.organizationId!,
           administeredById: ctx.userId!,
@@ -85,7 +87,7 @@ export class AdministrationsService {
         },
       });
       if (input.status === 'GIVEN') {
-        for (const { hook } of [...this.hooks.filter((h) => !h.late), ...this.hooks.filter((h) => h.late)]) await hook(tx, { administrationId: a.id, productId: product.id, dose: input.dose, doseUnit: input.doseUnit, batchNumber: input.batchNumber, branchId: ctx.branchId!, billQuantity: input.billQuantity ?? null });
+        for (const { hook } of [...this.hooks.filter((h) => !h.late), ...this.hooks.filter((h) => h.late)]) await hook(tx, { administrationId: a.id, productId: product.id, dose: input.dose, doseUnit: input.doseUnit, batchNumber: input.batchNumber, branchId: ctx.branchId!, billQuantity: input.billQuantity ?? null, stockOverride: !!stockOverrideReason });
         await this.withdrawals.record(tx, { patientId: patient.id, speciesId: patient.speciesId, productId: product.id, sourceType: 'ADMINISTRATION', sourceId: a.id, treatedAt: at });
       }
       // Callers (e.g. the hospital treatment sheet) can record their own changes in the same transaction.
@@ -95,7 +97,7 @@ export class AdministrationsService {
           action: input.status === 'GIVEN' ? 'medication.administered' : 'medication.not_given',
           entityType: 'Patient',
           entityId: patient.id,
-          summary: `${product.name} ${input.dose} ${input.doseUnit} ${input.route}${input.batchNumber ? ` batch ${input.batchNumber}` : ''}${overrideReason ? ` (allergy override: ${overrideReason})` : ''}`,
+          summary: `${product.name} ${input.dose} ${input.doseUnit} ${input.route}${input.batchNumber ? ` batch ${input.batchNumber}` : ''}${overrideReason ? ` (allergy override: ${overrideReason})` : ''}${stockOverrideReason ? ` (given without stock: ${stockOverrideReason})` : ''}`,
         },
         tx,
       );

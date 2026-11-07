@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { HttpException, Injectable } from '@nestjs/common';
 import { LocationType, MovementType, Prisma } from '@prisma/client';
 import { PRESCRIBABLE_PRODUCT_TYPES } from '@vcms/shared';
 import { AuditService } from '../../common/audit/audit.service';
@@ -120,15 +120,23 @@ export class InventoryService {
   /**
    * Automatic stock issue for clinical/sales events. Skipped when the product is not stock-tracked or the
    * branch's stock is not set up yet (trackingLocation); otherwise insufficient stock blocks the event
-   * unless the organization allows negative stock.
+   * unless the organization allows negative stock, or the user gave a reason to go ahead (`allowShortfall`): the
+   * shortfall is then booked as negative stock, or nothing is taken when the product has never been in stock here.
    */
-  async issueForEvent(tx: ScopedTx, e: { productId: string; quantity: number; branchId: string; type: MovementType; referenceType: string; referenceId: string; preferredBatchNumber?: string | null }) {
+  async issueForEvent(tx: ScopedTx, e: { productId: string; quantity: number; branchId: string; type: MovementType; referenceType: string; referenceId: string; preferredBatchNumber?: string | null; allowShortfall?: boolean }) {
     const product = await tx.product.findUnique({ where: { id: e.productId } });
     if (!product || !product.trackStock || e.quantity <= 0) return [];
     const location = await this.trackingLocation(tx, e.branchId);
     if (!location) return [];
     const org = await this.org();
-    return this.engine.issueFefo(tx, { ...e, locationId: location.id, allowNegative: org.allowNegativeStock });
+    const { allowShortfall, ...event } = e;
+    try {
+      return await this.engine.issueFefo(tx, { ...event, locationId: location.id, allowNegative: org.allowNegativeStock || !!allowShortfall });
+    } catch (err) {
+      // No batch of this product at the location to book the shortfall against (checked before anything is written).
+      if (allowShortfall && err instanceof HttpException && (err.getResponse() as { code?: string }).code === 'INSUFFICIENT_STOCK') return [];
+      throw err;
+    }
   }
 
   /** Returns stock to the location it was issued from (e.g. a voided sale), reversing the original movements. */

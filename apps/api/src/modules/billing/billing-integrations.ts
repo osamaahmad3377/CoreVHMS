@@ -106,7 +106,7 @@ export class BillingIntegrations implements OnModuleInit {
       const billed = e.billQuantity ?? used;
       // Stock is only taken when the amount is known (converted, or confirmed by the vet), so a guess never blocks recording.
       if (!a.prescriptionItemId && (converted !== null || e.billQuantity != null)) {
-        const issued = await this.inventory.issueForEvent(tx, { productId: product.id, quantity: used, branchId: e.branchId, type: 'ADMINISTER', referenceType: 'Administration', referenceId: a.id, preferredBatchNumber: e.batchNumber });
+        const issued = await this.inventory.issueForEvent(tx, { productId: product.id, quantity: used, branchId: e.branchId, type: 'ADMINISTER', referenceType: 'Administration', referenceId: a.id, preferredBatchNumber: e.batchNumber, allowShortfall: e.stockOverride });
         if (issued.length) await tx.medicationAdministration.update({ where: { id: a.id }, data: traceability(issued) });
       }
       if (a.prescriptionItemId) return; // charged when the prescription was dispensed

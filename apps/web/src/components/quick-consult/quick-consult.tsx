@@ -691,9 +691,11 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                       <AdministrationsPanel patient={enc.patient} encounterId={enc.id} editable dialogOpen={giveOpen} onDialogOpenChange={setGiveOpen} />
                       <PrescriptionsPanel patient={enc.patient} encounterId={enc.id} editable dialogOpen={rxOpen} onDialogOpenChange={setRxOpen} />
                     </div>
-                    <details className="rounded-xl border px-4 py-3" open={outcome.admitted || outcome.surgeries > 0 || outcome.referred > 0 || undefined}>
-                      <summary className="cursor-pointer text-[15px] font-medium">Admit, book surgery or refer</summary>
-                      <div className="mt-3">
+                    <section className="grid gap-2" aria-labelledby="qc-next-h">
+                      <h2 id="qc-next-h" className="text-sm font-medium text-muted-foreground">
+                        Admit, surgery, referral or follow-up
+                      </h2>
+                      <div>
                         <VisitOutcome
                           encounter={enc}
                           admitOpen={admitOpen}
@@ -706,7 +708,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                           onState={setOutcome}
                         />
                       </div>
-                    </details>
+                    </section>
                     <Extra id="qc-plan" label="Anything else in the plan" value={flow.planExtra} onChange={(v) => patch({ planExtra: v })} placeholder="e.g. Dental scale under anaesthetic next month" />
                     <WillWrite text={composed.plan} label="Plan in the record" />
                   </>

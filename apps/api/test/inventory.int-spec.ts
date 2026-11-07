@@ -60,6 +60,30 @@ describe('Inventory & procurement', () => {
     expect(d.expiryDate?.toISOString().slice(0, 10)).toBe(inDays(200));
   });
 
+  it('gives an in-clinic dose without enough stock only with a reason, booking the shortfall as negative stock', async () => {
+    const org = await registerOrg();
+    const vet = await staff(org, 'veterinarian', { isClinician: true });
+    const f = await stockFixture(org);
+    const patient = await makePatient(org.owner, (await makeClient(org.owner)).id);
+    await org.owner.post('/stock/receipts', { supplierId: f.supplierId, locationId: f.locationId, lines: [{ productId: f.product.id, batchNumber: 'B1', quantity: 1, unitCostMinor: 100 }] });
+    const give = (extra: Record<string, unknown> = {}) => vet.client.post('/administrations', { patientId: patient.id, productId: f.product.id, dose: 3, doseUnit: 'tablet', route: 'PO', ...extra });
+    const blocked = await give();
+    expect(blocked.body.error).toMatchObject({ code: 'INSUFFICIENT_STOCK', details: { available: 1, required: 3 } });
+    expect(await prisma().medicationAdministration.count({ where: { patientId: patient.id } })).toBe(0);
+    const ok = await give({ stockOverrideReason: 'Delivery not entered yet' });
+    expect(ok.status).toBe(201);
+    expect(ok.body.notes).toContain('Given without stock: Delivery not entered yet');
+    const level = await prisma().stockLevel.findFirstOrThrow({ where: { productId: f.product.id } });
+    expect(Number(level.quantity)).toBe(-2);
+    expect(Number((await prisma().charge.findFirstOrThrow({ where: { sourceType: 'Administration', sourceId: ok.body.id } })).quantity)).toBe(3);
+    const audit = await prisma().auditEvent.findFirstOrThrow({ where: { action: 'medication.administered', entityId: patient.id } });
+    expect(audit.summary).toContain('given without stock: Delivery not entered yet');
+    // A product never received here: recorded with the reason, nothing taken from stock.
+    const other = await org.owner.post('/products', { name: 'Never stocked 5 mg tablets', strengthValue: 5, strengthUnit: 'mg', dispensingUnit: 'tablet', minDispenseIncrement: 1, sellPriceMinor: 100 });
+    expect((await give({ productId: other.body.id })).body.error.code).toBe('INSUFFICIENT_STOCK');
+    expect((await give({ productId: other.body.id, stockOverrideReason: 'Borrowed from the clinic next door' })).status).toBe(201);
+  });
+
   it('blocks dispensing beyond usable stock unless the organization allows negative stock', async () => {
     const org = await registerOrg();
     const vet = await staff(org, 'veterinarian', { isClinician: true });
