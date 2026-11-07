@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DiagnosisStatus, DiagnosisType, Prisma, ProblemStatus, TaskType } from '@prisma/client';
-import { STARTER_TEMPLATE_QUESTIONS, templateQuestionSchema, type clinicalTemplateSchema, type VitalsInput } from '@vcms/shared';
+import { listFingerprint, questionsFingerprint, STARTER_TEMPLATE_QUESTIONS, STARTER_V1_FINGERPRINTS, TEMPLATE_LIBRARY_VERSION, templateQuestionSchema, type clinicalTemplateSchema, type VitalsInput } from '@vcms/shared';
 import type { z } from 'zod';
 import { AuditService, diff } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
@@ -235,14 +235,76 @@ export class ClinicalRecordsService {
     return added;
   }
 
-  /** Adds the starter questions the first time only, even if two requests arrive together. */
+  /**
+   * Brings a clinic's starter templates up to the current library. A starter template the clinic never changed gets
+   * the improved questions, diagnoses, advice and examination list (each part only if that part is unchanged);
+   * templates new in this library are added with their appointment type. Templates the clinic edited, deleted or
+   * switched off stay as they are.
+   */
+  private async upgradeLibrary(tx: ScopedTx, organizationId: string, fromVersion: number) {
+    const existing = await tx.clinicalTemplate.findMany({ include: this.templateInclude });
+    const byName = new Map(existing.map((t) => [t.name.toLowerCase(), t]));
+    const improved: string[] = [];
+    const added: string[] = [];
+    for (const st of STARTER_TEMPLATE_QUESTIONS) {
+      const match = [st.name, ...(st.aliases ?? [])].map((n) => byName.get(n.toLowerCase())).find(Boolean);
+      if (!match) {
+        // Only templates new to this library: a first-library template that is missing was removed by the clinic.
+        if ((st.addedIn ?? 1) <= fromVersion) continue;
+        const t = await tx.clinicalTemplate.create({
+          data: { organizationId, name: st.name, icon: st.icon, presentingComplaint: st.presentingComplaint || null, examSystems: st.examSystems ?? [], diagnoses: st.diagnoses ?? [], advice: st.advice },
+        });
+        await this.writeQuestions(tx, organizationId, t.id, st.questions.map((x) => templateQuestionSchema.parse(x)));
+        await this.templateCreated(tx, t);
+        added.push(st.name);
+        continue;
+      }
+      const v1 = STARTER_V1_FINGERPRINTS[st.name];
+      // A part is replaced when it is empty or still exactly the first library's, and the new one is different.
+      const replace = (list: string[], next: string[], fp?: string) => (!list.length || (!!fp && listFingerprint(list) === fp)) && listFingerprint(list) !== listFingerprint(next);
+      const data: Prisma.ClinicalTemplateUpdateInput = {
+        ...(match.icon === 'file' && { icon: st.icon }),
+        ...(!match.presentingComplaint && st.presentingComplaint && { presentingComplaint: st.presentingComplaint }),
+        ...(replace(match.diagnoses, st.diagnoses ?? [], v1?.diagnoses) && { diagnoses: st.diagnoses ?? [] }),
+        ...(replace(match.advice, st.advice, v1?.advice) && { advice: st.advice }),
+        ...(replace(match.examSystems, st.examSystems ?? [], v1?.examSystems) && { examSystems: st.examSystems ?? [] }),
+      };
+      const questions = st.questions.map((x) => templateQuestionSchema.parse(x));
+      const newQuestions = (!match.questions.length || (!!v1 && questionsFingerprint(match.questions) === v1.questions)) && questionsFingerprint(match.questions) !== questionsFingerprint(questions);
+      if (newQuestions) await this.writeQuestions(tx, organizationId, match.id, questions);
+      if (Object.keys(data).length) await tx.clinicalTemplate.update({ where: { id: match.id }, data });
+      if (newQuestions || Object.keys(data).length) improved.push(match.name);
+    }
+    if (improved.length || added.length) {
+      await this.audit.record(
+        {
+          action: 'template.library_updated',
+          entityType: 'ClinicalTemplate',
+          entityId: organizationId,
+          summary: [improved.length && `Improved: ${improved.join(', ')}`, added.length && `Added: ${added.join(', ')}`].filter(Boolean).join('. '),
+        },
+        tx,
+      );
+    }
+    return { improved, added };
+  }
+
+  /**
+   * Adds the starter templates the first time, and later library improvements once — even if two requests arrive
+   * together.
+   */
   private async ensureTemplateQuestions() {
     const orgId = RequestContext.orgId();
-    const org = await this.prisma.raw.organization.findUnique({ where: { id: orgId }, select: { templateQuestionsSeeded: true } });
-    if (!org || org.templateQuestionsSeeded) return;
+    const org = await this.prisma.raw.organization.findUnique({ where: { id: orgId }, select: { templateQuestionsSeeded: true, templateLibraryVersion: true } });
+    if (!org || (org.templateQuestionsSeeded && org.templateLibraryVersion >= TEMPLATE_LIBRARY_VERSION)) return;
     await this.prisma.db.$transaction(async (tx) => {
-      const claimed = await tx.organization.updateMany({ where: { id: orgId, templateQuestionsSeeded: false }, data: { templateQuestionsSeeded: true } });
-      if (claimed.count) await this.addStarterQuestions(tx, orgId);
+      if (!org.templateQuestionsSeeded) {
+        const claimed = await tx.organization.updateMany({ where: { id: orgId, templateQuestionsSeeded: false }, data: { templateQuestionsSeeded: true, templateLibraryVersion: TEMPLATE_LIBRARY_VERSION } });
+        if (claimed.count) await this.addStarterQuestions(tx, orgId);
+        return;
+      }
+      const claimed = await tx.organization.updateMany({ where: { id: orgId, templateLibraryVersion: { lt: TEMPLATE_LIBRARY_VERSION } }, data: { templateLibraryVersion: TEMPLATE_LIBRARY_VERSION } });
+      if (claimed.count) await this.upgradeLibrary(tx, orgId, org.templateLibraryVersion);
     });
   }
 

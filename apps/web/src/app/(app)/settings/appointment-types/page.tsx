@@ -21,7 +21,8 @@ import { Input, NativeSelect } from '@/components/ui/input';
 import { useAppointmentTypes } from '@/hooks/use-catalog';
 import { api } from '@/lib/api';
 import { fmtMoney } from '@/lib/format';
-import { usePortalEnabled, useSession } from '@/lib/session';
+import { useModuleOn, usePortalEnabled, useSession } from '@/lib/session';
+import { DentalPricesPanel } from '@/components/dental/dental-prices-panel';
 import type { AppointmentType, AppointmentTypeCategory, ClinicalTemplateRow, Service } from '@/lib/types';
 import { useConfirm } from '@/components/confirm';
 import { DeleteRecordButton } from '@/components/delete-record';
@@ -324,6 +325,10 @@ export default function AppointmentTypesPage() {
   // Grouped by the clinic's categories, in their order; types without one under their kind's name.
   const groupName = (t: AppointmentType) => t.categoryRef?.name ?? enumLabel(t.category);
   const groups = [...new Set(types.map(groupName))].map((name) => ({ name, rows: types.filter((t) => groupName(t) === name) }));
+  // Dental procedure prices sit with the Dental appointment types (in their own Dental section when there is none).
+  const moduleOn = useModuleOn();
+  const dentalOn = moduleOn('dental');
+  const dentalGroup = groups.find((g) => g.rows.some((t) => t.category === 'DENTAL'))?.name;
   return (
     <RequirePermission anyOf={['settings.manage']}>
       <Card>
@@ -381,8 +386,15 @@ export default function AppointmentTypesPage() {
                     </li>
                   ))}
                 </ul>
+                {dentalOn && g.name === dentalGroup && <DentalPricesPanel />}
               </section>
             ))}
+            {dentalOn && !dentalGroup && (
+              <section aria-label="Dental">
+                <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Dental</h3>
+                <DentalPricesPanel />
+              </section>
+            )}
           </div>
         )}
       </Card>

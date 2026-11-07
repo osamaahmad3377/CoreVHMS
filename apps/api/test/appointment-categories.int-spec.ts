@@ -73,19 +73,19 @@ describe('Appointment types with their consultation templates', () => {
     expect(byName('General consultation')).toBeUndefined();
 
     // A template made later gets its type too; one with the name of a type without a template joins it.
-    const senior = await org.owner.post('/appointment-types', { name: 'Senior check', category: 'CONSULTATION', durationMinutes: 30 });
-    const tpl = await org.owner.post('/clinical-templates', { name: 'Senior check', examSystems: [] });
+    const breeding = await org.owner.post('/appointment-types', { name: 'Breeding check', category: 'CONSULTATION', durationMinutes: 30 });
+    const tpl = await org.owner.post('/clinical-templates', { name: 'Breeding check', examSystems: [] });
     expect(tpl.status).toBe(201);
     const blood = await org.owner.post('/clinical-templates', { name: 'Blood donor screen', examSystems: [] });
     let after = (await org.owner.get('/appointment-types?all=true')).body as any[];
-    expect(after.find((t) => t.id === senior.body.id).template).toMatchObject({ id: tpl.body.id });
+    expect(after.find((t) => t.id === breeding.body.id).template).toMatchObject({ id: tpl.body.id });
     expect(after.find((t) => t.name === 'Blood donor screen')).toMatchObject({ category: 'CONSULTATION', template: { id: blood.body.id } });
 
     // Any type can use a template; another clinic's template is refused.
     const surgery = byName('Surgery');
     expect((await org.owner.patch(`/appointment-types/${surgery.id}`, { templateId: tpl.body.id })).status).toBe(200);
     after = (await org.owner.get('/appointment-types?all=true')).body as any[];
-    expect(after.find((t) => t.id === surgery.id).template).toMatchObject({ name: 'Senior check' });
+    expect(after.find((t) => t.id === surgery.id).template).toMatchObject({ name: 'Breeding check' });
     const other = await registerOrg();
     expect((await other.owner.patch(`/appointment-types/${(await other.owner.get('/appointment-types')).body[0].id}`, { templateId: tpl.body.id })).status).toBe(404);
   });

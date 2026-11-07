@@ -155,7 +155,7 @@ export function ProceduresCard({ chart, selected, editable, onChanged }: { chart
             <Field
               label="Charge with"
               htmlFor="dp-svc"
-              hint={!code ? undefined : mapped ? 'From Settings → Dental prices' : can('settings.manage') ? 'No price set for this procedure (Settings → Dental prices)' : 'No price set — it won’t be charged'}
+              hint={!code ? undefined : mapped ? 'From Settings → Appointment types → Dental' : can('settings.manage') ? 'No price set for this procedure (Settings → Appointment types → Dental)' : 'No price set — it won’t be charged'}
             >
               <NativeSelect id="dp-svc" value={serviceId} onChange={(e) => setServiceId(e.target.value)} disabled={!code}>
                 <option value="">Don’t charge</option>

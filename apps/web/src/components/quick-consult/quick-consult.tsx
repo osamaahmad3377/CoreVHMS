@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { Companion } from './companion';
 import { DictateButton } from './dictation';
 import { ExamChips } from './exam-chips';
+import { ExamDental } from './exam-dental';
 import { QuickDiagnoses } from './quick-diagnoses';
 import { QuickVitals } from './quick-vitals';
 import { useDoneLines } from './use-done-lines';
@@ -42,7 +43,7 @@ const STEPS = [
   { short: 'Reason', title: (n: string) => `Why is ${n} here today?`, hint: '' },
   { short: 'History', title: (n: string) => `Ask the owner about ${n}`, hint: 'Ask each question and tap the answer. The history is written for you.' },
   { short: 'Measurements', title: (n: string) => `Measure ${n}`, hint: 'Enter what you measured and press Enter. Leave out what you didn’t.' },
-  { short: 'Examination', title: (n: string) => `Examine ${n}`, hint: 'One tap if everything is normal. Then tap only what isn’t.' },
+  { short: 'Examination', title: (n: string) => `Examine ${n}`, hint: 'Tap “All normal”, then change only the systems that aren’t.' },
   { short: 'Tests & X-rays', title: (n: string) => `Tests and X-rays for ${n}`, hint: 'Order any tests or X-rays before you decide on the diagnosis. Skip if none are needed.' },
   { short: 'Diagnosis', title: () => 'What is your diagnosis?', hint: 'Tap a suggestion or type your own. Tap its label to say how sure you are.' },
   { short: 'Treatment', title: (n: string) => `Treatment for ${n}`, hint: 'Everything you give or prescribe is added to the plan automatically.' },
@@ -222,6 +223,8 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
   const chosen = flow.reasonIds.map((id) => visitReasons.reasons.find((r) => r.id === id) ?? visitReasons.reasons.find((r) => r.template?.id === id)).filter((r): r is VisitReason => !!r);
   // All chosen templates as one: their questions, exam buttons, diagnoses and advice together.
   const reason = useMemo(() => combineReasons(chosen), [chosen.map((r) => r.id).join()]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A dental appointment type shows the tooth chart in the examination.
+  const dentalVisit = chosen.some((r) => visitReasons.categories.find((c) => c.id === r.categoryId)?.kind === 'DENTAL');
   const careNames = flow.care.map((k) => KINDS[k].label);
   const step = flow.step;
   const go = (s: number) => {
@@ -400,7 +403,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
   const findings = qn.note.examFindings;
   const abnormal = findings.filter((f) => f.status === 'ABNORMAL');
   const normal = findings.filter((f) => f.status === 'NORMAL');
-  const examSummary = findings.length
+  const examSummary = abnormal.length + normal.length
     ? [
         abnormal.length ? `Abnormal: ${abnormal.map((f) => `${f.system}${f.notes ? ` — ${f.notes}` : ''}`).join('; ')}.` : 'All examined body systems within normal limits.',
         abnormal.length && normal.length ? `Normal: ${normal.map((f) => f.system).join(', ')}.` : '',
@@ -410,7 +413,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
     : '';
   const measurements = enc.vitals[0] ? vitalsText(enc.vitals[0]) : '';
   const nextVisit = booked ? `${branchTime(booked.startsAt, tz, 'EEEE d MMMM')} at ${branchTime(booked.startsAt, tz)}${booked.clinician ? ` with ${booked.clinician.name}` : ''}` : null;
-  const stepDone = [chosen.length > 0 || flow.care.length > 0, !!composed.subjective, enc.vitals.length > 0, findings.length > 0 || !!flow.examExtra.trim(), done.counts.tests > 0, shownDx.length > 0, planLines.length > 0, !!composed.followUpInstructions && (!!booked || flow.noRecheck), false];
+  const stepDone = [chosen.length > 0 || flow.care.length > 0, !!composed.subjective, enc.vitals.length > 0, abnormal.length + normal.length > 0 || !!flow.examExtra.trim(), done.counts.tests > 0, shownDx.length > 0, planLines.length > 0, !!composed.followUpInstructions && (!!booked || flow.noRecheck), false];
   const followUpType = types.data?.find((t) => t.category === 'FOLLOW_UP' && t.isActive !== false);
   const late = elapsed >= TARGET_MINUTES;
   const wordsWritten = words(ownerText) + words(examSummary) + words(done.lines.join(' ')) + words(adviceText) + words(qn.note.history);
@@ -635,6 +638,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                 {step === 3 && (
                   <>
                     <ExamChips findings={findings} onChange={(examFindings) => qn.update({ examFindings })} systems={reason?.examSystems} />
+                    {dentalVisit && <ExamDental encounterId={enc.id} patientId={enc.patient.id} editable />}
                     <Extra id="qc-exam" label="Other findings" value={flow.examExtra} onChange={(v) => patch({ examExtra: v })} placeholder="e.g. Mild tartar on the upper molars" />
                     <WillWrite text={joinText(examSummary, flow.examExtra)} />
                   </>
@@ -833,16 +837,16 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
 
         {/* Back / Next: always in the same place, with the next step named. */}
         <div className="sticky bottom-3 z-30 mt-5 rounded-2xl border bg-background/95 shadow-card backdrop-blur supports-[backdrop-filter]:bg-background/85">
-          <div className="flex items-center gap-3 px-4 py-3">
-            <Button size="lg" variant="outline" disabled={step === 0} onClick={() => go(step - 1)}>
+          <div className="flex items-center gap-2 px-3 py-3 sm:gap-3 sm:px-4">
+            <Button size="lg" variant="outline" className="shrink-0 px-4 sm:px-6" disabled={step === 0} onClick={() => go(step - 1)}>
               <ArrowLeft /> Back
             </Button>
             {step < LAST ? (
-              <div className="ml-auto flex items-center gap-3">
-                <button type="button" onClick={() => go(step + 1)} className="text-sm text-muted-foreground hover:text-foreground hover:underline">
+              <div className="ml-auto flex min-w-0 items-center gap-2 sm:gap-3">
+                <button type="button" onClick={() => go(step + 1)} className="shrink-0 text-sm text-muted-foreground hover:text-foreground hover:underline">
                   Skip
                 </button>
-                <Button size="lg" className="px-6" onClick={() => go(step + 1)}>
+                <Button size="lg" className="min-w-0 px-4 sm:px-6" onClick={() => go(step + 1)}>
                   {STEPS[step + 1].short} <ArrowRight />
                 </Button>
               </div>

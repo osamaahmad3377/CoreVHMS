@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { LeaveType, ResourceType } from '@prisma/client';
-import type { AppointmentCategoryInput, AppointmentTypeInput, WorkingHoursInput } from '@vcms/shared';
+import { starterFor, type AppointmentCategoryInput, type AppointmentTypeInput, type WorkingHoursInput } from '@vcms/shared';
 import { Prisma } from '@prisma/client';
 import { categoryForKind } from './appointment-categories';
 import type { ScopedTx } from '../../common/prisma/tenant-extension';
@@ -58,8 +58,9 @@ export class ScheduleConfigService {
 
   /**
    * Appointment types and consultation templates are one thing: a new template gets its appointment type — the type
-   * of the same name when there is one without a template, otherwise a new type in the Consultation category, charged
-   * like the clinic's consultation.
+   * of the same name (or an active type with a starter alias, e.g. "Dental" for "Dental check") when there is one
+   * without a template, otherwise a new type — in the starter's category (Consultation when none), charged like the
+   * clinic's type of that kind.
    */
   async typeForTemplate(tx: ScopedTx, t: { id: string; organizationId: string; name: string; isActive: boolean }) {
     if (await tx.appointmentType.findFirst({ where: { templateId: t.id } })) return;
@@ -69,22 +70,26 @@ export class ScheduleConfigService {
       return;
     }
     // Starter templates whose type has another name.
-    const alias = TEMPLATE_TYPE_ALIASES[t.name.toLowerCase()];
-    const aliased = alias && (await tx.appointmentType.findFirst({ where: { name: { equals: alias, mode: 'insensitive' }, templateId: null } }));
-    if (aliased) {
-      await tx.appointmentType.update({ where: { id: aliased.id }, data: { templateId: t.id } });
-      return;
+    const starter = starterFor(t.name);
+    for (const alias of [TEMPLATE_TYPE_ALIASES[t.name.toLowerCase()], ...(starter?.aliases ?? [])].filter(Boolean)) {
+      // A type the clinic switched off is left alone: the template gets its own type instead.
+      const aliased = await tx.appointmentType.findFirst({ where: { name: { equals: alias, mode: 'insensitive' }, templateId: null, isActive: true } });
+      if (aliased) {
+        await tx.appointmentType.update({ where: { id: aliased.id }, data: { templateId: t.id } });
+        return;
+      }
     }
-    const consult = await tx.appointmentType.findFirst({ where: { category: 'CONSULTATION', serviceId: { not: null } }, orderBy: [{ isActive: 'desc' }, { createdAt: 'asc' }] });
-    const named = await tx.appointmentType.findFirst({ where: { category: 'CONSULTATION', serviceId: { not: null }, name: { equals: 'Consultation', mode: 'insensitive' } } });
+    const kind = starter?.kind ?? 'CONSULTATION';
+    const sameKind = await tx.appointmentType.findFirst({ where: { category: kind, serviceId: { not: null } }, orderBy: [{ isActive: 'desc' }, { createdAt: 'asc' }] });
+    const named = kind === 'CONSULTATION' ? await tx.appointmentType.findFirst({ where: { category: 'CONSULTATION', serviceId: { not: null }, name: { equals: 'Consultation', mode: 'insensitive' } } }) : null;
     const created = await tx.appointmentType.create({
       data: {
         organizationId: t.organizationId,
         name: t.name,
-        category: 'CONSULTATION',
-        categoryId: await categoryForKind(tx, t.organizationId, 'CONSULTATION'),
-        durationMinutes: 15,
-        serviceId: (named ?? consult)?.serviceId ?? null,
+        category: kind,
+        categoryId: await categoryForKind(tx, t.organizationId, kind),
+        durationMinutes: starter?.durationMinutes ?? 15,
+        serviceId: (named ?? sameKind)?.serviceId ?? null,
         isActive: t.isActive,
         templateId: t.id,
       },

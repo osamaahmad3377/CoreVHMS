@@ -349,6 +349,8 @@ model Organization {
   notePhrasesSeeded           Boolean            @default(false)
   /// The starter consultation-template questions were added once; deleting them does not bring them back.
   templateQuestionsSeeded     Boolean            @default(false)
+  /// The starter template library this clinic has: a newer one improves the starter templates it never changed.
+  templateLibraryVersion      Int                @default(1)
   // Branding: emails
   emailSenderName             String?
   emailSignature              String?

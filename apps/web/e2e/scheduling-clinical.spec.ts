@@ -47,7 +47,7 @@ test.describe('Clinical day: book → check in → consult → sign', () => {
     await page.locator('#qc-owner').fill('Scratching left ear for 5 days.');
     await expect(page.getByText(/Left side\./).first()).toBeVisible(); // written from the tapped answer
     await step(page, 'Examination');
-    await page.getByRole('button', { name: 'Everything looks normal' }).click();
+    await page.getByRole('button', { name: 'All normal' }).click();
     await page.locator('#qc-exam').fill('Erythema and brown discharge in left canal.');
     await step(page, 'Diagnosis');
     await page.locator('#qc-diagnosis').fill('Otitis externa (left)');
@@ -248,12 +248,20 @@ test.describe('Clinical day: book → check in → consult → sign', () => {
     const enc = await call('POST', '/encounters', { patientId: patient.id, chiefComplaint: 'E2E exam check' });
     await page.goto(`/consultations/${enc.id}`);
     await step(page, 'Examination');
-    await page.getByRole('button', { name: 'Everything looks normal' }).click();
-    await expect(page.getByText(/11 normal · 0 abnormal/)).toBeVisible();
-    await page.getByRole('button', { name: 'Skin & coat: normal' }).click();
+    // Every system is listed from the start, not examined yet.
+    await expect(page.getByText('11 not examined')).toBeVisible();
+    await page.getByRole('button', { name: 'All normal' }).click();
+    await expect(page.getByText('11 normal')).toBeVisible();
+    await expect(page.getByText('0 abnormal')).toBeVisible();
+    await page.getByRole('button', { name: 'Skin & coat: Abnormal' }).click();
     await page.getByRole('button', { name: 'Itchy' }).click();
     await expect(page.getByLabel('Skin & coat findings')).toHaveValue('Itchy');
-    await expect(page.getByText(/1 abnormal/)).toBeVisible();
+    await expect(page.getByText('1 abnormal')).toBeVisible();
+    await expect(page.getByText(/Abnormal: Skin & coat — Itchy\./)).toBeVisible();
+    // Back to normal with its switch: the description closes.
+    await page.getByRole('button', { name: 'Skin & coat: Normal' }).click();
+    await expect(page.getByLabel('Skin & coat findings')).toHaveCount(0);
+    await expect(page.getByText('11 normal')).toBeVisible();
     await expect(page.getByText('Saved', { exact: true })).toBeVisible({ timeout: 10_000 });
     await call('POST', `/encounters/${enc.id}/cancel`, { reason: 'E2E cleanup' });
   });
