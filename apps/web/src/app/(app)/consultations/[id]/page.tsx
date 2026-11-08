@@ -3,6 +3,7 @@ import { IssueCertificateDialog } from '@/components/certificates/issue-dialog';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { enumLabel, type Paginated } from '@vcms/shared';
 import { FinishedVisitActions } from '@/components/clinical/finished-visit';
+import { QuickConsult } from '@/components/quick-consult/quick-consult';
 import { Award, Activity, AlertTriangle, MoreHorizontal, BedDouble, CalendarPlus, CheckCircle2, ChevronDown, ClipboardList, FilePlus, FlaskConical, History, Paperclip, Pill, Printer, Scissors, Smile, Syringe, Upload, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -125,6 +126,8 @@ function Workspace() {
   if (q.isLoading) return <LoadingRows />;
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
   const enc = e!;
+  // Every open consultation is run in Quick consult; finished, cancelled and read-only ones are shown here.
+  if (enc.status === 'OPEN' && can('clinical.write')) return <QuickConsult />;
   const writable = can('clinical.write') && enc.status !== 'CANCELLED';
   const current = enc.notes.filter((n) => n.status !== 'SUPERSEDED');
   const superseded = enc.notes.filter((n) => n.status === 'SUPERSEDED');

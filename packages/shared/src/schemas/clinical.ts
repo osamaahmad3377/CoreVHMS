@@ -1,5 +1,6 @@
 import { DEFAULT_UNITS, temperatureIn, temperatureSymbol, weightIn, type Units } from '../units';
 import { z } from 'zod';
+import { TEMPLATE_ICONS, templateQuestionSchema } from '../consultation-templates';
 import { DIAGNOSIS_STATUSES, DIAGNOSIS_TYPES, ENCOUNTER_TYPES, PROBLEM_STATUSES, SPECIES_CATEGORIES, TASK_TYPES } from '../enums';
 import { optDate, optText, optUuid, paginationQuery, reqText } from './common';
 
@@ -159,6 +160,11 @@ export const clinicalTemplateSchema = z.object({
   plan: optText(8000),
   examSystems: z.array(z.string().max(60)).max(40).default([]),
   isActive: z.boolean().default(true),
+  /** Guided consultation: icon, questions for the owner, and diagnoses / advice to suggest. Left unchanged when not sent. */
+  icon: z.enum(TEMPLATE_ICONS).optional(),
+  questions: z.array(templateQuestionSchema).max(15).optional(),
+  diagnoses: z.array(reqText(200)).max(30).optional(),
+  advice: z.array(reqText(300)).max(20).optional(),
 });
 
 export const vitalReferenceSchema = z

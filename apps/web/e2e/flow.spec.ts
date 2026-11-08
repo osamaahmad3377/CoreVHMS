@@ -1,5 +1,8 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { login, uniq } from './helpers';
+
+/** Opens a step of the consultation from the step list. */
+const step = (page: Page, name: string) => page.getByRole('navigation', { name: 'Consultation steps' }).getByRole('button', { name: new RegExp(`${name}$`) }).click();
 
 test.describe('Everyday flow', () => {
   test('“Still to do” / “Needs your attention” only links to pages the role can open', async ({ page }) => {
@@ -45,11 +48,10 @@ test.describe('Everyday flow', () => {
     await dlg.locator('#sc-c').fill(complaint);
     await dlg.getByRole('button', { name: 'Start', exact: true }).click();
     await expect(page).toHaveURL(/\/consultations\/[0-9a-f-]{36}/);
-    await page.getByRole('button', { name: 'Finish consultation' }).click();
-    const check = page.getByRole('dialog');
-    await expect(check.getByText('Before you finish')).toBeVisible();
-    await expect(check.getByText('No notes written yet')).toBeVisible();
-    await check.getByRole('button', { name: 'Finish consultation' }).click();
+    // Quick consult: nothing written, straight to review — completing is still allowed.
+    await step(page, 'Review & sign');
+    await expect(page.getByText('Before you finish')).toBeVisible();
+    await page.getByRole('button', { name: 'Sign and complete' }).click();
     // Finished: only the three next steps — bill, view & print, next consultation.
     const next = page.getByRole('region', { name: 'Consultation finished' });
     await expect(next).toBeVisible();
@@ -78,14 +80,15 @@ test.describe('Everyday flow', () => {
     await login(vet, 'vet@demo.pk');
     await vet.getByRole('button', { name: 'Start consultation for Rocky' }).first().click();
     await expect(vet).toHaveURL(/\/consultations\/[0-9a-f-]{36}/);
-    // Typed and finished at once, before the 2-second autosave: the checklist still sees the notes.
-    await vet.getByRole('button', { name: 'Show all steps' }).click();
-    await vet.getByLabel(/Assessment/).fill('Flea allergy dermatitis');
-    await vet.getByRole('button', { name: 'Finish consultation' }).first().click();
-    const check = vet.getByRole('dialog');
-    await expect(check.getByText('Notes written')).toBeVisible();
-    await check.getByRole('button', { name: 'Sign notes & finish' }).click();
+    // Typed and finished at once, before the autosave: the words are still saved and signed.
+    await step(vet, 'Diagnosis');
+    await vet.getByRole('button', { name: 'Add clinical reasoning' }).click();
+    await vet.locator('#qc-assess').fill('Flea allergy dermatitis');
+    await step(vet, 'Review & sign');
+    await vet.getByRole('button', { name: 'Sign and complete' }).click();
     await expect(vet.getByRole('region', { name: 'Consultation finished' })).toBeVisible();
+    await vet.getByRole('button', { name: 'Show full details' }).click();
+    await expect(vet.getByText('Flea allergy dermatitis').first()).toBeVisible();
 
     await reception.reload();
     const card = reception.getByRole('listitem').filter({ hasText: 'Rocky' }).filter({ has: reception.getByRole('link', { name: 'Bill', exact: true }) }).first();

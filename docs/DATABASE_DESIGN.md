@@ -100,8 +100,9 @@ Encounter *─1 Patient, Client (owner at time of visit), Appointment? (1:1), Me
 Encounter 1─* ClinicalNote (versions via amendsId), VitalSign, Diagnosis, Task
 Patient 1─* ProblemListItem, VitalSign, Diagnosis
 Species 1─* VitalReference (low/high/unit/source/reviewer)
-ClinicalTemplate
+ClinicalTemplate 1─* TemplateQuestion 1─* TemplateAnswer   (guided consultation: questions for the owner, tap answers)
 ```
+- `ClinicalTemplate` also carries `icon`, `examSystems` (the template's own examination buttons, in order; the standard set when empty), `diagnoses` and `advice` (one-tap suggestions). `TemplateQuestion` (ask, `multi`, sort order) and `TemplateAnswer` (label, `text` written in the note) belong to the template and are removed with it (cascade); every row carries `organizationId`. The starter questions are added once per clinic (`Organization.templateQuestionsSeeded`), onto the template of the same name or as new templates. Migration `…_template_questions`.
 - `clinical_note_immutable` trigger: SIGNED/SUPERSEDED notes cannot be deleted and their content, signer, timestamps and hash cannot change; only SIGNED → SUPERSEDED and re-pointing `patientId` after a merge are allowed.
 - `contentHash` = SHA-256 of canonical content + signer + signedAt; `/notes/:id/verify` recomputes it.
 

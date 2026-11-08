@@ -200,6 +200,14 @@ export class ClinicalController {
     return this.records.saveTemplate(null, body);
   }
 
+  /** Puts back the starter questions (on templates without questions) and any starter template that was removed. */
+  @Post('clinical-templates/restore-starter')
+  @HttpCode(200)
+  @RequirePermissions('settings.manage')
+  restoreTemplateQuestions() {
+    return this.records.restoreStarterQuestions();
+  }
+
   @Patch('clinical-templates/:id')
   @RequirePermissions('settings.manage')
   updateTemplate(@Param('id', UUID) id: string, @Body(zp(clinicalTemplateSchema)) body: z.infer<typeof clinicalTemplateSchema>) {

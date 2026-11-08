@@ -1,5 +1,8 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { login } from './helpers';
+
+/** Opens a step of the consultation from the step list. */
+const step = (page: Page, name: string) => page.getByRole('navigation', { name: 'Consultation steps' }).getByRole('button', { name: new RegExp(`${name}$`) }).click();
 
 /** A future Tuesday (Pakistan demo clinicians are rostered 09:00–17:00 Mon–Sat). */
 function futureTuesday() {
@@ -36,18 +39,26 @@ test.describe('Clinical day: book → check in → consult → sign', () => {
     await appt.getByRole('button', { name: 'Start consultation' }).click();
     await expect(page).toHaveURL(/\/consultations\//);
 
-    // The note is written in steps; show them all so every field can be filled in one go.
-    await page.getByRole('button', { name: 'Show all steps' }).click();
-    await expect(page.locator('#n-presentingComplaint')).toHaveValue('E2E: ear scratching'); // from the booking reason
-    await expect(page.getByLabel('History — what the owner tells you')).toBeVisible();
-    await page.locator('#n-subjective').fill('Scratching left ear for 5 days.');
-    await page.locator('#n-objective').fill('Erythema and brown discharge in left canal.');
-    await page.locator('#n-assessment').fill('Otitis externa (left).');
-    await page.locator('#n-plan').fill('Ear cleaning; recheck 10 days.');
-    // A guided visit saves by itself; finishing it signs the vet's note.
-    await expect(page.getByText(/Saved automatically/)).toBeVisible({ timeout: 10_000 });
-    await page.getByRole('button', { name: 'Finish consultation' }).first().click();
-    await page.getByRole('dialog').getByRole('button', { name: /Sign notes? & finish/ }).click();
+    // Quick consult: the booking reason is kept in the owner's words; a template decides the questions.
+    await expect(page.locator('#qc-reason')).toHaveValue('E2E: ear scratching');
+    await page.getByRole('button', { name: 'Ear problem' }).click();
+    await page.getByRole('button', { name: 'Left', exact: true }).click();
+    await page.locator('#qc-owner').fill('Scratching left ear for 5 days.');
+    await expect(page.getByText(/Left side\./).first()).toBeVisible(); // written from the tapped answer
+    await step(page, 'Examination');
+    await page.getByRole('button', { name: 'Everything looks normal' }).click();
+    await page.locator('#qc-exam').fill('Erythema and brown discharge in left canal.');
+    await step(page, 'Diagnosis');
+    await page.locator('#qc-diagnosis').fill('Otitis externa (left)');
+    await page.locator('#qc-diagnosis').press('Enter');
+    await expect(page.getByText('Otitis externa (left)', { exact: true }).first()).toBeVisible();
+    await step(page, 'Treatment');
+    await page.locator('#qc-plan').fill('Ear cleaning; recheck 10 days.');
+    await step(page, 'Review & sign');
+    await expect(page.getByText(/Otitis externa \(left\) \(likely\)/)).toBeVisible();
+    await page.getByRole('button', { name: 'Sign and complete' }).click();
+    await expect(page.getByRole('region', { name: 'Consultation finished' })).toBeVisible();
+    await page.getByRole('button', { name: 'Show full details' }).click();
     await expect(page.getByText('Integrity verified')).toBeVisible();
     await expect(page.getByText('Signed · v1')).toBeVisible();
 
@@ -83,18 +94,15 @@ test.describe('Clinical day: book → check in → consult → sign', () => {
     await expect(page.locator('li', { hasText: 'E2E: hit by car' }).first().getByText('Very urgent')).toBeVisible();
   });
 
-  test('a consultation is five steps, with no repeated action bar', async ({ page }) => {
+  test('an open consultation opens as Quick consult: eight steps and a More menu', async ({ page }) => {
     await login(page, 'vet@demo.pk');
     const id = await page.evaluate(async () => (await (await fetch('/api/v1/encounters?status=OPEN&pageSize=1')).json()).data[0]?.id as string | undefined);
     test.skip(!id, 'No open consultation in this clinic');
     await page.goto(`/consultations/${id}`);
-    await expect(page).toHaveURL(/\/consultations\/[0-9a-f-]{36}/);
     const steps = page.getByRole('navigation', { name: 'Consultation steps' });
-    for (const name of ['Arrival & history', 'Examination', 'Tests & diagnosis', 'Treatment & next steps', 'Advice & finish']) await expect(steps.getByText(name)).toBeVisible();
-    await expect(steps.getByRole('listitem')).toHaveCount(5);
-    // Prescribe, order test and the rest are inside the steps, not repeated in a bar above them.
-    await expect(page.getByRole('toolbar', { name: 'Consultation actions' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'More actions' })).toBeVisible();
+    await expect(steps.getByRole('listitem')).toHaveCount(8);
+    for (const name of ['Reason', 'History', 'Measurements', 'Examination', 'Diagnosis', 'Treatment', 'Owner advice', 'Review & sign']) await expect(steps.getByText(name, { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'More for this visit' })).toBeVisible();
   });
 
   test('the examination starts all normal and the vet taps only what is abnormal', async ({ page }) => {
@@ -111,14 +119,14 @@ test.describe('Clinical day: book → check in → consult → sign', () => {
     const patient = (await call('GET', '/patients?q=Toto&pageSize=1')).data[0];
     const enc = await call('POST', '/encounters', { patientId: patient.id, chiefComplaint: 'E2E exam check' });
     await page.goto(`/consultations/${enc.id}`);
-    await page.getByRole('navigation', { name: 'Consultation steps' }).getByText('Examination').click();
-    await page.getByRole('button', { name: 'Start examination — all normal' }).click();
-    await expect(page.getByText(/14 normal · 0 abnormal · 0 not examined|11 normal · 0 abnormal · 0 not examined/)).toBeVisible();
-    await page.getByRole('radiogroup', { name: 'Skin & coat finding' }).getByRole('radio', { name: 'Abnormal' }).click();
+    await step(page, 'Examination');
+    await page.getByRole('button', { name: 'Everything looks normal' }).click();
+    await expect(page.getByText(/11 normal · 0 abnormal/)).toBeVisible();
+    await page.getByRole('button', { name: 'Skin & coat: normal' }).click();
     await page.getByRole('button', { name: 'Itchy' }).click();
-    await expect(page.getByLabel('Skin & coat notes')).toHaveValue('Itchy');
+    await expect(page.getByLabel('Skin & coat findings')).toHaveValue('Itchy');
     await expect(page.getByText(/1 abnormal/)).toBeVisible();
-    await expect(page.getByText(/Saved automatically/)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Saved', { exact: true })).toBeVisible({ timeout: 10_000 });
     await call('POST', `/encounters/${enc.id}/cancel`, { reason: 'E2E cleanup' });
   });
 });

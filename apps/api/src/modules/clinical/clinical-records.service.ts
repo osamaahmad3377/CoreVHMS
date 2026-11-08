@@ -1,11 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { DiagnosisStatus, DiagnosisType, Prisma, ProblemStatus, SpeciesCategory, TaskType } from '@prisma/client';
-import type { VitalsInput } from '@vcms/shared';
+import { DiagnosisStatus, DiagnosisType, Prisma, ProblemStatus, TaskType } from '@prisma/client';
+import { STARTER_TEMPLATE_QUESTIONS, templateQuestionSchema, type clinicalTemplateSchema, type VitalsInput } from '@vcms/shared';
+import type { z } from 'zod';
 import { AuditService, diff } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
 import { notFound, ruleViolation } from '../../common/http/errors';
 import { pageArgs, paginated } from '../../common/http/pagination';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import type { ScopedTx } from '../../common/prisma/tenant-extension';
 import { numericVitals } from './encounters.service';
 
 type Flag = 'LOW' | 'HIGH';
@@ -167,26 +169,108 @@ export class ClinicalRecordsService {
   }
 
   // ── Templates ──
+  // A consultation template pre-fills the note and the examination checklist; for the guided consultation it also
+  // carries the questions for the owner (tap answers that write the history) and diagnoses / advice to suggest.
 
-  listTemplates(includeInactive = false) {
-    return this.prisma.db.clinicalTemplate.findMany({ where: includeInactive ? {} : { isActive: true }, orderBy: { name: 'asc' } });
+  private readonly templateInclude = {
+    questions: { orderBy: { sortOrder: 'asc' as const }, include: { answers: { orderBy: { sortOrder: 'asc' as const } } } },
+  } satisfies Prisma.ClinicalTemplateInclude;
+
+  /** Replaces a template's questions (and their answers) with the ones given, in that order. */
+  private async writeQuestions(tx: ScopedTx, organizationId: string, templateId: string, questions: z.output<typeof templateQuestionSchema>[]) {
+    await tx.templateQuestion.deleteMany({ where: { templateId } });
+    for (const [i, q] of questions.entries()) {
+      const question = await tx.templateQuestion.create({ data: { organizationId, templateId, ask: q.ask, multi: q.multi, sortOrder: (i + 1) * 10 } });
+      await tx.templateAnswer.createMany({ data: q.answers.map((a, j) => ({ organizationId, questionId: question.id, label: a.label, text: a.text, sortOrder: (j + 1) * 10 })) });
+    }
   }
 
-  async saveTemplate(
-    id: string | null,
-    input: { name: string; speciesCategory?: SpeciesCategory | null; presentingComplaint?: string | null; subjective?: string | null; objective?: string | null; assessment?: string | null; plan?: string | null; examSystems: string[]; isActive: boolean },
-  ) {
+  /**
+   * Gives the clinic the starter questions: each set goes onto the clinic's template of the same name (or alias) when
+   * that template has no questions yet, otherwise it becomes a new template. Templates already set up are untouched.
+   */
+  private async addStarterQuestions(tx: ScopedTx, organizationId: string) {
+    const existing = await tx.clinicalTemplate.findMany({ include: { _count: { select: { questions: true } } } });
+    const byName = new Map(existing.map((t) => [t.name.toLowerCase(), t]));
+    let added = 0;
+    for (const st of STARTER_TEMPLATE_QUESTIONS) {
+      const questions = st.questions.map((q) => templateQuestionSchema.parse(q));
+      const match = [st.name, ...(st.aliases ?? [])].map((n) => byName.get(n.toLowerCase())).find(Boolean);
+      if (match) {
+        if (match._count.questions > 0) continue;
+        await tx.clinicalTemplate.update({
+          where: { id: match.id },
+          data: {
+            ...(match.icon === 'file' && { icon: st.icon }),
+            ...(!match.diagnoses.length && { diagnoses: st.diagnoses ?? [] }),
+            ...(!match.advice.length && { advice: st.advice }),
+            ...(!match.examSystems.length && { examSystems: st.examSystems ?? [] }),
+            ...(!match.presentingComplaint && st.presentingComplaint && { presentingComplaint: st.presentingComplaint }),
+          },
+        });
+        await this.writeQuestions(tx, organizationId, match.id, questions);
+      } else {
+        const t = await tx.clinicalTemplate.create({
+          data: { organizationId, name: st.name, icon: st.icon, presentingComplaint: st.presentingComplaint || null, examSystems: st.examSystems ?? [], diagnoses: st.diagnoses ?? [], advice: st.advice },
+        });
+        await this.writeQuestions(tx, organizationId, t.id, questions);
+      }
+      added += 1;
+    }
+    return added;
+  }
+
+  /** Adds the starter questions the first time only, even if two requests arrive together. */
+  private async ensureTemplateQuestions() {
+    const orgId = RequestContext.orgId();
+    const org = await this.prisma.raw.organization.findUnique({ where: { id: orgId }, select: { templateQuestionsSeeded: true } });
+    if (!org || org.templateQuestionsSeeded) return;
+    await this.prisma.db.$transaction(async (tx) => {
+      const claimed = await tx.organization.updateMany({ where: { id: orgId, templateQuestionsSeeded: false }, data: { templateQuestionsSeeded: true } });
+      if (claimed.count) await this.addStarterQuestions(tx, orgId);
+    });
+  }
+
+  async listTemplates(includeInactive = false) {
+    await this.ensureTemplateQuestions();
+    return this.prisma.db.clinicalTemplate.findMany({ where: includeInactive ? {} : { isActive: true }, include: this.templateInclude, orderBy: { name: 'asc' } });
+  }
+
+  async saveTemplate(id: string | null, input: z.output<typeof clinicalTemplateSchema>) {
+    const { questions, ...fields } = input;
     return this.prisma.db.$transaction(async (tx) => {
+      const orgId = RequestContext.orgId();
+      const clash = await tx.clinicalTemplate.findFirst({ where: { name: { equals: fields.name, mode: 'insensitive' }, ...(id && { NOT: { id } }) } });
+      if (clash) throw ruleViolation('DUPLICATE_TEMPLATE', 'A template with that name already exists');
+      const data = { ...fields, examSystems: [...new Set(fields.examSystems.map((x) => x.trim()).filter(Boolean))], ...(fields.diagnoses && { diagnoses: [...new Set(fields.diagnoses)] }), ...(fields.advice && { advice: [...new Set(fields.advice)] }) };
       if (id) {
-        const before = await tx.clinicalTemplate.findUnique({ where: { id } });
+        const before = await tx.clinicalTemplate.findUnique({ where: { id }, include: this.templateInclude });
         if (!before) throw notFound('Template');
-        const after = await tx.clinicalTemplate.update({ where: { id }, data: input });
-        await this.audit.record({ action: 'template.updated', entityType: 'ClinicalTemplate', entityId: id, summary: after.name }, tx);
+        await tx.clinicalTemplate.update({ where: { id }, data });
+        // Questions are replaced only when sent, so older screens that do not know about them leave them alone.
+        if (questions) await this.writeQuestions(tx, orgId, id, questions);
+        const after = await tx.clinicalTemplate.findUniqueOrThrow({ where: { id }, include: this.templateInclude });
+        const view = (t: typeof after) => ({ ...t, questions: t.questions.map((q) => `${q.ask} [${q.answers.map((a) => a.label).join(' / ')}]`) });
+        await this.audit.record(
+          { action: 'template.updated', entityType: 'ClinicalTemplate', entityId: id, summary: after.name, changes: diff(view(before), view(after), ['name', 'speciesCategory', 'presentingComplaint', 'subjective', 'objective', 'assessment', 'plan', 'examSystems', 'isActive', 'icon', 'diagnoses', 'advice', 'questions']) },
+          tx,
+        );
         return after;
       }
-      const t = await tx.clinicalTemplate.create({ data: { ...input, organizationId: RequestContext.orgId() } });
-      await this.audit.record({ action: 'template.created', entityType: 'ClinicalTemplate', entityId: t.id, summary: t.name }, tx);
-      return t;
+      const t = await tx.clinicalTemplate.create({ data: { ...data, organizationId: orgId } });
+      if (questions?.length) await this.writeQuestions(tx, orgId, t.id, questions);
+      await this.audit.record({ action: 'template.created', entityType: 'ClinicalTemplate', entityId: t.id, summary: `${t.name}${questions?.length ? ` (${questions.length} questions)` : ''}` }, tx);
+      return tx.clinicalTemplate.findUniqueOrThrow({ where: { id: t.id }, include: this.templateInclude });
+    });
+  }
+
+  /** Puts back the starter questions on templates that have none, and any starter template that was removed. */
+  async restoreStarterQuestions() {
+    await this.ensureTemplateQuestions();
+    return this.prisma.db.$transaction(async (tx) => {
+      const added = await this.addStarterQuestions(tx, RequestContext.orgId());
+      await this.audit.record({ action: 'template.starter_restored', entityType: 'ClinicalTemplate', entityId: RequestContext.orgId(), summary: `Starter questions added to ${added} templates` }, tx);
+      return { added };
     });
   }
 

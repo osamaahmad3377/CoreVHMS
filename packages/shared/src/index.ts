@@ -30,6 +30,7 @@ export * from './schemas/platform';
 export * from './branding';
 export * from './plans';
 export * from './note-phrases';
+export * from './consultation-templates';
 export * from './care-repeat';
 export * from './whatsapp';
 export * from './online-booking';

@@ -1,0 +1,56 @@
+'use client';
+import { answersToText, type TemplateIcon, type TemplateQuestionRow } from '@vcms/shared';
+import { Baby, Bandage, BatteryLow, Beef, Bone, Brain, Droplets, Ear, Eye, FileText, HeartPulse, PawPrint, PenLine, RotateCcw, Scissors, Smile, Soup, Stethoscope, Thermometer, Wind, type LucideIcon } from 'lucide-react';
+import { useTemplates } from '@/hooks/use-catalog';
+import type { ClinicalTemplateRow } from '@/lib/types';
+
+/**
+ * A reason for the visit in the guided consultation = one of the clinic's consultation templates
+ * (Settings → Consultation templates), with its questions for the owner, exam focus, diagnoses and advice.
+ */
+export interface VisitReason {
+  id: string;
+  name: string;
+  icon: string;
+  complaint: string;
+  /** The template's examination buttons (the standard set when empty). */
+  examSystems: string[];
+  questions: TemplateQuestionRow[];
+  diagnoses: string[];
+  advice: string[];
+  template: ClinicalTemplateRow;
+}
+export { answersToText };
+
+export const TEMPLATE_ICON_COMPONENTS: Record<TemplateIcon, LucideIcon> = {
+  stethoscope: Stethoscope,
+  soup: Soup,
+  paw: PawPrint,
+  ear: Ear,
+  eye: Eye,
+  bone: Bone,
+  battery: BatteryLow,
+  wind: Wind,
+  bandage: Bandage,
+  droplets: Droplets,
+  recheck: RotateCcw,
+  pen: PenLine,
+  heart: HeartPulse,
+  brain: Brain,
+  thermometer: Thermometer,
+  tooth: Smile,
+  baby: Baby,
+  scissors: Scissors,
+  cow: Beef,
+  file: FileText,
+};
+export const reasonIcon = (icon: string): LucideIcon => TEMPLATE_ICON_COMPONENTS[icon as TemplateIcon] ?? FileText;
+
+/** The clinic's active templates for this kind of animal, as reasons for the visit. */
+export function useVisitReasons(speciesCategory?: string | null) {
+  const q = useTemplates();
+  const reasons: VisitReason[] = (q.data ?? [])
+    .filter((t) => t.isActive && (!t.speciesCategory || !speciesCategory || t.speciesCategory === speciesCategory))
+    .map((t) => ({ id: t.id, name: t.name, icon: t.icon, complaint: t.presentingComplaint ?? '', examSystems: t.examSystems, questions: t.questions ?? [], diagnoses: t.diagnoses ?? [], advice: t.advice ?? [], template: t }));
+  return { reasons, isLoading: q.isLoading, error: q.error };
+}

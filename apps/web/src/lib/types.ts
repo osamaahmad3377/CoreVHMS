@@ -513,6 +513,11 @@ export interface ClinicalTemplateRow {
   plan: string | null;
   examSystems: string[];
   isActive: boolean;
+  /** Guided consultation: icon key, questions for the owner, and diagnoses / advice to suggest. */
+  icon: string;
+  diagnoses: string[];
+  advice: string[];
+  questions: import('@vcms/shared').TemplateQuestionRow[];
 }
 
 // ── Pharmacy ──

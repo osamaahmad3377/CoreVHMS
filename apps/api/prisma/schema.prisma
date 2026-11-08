@@ -347,6 +347,8 @@ model Organization {
   attendanceGraceMinutes      Int                @default(10)
   /// The starter quick note phrases were added once; deleting them all does not bring them back.
   notePhrasesSeeded           Boolean            @default(false)
+  /// The starter consultation-template questions were added once; deleting them does not bring them back.
+  templateQuestionsSeeded     Boolean            @default(false)
   // Branding: emails
   emailSenderName             String?
   emailSignature              String?
@@ -412,6 +414,8 @@ model Organization {
   diagnoses                 Diagnosis[]
   problems                  ProblemListItem[]
   clinicalTemplates         ClinicalTemplate[]
+  templateQuestions         TemplateQuestion[]
+  templateAnswers           TemplateAnswer[]
   notePhrases               NotePhrase[]
   tasks                     Task[]
   products                  Product[]
@@ -1858,12 +1862,50 @@ model ClinicalTemplate {
   plan                String?
   examSystems         String[]         @default([])
   isActive            Boolean          @default(true)
+  /// Guided consultation: icon key (see TEMPLATE_ICONS), and diagnoses / advice offered as one-tap suggestions.
+  icon                String           @default("file")
+  diagnoses           String[]         @default([])
+  advice              String[]         @default([])
   createdAt           DateTime         @default(now()) @db.Timestamptz(3)
   updatedAt           DateTime         @updatedAt @db.Timestamptz(3)
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  questions    TemplateQuestion[]
 
   @@unique([organizationId, name])
+}
+
+/// A question the vet asks the owner in the guided consultation, part of a consultation template.
+model TemplateQuestion {
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String  @db.Uuid
+  templateId     String  @db.Uuid
+  ask            String
+  /// Several answers can be chosen.
+  multi          Boolean @default(false)
+  sortOrder      Int     @default(0)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  template     ClinicalTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  answers      TemplateAnswer[]
+
+  @@index([organizationId, templateId, sortOrder])
+}
+
+/// A tap answer to a template question, and the words it writes in the note.
+model TemplateAnswer {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @db.Uuid
+  questionId     String @db.Uuid
+  label          String
+  /// Written in the note; nothing when empty.
+  text           String @default("")
+  sortOrder      Int    @default(0)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  question     TemplateQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, questionId, sortOrder])
 }
 
 /// One-tap phrases under the consultation note fields, edited per clinic (Settings → Quick note phrases).
