@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 
-/** Dental prices now sit with the Dental appointment types. */
+/** Dental procedures are appointment types now, each with its price, in the Dental category. */
 export default function DentalPricesPage() {
-  redirect('/settings/appointment-types#dental-prices');
+  redirect('/settings/appointment-types');
 }

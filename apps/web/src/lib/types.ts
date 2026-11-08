@@ -210,6 +210,8 @@ export interface AuditEvent {
 export interface AppointmentType {
   id: string;
   name: string;
+  /** A dental procedure as an appointment type: its price is what the procedure is charged on the dental chart. */
+  dentalProcedureCode?: string | null;
   category: string;
   durationMinutes: number;
   color: string;

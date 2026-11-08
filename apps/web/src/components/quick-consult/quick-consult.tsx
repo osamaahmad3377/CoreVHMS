@@ -218,7 +218,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
   });
   const patch = (p: Partial<Flow>) => setFlow((f) => ({ ...f, ...p }));
   useEffect(() => saveFlow(enc.id, flow), [enc.id, flow]);
-  const visitReasons = useVisitReasons(enc.patient.species.category);
+  const visitReasons = useVisitReasons(enc.patient.species.category, enc.patient.species.name);
   // (A visit begun before types and templates were one kept template ids.)
   const chosen = flow.reasonIds.map((id) => visitReasons.reasons.find((r) => r.id === id) ?? visitReasons.reasons.find((r) => r.template?.id === id)).filter((r): r is VisitReason => !!r);
   // All chosen templates as one: their questions, exam buttons, diagnoses and advice together.

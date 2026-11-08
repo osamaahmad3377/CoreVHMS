@@ -4,7 +4,9 @@ import {
   DENTAL_PROCEDURES,
   dentalProcedure,
   dentitionForSpecies,
+  enabledModules,
   forDentition,
+  moduleInPlan,
   toothInfo,
   worstStage,
   type DentalChartCreateInput,
@@ -23,6 +25,7 @@ import { pageArgs, paginated } from '../../common/http/pagination';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { ScopedTx } from '../../common/prisma/tenant-extension';
 import { ChargeCaptureService } from '../billing/charge-capture.service';
+import { categoryForKind } from '../scheduling/appointment-categories';
 import { patientNo } from '../patients/patients.service';
 
 export const dentalChartNo = (n: number) => formatNumber('DEN', n);
@@ -60,10 +63,13 @@ const chartInclude = {
 } satisfies Prisma.DentalChartInclude;
 type ChartRow = Prisma.DentalChartGetPayload<{ include: typeof chartInclude }>;
 
+/** Usual length of a visit booked for a dental procedure (30 minutes when not listed). */
+const PROCEDURE_MINUTES: Record<string, number> = { SP: 60, XS: 60, RCT: 90, PSG: 60, CR: 60, FLOAT: 45 };
+
 /**
  * Dental charts: a tooth-by-tooth record of a dental examination (modified Triadan numbering) with whole-mouth
- * scores and the procedures done. Procedures are charged as they are recorded (with the service mapped in
- * Settings → Dental prices). Signing locks the chart — database trigger included — and later notes are addenda.
+ * scores and the procedures done. Procedures are charged as they are recorded (with the price of the procedure's
+ * appointment type). Signing locks the chart — database trigger included — and later notes are addenda.
  */
 @Injectable()
 export class DentalService {
@@ -277,8 +283,7 @@ export class DentalService {
       const twice = chart.procedures.filter((p) => p.tooth && teeth.includes(p.tooth) && dentalProcedure(p.code)?.removesTooth);
       if (twice.length) throw ruleViolation('ALREADY_EXTRACTED', `${twice.map((p) => p.tooth).join(', ')} already has an extraction recorded`);
     }
-    const priced = await this.prisma.db.dentalProcedurePrice.findUnique({ where: { organizationId_code: { organizationId: RequestContext.orgId(), code: code.code } } });
-    const serviceId = input.serviceId ?? priced?.serviceId ?? null;
+    const serviceId = input.serviceId ?? (await this.priceFor(code.code))?.id ?? null;
     const service = serviceId ? await this.prisma.db.service.findUnique({ where: { id: serviceId } }) : null;
     if (serviceId && (!service || !service.isActive)) throw ruleViolation('INVALID_SERVICE', 'That price-list service was not found or is switched off');
     const userName = RequestContext.get()?.userName ?? 'Unknown';
@@ -368,9 +373,56 @@ export class DentalService {
 
   // ── Prices ──
 
+  /**
+   * Adds each dental procedure as an appointment type in the Dental category, once, while dental is switched on: a
+   * type of the same name is linked instead, and the procedure keeps the price it had. Deleted ones do not come back.
+   */
+  async ensureProcedureTypes() {
+    const orgId = RequestContext.orgId();
+    const org = await this.prisma.raw.organization.findUnique({ where: { id: orgId }, select: { dentalProcedureTypesSeeded: true, disabledModules: true } });
+    if (!org || org.dentalProcedureTypesSeeded) return;
+    const dentalOn = enabledModules(org.disabledModules).includes('dental') && moduleInPlan(RequestContext.get()?.tenant?.entitlements, 'dental');
+    if (!dentalOn) return;
+    await this.prisma.db.$transaction(async (tx) => {
+      const claimed = await tx.organization.updateMany({ where: { id: orgId, dentalProcedureTypesSeeded: false }, data: { dentalProcedureTypesSeeded: true } });
+      if (!claimed.count) return;
+      const legacy = await tx.dentalProcedurePrice.findMany({ include: { service: { select: { isActive: true } } } });
+      const categoryId = await categoryForKind(tx, orgId, 'DENTAL');
+      const added: string[] = [];
+      for (const p of DENTAL_PROCEDURES) {
+        if (await tx.appointmentType.findFirst({ where: { dentalProcedureCode: p.code } })) continue;
+        const price = legacy.find((l) => l.code === p.code && l.service.isActive)?.serviceId ?? null;
+        const same = await tx.appointmentType.findFirst({ where: { name: { equals: p.label, mode: 'insensitive' }, dentalProcedureCode: null } });
+        if (same) {
+          await tx.appointmentType.update({ where: { id: same.id }, data: { dentalProcedureCode: p.code, ...(!same.serviceId && price && { serviceId: price }) } });
+          continue;
+        }
+        await tx.appointmentType.create({
+          data: { organizationId: orgId, name: p.label, category: 'DENTAL', categoryId, durationMinutes: PROCEDURE_MINUTES[p.code] ?? 30, serviceId: price, dentalProcedureCode: p.code, color: '#0891b2' },
+        });
+        added.push(p.label);
+      }
+      if (added.length) await this.audit.record({ action: 'appointment_type.created', entityType: 'AppointmentType', entityId: orgId, summary: `Dental procedures as appointment types: ${added.join(', ')}` }, tx);
+    });
+  }
+
+  /** What a procedure is charged: the price of its appointment type, else the older Dental prices setting. */
+  private async priceFor(code: string) {
+    const type = await this.prisma.db.appointmentType.findFirst({ where: { dentalProcedureCode: code }, include: { service: true } });
+    if (type) return type.service && type.service.isActive ? type.service : null;
+    const legacy = await this.prisma.db.dentalProcedurePrice.findUnique({ where: { organizationId_code: { organizationId: RequestContext.orgId(), code } }, include: { service: true } });
+    return legacy?.service.isActive ? legacy.service : null;
+  }
+
   async prices() {
-    const rows = await this.prisma.db.dentalProcedurePrice.findMany({ include: { service: { select: { id: true, name: true, code: true, priceMinor: true, isActive: true } } } });
-    return DENTAL_PROCEDURES.map((p) => ({ code: p.code, label: p.label, abbr: p.abbr, scope: p.scope, dentitions: p.dentitions ?? null, service: rows.find((r) => r.code === p.code)?.service ?? null }));
+    await this.ensureProcedureTypes();
+    const pick = { id: true, name: true, code: true, priceMinor: true, isActive: true } as const;
+    const types = await this.prisma.db.appointmentType.findMany({ where: { dentalProcedureCode: { not: null } }, include: { service: { select: pick } } });
+    const rows = await this.prisma.db.dentalProcedurePrice.findMany({ include: { service: { select: pick } } });
+    return DENTAL_PROCEDURES.map((p) => {
+      const type = types.find((t) => t.dentalProcedureCode === p.code);
+      return { code: p.code, label: p.label, abbr: p.abbr, scope: p.scope, dentitions: p.dentitions ?? null, service: type ? type.service : rows.find((r) => r.code === p.code)?.service ?? null };
+    });
   }
 
   async savePrices(input: DentalPricesInput) {
@@ -379,7 +431,11 @@ export class DentalService {
     if (found.length !== ids.length) throw ruleViolation('INVALID_SERVICE', 'A chosen service was not found or is switched off');
     await this.prisma.db.$transaction(async (tx) => {
       for (const i of input.items) {
-        if (i.serviceId) {
+        // A procedure that is an appointment type: its price is the type's price.
+        const type = await tx.appointmentType.findFirst({ where: { dentalProcedureCode: i.code } });
+        if (type) {
+          if (type.serviceId !== (i.serviceId ?? null)) await tx.appointmentType.update({ where: { id: type.id }, data: { serviceId: i.serviceId ?? null } });
+        } else if (i.serviceId) {
           await tx.dentalProcedurePrice.upsert({ where: { organizationId_code: { organizationId: RequestContext.orgId(), code: i.code } }, create: { organizationId: RequestContext.orgId(), code: i.code, serviceId: i.serviceId }, update: { serviceId: i.serviceId } });
         } else {
           await tx.dentalProcedurePrice.deleteMany({ where: { code: i.code } });

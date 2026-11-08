@@ -11,6 +11,6 @@ import { SchedulingController } from './scheduling.controller';
   imports: [ClinicalModule, ClientsModule],
   controllers: [SchedulingController],
   providers: [ScheduleConfigService, AppointmentsService, FrontDeskService, SchedulingIntegrations],
-  exports: [AppointmentsService],
+  exports: [AppointmentsService, ScheduleConfigService],
 })
 export class SchedulingModule {}

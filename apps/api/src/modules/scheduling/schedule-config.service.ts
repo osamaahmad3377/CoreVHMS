@@ -27,7 +27,15 @@ export class ScheduleConfigService {
   ) {}
 
   // ── Appointment types ──
-  listTypes(includeInactive = false) {
+  private readonly beforeListTypes: (() => Promise<void>)[] = [];
+
+  /** Other modules make sure their appointment types exist before the list is read (e.g. dental procedures). */
+  registerBeforeListTypes(h: () => Promise<void>) {
+    this.beforeListTypes.push(h);
+  }
+
+  async listTypes(includeInactive = false) {
+    for (const h of this.beforeListTypes) await h();
     return this.prisma.db.appointmentType.findMany({
       where: includeInactive ? {} : { isActive: true },
       // The linked service is what gets charged; its price is the one to show when booking.

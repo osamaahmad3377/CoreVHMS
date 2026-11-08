@@ -21,8 +21,7 @@ import { Input, NativeSelect } from '@/components/ui/input';
 import { useAppointmentTypes } from '@/hooks/use-catalog';
 import { api } from '@/lib/api';
 import { fmtMoney } from '@/lib/format';
-import { useModuleOn, usePortalEnabled, useSession } from '@/lib/session';
-import { DentalPricesPanel } from '@/components/dental/dental-prices-panel';
+import { usePortalEnabled, useSession } from '@/lib/session';
 import type { AppointmentType, AppointmentTypeCategory, ClinicalTemplateRow, Service } from '@/lib/types';
 import { useConfirm } from '@/components/confirm';
 import { DeleteRecordButton } from '@/components/delete-record';
@@ -138,7 +137,11 @@ function TypeDialog({ type, open, onOpenChange }: { type: AppointmentType | null
             </div>
           </Field>
 
-          <Field label="What is charged" htmlFor="at-svc" hint="Added to the bill when the visit is finished. The price is the same one as in Services & prices.">
+          <Field
+            label="What is charged"
+            htmlFor="at-svc"
+            hint={type?.dentalProcedureCode ? 'Charged when the vet adds this procedure on a dental chart (per tooth where it applies) — never twice for a visit booked for it. The price is the same one as in Services & prices.' : 'Added to the bill when the visit is finished. The price is the same one as in Services & prices.'}
+          >
             <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_11rem]">
               <NativeSelect id="at-svc" value={f.serviceId} onChange={(e) => setF({ ...f, serviceId: e.target.value })}>
                 <option value="">Nothing — no automatic charge</option>
@@ -325,10 +328,6 @@ export default function AppointmentTypesPage() {
   // Grouped by the clinic's categories, in their order; types without one under their kind's name.
   const groupName = (t: AppointmentType) => t.categoryRef?.name ?? enumLabel(t.category);
   const groups = [...new Set(types.map(groupName))].map((name) => ({ name, rows: types.filter((t) => groupName(t) === name) }));
-  // Dental procedure prices sit with the Dental appointment types (in their own Dental section when there is none).
-  const moduleOn = useModuleOn();
-  const dentalOn = moduleOn('dental');
-  const dentalGroup = groups.find((g) => g.rows.some((t) => t.category === 'DENTAL'))?.name;
   return (
     <RequirePermission anyOf={['settings.manage']}>
       <Card>
@@ -362,6 +361,7 @@ export default function AppointmentTypesPage() {
                         <span className="block truncate text-xs text-muted-foreground">
                           {t.durationMinutes} min
                           {t.template && ` · ${questionsLabel(t.template._count?.questions ?? 0)}`}
+                          {t.dentalProcedureCode && ' · dental procedure, charged on the dental chart'}
                           {!t.requiresClinician && ' · no vet needed'}
                           {portal && t.allowOnlineBooking && ' · bookable online'}
                         </span>
@@ -386,15 +386,8 @@ export default function AppointmentTypesPage() {
                     </li>
                   ))}
                 </ul>
-                {dentalOn && g.name === dentalGroup && <DentalPricesPanel />}
               </section>
             ))}
-            {dentalOn && !dentalGroup && (
-              <section aria-label="Dental">
-                <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Dental</h3>
-                <DentalPricesPanel />
-              </section>
-            )}
           </div>
         )}
       </Card>

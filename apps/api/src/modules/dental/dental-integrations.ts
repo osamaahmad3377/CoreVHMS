@@ -7,7 +7,8 @@ import { DashboardService } from '../dashboard/dashboard.service';
 import { PatientMergeService } from '../patients/patient-merge.service';
 import { PatientRecordService } from '../patients/patient-record.service';
 import { PatientTimelineService } from '../patients/patient-timeline.service';
-import { dentalChartNo } from './dental.service';
+import { ScheduleConfigService } from '../scheduling/schedule-config.service';
+import { dentalChartNo, DentalService } from './dental.service';
 
 /** Registers dental charts with the patient timeline, merges, dashboard and record export. */
 @Injectable()
@@ -20,10 +21,14 @@ export class DentalIntegrations implements OnModuleInit {
     private readonly dashboard: DashboardService,
     private readonly record: PatientRecordService,
     private readonly privacy: ClientPrivacyService,
+    private readonly schedule: ScheduleConfigService,
+    private readonly dental: DentalService,
   ) {}
 
   onModuleInit() {
     const db = () => this.prisma.db;
+    // The dental procedures are appointment types too: they appear the first time the types are listed.
+    this.schedule.registerBeforeListTypes(() => this.dental.ensureProcedureTypes());
 
     this.timeline.register('dental', async (id) =>
       (await db().dentalChart.findMany({ where: { patientId: id }, include: { teeth: { select: { pdStage: true } }, procedures: { select: { code: true } } }, orderBy: { examinedAt: 'desc' }, take: 100 })).map((c) => {

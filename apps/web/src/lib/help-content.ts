@@ -215,13 +215,13 @@ export const GUIDES: HelpGuide[] = [
     ],
     tips: [
       'Teeth are numbered by the modified Triadan system (101 to 411; 501 to 811 for baby teeth). The chart is drawn as you face the animal, so its right side is on the left.',
-      'Set what each procedure costs once under Settings → Appointment types → Dental. A procedure without a price is recorded but not charged.',
+      'Each dental procedure is an appointment type in the Dental category: set its price under Settings → Appointment types. A procedure without a price is recorded but not charged.',
       'Removing a procedure from a draft chart waives its charge, as long as it has not been invoiced yet.',
       'Click a tooth on a later chart to see what was found on it at earlier visits.',
     ],
     links: [
       { label: 'Dental', href: '/dental' },
-      { label: 'Dental prices', href: '/settings/appointment-types#dental-prices', anyOf: ['settings.manage'] },
+      { label: 'Dental prices', href: '/settings/appointment-types', anyOf: ['settings.manage'] },
     ],
     keywords: ['dental', 'teeth', 'tooth', 'odontogram', 'periodontal', 'extraction', 'scale and polish', 'dentistry', 'triadan', 'tartar', 'calculus', 'gingivitis', 'resorption'],
   },

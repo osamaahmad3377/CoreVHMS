@@ -351,6 +351,8 @@ model Organization {
   templateQuestionsSeeded     Boolean            @default(false)
   /// The starter template library this clinic has: a newer one improves the starter templates it never changed.
   templateLibraryVersion      Int                @default(1)
+  /// The dental procedures were added as appointment types once (while dental was on); deleting one does not bring it back.
+  dentalProcedureTypesSeeded  Boolean            @default(false)
   // Branding: emails
   emailSenderName             String?
   emailSignature              String?
@@ -1323,7 +1325,12 @@ model AppointmentType {
   templateId String?           @db.Uuid
   template   ClinicalTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
 
+  /// A dental procedure as an appointment type (e.g. "SP" scale and polish): its service is what the procedure is
+  /// charged when it is added on a dental chart, and a visit booked for it is not charged it a second time.
+  dentalProcedureCode String?
+
   @@unique([organizationId, name])
+  @@unique([organizationId, dentalProcedureCode])
 }
 
 /// A clinic-defined appointment category ("Senior care", "Nail trim"…) that works like one built-in kind.

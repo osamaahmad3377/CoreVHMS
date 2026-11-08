@@ -1,5 +1,5 @@
 'use client';
-import { answersToText, type TemplateIcon, type TemplateQuestionRow } from '@vcms/shared';
+import { answersToText, type TemplateIcon, type TemplateQuestionRow, dentalProcedure, dentitionForSpecies } from '@vcms/shared';
 import { Ambulance, Baby, Bandage, BatteryLow, Beef, Bone, Brain, Bug, Droplets, Ear, Eye, FileText, FlaskConical, HeartPulse, PawPrint, PenLine, RotateCcw, Scissors, Smile, Soup, Stethoscope, Syringe, Thermometer, Truck, Wind, type LucideIcon } from 'lucide-react';
 import { useAppointmentTypes, useTemplates } from '@/hooks/use-catalog';
 import type { ClinicalTemplateRow } from '@/lib/types';
@@ -97,7 +97,7 @@ const fromTemplate = (t: ClinicalTemplateRow | null) => ({
  * The clinic's categories and active appointment types for this kind of animal, as reasons for the visit. A
  * template not (yet) used by any type is offered under Consultation, so no questions are lost.
  */
-export function useVisitReasons(speciesCategory?: string | null) {
+export function useVisitReasons(speciesCategory?: string | null, speciesName?: string | null) {
   const types = useAppointmentTypes();
   const templates = useTemplates();
   const byId = new Map((templates.data ?? []).map((t) => [t.id, t]));
@@ -115,6 +115,10 @@ export function useVisitReasons(speciesCategory?: string | null) {
   for (const t of types.data ?? []) {
     const tpl = t.templateId ? (byId.get(t.templateId) ?? null) : null;
     if (!forAnimal(tpl)) continue;
+    // A dental procedure for other animals only (e.g. a horse's float for a dog) is left out.
+    const procedure = t.dentalProcedureCode ? dentalProcedure(t.dentalProcedureCode) : null;
+    const dentition = dentitionForSpecies(speciesName, speciesCategory);
+    if (procedure?.dentitions && dentition && !procedure.dentitions.includes(dentition)) continue;
     const categoryId = t.categoryRef && t.categoryRef.isActive ? t.categoryRef.id : `kind:${t.category}`;
     reasons.push({ id: t.id, name: t.name, categoryId, ...fromTemplate(tpl) });
   }
