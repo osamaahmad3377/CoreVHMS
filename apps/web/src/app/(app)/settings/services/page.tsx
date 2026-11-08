@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { SERVICE_CATEGORIES, enumLabel, fromMinor } from '@vcms/shared';
 import { Check, Edit, Plus, Search, Tags } from 'lucide-react';
@@ -171,7 +172,10 @@ export default function ServicesPage() {
   const [dlg, setDlg] = useState<{ open: boolean; service: Service | null }>({ open: false, service: null });
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
-  const all = useMemo(() => q.data ?? [], [q.data]);
+  // Prices of appointment types are set in Appointment types; this page keeps the other charges.
+  const everything = useMemo(() => q.data ?? [], [q.data]);
+  const all = useMemo(() => everything.filter((s) => !s.appointmentTypes?.length), [everything]);
+  const typeCount = everything.length - all.length;
   const counts = { all: all.filter((s) => s.isActive).length, unpriced: all.filter((s) => s.isActive && s.priceMinor === 0).length, off: all.filter((s) => !s.isActive).length };
   const shown = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -202,7 +206,15 @@ export default function ServicesPage() {
         <CardHeader>
           <div className="min-w-0">
             <CardTitle>Services & prices</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">Everything you charge for. Type a price and press Enter — it is saved straight away.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Charges that are not appointment types — hospital stays, boarding, certificates, treatments… Type a price and press Enter — it is saved straight away.
+            </p>
+            {typeCount > 0 && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                Prices of appointment types (consultations, dental, grooming…) are set in{' '}
+                <Link href="/settings/appointment-types" className="font-medium text-primary hover:underline">Appointment types</Link>.
+              </p>
+            )}
           </div>
           <Button size="sm" onClick={() => setDlg({ open: true, service: null })}><Plus /> Add service</Button>
         </CardHeader>
@@ -239,7 +251,6 @@ export default function ServicesPage() {
                         <p className={cn('truncate text-sm font-medium', !s.isActive && 'text-muted-foreground')}>{s.name}</p>
                         <p className="truncate text-xs text-muted-foreground">
                           {s.code}
-                          {!!s.appointmentTypes?.length && ` · charged for ${s.appointmentTypes.map((t) => t.name).join(', ')}`}
                         </p>
                       </div>
                       <PriceCell service={s} />
@@ -253,7 +264,7 @@ export default function ServicesPage() {
           </div>
         )}
       </Card>
-      <ServiceDialog service={dlg.service} open={dlg.open} onOpenChange={(open) => setDlg((d) => ({ ...d, open }))} codes={all.map((s) => s.code)} />
+      <ServiceDialog service={dlg.service} open={dlg.open} onOpenChange={(open) => setDlg((d) => ({ ...d, open }))} codes={everything.map((s) => s.code)} />
     </RequirePermission>
   );
 }

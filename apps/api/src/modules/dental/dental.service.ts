@@ -3,6 +3,8 @@ import { Prisma, type DentalChart, type DentalProcedure, type DentalToothFinding
 import {
   DENTAL_PROCEDURES,
   dentalProcedure,
+  clinicalTemplateSchema,
+  DENTAL_STARTER_TEMPLATES,
   dentitionForSpecies,
   enabledModules,
   forDentition,
@@ -25,6 +27,7 @@ import { pageArgs, paginated } from '../../common/http/pagination';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { ScopedTx } from '../../common/prisma/tenant-extension';
 import { ChargeCaptureService } from '../billing/charge-capture.service';
+import { ClinicalRecordsService } from '../clinical/clinical-records.service';
 import { categoryForKind } from '../scheduling/appointment-categories';
 import { patientNo } from '../patients/patients.service';
 
@@ -78,6 +81,7 @@ export class DentalService {
     private readonly audit: AuditService,
     private readonly counters: CounterService,
     private readonly charges: ChargeCaptureService,
+    private readonly records: ClinicalRecordsService,
   ) {}
 
   private shape(c: ChartRow) {
@@ -379,10 +383,8 @@ export class DentalService {
    */
   async ensureProcedureTypes() {
     const orgId = RequestContext.orgId();
-    const org = await this.prisma.raw.organization.findUnique({ where: { id: orgId }, select: { dentalProcedureTypesSeeded: true, disabledModules: true } });
-    if (!org || org.dentalProcedureTypesSeeded) return;
-    const dentalOn = enabledModules(org.disabledModules).includes('dental') && moduleInPlan(RequestContext.get()?.tenant?.entitlements, 'dental');
-    if (!dentalOn) return;
+    const org = await this.prisma.raw.organization.findUnique({ where: { id: orgId }, select: { dentalProcedureTypesSeeded: true } });
+    if (!org || org.dentalProcedureTypesSeeded || !(await this.dentalOn())) return;
     await this.prisma.db.$transaction(async (tx) => {
       const claimed = await tx.organization.updateMany({ where: { id: orgId, dentalProcedureTypesSeeded: false }, data: { dentalProcedureTypesSeeded: true } });
       if (!claimed.count) return;
@@ -403,6 +405,50 @@ export class DentalService {
         added.push(p.label);
       }
       if (added.length) await this.audit.record({ action: 'appointment_type.created', entityType: 'AppointmentType', entityId: orgId, summary: `Dental procedures as appointment types: ${added.join(', ')}` }, tx);
+    });
+  }
+
+  private async dentalOn() {
+    const org = await this.prisma.raw.organization.findUnique({ where: { id: RequestContext.orgId() }, select: { disabledModules: true } });
+    return !!org && enabledModules(org.disabledModules).includes('dental') && moduleInPlan(RequestContext.get()?.tenant?.entitlements, 'dental');
+  }
+
+  /**
+   * Gives the Dental appointment types their consultation questions, once, while dental is on: the procedures get
+   * "Dental procedure" (horse-only ones "Horse dental"), and other dental types without questions (e.g. "Dental") the
+   * "Dental check" questions. Types that already have questions, and templates the clinic changed, are left alone.
+   */
+  async ensureDentalQuestions() {
+    const orgId = RequestContext.orgId();
+    const org = await this.prisma.raw.organization.findUnique({ where: { id: orgId }, select: { dentalQuestionsSeeded: true } });
+    if (!org || org.dentalQuestionsSeeded || !(await this.dentalOn())) return;
+    const claimed = await this.prisma.db.organization.updateMany({ where: { id: orgId, dentalQuestionsSeeded: false }, data: { dentalQuestionsSeeded: true } });
+    if (!claimed.count) return;
+    const byName = async (names: string[]) => this.prisma.db.clinicalTemplate.findFirst({ where: { OR: names.map((n) => ({ name: { equals: n, mode: 'insensitive' as const } })) } });
+    const templateId: Record<string, string> = {};
+    for (const st of DENTAL_STARTER_TEMPLATES) {
+      const found = await byName([st.name, ...(st.aliases ?? [])]);
+      templateId[st.name] =
+        found?.id ??
+        (
+          await this.records.saveTemplate(
+            null,
+            clinicalTemplateSchema.parse({ name: st.name, icon: st.icon, presentingComplaint: st.presentingComplaint, speciesCategory: st.speciesCategory ?? null, examSystems: st.examSystems ?? [], questions: st.questions, diagnoses: st.diagnoses ?? [], advice: st.advice }),
+          )
+        ).id;
+    }
+    const check = await byName(['Dental check', 'Dental problem', 'Teeth problem']);
+    const types = await this.prisma.db.appointmentType.findMany({ where: { category: 'DENTAL', templateId: null } });
+    await this.prisma.db.$transaction(async (tx) => {
+      const given: string[] = [];
+      for (const t of types) {
+        const procedure = t.dentalProcedureCode ? dentalProcedure(t.dentalProcedureCode) : null;
+        const id = procedure ? templateId[procedure.dentitions?.length === 1 && procedure.dentitions[0] === 'EQUINE' ? 'Horse dental' : 'Dental procedure'] : check?.id;
+        if (!id) continue;
+        await tx.appointmentType.update({ where: { id: t.id }, data: { templateId: id } });
+        given.push(t.name);
+      }
+      if (given.length) await this.audit.record({ action: 'appointment_type.updated', entityType: 'AppointmentType', entityId: orgId, summary: `Consultation questions added to dental appointment types: ${given.join(', ')}` }, tx);
     });
   }
 

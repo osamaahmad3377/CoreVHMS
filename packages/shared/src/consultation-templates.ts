@@ -54,6 +54,10 @@ export interface StarterTemplate {
   durationMinutes?: number;
   /** The library version that added it (1 when not given): later versions only add what is new to them. */
   addedIn?: number;
+  /** Questions used by existing appointment types (e.g. the dental procedures): no appointment type of its own. */
+  noType?: boolean;
+  /** Only for this kind of animal (e.g. horses). */
+  speciesCategory?: string;
 }
 
 type Q = z.input<typeof templateQuestionSchema>;
@@ -1081,10 +1085,135 @@ export const STARTER_V1_FINGERPRINTS: Record<string, { questions: string; diagno
   'General consultation': { questions: '2347dbd5', diagnoses: '741638a5', advice: 'd092ed16', examSystems: '2833ff15' },
 };
 
+/**
+ * Questions for the dental procedures (which are appointment types in the Dental category): added with dental, not
+ * with the general library, and used by the procedure types instead of making types of their own.
+ */
+export const DENTAL_STARTER_TEMPLATES: StarterTemplate[] = [
+  {
+    name: 'Dental procedure',
+    icon: 'tooth',
+    presentingComplaint: 'Dental treatment',
+    noType: true,
+    questions: [
+      q(
+        'Why the dental treatment?',
+        [
+          ['Found at a check-up', 'Dental disease found at a check-up'],
+          ['Bad breath', 'bad breath'],
+          ['Broken tooth', 'broken tooth'],
+          ['Loose tooth', 'loose tooth'],
+          ['Painful mouth', 'painful mouth'],
+          ['Swollen face', 'swollen face'],
+        ],
+        true,
+      ),
+      q('Fasted as asked?', [
+        ['Yes', 'Fasted as instructed'],
+        ['Has eaten', 'Has eaten today'],
+        ['Not sure', 'Not sure if fasted'],
+      ]),
+      q(
+        'Health problems?',
+        [
+          ['None', 'no known health problems'],
+          ['Heart', 'heart problem'],
+          ['Kidney', 'kidney problem'],
+          ['Liver', 'liver problem'],
+          ['Diabetes', 'diabetes'],
+          ['Other', 'other health problem (see notes)'],
+        ],
+        true,
+      ),
+      q('Medicines now?', [
+        ['None', 'No current medicines'],
+        ['Yes', 'On medicines (see notes)'],
+      ]),
+      q('Anaesthetic before?', [
+        ['Never', 'No anaesthetic before'],
+        ['No problems', 'Anaesthetic before with no problems'],
+        ['Had problems', 'Problems with an anaesthetic before'],
+      ]),
+      q('Teeth brushed at home?', [
+        ['Daily', 'Teeth brushed daily'],
+        ['Sometimes', 'Teeth brushed sometimes'],
+        ['Never', 'Teeth never brushed'],
+      ]),
+      EATING,
+      q('Estimate and consent agreed?', [
+        ['Yes', 'Estimate and consent agreed with the owner'],
+        ['Not yet', 'Estimate and consent not yet agreed'],
+      ]),
+    ],
+    examSystems: ['Oral cavity & teeth', 'Cardiovascular', 'Respiratory', 'General appearance', 'Lymph nodes'],
+    diagnoses: ['Periodontal disease', 'Dental tartar', 'Fractured tooth', 'Tooth root abscess', 'Tooth resorption', 'Retained baby teeth', 'Oral mass'],
+    advice: [
+      'Offer soft food tonight and for the next few days, as advised',
+      'No bones, antlers or hard chews until the recheck',
+      'Give the pain relief exactly as prescribed',
+      'Start brushing the teeth daily once the mouth has healed',
+      'Come back if there is bleeding, swelling of the face, or he/she stops eating',
+    ],
+  },
+  {
+    name: 'Horse dental',
+    icon: 'tooth',
+    presentingComplaint: 'Horse dental',
+    noType: true,
+    speciesCategory: 'EQUINE',
+    questions: [
+      q('Last dental check?', [
+        ['Within a year', 'Last dental check within a year'],
+        ['Over a year', 'Last dental check more than a year ago'],
+        ['Never', 'No dental check before'],
+        ['Not known', 'Last dental check not known'],
+      ]),
+      q(
+        'What do you notice?',
+        [
+          ['Dropping feed', 'dropping feed (quidding)'],
+          ['Weight loss', 'weight loss'],
+          ['Slow eating', 'slow eating'],
+          ['Head tossing', 'head tossing'],
+          ['Fighting the bit', 'fighting the bit'],
+          ['Bad smell', 'bad smell from the mouth'],
+          ['Swollen face', 'swelling of the face'],
+          ['Nose discharge (one side)', 'discharge from one nostril'],
+        ],
+        true,
+      ),
+      q('Feed?', [
+        ['Grazing', 'Mostly grazing'],
+        ['Hay', 'Mostly hay'],
+        ['Hard feed', 'Hard feed'],
+        ['Mixed', 'Mixed feed'],
+      ]),
+      q('Ridden?', [
+        ['Yes', 'Ridden'],
+        ['No', 'Not ridden'],
+      ]),
+      q('Sedation before?', [
+        ['Never', 'No sedation before'],
+        ['No problems', 'Sedated before with no problems'],
+        ['Had problems', 'Problems with sedation before'],
+      ]),
+      EATING,
+    ],
+    examSystems: ['Oral cavity & teeth', 'General appearance', 'Lymph nodes', 'Respiratory'],
+    diagnoses: ['Sharp enamel points', 'Hooks / ramps', 'Wolf teeth', 'Diastema with food packing', 'Fractured cheek tooth', 'Periodontal disease', 'EOTRH'],
+    advice: [
+      'Offer soaked or soft feed for a few days if the mouth is sore',
+      'Ride without a bit until the vet says otherwise',
+      'Book the next dental check as advised by the clinic',
+      'Come back if dropping feed or weight loss starts again',
+    ],
+  },
+];
+
 /** The starter template for a template or appointment type name (its own name or an alias). */
 export function starterFor(name: string) {
   const n = name.trim().toLowerCase();
-  return STARTER_TEMPLATE_QUESTIONS.find((t) => t.name.toLowerCase() === n || (t.aliases ?? []).some((a) => a.toLowerCase() === n));
+  return [...STARTER_TEMPLATE_QUESTIONS, ...DENTAL_STARTER_TEMPLATES].find((t) => t.name.toLowerCase() === n || (t.aliases ?? []).some((a) => a.toLowerCase() === n));
 }
 
 /**

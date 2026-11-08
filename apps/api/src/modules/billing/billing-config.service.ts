@@ -33,7 +33,7 @@ export class BillingConfigService {
   services(includeInactive = false, q?: string) {
     return this.prisma.db.service.findMany({
       where: { ...(includeInactive ? {} : { isActive: true }), ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' } }, { code: { contains: q, mode: 'insensitive' } }] } : {}) },
-      include: { taxRate: { select: { id: true, name: true, rateBasisPoints: true } }, appointmentTypes: { where: { isActive: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } } },
+      include: { taxRate: { select: { id: true, name: true, rateBasisPoints: true } }, appointmentTypes: { select: { id: true, name: true, isActive: true }, orderBy: { name: 'asc' } } },
       orderBy: [{ category: 'asc' }, { name: 'asc' }],
     });
   }

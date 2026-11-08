@@ -2,7 +2,7 @@ import { DENTAL_PROCEDURES, OPTIONAL_MODULES } from '@vcms/shared';
 import { booking, closeApp, futureDate, karachi, prisma, registerOrg, schedulingFixture } from './helpers';
 
 // Prices are arbitrary test values.
-type Type = { id: string; name: string; category: string; dentalProcedureCode: string | null; serviceId: string | null; categoryRef: { kind: string } | null };
+type Type = { id: string; name: string; category: string; dentalProcedureCode: string | null; serviceId: string | null; categoryRef: { kind: string } | null; template: { name: string; _count: { questions: number } } | null };
 
 describe('Dental procedures as appointment types', () => {
   afterAll(closeApp);
@@ -30,6 +30,34 @@ describe('Dental procedures as appointment types', () => {
     await prisma().appointmentType.delete({ where: { id: procedures.find((t) => t.dentalProcedureCode === 'WOLF')!.id } });
     const again = (await org.owner.get('/appointment-types?all=true')).body as Type[];
     expect(again.filter((t) => t.dentalProcedureCode)).toHaveLength(DENTAL_PROCEDURES.length - 1);
+  });
+
+  it('gives the dental appointment types dental questions once: procedures, horse procedures and the plain Dental type', async () => {
+    const org = await registerOrg();
+    // A clinic's own dental type with its own questions keeps them.
+    const own = (await org.owner.post('/clinical-templates', { name: 'Our ortho questions', examSystems: [], questions: [{ ask: 'Bite?', answers: [{ label: 'Normal', text: 'Normal bite' }] }] })).body;
+    const orthoRes = await org.owner.post('/appointment-types', { name: 'Orthodontic check', category: 'DENTAL', durationMinutes: 30, templateId: own.id });
+    expect(orthoRes.body.error ?? null).toBeNull();
+    const ortho = orthoRes.body;
+    await org.owner.get('/clinical-templates');
+    const types = (await org.owner.get('/appointment-types?all=true')).body as Type[];
+    const byCode = (c: string) => types.find((t) => t.dentalProcedureCode === c)!;
+    expect(byCode('SP').template).toMatchObject({ name: 'Dental procedure' });
+    expect(byCode('SP').template!._count.questions).toBeGreaterThan(5);
+    expect(byCode('FLOAT').template).toMatchObject({ name: 'Horse dental' });
+    expect(types.find((t) => t.id === ortho.id)!.template).toMatchObject({ name: 'Our ortho questions' });
+    const plain = types.find((t) => t.name === 'Dental');
+    if (plain) expect(plain.template).toMatchObject({ name: 'Dental check' });
+    // No appointment types of their own for the dental questions.
+    expect(types.some((t) => t.name === 'Dental procedure' || t.name === 'Horse dental')).toBe(false);
+    const horse = (await org.owner.get('/clinical-templates')).body.find((t: any) => t.name === 'Horse dental');
+    expect(horse).toMatchObject({ speciesCategory: 'EQUINE', icon: 'tooth' });
+
+    // Once only: questions taken off a type are not put back.
+    await org.owner.patch(`/appointment-types/${byCode('X').id}`, { templateId: null });
+    const again = (await org.owner.get('/appointment-types?all=true')).body as Type[];
+    expect(again.find((t) => t.dentalProcedureCode === 'X')!.template).toBeNull();
+    expect(((await org.owner.get('/clinical-templates')).body as any[]).filter((t) => t.name === 'Dental procedure')).toHaveLength(1);
   });
 
   it('charges a visit booked for a procedure once: by the dental chart when charted there, otherwise when the visit ends', async () => {
@@ -62,5 +90,7 @@ describe('Dental procedures as appointment types', () => {
     expect(await count()).toBe(0);
     await org.owner.call('put', '/setup/modules', { enabled: [...OPTIONAL_MODULES] });
     expect(await count()).toBe(DENTAL_PROCEDURES.length);
+    const scale = ((await org.owner.get('/appointment-types?all=true')).body as Type[]).find((t) => t.dentalProcedureCode === 'SP')!;
+    expect(scale.template).toMatchObject({ name: 'Dental procedure' });
   });
 });

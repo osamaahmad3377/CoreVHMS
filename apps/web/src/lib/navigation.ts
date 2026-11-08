@@ -170,7 +170,7 @@ export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyO
   { label: 'Waiting room', href: '/settings/waiting-room', icon: Megaphone, anyOf: ['settings.manage'], group: 'Your clinic', hint: 'TV screen with token numbers, and a check-in tablet at the door' },
   { label: 'Staff accounts', href: '/settings/staff', icon: Users, anyOf: ['users.read'], group: 'Staff & access', hint: 'Add staff, reset passwords, suspend access' },
   { label: 'Roles & permissions', href: '/settings/roles', icon: Shield, anyOf: ['roles.manage', 'users.read'], group: 'Staff & access', hint: 'What each job is allowed to see and do (advanced)' },
-  { label: 'Services & prices', href: '/settings/services', icon: Receipt, anyOf: ['settings.manage'], group: 'Prices & billing', hint: 'Your price list: consultations, vaccinations, procedures' },
+  { label: 'Services & prices', href: '/settings/services', icon: Receipt, anyOf: ['settings.manage'], group: 'Prices & billing', hint: 'Charges that are not appointment types: hospital stays, boarding, vaccinations, treatments, certificates' },
   { label: 'Appointment types', href: '/settings/appointment-types', icon: CalendarDays, anyOf: ['settings.manage'], group: 'Prices & billing', hint: 'What can be booked, what it charges, the questions the vet asks in the consultation, and dental procedure prices' },
   { label: 'Tax & payments', href: '/settings/billing', icon: Receipt, anyOf: ['settings.manage'], group: 'Prices & billing', hint: 'Sales tax, days to pay, cash drawer rules' },
   { label: 'Rooms & equipment', href: '/settings/resources', icon: Bed, anyOf: ['settings.manage'], group: 'Rooms & spaces', hint: 'Consult rooms, theatre and equipment that can be booked' },

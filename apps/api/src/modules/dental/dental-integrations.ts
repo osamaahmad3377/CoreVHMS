@@ -28,7 +28,10 @@ export class DentalIntegrations implements OnModuleInit {
   onModuleInit() {
     const db = () => this.prisma.db;
     // The dental procedures are appointment types too: they appear the first time the types are listed.
-    this.schedule.registerBeforeListTypes(() => this.dental.ensureProcedureTypes());
+    this.schedule.registerBeforeListTypes(async () => {
+      await this.dental.ensureProcedureTypes();
+      await this.dental.ensureDentalQuestions();
+    });
 
     this.timeline.register('dental', async (id) =>
       (await db().dentalChart.findMany({ where: { patientId: id }, include: { teeth: { select: { pdStage: true } }, procedures: { select: { code: true } } }, orderBy: { examinedAt: 'desc' }, take: 100 })).map((c) => {

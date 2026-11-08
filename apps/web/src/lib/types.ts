@@ -919,7 +919,7 @@ export interface Service {
   taxRateId: string | null;
   isActive: boolean;
   /** Active appointment types charged with this service. */
-  appointmentTypes?: { id: string; name: string }[];
+  appointmentTypes?: { id: string; name: string; isActive?: boolean }[];
 }
 
 export interface BillingSettings {

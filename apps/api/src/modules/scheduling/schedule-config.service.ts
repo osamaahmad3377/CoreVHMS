@@ -3,6 +3,7 @@ import type { LeaveType, ResourceType } from '@prisma/client';
 import { starterFor, type AppointmentCategoryInput, type AppointmentTypeInput, type WorkingHoursInput } from '@vcms/shared';
 import { Prisma } from '@prisma/client';
 import { categoryForKind } from './appointment-categories';
+import { GROOMING_TYPES } from './grooming-types';
 import type { ScopedTx } from '../../common/prisma/tenant-extension';
 import { conflict } from '../../common/http/errors';
 import { AuditService, diff } from '../../common/audit/audit.service';
@@ -34,7 +35,42 @@ export class ScheduleConfigService {
     this.beforeListTypes.push(h);
   }
 
+  /**
+   * Adds the common grooming services as Grooming appointment types, once: a type the clinic already has (same name
+   * or a usual other name) is kept, each is charged with the clinic's price of that name, or a new price at 0.
+   */
+  private async ensureGroomingTypes() {
+    const orgId = RequestContext.orgId();
+    const org = await this.prisma.raw.organization.findUnique({ where: { id: orgId }, select: { groomingTypesSeeded: true } });
+    if (!org || org.groomingTypesSeeded) return;
+    await this.prisma.db.$transaction(async (tx) => {
+      const claimed = await tx.organization.updateMany({ where: { id: orgId, groomingTypesSeeded: false }, data: { groomingTypesSeeded: true } });
+      if (!claimed.count) return;
+      const named = (names: string[]) => ({ OR: names.map((n) => ({ name: { equals: n, mode: 'insensitive' as const } })) });
+      const categoryId = await categoryForKind(tx, orgId, 'GROOMING');
+      const codes = new Set((await tx.service.findMany({ select: { code: true } })).map((s) => s.code));
+      const added: string[] = [];
+      for (const g of GROOMING_TYPES) {
+        const names = [g.name, ...(g.aliases ?? [])];
+        if (await tx.appointmentType.findFirst({ where: named(names) })) continue;
+        let service = await tx.service.findFirst({ where: { ...named(names), isActive: true } });
+        if (!service) {
+          let code = g.code;
+          for (let n = 2; codes.has(code); n++) code = `${g.code}-${n}`;
+          codes.add(code);
+          service = await tx.service.create({ data: { organizationId: orgId, code, name: g.name, category: 'GROOMING', priceMinor: 0 } });
+        }
+        await tx.appointmentType.create({
+          data: { organizationId: orgId, name: g.name, category: 'GROOMING', categoryId, durationMinutes: g.minutes, color: '#db2777', serviceId: service.id, requiresClinician: false, allowOnlineBooking: true },
+        });
+        added.push(g.name);
+      }
+      if (added.length) await this.audit.record({ action: 'appointment_type.created', entityType: 'AppointmentType', entityId: orgId, summary: `Grooming appointment types: ${added.join(', ')}` }, tx);
+    });
+  }
+
   async listTypes(includeInactive = false) {
+    await this.ensureGroomingTypes();
     for (const h of this.beforeListTypes) await h();
     return this.prisma.db.appointmentType.findMany({
       where: includeInactive ? {} : { isActive: true },
@@ -79,6 +115,8 @@ export class ScheduleConfigService {
     }
     // Starter templates whose type has another name.
     const starter = starterFor(t.name);
+    // Questions for existing types only (e.g. the dental procedures).
+    if (starter?.noType) return;
     for (const alias of [TEMPLATE_TYPE_ALIASES[t.name.toLowerCase()], ...(starter?.aliases ?? [])].filter(Boolean)) {
       // A type the clinic switched off is left alone: the template gets its own type instead.
       const aliased = await tx.appointmentType.findFirst({ where: { name: { equals: alias, mode: 'insensitive' }, templateId: null, isActive: true } });

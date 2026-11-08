@@ -353,6 +353,10 @@ model Organization {
   templateLibraryVersion      Int                @default(1)
   /// The dental procedures were added as appointment types once (while dental was on); deleting one does not bring it back.
   dentalProcedureTypesSeeded  Boolean            @default(false)
+  /// The dental appointment types were given their consultation questions once (while dental was on).
+  dentalQuestionsSeeded       Boolean            @default(false)
+  /// The common grooming services were added as appointment types once; deleting one does not bring it back.
+  groomingTypesSeeded         Boolean            @default(false)
   // Branding: emails
   emailSenderName             String?
   emailSignature              String?

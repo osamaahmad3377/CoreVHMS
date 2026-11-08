@@ -190,11 +190,10 @@ export class BillingIntegrations implements OnModuleInit {
       if (!enc.chargeConsultation) return;
       const service = enc.appointment?.appointmentType.service;
       if (!service || !service.isActive) return;
-      // Booked for a dental procedure that the vet already charged on the dental chart: not charged twice.
-      if (enc.appointment?.appointmentType.dentalProcedureCode) {
-        const charted = await tx.charge.findFirst({ where: { encounterId: enc.id, sourceType: 'DentalProcedure', serviceId: service.id, status: { not: 'WAIVED' } } });
-        if (charted) return;
-      }
+      // What the visit was booked for is already on its bill (charted on the dental chart, or a grooming service
+      // tapped in the consultation): not charged twice.
+      const already = await tx.charge.findFirst({ where: { encounterId: enc.id, serviceId: service.id, status: { not: 'WAIVED' }, sourceType: { in: ['DentalProcedure', 'VisitService'] } } });
+      if (already) return;
       await this.charges.capture(tx, {
         sourceType: 'Encounter',
         sourceId: enc.id,

@@ -60,6 +60,11 @@ function TypeDialog({ type, open, onOpenChange }: { type: AppointmentType | null
   const [price, setPrice] = useState('');
   useEffect(() => setPrice(linked ? fromMinor(linked.priceMinor, currency) : ''), [linked?.id, linked?.priceMinor, currency]); // eslint-disable-line react-hooks/exhaustive-deps
   const parsedPrice = parseMoney(price, currency);
+  // Other appointment types charged with the same price: changing it changes theirs too, unless this one gets its own.
+  const allTypes = useAppointmentTypes(true);
+  const sharedWith = linked ? (allTypes.data ?? []).filter((t) => t.serviceId === linked.id && t.id !== type?.id) : [];
+  const [ownPrice, setOwnPrice] = useState(false);
+  const [fromList, setFromList] = useState(false);
   const categories = useCategories(true);
   const choices = (categories.data ?? []).filter((c) => c.isActive || c.id === f.categoryId);
   const chosen = choices.find((c) => c.id === f.categoryId);
@@ -69,11 +74,14 @@ function TypeDialog({ type, open, onOpenChange }: { type: AppointmentType | null
   useEffect(() => {
     if (fallbackId) setF((cur) => (cur.categoryId ? cur : { ...cur, categoryId: fallbackId }));
   }, [fallbackId]);
-  const creatingPrice = f.serviceId === NEW_PRICE;
+  // A price with no price-list entry yet (or this type's own): a new entry under the type's name.
+  const creatingPrice = f.serviceId === NEW_PRICE || (price.trim() !== '' && (!linked || ownPrice));
   const save = useMutation({
     mutationFn: async () => {
-      let serviceId = f.serviceId || null;
-      if (creatingPrice) {
+      let serviceId = f.serviceId && f.serviceId !== NEW_PRICE ? f.serviceId : null;
+      // An empty price: no automatic charge.
+      if (price.trim() === '' && !fromList) serviceId = null;
+      else if (creatingPrice) {
         // A new price for this type: added to Services & prices under the type's name.
         const created = await api.post<Service>('/services', {
           code: codeFromName(f.name, (services.data ?? []).map((x) => x.code)),
@@ -105,7 +113,7 @@ function TypeDialog({ type, open, onOpenChange }: { type: AppointmentType | null
     },
     onError: (e: Error) => setError(e.message),
   });
-  const priceInvalid = (creatingPrice || !!linked) && price.trim() !== '' && parsedPrice === null;
+  const priceInvalid = price.trim() !== '' && parsedPrice === null;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="lg">
@@ -138,18 +146,33 @@ function TypeDialog({ type, open, onOpenChange }: { type: AppointmentType | null
           </Field>
 
           <Field
-            label="What is charged"
-            htmlFor="at-svc"
-            hint={type?.dentalProcedureCode ? 'Charged when the vet adds this procedure on a dental chart (per tooth where it applies) — never twice for a visit booked for it. The price is the same one as in Services & prices.' : 'Added to the bill when the visit is finished. The price is the same one as in Services & prices.'}
+            label="Price"
+            htmlFor="at-price"
+            hint={type?.dentalProcedureCode ? 'Charged when the vet adds this procedure on a dental chart (per tooth where it applies) — never twice for a visit booked for it. Leave empty for no charge.' : 'Added to the bill when the visit is finished. Leave empty for no charge.'}
           >
-            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_11rem]">
-              <NativeSelect id="at-svc" value={f.serviceId} onChange={(e) => setF({ ...f, serviceId: e.target.value })}>
-                <option value="">Nothing — no automatic charge</option>
-                <option value={NEW_PRICE}>+ A new price for “{f.name.trim() || 'this type'}”</option>
-                {(services.data ?? []).filter((x) => x.isActive || x.id === f.serviceId).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-              </NativeSelect>
-              {(creatingPrice || linked) && (
-                <MoneyInput aria-label="Price" currency={currency} value={price} onChange={(e) => setPrice(e.target.value)} className={cn(priceInvalid && 'border-destructive')} />
+            <div className="grid gap-2">
+              <MoneyInput id="at-price" aria-label="Price" currency={currency} value={price} placeholder="0.00" onChange={(e) => setPrice(e.target.value)} className={cn('sm:w-48', priceInvalid && 'border-destructive')} />
+              {linked && sharedWith.length > 0 && !fromList && (
+                <p className="text-xs text-muted-foreground">
+                  {ownPrice ? (
+                    <>This type gets its own price. <button type="button" className="font-medium text-primary hover:underline" onClick={() => { setOwnPrice(false); setPrice(fromMinor(linked.priceMinor, currency)); }}>Keep the shared price</button></>
+                  ) : (
+                    <>
+                      Same price as {sharedWith.length === 1 ? sharedWith[0].name : `${sharedWith.length} other appointment types`} — changing it changes {sharedWith.length === 1 ? 'that one' : 'them'} too.{' '}
+                      <button type="button" className="font-medium text-primary hover:underline" onClick={() => setOwnPrice(true)}>Give this type its own price</button>
+                    </>
+                  )}
+                </p>
+              )}
+              {fromList ? (
+                <NativeSelect id="at-svc" aria-label="Price from the price list" value={f.serviceId} onChange={(e) => { setF({ ...f, serviceId: e.target.value }); setOwnPrice(false); }}>
+                  <option value="">Nothing — no automatic charge</option>
+                  {(services.data ?? []).filter((x) => x.isActive || x.id === f.serviceId).map((x) => <option key={x.id} value={x.id}>{x.name} · {fmtMoney(x.priceMinor, currency)}</option>)}
+                </NativeSelect>
+              ) : (
+                <button type="button" className="w-fit text-xs text-muted-foreground hover:text-primary hover:underline" onClick={() => setFromList(true)}>
+                  Use a price from the price list
+                </button>
               )}
             </div>
           </Field>
@@ -370,7 +393,7 @@ export default function AppointmentTypesPage() {
                         {t.service ? (
                           <>
                             <span className="tabular font-medium">{fmtMoney(t.service.priceMinor, currency)}</span>
-                            <span className="block text-xs text-muted-foreground">{t.service.name}</span>
+                            {t.service.name.trim().toLowerCase() !== t.name.trim().toLowerCase() && <span className="block text-xs text-muted-foreground">{t.service.name}</span>}
                           </>
                         ) : (
                           <span className="text-xs text-muted-foreground">No charge</span>
