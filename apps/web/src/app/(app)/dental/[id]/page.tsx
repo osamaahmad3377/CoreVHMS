@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { DENTITION_LABELS, teethFor, toothInfo } from '@vcms/shared';
+import { DENTITION_LABELS, dentalProcedure, PERIODONTAL_STAGES, teethFor, toothInfo, worstStage } from '@vcms/shared';
 import { ArrowLeft, BadgeCheck, FileSignature, History, Lock, MousePointerClick, Printer, ShieldAlert, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -8,8 +8,10 @@ import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirm } from '@/components/confirm';
 import { MouthCard, ProceduresCard } from '@/components/dental/chart-sections';
-import { Odontogram, OdontogramLegend, toothCodes } from '@/components/dental/odontogram';
-import { ToothEditor, toothPayload, type ToothForm } from '@/components/dental/tooth-editor';
+import { Odontogram, OdontogramLegend, toothCodes, toothTone, toothWords } from '@/components/dental/odontogram';
+import { ToothActions } from '@/components/dental/tooth-actions';
+import { useToothTests } from '@/components/dental/tooth-tests';
+import { ToothEditor, type ToothPayload } from '@/components/dental/tooth-editor';
 import { ErrorState, LoadingRows, PageHeader } from '@/components/page';
 import { RequirePermission } from '@/components/require';
 import { Badge } from '@/components/ui/badge';
@@ -57,19 +59,47 @@ function ToothHistory({ patientId, tooth, chartId, dentition }: { patientId: str
 }
 
 function FindingsList({ chart, onPick }: { chart: DentalChart; onPick: (tooth: string) => void }) {
-  const rows = chart.teeth.filter((t) => toothCodes(t).length || t.notes || t.calculus || t.gingivitis);
-  if (!rows.length) return <p className="text-sm text-muted-foreground">No tooth findings recorded.</p>;
+  const rows = chart.teeth.filter((t) => toothWords(t).length || t.notes).sort((a, b) => a.tooth.localeCompare(b.tooth));
+  if (!rows.length) return <p className="text-sm text-muted-foreground">No tooth findings recorded yet.</p>;
   return (
-    <ul className="grid gap-1 text-sm">
-      {rows.map((t) => (
-        <li key={t.tooth}>
-          <button type="button" className="flex w-full gap-2 rounded px-1 py-0.5 text-left hover:bg-muted" onClick={() => onPick(t.tooth)}>
-            <span className="w-9 shrink-0 font-semibold tabular">{t.tooth}</span>
-            <span className="min-w-0 text-muted-foreground">{[toothCodes(t).join(' '), t.calculus ? `CI${t.calculus}` : '', t.gingivitis ? `GI${t.gingivitis}` : '', t.notes].filter(Boolean).join(' · ')}</span>
-          </button>
-        </li>
-      ))}
+    <ul className="grid gap-1">
+      {rows.map((t) => {
+        const tone = toothTone(t);
+        return (
+          <li key={t.tooth}>
+            <button type="button" className="flex w-full items-start gap-2.5 rounded-lg px-2 py-1.5 text-left hover:bg-muted" onClick={() => onPick(t.tooth)}>
+              <span className={`mt-0.5 grid h-6 min-w-9 place-items-center rounded-md px-1 text-xs font-bold tabular ${tone === 'severe' ? 'bg-destructive/15 text-destructive' : tone === 'absent' ? 'bg-muted text-muted-foreground' : 'bg-warning/20 text-foreground'}`}>{t.tooth}</span>
+              <span className="min-w-0">
+                <span className="block text-xs text-muted-foreground">{toothInfo(chart.dentition, t.tooth)?.name ?? ''}</span>
+                <span className="block text-sm">{[...toothWords(t), t.notes].filter(Boolean).join(' · ')}</span>
+              </span>
+            </button>
+          </li>
+        );
+      })}
     </ul>
+  );
+}
+
+/** One line under the header: how the mouth is, at a glance. */
+function ChartSummary({ chart }: { chart: DentalChart }) {
+  const stage = chart.periodontalStage ?? worstStage(chart.teeth);
+  const findings = chart.teeth.filter((t) => t.state === 'PRESENT' && toothWords(t).length).length;
+  const missing = chart.teeth.filter((t) => t.state === 'MISSING' || t.state === 'EXTRACTED').length;
+  const extractions = chart.procedures.filter((p) => dentalProcedure(p.code)?.removesTooth).length;
+  const item = (label: string, value: React.ReactNode, tone?: 'warn' | 'bad') => (
+    <div className="min-w-0 rounded-xl border bg-card px-3 py-2">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className={`text-sm font-semibold leading-snug ${tone === 'bad' ? 'text-destructive' : tone === 'warn' ? 'text-warning' : ''}`}>{value}</p>
+    </div>
+  );
+  return (
+    <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="Chart summary">
+      {item('Periodontal stage', stage != null ? `${PERIODONTAL_STAGES[stage].label} — ${PERIODONTAL_STAGES[stage].hint.toLowerCase()}` : 'Not scored', stage != null && stage >= 3 ? 'bad' : stage ? 'warn' : undefined)}
+      {item('Teeth with findings', findings, findings ? 'warn' : undefined)}
+      {item('Missing / extracted', missing + extractions)}
+      {item('Procedures', chart.procedures.length ? `${chart.procedures.length}${extractions ? ` · ${extractions} extraction${extractions === 1 ? '' : 's'}` : ''}` : 'None yet')}
+    </div>
   );
 }
 
@@ -89,12 +119,10 @@ function ChartPage() {
     if (c.encounterId) qc.invalidateQueries({ queryKey: ['encounter-dental', c.encounterId] });
   };
 
+  // Saved as the vet goes (the tooth editor saves a moment after each change).
   const saveTeeth = useMutation({
-    mutationFn: (f: ToothForm) => api.put<DentalChart>(`/dental/charts/${id}/teeth`, { teeth: [...selected].map((t) => toothPayload(t, f)) }),
-    onSuccess: (c) => {
-      setChart(c);
-      toast.success(`Saved ${selected.size === 1 ? [...selected][0] : `${selected.size} teeth`}`);
-    },
+    mutationFn: (teeth: ToothPayload[]) => api.put<DentalChart>(`/dental/charts/${id}/teeth`, { teeth }),
+    onSuccess: setChart,
     onError: (e: Error) => toast.error(e.message),
   });
   const deciduousToggle = useMutation({
@@ -133,6 +161,7 @@ function ChartPage() {
   const chart = q.data;
   const adult = useMemo(() => (chart ? teethFor(chart.dentition) : []), [chart]);
   const baby = useMemo(() => (chart ? teethFor(chart.dentition, true) : []), [chart]);
+  const tested = useToothTests(chart?.patientId, chart?.encounterId);
   if (q.isLoading) return <LoadingRows />;
   if (q.error || !chart) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
 
@@ -216,51 +245,69 @@ function ChartPage() {
         </p>
       )}
 
+      <ChartSummary chart={chart} />
+
+      <div className="mb-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>{DENTITION_LABELS[chart.dentition]} teeth</CardTitle>
+            <div className="flex flex-wrap items-center gap-1">
+              {editable &&
+                quadrantButtons(chart).map((b) => (
+                  <Button key={b.label} size="sm" variant="ghost" className="h-8 px-2.5 text-xs" onClick={() => setSelected(new Set(b.teeth))}>
+                    {b.label}
+                  </Button>
+                ))}
+              {editable && selected.size > 0 && (
+                <Button size="sm" variant="ghost" className="h-8 px-2.5 text-xs text-muted-foreground" onClick={() => setSelected(new Set())}>
+                  Clear
+                </Button>
+              )}
+            </div>
+          </CardHeader>
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-4 border-t p-4">
+            <Odontogram teeth={adult} findings={findings} procedures={chart.procedures} tested={tested} selected={selected} onToggle={toggle} title="Adult teeth" />
+            {chart.showDeciduous && (
+              <div>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Baby teeth</p>
+                <Odontogram teeth={baby} findings={findings} procedures={chart.procedures} tested={tested} selected={selected} onToggle={toggle} title="Baby teeth" />
+              </div>
+            )}
+            {editable && sel.length > 0 && (
+              <ToothActions
+                chart={chart}
+                selected={sel}
+                saving={saveTeeth.isPending}
+                onSaveTeeth={(teeth, done) => saveTeeth.mutate(teeth, { onSuccess: done })}
+                onChanged={setChart}
+                onClear={() => setSelected(new Set())}
+                onMoreProcedures={() => document.getElementById('procedures')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              />
+            )}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <OdontogramLegend />
+              {editable && (
+                <Button size="sm" variant="ghost" className="h-8 text-xs" loading={deciduousToggle.isPending} onClick={() => deciduousToggle.mutate(!chart.showDeciduous)}>
+                  {chart.showDeciduous ? 'Hide baby teeth' : 'Show baby teeth'}
+                </Button>
+              )}
+            </div>
+          </div>
+        </Card>
+      </div>
+
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>{DENTITION_LABELS[chart.dentition]} teeth</CardTitle>
-              <div className="flex flex-wrap items-center gap-1">
-                {editable &&
-                  quadrantButtons(chart).map((b) => (
-                    <Button key={b.label} size="sm" variant="ghost" className="h-8 px-2.5 text-xs" onClick={() => setSelected(new Set(b.teeth))}>
-                      {b.label}
-                    </Button>
-                  ))}
-                {editable && selected.size > 0 && (
-                  <Button size="sm" variant="ghost" className="h-8 px-2.5 text-xs text-muted-foreground" onClick={() => setSelected(new Set())}>
-                    Clear
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            <div className="grid grid-cols-[minmax(0,1fr)] gap-4 border-t p-4">
-              <Odontogram teeth={adult} findings={findings} procedures={chart.procedures} selected={selected} onToggle={toggle} title="Adult teeth" />
-              {chart.showDeciduous && (
-                <div>
-                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Baby teeth</p>
-                  <Odontogram teeth={baby} findings={findings} procedures={chart.procedures} selected={selected} onToggle={toggle} title="Baby teeth" />
-                </div>
-              )}
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <OdontogramLegend />
-                {editable && (
-                  <Button size="sm" variant="ghost" className="h-8 text-xs" loading={deciduousToggle.isPending} onClick={() => deciduousToggle.mutate(!chart.showDeciduous)}>
-                    {chart.showDeciduous ? 'Hide baby teeth' : 'Show baby teeth'}
-                  </Button>
-                )}
-              </div>
-            </div>
-          </Card>
-          <ProceduresCard chart={chart} selected={sel} editable={editable} onChanged={setChart} />
+          <div id="procedures" className="scroll-mt-24">
+            <ProceduresCard chart={chart} selected={sel} editable={editable} onChanged={setChart} />
+          </div>
           <MouthCard chart={chart} editable={editable} onChanged={setChart} />
         </div>
 
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-4 xl:sticky xl:top-4 xl:self-start">
           <Card className="p-4">
             {sel.length && editable ? (
-              <ToothEditor dentition={chart.dentition} selected={sel} teeth={findings} saving={saveTeeth.isPending} onSave={(f) => saveTeeth.mutate(f)} onClear={() => setSelected(new Set())} />
+              <ToothEditor dentition={chart.dentition} selected={sel} teeth={findings} saving={saveTeeth.isPending} onSave={(t) => saveTeeth.mutate(t)} onClear={() => setSelected(new Set())} />
             ) : sel.length ? (
               <div className="grid gap-2">
                 {sel.map((t) => {

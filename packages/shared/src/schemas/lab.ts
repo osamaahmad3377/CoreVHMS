@@ -52,6 +52,8 @@ export const createOrderSchema = z.object({
   testIds: z.array(z.string().uuid()).min(1).max(30),
   priority: z.enum(ORDER_PRIORITIES).default('ROUTINE'),
   clinicalNotes: optText(2000),
+  /** The teeth the order is for, when ordered from the dental chart (shown on the chart). */
+  teeth: z.array(z.string().regex(/^\d{3}$/)).max(48).default([]),
 });
 
 export const orderListQuery = paginationQuery.extend({

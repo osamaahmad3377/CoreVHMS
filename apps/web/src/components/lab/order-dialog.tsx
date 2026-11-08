@@ -14,7 +14,7 @@ import { fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import type { DiagnosticOrder, LabTest } from '@/lib/types';
 
-export function LabOrderDialog({ open, onOpenChange, patient, encounterId, onCreated, initialTestIds }: { open: boolean; onOpenChange: (o: boolean) => void; patient: { id: string; name: string }; encounterId?: string | null; onCreated?: (o: DiagnosticOrder) => void; /** Tests already ticked when the window opens (e.g. "order again"). */ initialTestIds?: string[] }) {
+export function LabOrderDialog({ open, onOpenChange, patient, encounterId, onCreated, initialTestIds, initialNotes, firstCategory, teeth }: { open: boolean; onOpenChange: (o: boolean) => void; patient: { id: string; name: string }; encounterId?: string | null; onCreated?: (o: DiagnosticOrder) => void; /** Tests already ticked when the window opens (e.g. "order again"). */ initialTestIds?: string[]; /** Notes filled in when the window opens (e.g. which tooth). */ initialNotes?: string; /** This group of tests is listed first (e.g. imaging from the dental chart). */ firstCategory?: string; /** The teeth the order is for (marked on the dental chart). */ teeth?: string[] }) {
   const { currency } = useSession();
   const qc = useQueryClient();
   const tests = useQuery({ queryKey: ['lab-tests'], queryFn: () => api.get<LabTest[]>('/lab-tests'), enabled: open, staleTime: 120_000 });
@@ -27,7 +27,7 @@ export function LabOrderDialog({ open, onOpenChange, patient, encounterId, onCre
     if (open) {
       setSelected(initialTestIds ?? []);
       setPriority('ROUTINE');
-      setNotes('');
+      setNotes(initialNotes ?? '');
       setFilter('');
       setError(null);
     }
@@ -36,11 +36,12 @@ export function LabOrderDialog({ open, onOpenChange, patient, encounterId, onCre
   }, [open]);
   const grouped = useMemo(() => {
     const list = (tests.data ?? []).filter((t) => !filter || `${t.name} ${t.code}`.toLowerCase().includes(filter.toLowerCase()));
-    return list.reduce<Record<string, LabTest[]>>((acc, t) => ((acc[t.category] ??= []).push(t), acc), {});
-  }, [tests.data, filter]);
+    const sorted = firstCategory ? [...list.filter((t) => t.category === firstCategory), ...list.filter((t) => t.category !== firstCategory)] : list;
+    return sorted.reduce<Record<string, LabTest[]>>((acc, t) => ((acc[t.category] ??= []).push(t), acc), {});
+  }, [tests.data, filter, firstCategory]);
   const total = (tests.data ?? []).filter((t) => selected.includes(t.id)).reduce((n, t) => n + (t.priceMinor ?? 0), 0);
   const m = useMutation({
-    mutationFn: () => api.post<DiagnosticOrder>('/lab-orders', { patientId: patient.id, encounterId, testIds: selected, priority, clinicalNotes: notes }),
+    mutationFn: () => api.post<DiagnosticOrder>('/lab-orders', { patientId: patient.id, encounterId, testIds: selected, priority, clinicalNotes: notes, teeth: teeth ?? [] }),
     onSuccess: (o) => {
       toast.success(`${o.orderNo} ordered`);
       qc.invalidateQueries({ queryKey: ['lab-orders'] });

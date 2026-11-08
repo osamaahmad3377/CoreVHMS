@@ -6,10 +6,10 @@ import type { DentalProcedureRow, DentalTooth } from '@/lib/types';
 const WIDTH: Record<ToothType, number> = { incisor: 20, canine: 25, premolar: 28, molar: 34 };
 const GAP = 4;
 const MID = 18; // gap at the midline
-const SIDE = 26; // room for "R" / "L"
+const SIDE = 30; // room for "R" / "L"
 const TOOTH_H = 70;
-const LABEL_H = 28;
-const BITE = 20; // gap between the jaws
+const LABEL_H = 32;
+const BITE = 24; // gap between the jaws
 
 /** Outline of a tooth in a w × h box, root up (upper jaw); the lower jaw is drawn mirrored. */
 function shapes(type: ToothType, w: number, h: number) {
@@ -60,6 +60,23 @@ const FILL: Record<ToothTone, { crown: string; root: string; stroke: string }> =
   unerupted: { crown: 'hsl(var(--info) / 0.12)', root: 'transparent', stroke: 'hsl(var(--info))' },
 };
 
+/** A tooth's record in words: "Crown fracture, pulp exposed · Periodontal stage 2 · Tartar 2 · Gum inflammation 1". */
+export function toothWords(t: DentalTooth | undefined): string[] {
+  if (!t) return [];
+  if (t.state === 'MISSING') return ['Missing'];
+  if (t.state === 'EXTRACTED') return ['Extracted before'];
+  if (t.state === 'UNERUPTED') return ['Not erupted'];
+  const out = t.findings.map((f) => (f === 'TR' && t.trStage ? `Tooth resorption stage ${t.trStage}` : (dentalFinding(f)?.label ?? f)));
+  if (t.pdStage) out.push(`Periodontal stage ${t.pdStage}`);
+  if (t.mobility) out.push(`Loose (mobility ${t.mobility})`);
+  if (t.furcation) out.push(`Furcation ${t.furcation}`);
+  if (t.calculus) out.push(`Tartar ${t.calculus}`);
+  if (t.gingivitis) out.push(`Gum inflammation ${t.gingivitis}`);
+  if (t.probingMm != null) out.push(`Pocket ${t.probingMm} mm`);
+  if (t.recessionMm != null) out.push(`Recession ${t.recessionMm} mm`);
+  return out;
+}
+
 /** Short codes printed under a tooth: findings (TR with its stage), PD stage, mobility. */
 export function toothCodes(t: DentalTooth | undefined) {
   if (!t) return [];
@@ -96,10 +113,13 @@ export function Odontogram({
   readOnly,
   title,
   className,
+  tested,
 }: {
   teeth: ToothInfo[];
   findings: DentalTooth[];
   procedures: DentalProcedureRow[];
+  /** Teeth with a test or X-ray ordered (a dot on the tooth). */
+  tested?: ReadonlySet<string>;
   selected?: ReadonlySet<string>;
   onToggle?: (tooth: string) => void;
   readOnly?: boolean;
@@ -133,11 +153,12 @@ export function Odontogram({
       const extractedNow = here.some((p) => dentalProcedure(p.code)?.removesTooth);
       const treated = here.some((p) => !dentalProcedure(p.code)?.removesTooth);
       const isSelected = selected?.has(t.id) ?? false;
+      const isTested = tested?.has(t.id) ?? false;
       const codes = toothCodes(f);
       const dashed = tone === 'absent' || tone === 'unerupted' || extractedNow;
-      const labelY = upperJaw ? LABEL_H - 16 : y + TOOTH_H + 12;
-      const codeY = upperJaw ? LABEL_H - 5 : y + TOOTH_H + 23;
-      const name = `${t.name}${codes.length ? ` — ${codes.join(', ')}` : ''}${extractedNow ? ' — extracted at this visit' : ''}${here.length ? ` — ${here.map((p) => p.label).join(', ')}` : ''}`;
+      const labelY = upperJaw ? LABEL_H - 18 : y + TOOTH_H + 14;
+      const codeY = upperJaw ? LABEL_H - 6 : y + TOOTH_H + 26;
+      const name = `${t.name}${codes.length ? ` — ${codes.join(', ')}` : ''}${extractedNow ? ' — extracted at this visit' : ''}${here.length ? ` — ${here.map((p) => p.label).join(', ')}` : ''}${isTested ? ' — test / X-ray ordered' : ''}`;
       return (
         <g
           key={t.id}
@@ -145,7 +166,7 @@ export function Odontogram({
           aria-label={name}
           aria-pressed={readOnly ? undefined : isSelected}
           tabIndex={readOnly ? undefined : 0}
-          className={cn('outline-none', !readOnly && 'cursor-pointer [&:focus-visible>rect.focus]:opacity-100')}
+          className={cn('group outline-none', !readOnly && 'cursor-pointer [&:focus-visible>rect.focus]:opacity-100')}
           onClick={readOnly ? undefined : () => onToggle?.(t.id)}
           onKeyDown={
             readOnly
@@ -160,7 +181,7 @@ export function Odontogram({
         >
           <title>{name}</title>
           {/* Selection and keyboard focus. */}
-          <rect x={gx - 2} y={upperJaw ? 2 : y - 2} width={w + 4} height={TOOTH_H + LABEL_H} rx={6} fill={isSelected ? 'hsl(var(--primary) / 0.14)' : 'transparent'} stroke={isSelected ? 'hsl(var(--primary))' : 'transparent'} strokeWidth={1.5} />
+          <rect x={gx - 2} y={upperJaw ? 2 : y - 2} width={w + 4} height={TOOTH_H + LABEL_H} rx={6} fill={isSelected ? 'hsl(var(--primary) / 0.16)' : 'transparent'} stroke={isSelected ? 'hsl(var(--primary))' : 'transparent'} strokeWidth={2} className={cn(!readOnly && !isSelected && 'group-hover:fill-[hsl(var(--primary)/0.07)]')} />
           <rect className="focus opacity-0" x={gx - 3} y={upperJaw ? 1 : y - 3} width={w + 6} height={TOOTH_H + LABEL_H + 2} rx={7} fill="none" stroke="hsl(var(--ring))" strokeWidth={2} />
           <g transform={upperJaw ? `translate(${gx} ${y})` : `translate(${gx} ${y + TOOTH_H}) scale(1 -1)`} opacity={tone === 'absent' ? 0.55 : 1}>
             {roots.map((d, i) => (
@@ -170,6 +191,7 @@ export function Odontogram({
             {/* Calculus on the crown: a band whose height follows the calculus index. */}
             {!!f?.calculus && tone !== 'absent' && <rect x={3} y={TOOTH_H * 0.5 + 1} width={w - 6} height={f.calculus * 3} rx={1.5} fill="hsl(var(--warning) / 0.6)" />}
             {treated && <circle cx={w / 2} cy={TOOTH_H * 0.74} r={3.2} fill="hsl(var(--info))" />}
+            {isTested && <circle cx={w / 2} cy={TOOTH_H * 0.6} r={4.2} fill="hsl(var(--primary))" stroke="hsl(var(--card))" strokeWidth={1} />}
           </g>
           {/* Extracted (now or before): a cross over the tooth. */}
           {(extractedNow || f?.state === 'EXTRACTED') && (
@@ -178,11 +200,11 @@ export function Odontogram({
               <line x1={gx + w - 3} y1={y + 6} x2={gx + 3} y2={y + TOOTH_H - 6} />
             </g>
           )}
-          <text x={gx + w / 2} y={labelY} textAnchor="middle" fontSize={9.5} fontWeight={600} fill={isSelected ? 'hsl(var(--primary))' : 'hsl(var(--foreground) / 0.75)'} className="tabular select-none">
+          <text x={gx + w / 2} y={labelY} textAnchor="middle" fontSize={11} fontWeight={isSelected ? 800 : 600} fill={isSelected ? 'hsl(var(--primary))' : 'hsl(var(--foreground) / 0.8)'} className="tabular select-none">
             {t.id}
           </text>
           {!!codes.length && (
-            <text x={gx + w / 2} y={codeY} textAnchor="middle" fontSize={7.5} fontWeight={700} fill={tone === 'severe' ? 'hsl(var(--destructive))' : tone === 'absent' ? 'hsl(var(--muted-foreground))' : 'hsl(var(--warning))'} className="select-none">
+            <text x={gx + w / 2} y={codeY} textAnchor="middle" fontSize={9} fontWeight={700} fill={tone === 'severe' ? 'hsl(var(--destructive))' : tone === 'absent' ? 'hsl(var(--muted-foreground))' : 'hsl(var(--warning))'} className="select-none">
               {codes.length > 2 ? `${codes.slice(0, 1).join('')}+${codes.length - 1}` : codes.join(' ')}
             </text>
           )}
@@ -193,14 +215,14 @@ export function Odontogram({
 
   return (
     <div className={cn('overflow-x-auto', className)}>
-      <svg viewBox={`0 0 ${W} ${H}`} className="mx-auto block h-auto w-full min-w-[560px] max-w-[980px]" role="group" aria-label={title ?? (deciduous ? 'Baby teeth' : 'Adult teeth')}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="mx-auto block h-auto w-full min-w-[600px] max-w-[1100px]" role="group" aria-label={title ?? (deciduous ? 'Baby teeth' : 'Adult teeth')}>
         {/* Jaws, midline and sides (the patient's right is on the left). */}
         <line x1={SIDE} x2={W - SIDE} y1={LABEL_H + TOOTH_H + BITE / 2} y2={LABEL_H + TOOTH_H + BITE / 2} stroke="hsl(var(--foreground) / 0.12)" strokeDasharray="4 4" />
         <line x1={cx} x2={cx} y1={6} y2={H - 6} stroke="hsl(var(--foreground) / 0.12)" />
-        <text x={SIDE / 2} y={H / 2 + 4} textAnchor="middle" fontSize={11} fontWeight={700} fill="hsl(var(--muted-foreground))">R</text>
-        <text x={W - SIDE / 2} y={H / 2 + 4} textAnchor="middle" fontSize={11} fontWeight={700} fill="hsl(var(--muted-foreground))">L</text>
-        <text x={cx} y={LABEL_H + TOOTH_H + BITE / 2 + 3.5} textAnchor="middle" fontSize={8} fill="hsl(var(--muted-foreground))" className="select-none" style={{ paintOrder: 'stroke' }} stroke="hsl(var(--card))" strokeWidth={4}>
-          {deciduous ? 'baby teeth' : 'upper / lower'}
+        <text x={SIDE / 2} y={H / 2 + 5} textAnchor="middle" fontSize={14} fontWeight={800} fill="hsl(var(--muted-foreground))">R</text>
+        <text x={W - SIDE / 2} y={H / 2 + 5} textAnchor="middle" fontSize={14} fontWeight={800} fill="hsl(var(--muted-foreground))">L</text>
+        <text x={cx} y={LABEL_H + TOOTH_H + BITE / 2 + 3.5} textAnchor="middle" fontSize={9.5} fontWeight={600} fill="hsl(var(--muted-foreground))" className="select-none" style={{ paintOrder: 'stroke' }} stroke="hsl(var(--card))" strokeWidth={5}>
+          {deciduous ? '▲ upper baby teeth · lower baby teeth ▼' : '▲ upper jaw · lower jaw ▼'}
         </text>
         {draw(upper.left, 'left', true)}
         {draw(upper.right, 'right', true)}
@@ -229,6 +251,9 @@ export function OdontogramLegend({ className }: { className?: string }) {
       </span>
       <span className="flex items-center gap-1.5">
         <svg width="14" height="14" aria-hidden><circle cx="7" cy="7" r="3.5" fill="hsl(var(--info))" /></svg> Treated
+      </span>
+      <span className="flex items-center gap-1.5">
+        <svg width="14" height="14" aria-hidden><circle cx="7" cy="7" r="3.5" fill="hsl(var(--primary))" /></svg> Test / X-ray ordered
       </span>
       <span className="flex items-center gap-1.5">
         <svg width="14" height="14" aria-hidden><rect x="2" y="5" width="10" height="4" rx="1.5" fill="hsl(var(--warning) / 0.6)" /></svg> Tartar

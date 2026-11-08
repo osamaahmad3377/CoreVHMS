@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import {
   ENCOUNTER_TYPES,
@@ -60,6 +60,13 @@ export class ClinicalController {
     @Body(zp(z.object({ chiefComplaint: z.string().max(500).nullish(), type: z.enum(ENCOUNTER_TYPES).optional(), clinicianId: z.string().uuid().nullish(), chargeConsultation: z.boolean().optional() }))) body: any,
   ) {
     return this.encounters.update(id, body);
+  }
+
+  /** The appointment types chosen for the consultation: their prices are charged when it is finished. */
+  @Put('encounters/:id/visit-types')
+  @RequirePermissions('clinical.write')
+  setVisitTypes(@Param('id', UUID) id: string, @Body(zp(z.object({ appointmentTypeIds: z.array(z.string().uuid()).max(20) }))) body: { appointmentTypeIds: string[] }) {
+    return this.encounters.setVisitTypes(id, body.appointmentTypeIds);
   }
 
   @Post('encounters/:id/complete')

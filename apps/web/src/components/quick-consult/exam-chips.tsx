@@ -16,7 +16,7 @@ const ABNORMAL_PICKS: Record<string, string[]> = {
   'General appearance': ['Dull', 'Depressed', 'Thin', 'Overweight', 'Dehydrated', 'Weak'],
   Eyes: ['Discharge', 'Red', 'Cloudy', 'Squinting', 'Ulcer', 'Swollen eyelid'],
   Ears: ['Red', 'Brown discharge', 'Smelly', 'Painful', 'Head shaking', 'Swollen'],
-  'Oral cavity & teeth': ['Tartar', 'Gingivitis', 'Broken tooth', 'Pale gums', 'Ulcers', 'Bad breath'],
+  'Oral cavity & teeth': ['Tartar', 'Gingivitis', 'Broken tooth', 'Loose tooth', 'Pale gums', 'Ulcers', 'Bad breath', 'Oral mass'],
   'Lymph nodes': ['Enlarged', 'Painful', 'Firm'],
   Cardiovascular: ['Murmur', 'Fast rate', 'Slow rate', 'Irregular rhythm', 'Weak pulse'],
   Respiratory: ['Fast breathing', 'Laboured', 'Wheeze', 'Crackles', 'Cough'],
@@ -24,6 +24,11 @@ const ABNORMAL_PICKS: Record<string, string[]> = {
   Musculoskeletal: ['Limping', 'Painful joint', 'Swollen joint', 'Reduced movement', 'Muscle loss'],
   Neurological: ['Weak', 'Wobbly', 'Head tilt', 'Seizure history', 'Reduced reflexes'],
   'Skin & coat': ['Itchy', 'Red', 'Hair loss', 'Scabs', 'Fleas seen', 'Lump', 'Wound'],
+  // Dental visits
+  Gums: ['Red', 'Swollen', 'Bleeds when touched', 'Receding', 'Overgrown', 'Ulcers', 'Pale'],
+  Breath: ['Mild odour', 'Strong odour'],
+  'Face & jaw': ['Facial swelling', 'Pain on opening the mouth', 'Draining tract', 'Jaw asymmetry', 'Cannot close the mouth'],
+  'Mandibular lymph nodes': ['Enlarged', 'Painful', 'Firm'],
 };
 
 type Status = ExamFinding['status'];

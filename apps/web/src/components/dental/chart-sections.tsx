@@ -10,8 +10,8 @@ import {
   forDentition,
   type Occlusion,
 } from '@vcms/shared';
-import { Plus, Save, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Check, Loader2, Plus, Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirm } from '../confirm';
 import { Field } from '../forms/field';
@@ -83,6 +83,18 @@ export function ProceduresCard({ chart, selected, editable, onChanged }: { chart
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  // Whole-mouth scale and polish: one tap.
+  const sp = codes.find((c) => c.code === 'SP');
+  const spDone = chart.procedures.some((p) => p.code === 'SP');
+  const addSp = useMutation({
+    mutationFn: () => api.post<DentalChart>(`/dental/charts/${chart.id}/procedures`, { code: 'SP', teeth: [], serviceId: null, notes: null }),
+    onSuccess: (c) => {
+      onChanged(c);
+      toast.success('Scale and polish recorded');
+      qc.invalidateQueries({ queryKey: ['charges'] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
   const needTeeth = proc?.scope === 'tooth' && !selected.length;
   const total = chart.procedures.reduce((n, p) => n + (p.charge && p.charge.status !== 'WAIVED' ? p.charge.unitPriceMinor - p.charge.discountMinor : 0), 0);
 
@@ -90,7 +102,14 @@ export function ProceduresCard({ chart, selected, editable, onChanged }: { chart
     <Card>
       <CardHeader>
         <CardTitle>Procedures</CardTitle>
-        {total > 0 && <span className="text-sm text-muted-foreground">Charged: <span className="font-semibold tabular text-foreground">{fmtMoney(total, currency)}</span></span>}
+        <div className="flex flex-wrap items-center gap-3">
+          {total > 0 && <span className="text-sm text-muted-foreground">Charged: <span className="font-semibold tabular text-foreground">{fmtMoney(total, currency)}</span></span>}
+          {editable && sp && !spDone && (
+            <Button size="sm" variant="outline" loading={addSp.isPending} onClick={() => addSp.mutate()}>
+              <Plus /> Scale and polish
+            </Button>
+          )}
+        </div>
       </CardHeader>
       {chart.procedures.length ? (
         <Table>
@@ -207,30 +226,54 @@ const mouthOf = (c: DentalChart): MouthForm => ({
 /** Whole-mouth findings: bite, overall periodontal stage, tartar and gum scores, soft tissue, home care and recheck. */
 export function MouthCard({ chart, editable, onChanged }: { chart: DentalChart; editable: boolean; onChanged: (c: DentalChart) => void }) {
   const [f, setF] = useState<MouthForm>(mouthOf(chart));
-  // Reset only when the saved whole-mouth findings change — not when a tooth or procedure is saved, which would
-  // wipe what is being typed here.
-  const saved = JSON.stringify(mouthOf(chart));
-  useEffect(() => setF(JSON.parse(saved) as MouthForm), [saved]);
-  const dirty = JSON.stringify(f) !== JSON.stringify(mouthOf(chart));
+  // Reset only when the saved whole-mouth findings change from elsewhere — not when our own save comes back (or a
+  // tooth or procedure is saved), which would wipe what is still being typed here.
+  const sent = useRef<string>(JSON.stringify(mouthOf(chart)));
+  useEffect(() => {
+    const m = mouthOf(chart);
+    sent.current = JSON.stringify(m);
+    setF(m);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chart.id]);
+  const [done, setDone] = useState(false);
   const save = useMutation({
-    mutationFn: () =>
+    mutationFn: (m: MouthForm) =>
       api.patch<DentalChart>(`/dental/charts/${chart.id}`, {
-        occlusion: f.occlusion || null,
-        periodontalStage: f.periodontalStage,
-        calculusIndex: f.calculusIndex,
-        gingivalIndex: f.gingivalIndex,
-        anaesthetised: f.anaesthetised,
-        oralFindings: f.oralFindings,
-        homeCare: f.homeCare,
-        notes: f.notes,
-        recheckDate: f.recheckDate || null,
+        occlusion: m.occlusion || null,
+        periodontalStage: m.periodontalStage,
+        calculusIndex: m.calculusIndex,
+        gingivalIndex: m.gingivalIndex,
+        anaesthetised: m.anaesthetised,
+        oralFindings: m.oralFindings,
+        homeCare: m.homeCare,
+        notes: m.notes,
+        recheckDate: m.recheckDate || null,
       }),
     onSuccess: (c) => {
       onChanged(c);
-      toast.success('Whole-mouth findings saved');
+      setDone(true);
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  // Saved as the vet goes: a moment after the last change, and when leaving the page.
+  const current = JSON.stringify(f);
+  const dirty = current !== sent.current;
+  const latest = useRef({ f, dirty });
+  latest.current = { f, dirty };
+  const flush = () => {
+    if (!latest.current.dirty) return;
+    sent.current = JSON.stringify(latest.current.f);
+    save.mutate(latest.current.f);
+  };
+  useEffect(() => {
+    if (!dirty) return;
+    setDone(false);
+    const t = setTimeout(flush, 800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => () => flush(), []);
   const set = <K extends keyof MouthForm>(k: K, v: MouthForm[K]) => setF((s) => ({ ...s, [k]: v }));
   const worst = chart.worstToothStage;
 
@@ -265,9 +308,15 @@ export function MouthCard({ chart, editable, onChanged }: { chart: DentalChart; 
     <Card>
       <CardHeader>
         <CardTitle>Whole mouth</CardTitle>
-        <Button size="sm" disabled={!dirty} loading={save.isPending} onClick={() => save.mutate()}>
-          <Save /> Save
-        </Button>
+        <span className="flex items-center gap-1 text-xs text-muted-foreground" aria-live="polite">
+          {save.isPending || dirty ? (
+            <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>
+          ) : done ? (
+            <><Check className="h-3.5 w-3.5 text-success" /> Saved</>
+          ) : (
+            'Saves as you go'
+          )}
+        </span>
       </CardHeader>
       <div className="grid gap-4 border-t p-4">
         <div className="grid gap-4 md:grid-cols-2">

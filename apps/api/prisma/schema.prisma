@@ -411,6 +411,7 @@ model Organization {
   dentalProcedurePrices     DentalProcedurePrice[]
   stockDisposals            StockDisposal[]
   appointmentTypeCategories AppointmentTypeCategory[]
+  encounterVisitTypes       EncounterVisitType[]
   stockDisposalLines        StockDisposalLine[]
   appointments              Appointment[]
   waitlist                  WaitlistEntry[]
@@ -1314,9 +1315,10 @@ model AppointmentType {
   createdAt          DateTime            @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime            @updatedAt @db.Timestamptz(3)
 
-  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   appointments Appointment[]
   waitlist     WaitlistEntry[]
+  visits       EncounterVisitType[]
 
   serviceId String?  @db.Uuid
   service   Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
@@ -1662,30 +1664,31 @@ enum EncounterStatus {
 }
 
 model Encounter {
-  id             String          @id @default(uuid()) @db.Uuid
-  organizationId String          @db.Uuid
-  branchId       String          @db.Uuid
-  number         Int
-  patientId      String          @db.Uuid
-  clientId       String          @db.Uuid
-  appointmentId  String?         @unique @db.Uuid
-  clinicianId    String?         @db.Uuid
-  type           EncounterType   @default(CONSULTATION)
-  status         EncounterStatus @default(OPEN)
-  chiefComplaint String?
+  id                 String          @id @default(uuid()) @db.Uuid
+  organizationId     String          @db.Uuid
+  branchId           String          @db.Uuid
+  number             Int
+  patientId          String          @db.Uuid
+  clientId           String          @db.Uuid
+  appointmentId      String?         @unique @db.Uuid
+  clinicianId        String?         @db.Uuid
+  type               EncounterType   @default(CONSULTATION)
+  status             EncounterStatus @default(OPEN)
+  chiefComplaint     String?
   /// False for a vaccination / deworming-only visit: no consultation fee when it is completed (the product given is still charged).
-  chargeConsultation Boolean     @default(true)
-  startedAt      DateTime        @default(now()) @db.Timestamptz(3)
-  completedAt    DateTime?       @db.Timestamptz(3)
-  createdById    String?         @db.Uuid
-  createdAt      DateTime        @default(now()) @db.Timestamptz(3)
-  updatedAt      DateTime        @updatedAt @db.Timestamptz(3)
+  chargeConsultation Boolean         @default(true)
+  startedAt          DateTime        @default(now()) @db.Timestamptz(3)
+  completedAt        DateTime?       @db.Timestamptz(3)
+  createdById        String?         @db.Uuid
+  createdAt          DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime        @updatedAt @db.Timestamptz(3)
 
   organization     Organization               @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   branch           Branch                     @relation(fields: [branchId], references: [id], onDelete: Restrict)
   patient          Patient                    @relation(fields: [patientId], references: [id], onDelete: Restrict)
   client           Client                     @relation(fields: [clientId], references: [id], onDelete: Restrict)
   appointment      Appointment?               @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  visitTypes       EncounterVisitType[]
   clinician        Membership?                @relation("EncounterClinician", fields: [clinicianId], references: [id], onDelete: Restrict)
   notes            ClinicalNote[]
   vitals           VitalSign[]
@@ -1698,6 +1701,21 @@ model Encounter {
   @@unique([organizationId, number])
   @@index([patientId, startedAt(sort: Desc)])
   @@index([organizationId, status, startedAt])
+}
+
+/// The appointment types the vet chose for a consultation (step 1). Their prices are charged when it is finished.
+model EncounterVisitType {
+  id                String   @id @default(uuid()) @db.Uuid
+  organizationId    String   @db.Uuid
+  encounterId       String   @db.Uuid
+  appointmentTypeId String   @db.Uuid
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  encounter       Encounter       @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  appointmentType AppointmentType @relation(fields: [appointmentTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([encounterId, appointmentTypeId])
 }
 
 enum NoteStatus {
@@ -2480,6 +2498,8 @@ model DiagnosticOrder {
   priority             OrderPriority         @default(ROUTINE)
   status               DiagnosticOrderStatus @default(ORDERED)
   clinicalNotes        String?
+  /// The teeth the order is for (Triadan numbers), when ordered from the dental chart.
+  teeth                String[]              @default([])
   externalReference    String?
   hasCritical          Boolean               @default(false)
   orderedById          String                @db.Uuid

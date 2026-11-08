@@ -66,6 +66,10 @@ const chartInclude = {
 } satisfies Prisma.DentalChartInclude;
 type ChartRow = Prisma.DentalChartGetPayload<{ include: typeof chartInclude }>;
 
+/** A chart with something recorded on it (it can be signed). */
+const hasContent = (c: { teeth: unknown[]; procedures: unknown[]; periodontalStage: number | null; calculusIndex: number | null; gingivalIndex: number | null; occlusion: string | null; oralFindings: string | null }) =>
+  !!(c.teeth.length || c.procedures.length || c.periodontalStage != null || c.calculusIndex != null || c.gingivalIndex != null || c.occlusion || c.oralFindings?.trim());
+
 /** Usual length of a visit booked for a dental procedure (30 minutes when not listed). */
 const PROCEDURE_MINUTES: Record<string, number> = { SP: 60, XS: 60, RCT: 90, PSG: 60, CR: 60, FLOAT: 45 };
 
@@ -290,12 +294,29 @@ export class DentalService {
     const serviceId = input.serviceId ?? (await this.priceFor(code.code))?.id ?? null;
     const service = serviceId ? await this.prisma.db.service.findUnique({ where: { id: serviceId } }) : null;
     if (serviceId && (!service || !service.isActive)) throw ruleViolation('INVALID_SERVICE', 'That price-list service was not found or is switched off');
+    // No usual price yet: the price the vet gave for this visit (per tooth).
+    const visitPrice = !service || service.priceMinor <= 0 ? (input.priceMinor ?? 0) : 0;
     const userName = RequestContext.get()?.userName ?? 'Unknown';
     await this.prisma.db.$transaction(async (tx) => {
       const tax = service ? await this.charges.taxFor(tx, service.taxRateId) : 0;
       for (const tooth of teeth.length ? teeth : [null]) {
         const p = await tx.dentalProcedure.create({ data: { organizationId: RequestContext.orgId(), chartId: id, tooth, code: code.code, serviceId: service?.id ?? null, notes: input.notes ?? null, recordedByName: userName } });
-        if (service) {
+        if (!service?.priceMinor && visitPrice > 0) {
+          await this.charges.capture(tx, {
+            sourceType: 'DentalProcedure',
+            sourceId: p.id,
+            clientId: chart.clientId,
+            patientId: chart.patientId,
+            encounterId: chart.encounterId,
+            branchId: chart.branchId,
+            kind: 'SERVICE',
+            serviceId: service?.id ?? null,
+            description: `${code.label}${tooth ? ` — tooth ${tooth}` : ''} (${dentalChartNo(chart.number)})`,
+            quantity: 1,
+            unitPriceMinor: visitPrice,
+            taxRateBasisPoints: service ? tax : 0,
+          });
+        } else if (service) {
           await this.charges.capture(tx, {
             sourceType: 'DentalProcedure',
             sourceId: p.id,
@@ -312,7 +333,7 @@ export class DentalService {
           });
         }
       }
-      await this.audit.record({ action: 'dental.procedure_added', entityType: 'Patient', entityId: chart.patientId, summary: `${dentalChartNo(chart.number)}: ${code.label}${teeth.length ? ` on ${teeth.join(', ')}` : ''}${service ? '' : ' (not charged — no price set)'}` }, tx);
+      await this.audit.record({ action: 'dental.procedure_added', entityType: 'Patient', entityId: chart.patientId, summary: `${dentalChartNo(chart.number)}: ${code.label}${teeth.length ? ` on ${teeth.join(', ')}` : ''}${service?.priceMinor ? '' : visitPrice > 0 ? ` (charged ${visitPrice} for this visit)` : ' (not charged — no price set)'}` }, tx);
     });
     return this.get(id);
   }
@@ -332,21 +353,39 @@ export class DentalService {
   }
 
   async sign(id: string) {
-    const ctx = RequestContext.require();
     const chart = await this.draft(id);
-    const hasContent = chart.teeth.length || chart.procedures.length || chart.periodontalStage != null || chart.calculusIndex != null || chart.gingivalIndex != null || chart.occlusion || chart.oralFindings?.trim();
-    if (!hasContent) throw ruleViolation('EMPTY_CHART', 'Record at least one finding, score or procedure before signing');
-    const signedAt = new Date();
-    await this.prisma.db.$transaction(async (tx) => {
-      // Re-read inside the transaction so the hash covers exactly what is locked.
-      const c = await this.draft(id, tx);
-      const contentHash = dentalContentHash(c, c.teeth, c.procedures, ctx.userId!, signedAt);
-      await tx.dentalChart.update({ where: { id }, data: { status: 'SIGNED', signedAt, signedById: ctx.userId!, signedByName: ctx.userName ?? 'Unknown', contentHash } });
-      const stage = c.periodontalStage ?? worstStage(c.teeth);
-      const extracted = c.procedures.filter((p) => dentalProcedure(p.code)?.removesTooth).length;
-      await this.audit.record({ action: 'dental.signed', entityType: 'Patient', entityId: c.patientId, summary: `${dentalChartNo(c.number)}${stage != null ? ` PD${stage}` : ''}, ${c.procedures.length} procedure(s)${extracted ? `, ${extracted} extraction(s)` : ''}` }, tx);
-    });
+    if (!hasContent(chart)) throw ruleViolation('EMPTY_CHART', 'Record at least one finding, score or procedure before signing');
+    await this.prisma.db.$transaction((tx) => this.signIn(tx, id));
     return this.get(id);
+  }
+
+  /** Signs and locks a draft chart in the caller's transaction (re-read there, so the hash covers exactly what is locked). */
+  private async signIn(tx: ScopedTx, id: string, note = '') {
+    const ctx = RequestContext.require();
+    const signedAt = new Date();
+    const c = await this.draft(id, tx);
+    const contentHash = dentalContentHash(c, c.teeth, c.procedures, ctx.userId!, signedAt);
+    await tx.dentalChart.update({ where: { id }, data: { status: 'SIGNED', signedAt, signedById: ctx.userId!, signedByName: ctx.userName ?? 'Unknown', contentHash } });
+    const stage = c.periodontalStage ?? worstStage(c.teeth);
+    const extracted = c.procedures.filter((p) => dentalProcedure(p.code)?.removesTooth).length;
+    await this.audit.record({ action: 'dental.signed', entityType: 'Patient', entityId: c.patientId, summary: `${dentalChartNo(c.number)}${stage != null ? ` PD${stage}` : ''}, ${c.procedures.length} procedure(s)${extracted ? `, ${extracted} extraction(s)` : ''}${note}` }, tx);
+  }
+
+  /**
+   * When the consultation is finished: its draft dental charts are signed with it (by a vet allowed to sign), and an
+   * empty draft — nothing recorded — is removed.
+   */
+  async signWithConsultation(tx: ScopedTx, encounterId: string) {
+    const drafts = await tx.dentalChart.findMany({ where: { encounterId, status: 'DRAFT' }, select: { id: true } });
+    if (!drafts.length || !RequestContext.get()?.permissions.has('clinical.sign')) return;
+    for (const { id } of drafts) {
+      const c = await this.load(id, tx);
+      if (hasContent(c)) await this.signIn(tx, id, ' — signed with the consultation');
+      else {
+        await tx.dentalChart.delete({ where: { id } });
+        await this.audit.record({ action: 'dental.chart_discarded', entityType: 'Patient', entityId: c.patientId, summary: `${dentalChartNo(c.number)} (empty when the consultation was finished)` }, tx);
+      }
+    }
   }
 
   async addAddendum(id: string, text: string) {

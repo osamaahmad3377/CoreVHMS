@@ -30,6 +30,19 @@ async function setup() {
 describe('Laboratory & imaging', () => {
   afterAll(closeApp);
 
+  it('remembers the teeth an order from the dental chart is for, and lists them with the visit', async () => {
+    const { vet, patient, test } = await setup();
+    const visit = (await vet.client.post('/encounters', { patientId: patient.id, chiefComplaint: 'Dental' })).body;
+    const order = await vet.client.post('/lab-orders', { patientId: patient.id, encounterId: visit.id, testIds: [test.id], clinicalNotes: 'Tooth 108', teeth: ['108', '204', '108'] });
+    expect(order.status).toBe(201);
+    expect(order.body.teeth).toEqual(['108', '204']);
+    const list = (await vet.client.get(`/lab-orders?patientId=${patient.id}&encounterId=${visit.id}`)).body.data;
+    expect(list[0].teeth).toEqual(['108', '204']);
+    expect((await vet.client.post('/lab-orders', { patientId: patient.id, testIds: [test.id], teeth: ['tooth 1'] })).status).toBe(400);
+    // Orders made elsewhere have none.
+    expect((await vet.client.post('/lab-orders', { patientId: patient.id, testIds: [test.id] })).body.teeth).toEqual([]);
+  });
+
   it('orders, collects a barcoded sample, flags results against sex-specific intervals and raises critical alerts', async () => {
     const { org, vet, lab, patient, test } = await setup();
     const order = await vet.client.post('/lab-orders', { patientId: patient.id, testIds: [test.id], priority: 'URGENT', clinicalNotes: 'PU/PD' });

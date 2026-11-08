@@ -56,10 +56,11 @@ test.describe('Wellness plans and dental charts', () => {
     await page.getByRole('dialog').getByRole('button', { name: 'Start chart' }).click();
     await expect(page).toHaveURL(/\/dental\/[0-9a-f-]{36}$/);
     await page.getByRole('button', { name: /\(108\)/ }).first().click();
-    await page.getByRole('button', { name: /CCF · Crown fracture, pulp exposed/ }).click();
+    await page.getByRole('button', { name: /Broken, nerve exposed/ }).click();
     await page.locator('#te-pd').getByRole('radio', { name: 'PD3' }).click();
-    await page.getByRole('button', { name: /^Save tooth/ }).click();
-    await expect(page.getByText('Saved 108')).toBeVisible();
+    // Saved as the vet goes: no Save button.
+    await expect(page.getByRole('button', { name: /^Save tooth/ })).toHaveCount(0);
+    await expect(page.getByText('Saved', { exact: true }).first()).toBeVisible({ timeout: 5000 });
     await page.getByRole('button', { name: 'Clear selection' }).click();
     await page.getByLabel('Procedure').selectOption('SP');
     await page.getByRole('button', { name: 'Add procedure' }).click();

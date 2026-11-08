@@ -185,29 +185,45 @@ export class BillingIntegrations implements OnModuleInit {
     });
 
     this.encounters.registerCompletedHook(async (tx, encounterId) => {
-      const enc = await tx.encounter.findUniqueOrThrow({ where: { id: encounterId }, include: { appointment: { include: { appointmentType: { include: { service: true } } } } } });
+      const enc = await tx.encounter.findUniqueOrThrow({
+        where: { id: encounterId },
+        include: {
+          appointment: { include: { appointmentType: { include: { service: true } } } },
+          visitTypes: { include: { appointmentType: { include: { service: true } } }, orderBy: { createdAt: 'asc' } },
+        },
+      });
       // A vaccination / deworming-only visit has no consultation fee; what is given is charged on its own.
       if (!enc.chargeConsultation) return;
-      const service = enc.appointment?.appointmentType.service;
-      if (!service || !service.isActive) return;
-      // What the visit was booked for is already on its bill (charted on the dental chart, or a grooming service
-      // tapped in the consultation): not charged twice.
-      const already = await tx.charge.findFirst({ where: { encounterId: enc.id, serviceId: service.id, status: { not: 'WAIVED' }, sourceType: { in: ['DentalProcedure', 'VisitService'] } } });
-      if (already) return;
-      await this.charges.capture(tx, {
-        sourceType: 'Encounter',
-        sourceId: enc.id,
-        clientId: enc.clientId,
-        patientId: enc.patientId,
-        encounterId: enc.id,
-        branchId: enc.branchId,
-        kind: 'SERVICE',
-        serviceId: service.id,
-        description: service.name,
-        quantity: 1,
-        unitPriceMinor: service.priceMinor,
-        taxRateBasisPoints: await this.charges.taxFor(tx, service.taxRateId),
-      });
+      // The appointment types the vet chose in the consultation, else the one it was booked for.
+      const sources = enc.visitTypes.length
+        ? enc.visitTypes.map((v) => ({ sourceType: 'EncounterVisitType', sourceId: v.id, service: v.appointmentType.service }))
+        : enc.appointment
+          ? [{ sourceType: 'Encounter', sourceId: enc.id, service: enc.appointment.appointmentType.service }]
+          : [];
+      const charged = new Set<string>();
+      for (const s of sources) {
+        const service = s.service;
+        // Once per price: two reasons with the same price (e.g. two consultations) are charged once.
+        if (!service || !service.isActive || charged.has(service.id)) continue;
+        charged.add(service.id);
+        // Already on this visit's bill (charted on the dental chart, a grooming service tapped, or charged before): not twice.
+        const already = await tx.charge.findFirst({ where: { encounterId: enc.id, serviceId: service.id, status: { not: 'WAIVED' } } });
+        if (already) continue;
+        await this.charges.capture(tx, {
+          sourceType: s.sourceType,
+          sourceId: s.sourceId,
+          clientId: enc.clientId,
+          patientId: enc.patientId,
+          encounterId: enc.id,
+          branchId: enc.branchId,
+          kind: 'SERVICE',
+          serviceId: service.id,
+          description: service.name,
+          quantity: 1,
+          unitPriceMinor: service.priceMinor,
+          taxRateBasisPoints: await this.charges.taxFor(tx, service.taxRateId),
+        });
+      }
     });
 
     // Services added during a consultation (e.g. grooming) come off the bill if the consultation is cancelled.

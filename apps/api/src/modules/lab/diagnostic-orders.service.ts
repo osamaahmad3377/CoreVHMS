@@ -128,7 +128,7 @@ export class DiagnosticOrdersService {
     return { ...shape(o), referenceIntervals: applicable };
   }
 
-  async create(input: { patientId: string; encounterId?: string | null; testIds: string[]; priority: 'ROUTINE' | 'URGENT' | 'STAT'; clinicalNotes?: string | null }) {
+  async create(input: { patientId: string; encounterId?: string | null; testIds: string[]; priority: 'ROUTINE' | 'URGENT' | 'STAT'; clinicalNotes?: string | null; teeth?: string[] }) {
     const ctx = RequestContext.require();
     const patient = await this.prisma.db.patient.findUnique({ where: { id: input.patientId }, include: { ownerships: { where: { endedAt: null, isPrimary: true } } } });
     if (!patient) throw notFound('Patient');
@@ -153,6 +153,7 @@ export class DiagnosticOrdersService {
           encounterId: input.encounterId ?? null,
           priority: input.priority,
           clinicalNotes: input.clinicalNotes,
+          teeth: [...new Set(input.teeth ?? [])],
           orderedById: ctx.userId!,
           orderedByName: ctx.userName ?? 'Unknown',
           orderingMembershipId: ctx.membershipId ?? null,

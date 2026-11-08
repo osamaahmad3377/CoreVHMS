@@ -7,6 +7,7 @@ import { DashboardService } from '../dashboard/dashboard.service';
 import { PatientMergeService } from '../patients/patient-merge.service';
 import { PatientRecordService } from '../patients/patient-record.service';
 import { PatientTimelineService } from '../patients/patient-timeline.service';
+import { EncountersService } from '../clinical/encounters.service';
 import { ScheduleConfigService } from '../scheduling/schedule-config.service';
 import { dentalChartNo, DentalService } from './dental.service';
 
@@ -23,11 +24,14 @@ export class DentalIntegrations implements OnModuleInit {
     private readonly privacy: ClientPrivacyService,
     private readonly schedule: ScheduleConfigService,
     private readonly dental: DentalService,
+    private readonly encounters: EncountersService,
   ) {}
 
   onModuleInit() {
     const db = () => this.prisma.db;
     // The dental procedures are appointment types too: they appear the first time the types are listed.
+    // Finishing the consultation signs its dental chart too.
+    this.encounters.registerCompletedHook((tx, encounterId) => this.dental.signWithConsultation(tx, encounterId));
     this.schedule.registerBeforeListTypes(async () => {
       await this.dental.ensureProcedureTypes();
       await this.dental.ensureDentalQuestions();

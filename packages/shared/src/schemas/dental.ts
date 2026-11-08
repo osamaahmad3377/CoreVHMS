@@ -61,6 +61,8 @@ export const dentalProcedureSchema = z.object({
   teeth: z.array(tooth).max(60).default([]),
   serviceId: optUuid(),
   notes: optText(500),
+  /** Price for this visit (per tooth) when the procedure has no usual price yet; minor units. */
+  priceMinor: z.coerce.number().int().min(0).max(1_000_000_000).nullish(),
 });
 export type DentalProcedureInput = z.infer<typeof dentalProcedureSchema>;
 

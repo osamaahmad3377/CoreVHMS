@@ -265,4 +265,114 @@ test.describe('Clinical day: book → check in → consult → sign', () => {
     await expect(page.getByText('Saved', { exact: true })).toBeVisible({ timeout: 10_000 });
     await call('POST', `/encounters/${enc.id}/cancel`, { reason: 'E2E cleanup' });
   });
+  test('a dental visit has its own Dental chart step after the examination, which feeds the diagnosis, treatment, advice and record', async ({ page }) => {
+    await login(page, 'vet@demo.pk');
+    const call = (method: string, path: string, body?: unknown) =>
+      page.evaluate(
+        async ([method, path, body]) => {
+          const csrf = document.cookie.split('; ').find((c) => c.startsWith('vcms_csrf='))?.split('=')[1] ?? '';
+          const r = await fetch(`/api/v1${path}`, { method, headers: { 'content-type': 'application/json', 'x-csrf-token': csrf }, body: body ? JSON.stringify(body) : undefined });
+          return r.status === 204 ? null : r.json();
+        },
+        [method, path, body] as [string, string, unknown],
+      );
+    const patient = (await call('GET', '/patients?q=Toto&pageSize=1')).data[0];
+    const enc = await call('POST', '/encounters', { patientId: patient.id, chiefComplaint: '' });
+    const steps = page.getByRole('navigation', { name: 'Consultation steps' });
+    try {
+      // A visit saved before the dental step existed (step 5 = Diagnosis then) opens on Diagnosis.
+      await page.evaluate((id) => localStorage.setItem(`vcms.quick-consult.${id}`, JSON.stringify({ step: 5, v: 2, reasonIds: [], care: [] })), enc.id);
+      await page.goto(`/consultations/${enc.id}`);
+      await expect(page.getByRole('heading', { name: 'What is your diagnosis?' })).toBeVisible();
+      await expect(steps.getByRole('listitem')).toHaveCount(9);
+
+      await step(page, 'Reason');
+      await page.getByRole('group', { name: 'Category' }).getByRole('button', { name: /^Dental/ }).click();
+      await page.getByRole('group', { name: 'Appointment types' }).getByRole('button', { name: 'Scale and polish' }).click();
+      // Ten steps, the dental chart right after the examination.
+      await expect(steps.getByRole('listitem')).toHaveCount(10);
+      const names = await steps.getByRole('button').allInnerTexts();
+      expect(names.map((n) => n.replace(/^\d+\s*/, '').trim()).slice(3, 6)).toEqual(['Examination', 'Dental chart', 'Tests & X-rays']);
+
+      // A dental examination: the mouth awake and the pre-anaesthetic check, with the anaesthetic risk.
+      await step(page, 'Examination');
+      await expect(page.getByRole('heading', { name: /mouth and pre-anaesthetic check/ })).toBeVisible();
+      await expect(page.getByText('11 not examined').or(page.getByText('8 not examined'))).toBeVisible();
+      for (const name of ['Gums', 'Breath', 'Face & jaw', 'Mandibular lymph nodes']) await expect(page.getByRole('button', { name: `${name}: Normal` })).toBeVisible();
+      await page.getByRole('button', { name: 'All normal' }).click();
+      await page.getByRole('button', { name: 'Breath: Abnormal' }).click();
+      await page.getByRole('button', { name: 'Strong odour' }).click();
+      await page.getByRole('radiogroup', { name: 'Anaesthetic risk (ASA)' }).getByRole('button', { name: /^ASA II(?!I)/ }).click();
+
+      await step(page, 'Dental chart');
+      await page.getByRole('button', { name: 'Start dental chart' }).click();
+      const tooth = (id: string) => page.locator(`g[role=button][aria-label*="(${id})"]`).first();
+      await tooth('204').click();
+      await page.getByRole('region', { name: 'Selected teeth' }).getByRole('button', { name: 'Extract' }).click();
+      // No usual price yet: asked for, so it reaches the bill.
+      await page.getByRole('dialog').getByLabel('Price per tooth').fill('2000');
+      await page.getByRole('dialog').getByRole('button', { name: 'Add for tooth 204' }).click();
+      await expect(page.getByText('Extraction (simple) recorded on 204')).toBeVisible();
+      await tooth('108').click();
+      await page.getByRole('button', { name: /^Broken tooth/ }).click();
+      await page.locator('#te-pd').getByRole('radio', { name: /PD3/ }).click();
+      await expect(page.getByText('Saved', { exact: true }).first()).toBeVisible({ timeout: 5000 });
+      await page.getByRole('button', { name: 'Clear selection' }).click();
+      // An X-ray ordered from a tooth.
+      await tooth('309').click();
+      await page.getByRole('region', { name: 'Selected teeth' }).getByRole('button', { name: /Test \/ X-ray/ }).click();
+      await page.getByRole('dialog').locator('label').filter({ hasText: /X-?ray|radiograph/i }).first().click();
+      await page.getByRole('dialog').getByRole('button', { name: /Order 1 test/ }).click();
+      await expect(tooth('309')).toHaveAttribute('aria-label', /test \/ X-ray ordered/);
+      // Procedures are added in Treatment, not on the chart step.
+      await expect(page.getByRole('heading', { name: 'Procedures' })).toHaveCount(0);
+      await page.getByLabel('Home care advice').fill('Brush the teeth daily with a pet toothpaste');
+      await expect(page.getByText('Saves as you go').or(page.getByText('Saved', { exact: true })).first()).toBeVisible();
+      await page.waitForTimeout(1200);
+
+      await step(page, 'Diagnosis');
+      // The X-rayed tooth, to record what the X-ray showed: the suggestions follow.
+      const tested = page.getByRole('region', { name: 'Teeth X-rayed or tested' });
+      await tested.getByRole('button', { name: 'Tooth 309' }).click();
+      await tested.getByRole('button', { name: /^Tooth resorption/ }).click();
+      await expect(tested.getByText('Saved', { exact: true })).toBeVisible({ timeout: 5000 });
+      await expect(page.getByRole('button', { name: /^\+ Tooth resorption/ }).first()).toBeVisible();
+      await expect(page.getByRole('button', { name: /Periodontal disease — stage 3/ }).first()).toBeVisible();
+      await expect(page.getByRole('button', { name: /Uncomplicated crown fracture/ }).first()).toBeVisible();
+      await expect(page.getByRole('button', { name: /Persistent deciduous teeth/ }).first()).toBeVisible();
+      await step(page, 'Treatment');
+      // The dental services: what was charted shows as done; more can be tapped here.
+      const services = page.getByRole('group', { name: 'Dental services' });
+      await expect(services.getByRole('button', { name: /Extraction \(simple\).*Teeth 204/ })).toHaveAttribute('aria-pressed', 'true');
+      await services.getByRole('button', { name: /^Scale and polish/ }).click();
+      await expect(services.getByRole('button', { name: /^Scale and polish/ })).toHaveAttribute('aria-pressed', 'true');
+      const xray = services.getByRole('button', { name: /^Dental X-rays/ });
+      await xray.click();
+      await expect(xray).toHaveAttribute('aria-pressed', 'true');
+      await xray.click();
+      await expect(xray).toHaveAttribute('aria-pressed', 'false');
+      await services.getByRole('button', { name: /^Restoration \(filling\)/ }).click();
+      const pick = page.getByRole('dialog');
+      await pick.locator('g[role=button][aria-label*="(108)"]').first().click();
+      await pick.getByLabel('Price per tooth').fill('1500');
+      await pick.getByRole('button', { name: 'Add for tooth 108' }).click();
+      await expect(services.getByRole('button', { name: /Restoration \(filling\).*Teeth 108/ })).toHaveAttribute('aria-pressed', 'true');
+      // On the visit's bill straight away.
+      const bill = ((await call('GET', `/charges?encounterId=${enc.id}`)).data as any[]).filter((c) => c.status === 'PENDING').map((c) => [c.description.replace(/ \(DEN-\d+\)$/, ''), c.unitPriceMinor]);
+      expect(bill).toEqual(expect.arrayContaining([['Extraction (simple) — tooth 204', 200000], ['Restoration (filling) — tooth 108', 150000]]));
+      await expect(page.getByText('Extraction (simple) — 204').first()).toBeVisible();
+      await step(page, 'Owner advice');
+      await expect(page.getByRole('button', { name: 'Brush the teeth daily with a pet toothpaste' })).toBeVisible();
+      await step(page, 'Review & sign');
+      await expect(page.getByText(/Dental chart DEN-\d+:/).first()).toBeVisible();
+      await expect(page.getByText(/Anaesthetic risk: ASA II \(mild disease\)/).first()).toBeVisible();
+      await expect(page.getByText(/Breath — Strong odour/).first()).toBeVisible();
+      await expect(page.getByText(/Dental: Extraction \(simple\) — 204; Scale and polish; Restoration \(filling\) — 108/).first()).toBeVisible();
+    } finally {
+      for (const o of (await call('GET', `/lab-orders?patientId=${patient.id}&encounterId=${enc.id}`)).data ?? []) await call('POST', `/lab-orders/${o.id}/cancel`, { reason: 'E2E cleanup' });
+      const d = await call('GET', `/encounters/${enc.id}/dental`);
+      for (const c of d?.charts ?? []) if (c.status === 'DRAFT') await call('DELETE', `/dental/charts/${c.id}`);
+      await call('POST', `/encounters/${enc.id}/cancel`, { reason: 'E2E cleanup' });
+    }
+  });
 });

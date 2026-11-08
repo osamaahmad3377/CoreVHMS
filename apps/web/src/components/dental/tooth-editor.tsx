@@ -14,8 +14,8 @@ import {
   type Dentition,
   type ScaleStep,
 } from '@vcms/shared';
-import { Save, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { Check, Loader2, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Field } from '../forms/field';
 import { Button } from '../ui/button';
 import { Input, Textarea } from '../ui/input';
@@ -57,11 +57,20 @@ function fromTooth(t: DentalTooth | undefined): ToothForm {
 
 const same = (a: ToothForm, b: ToothForm) => JSON.stringify({ ...a, findings: [...a.findings].sort() }) === JSON.stringify({ ...b, findings: [...b.findings].sort() });
 
+/** Plain words for each score, in order (the code is shown small underneath). */
+const WORDS = new Map<ScaleStep[], string[]>([
+  [PERIODONTAL_STAGES, ['Healthy', 'Gingivitis', 'Early', 'Moderate', 'Advanced']],
+  [CALCULUS_INDEX, ['None', 'Light', 'Medium', 'Heavy']],
+  [GINGIVAL_INDEX, ['Healthy', 'Mild', 'Moderate', 'Severe']],
+  [MOBILITY_INDEX, ['Firm', 'Slightly', 'Loose', 'Very loose']],
+]);
+
 /** A row of buttons for a 0–N score; pressing the chosen one again clears it. */
 export function ScalePicker({ id, steps, value, onChange, disabled }: { id: string; steps: ScaleStep[]; value: number | null; onChange: (v: number | null) => void; disabled?: boolean }) {
+  const words = WORDS.get(steps);
   return (
     <div id={id} role="radiogroup" className="flex flex-wrap gap-1">
-      {steps.map((s) => (
+      {steps.map((s, i) => (
         <button
           key={s.value}
           type="button"
@@ -71,20 +80,62 @@ export function ScalePicker({ id, steps, value, onChange, disabled }: { id: stri
           disabled={disabled}
           onClick={() => onChange(value === s.value ? null : s.value)}
           className={cn(
-            'min-w-[3rem] rounded-md border px-2 py-1 text-xs font-semibold tabular transition-colors disabled:opacity-50',
+            'rounded-lg border font-semibold transition-colors disabled:opacity-50',
+            words ? 'grid min-w-[4.25rem] px-2 py-1 text-center text-xs leading-tight' : 'min-w-[3rem] px-2 py-1 text-xs tabular',
             value === s.value ? 'border-primary bg-primary text-primary-foreground' : 'border-foreground/15 hover:bg-muted',
           )}
         >
-          {s.label}
+          {words ? (
+            <>
+              <span>{words[i]}</span>
+              <span className={cn('text-[10px] font-medium tabular', value === s.value ? 'text-primary-foreground/80' : 'text-muted-foreground')}>{s.label}</span>
+            </>
+          ) : (
+            s.label
+          )}
         </button>
       ))}
     </div>
   );
 }
 
+/** The findings seen most often, shown first with plain words; the rest are one tap away. */
+const COMMON_FINDINGS: Record<string, string> = {
+  FX_UCF: 'Broken tooth',
+  FX_CCF: 'Broken, nerve exposed',
+  CA: 'Cavity',
+  TR: 'Tooth resorption',
+  RD: 'Retained baby tooth',
+  GR: 'Gum recession',
+  SEP: 'Sharp points',
+  HOOK: 'Hook',
+  RAMP: 'Ramp',
+  DIA: 'Gap with food packing',
+};
+
+export type ToothPayload = ReturnType<typeof toothPayload>;
+
 /**
- * Findings for the selected teeth. One tooth: its current record. Several: what they have in common, and saving
- * gives them all the same record.
+ * What to save for each selected tooth. One tooth: the form. Several: only what was changed from `base` (what they
+ * had in common) is added to each tooth's own record — findings ticked or unticked, scores set — so the rest of
+ * each tooth's record is kept.
+ */
+function payloadsFor(selected: string[], byTooth: Map<string, DentalTooth>, base: ToothForm, f: ToothForm): ToothPayload[] {
+  if (selected.length === 1) return [toothPayload(selected[0], f)];
+  const added = f.findings.filter((x) => !base.findings.includes(x));
+  const removed = base.findings.filter((x) => !f.findings.includes(x));
+  const keys = (Object.keys(f) as (keyof ToothForm)[]).filter((k) => k !== 'findings' && JSON.stringify(f[k]) !== JSON.stringify(base[k]));
+  return selected.map((id) => {
+    const own = fromTooth(byTooth.get(id));
+    const merged: ToothForm = { ...own, findings: [...new Set([...own.findings.filter((x) => !removed.includes(x)), ...added])] };
+    for (const k of keys) (merged as unknown as Record<string, unknown>)[k] = f[k];
+    return toothPayload(id, merged);
+  });
+}
+
+/**
+ * Findings for the selected teeth, saved as you go (a moment after each change; before moving to other teeth).
+ * One tooth: its current record. Several: what they have in common; changes are added to each of them.
  */
 export function ToothEditor({
   dentition,
@@ -98,24 +149,67 @@ export function ToothEditor({
   selected: string[];
   teeth: DentalTooth[];
   saving: boolean;
-  onSave: (form: ToothForm) => void;
+  onSave: (teeth: ToothPayload[]) => void;
   onClear: () => void;
 }) {
   const byTooth = useMemo(() => new Map(teeth.map((t) => [t.tooth, t])), [teeth]);
   const forms = selected.map((id) => fromTooth(byTooth.get(id)));
   const allSame = forms.every((f) => same(f, forms[0]));
-  const key = selected.join(',') + '|' + teeth.map((t) => `${t.tooth}:${JSON.stringify(t)}`).join(';');
+  // Reset only when other teeth are selected: a save coming back must not wipe what is still being typed.
+  const key = selected.join(',');
   const [f, setF] = useState<ToothForm>(blankTooth());
+  const base = useRef<ToothForm>(blankTooth());
+  const [saved, setSaved] = useState(false);
+  const [more, setMore] = useState(false);
+  const [details, setDetails] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const latest = useRef({ f, byTooth });
+  latest.current = { f, byTooth };
+  // The teeth the form belongs to (not the newly selected ones while switching).
+  const editing = useRef<string[]>(selected);
+  const mmOk = (v: string) => v === '' || (/^\d{1,2}(\.\d)?$/.test(v) && Number(v) <= 30);
+  const flush = () => {
+    const { f: cur, byTooth: map } = latest.current;
+    const sel = editing.current;
+    if (same(cur, base.current) || !mmOk(cur.probingMm) || !mmOk(cur.recessionMm) || !sel.length) return;
+    onSave(payloadsFor(sel, map, base.current, cur));
+    base.current = cur;
+    setSaved(true);
+  };
   useEffect(() => {
-    setF(allSame && forms[0] ? forms[0] : blankTooth());
+    const start = allSame && forms[0] ? forms[0] : blankTooth();
+    editing.current = selected;
+    latest.current = { f: start, byTooth };
+    setF(start);
+    setMore(false);
+    setDetails(false);
+    setNotesOpen(false);
+    base.current = start;
+    setSaved(false);
+    // Moving to other teeth saves what was changed here first.
+    return () => flush();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
+  // Saved a moment after the last change.
+  useEffect(() => {
+    if (same(f, base.current)) return;
+    setSaved(false);
+    const t = setTimeout(flush, 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f]);
   const findings = forDentition(DENTAL_FINDINGS, dentition);
+  const common = findings.filter((c) => COMMON_FINDINGS[c.code]);
+  const others = findings.filter((c) => !COMMON_FINDINGS[c.code]);
+  // Open by themselves when the tooth already has something there.
+  const showMore = more || f.findings.some((x) => others.some((c) => c.code === x));
+  const showDetails = details || f.furcation != null || f.probingMm !== '' || f.recessionMm !== '';
+  const showNotes = notesOpen || !!f.notes;
   const present = f.state === 'PRESENT';
   const set = <K extends keyof ToothForm>(k: K, v: ToothForm[K]) => setF((s) => ({ ...s, [k]: v }));
   const toggleFinding = (code: string) => setF((s) => ({ ...s, findings: s.findings.includes(code) ? s.findings.filter((x) => x !== code) : [...s.findings, code], trStage: code === 'TR' && s.findings.includes('TR') ? null : s.trStage }));
   const single = selected.length === 1 ? toothInfo(dentition, selected[0]) : null;
-  const mmOk = (v: string) => v === '' || (/^\d{1,2}(\.\d)?$/.test(v) && Number(v) <= 30);
+  const dirty = !same(f, base.current);
 
   return (
     <div className="grid gap-4">
@@ -123,8 +217,17 @@ export function ToothEditor({
         <div className="min-w-0">
           <p className="text-sm font-semibold">{single ? single.name : `${selected.length} teeth selected`}</p>
           {!single && <p className="truncate text-xs text-muted-foreground">{selected.join(', ')}</p>}
-          {!single && !allSame && <p className="mt-1 text-xs text-warning">These teeth have different records. Saving gives all of them what is shown here.</p>}
+          {!single && !allSame && <p className="mt-1 text-xs text-muted-foreground">These teeth have different records: what you change here is added to each of them.</p>}
         </div>
+        <span className="flex shrink-0 items-center gap-1 pt-1 text-xs text-muted-foreground" aria-live="polite">
+          {saving || dirty ? (
+            <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>
+          ) : saved ? (
+            <><Check className="h-3.5 w-3.5 text-success" /> Saved</>
+          ) : (
+            'Saves as you go'
+          )}
+        </span>
         <Button size="icon-sm" variant="ghost" onClick={onClear} aria-label="Clear selection">
           <X />
         </Button>
@@ -133,7 +236,7 @@ export function ToothEditor({
       <Field label="Tooth" htmlFor="te-state">
         <div id="te-state" role="radiogroup" className="grid grid-cols-2 gap-1 sm:grid-cols-4">
           {TOOTH_STATES.map((s) => (
-            <button key={s} type="button" role="radio" aria-checked={f.state === s} onClick={() => set('state', s)} className={cn('rounded-md border px-2 py-1.5 text-xs font-medium', f.state === s ? 'border-primary bg-primary/10 text-primary' : 'border-foreground/15 hover:bg-muted')}>
+            <button key={s} type="button" role="radio" aria-checked={f.state === s} onClick={() => set('state', s)} className={cn('rounded-lg border px-2 py-2 text-xs font-medium', f.state === s ? 'border-primary bg-primary/10 text-primary' : 'border-foreground/15 hover:bg-muted')}>
               {TOOTH_STATE_LABELS[s]}
             </button>
           ))}
@@ -142,16 +245,38 @@ export function ToothEditor({
 
       {present && (
         <>
-          <Field label="Findings" htmlFor="te-findings" help="Standard veterinary dental abbreviations are printed on the chart.">
-            <div id="te-findings" className="flex flex-wrap gap-1.5">
-              {findings.map((c) => {
-                const on = f.findings.includes(c.code);
-                return (
-                  <button key={c.code} type="button" aria-pressed={on} title={c.hint ?? c.label} onClick={() => toggleFinding(c.code)} className={cn('rounded-pill border px-2.5 py-1 text-xs transition-colors', on ? 'border-warning bg-warning/15 font-semibold text-foreground' : 'border-foreground/15 text-muted-foreground hover:bg-muted hover:text-foreground')}>
-                    <span className="font-semibold">{c.abbr}</span> · {c.label}
+          <Field label="What do you see?" htmlFor="te-findings" help="Tap each finding. The standard dental abbreviation is printed on the chart.">
+            <div id="te-findings" className="grid gap-2">
+              <div className="flex flex-wrap gap-1.5">
+                {common.map((c) => {
+                  const on = f.findings.includes(c.code);
+                  return (
+                    <button key={c.code} type="button" aria-pressed={on} title={c.label} onClick={() => toggleFinding(c.code)} className={cn('inline-flex h-9 items-center gap-1.5 rounded-pill border px-3 text-sm transition-colors', on ? 'border-warning bg-warning/20 font-semibold text-foreground' : 'border-foreground/15 hover:bg-muted')}>
+                      {on && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+                      {COMMON_FINDINGS[c.code]}
+                      <span className="text-[10px] font-semibold text-muted-foreground">{c.abbr}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {showMore ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {others.map((c) => {
+                    const on = f.findings.includes(c.code);
+                    return (
+                      <button key={c.code} type="button" aria-pressed={on} title={c.hint ?? c.label} onClick={() => toggleFinding(c.code)} className={cn('rounded-pill border px-2.5 py-1 text-xs transition-colors', on ? 'border-warning bg-warning/15 font-semibold text-foreground' : 'border-foreground/15 text-muted-foreground hover:bg-muted hover:text-foreground')}>
+                        <span className="font-semibold">{c.abbr}</span> · {c.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                others.length > 0 && (
+                  <button type="button" className="w-fit text-xs font-medium text-primary hover:underline" onClick={() => setMore(true)}>
+                    More findings ({others.length})
                   </button>
-                );
-              })}
+                )
+              )}
             </div>
           </Field>
           {f.findings.includes('TR') && (
@@ -159,44 +284,50 @@ export function ToothEditor({
               <ScalePicker id="te-tr" steps={TR_STAGES} value={f.trStage} onChange={(v) => set('trStage', v)} />
             </Field>
           )}
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3">
+            <Field label="Tartar" htmlFor="te-ci" help={CALCULUS_INDEX.map((s) => `${s.label}: ${s.hint}`).join('. ')}>
+              <ScalePicker id="te-ci" steps={CALCULUS_INDEX} value={f.calculus} onChange={(v) => set('calculus', v)} />
+            </Field>
+            <Field label="Gums" htmlFor="te-gi" help={GINGIVAL_INDEX.map((s) => `${s.label}: ${s.hint}`).join('. ')}>
+              <ScalePicker id="te-gi" steps={GINGIVAL_INDEX} value={f.gingivitis} onChange={(v) => set('gingivitis', v)} />
+            </Field>
             <Field label="Periodontal stage" htmlFor="te-pd" help={PERIODONTAL_STAGES.map((s) => `${s.label}: ${s.hint}`).join('. ')}>
               <ScalePicker id="te-pd" steps={PERIODONTAL_STAGES} value={f.pdStage} onChange={(v) => set('pdStage', v)} />
             </Field>
-            <Field label="Mobility (loose)" htmlFor="te-mob" help={MOBILITY_INDEX.map((s) => `${s.label}: ${s.hint}`).join('. ')}>
+            <Field label="Loose?" htmlFor="te-mob" help={MOBILITY_INDEX.map((s) => `${s.label}: ${s.hint}`).join('. ')}>
               <ScalePicker id="te-mob" steps={MOBILITY_INDEX} value={f.mobility} onChange={(v) => set('mobility', v)} />
             </Field>
-            <Field label="Tartar (calculus)" htmlFor="te-ci" help={CALCULUS_INDEX.map((s) => `${s.label}: ${s.hint}`).join('. ')}>
-              <ScalePicker id="te-ci" steps={CALCULUS_INDEX} value={f.calculus} onChange={(v) => set('calculus', v)} />
-            </Field>
-            <Field label="Gum inflammation" htmlFor="te-gi" help={GINGIVAL_INDEX.map((s) => `${s.label}: ${s.hint}`).join('. ')}>
-              <ScalePicker id="te-gi" steps={GINGIVAL_INDEX} value={f.gingivitis} onChange={(v) => set('gingivitis', v)} />
-            </Field>
-            <Field label="Furcation" htmlFor="te-fur" help={FURCATION_INDEX.map((s) => `${s.label}: ${s.hint}`).join('. ')}>
-              <ScalePicker id="te-fur" steps={FURCATION_INDEX} value={f.furcation} onChange={(v) => set('furcation', v)} />
-            </Field>
-            <div className="grid grid-cols-2 gap-2">
-              <Field label="Pocket (mm)" htmlFor="te-probe" error={mmOk(f.probingMm) ? undefined : '0–30'}>
-                <Input id="te-probe" inputMode="decimal" value={f.probingMm} onChange={(e) => set('probingMm', e.target.value)} />
-              </Field>
-              <Field label="Recession (mm)" htmlFor="te-rec" error={mmOk(f.recessionMm) ? undefined : '0–30'}>
-                <Input id="te-rec" inputMode="decimal" value={f.recessionMm} onChange={(e) => set('recessionMm', e.target.value)} />
-              </Field>
-            </div>
           </div>
+          {showDetails ? (
+            <div className="grid gap-3 rounded-lg border border-dashed p-3 sm:grid-cols-2">
+              <Field label="Furcation" htmlFor="te-fur" help={FURCATION_INDEX.map((s) => `${s.label}: ${s.hint}`).join('. ')}>
+                <ScalePicker id="te-fur" steps={FURCATION_INDEX} value={f.furcation} onChange={(v) => set('furcation', v)} />
+              </Field>
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="Pocket (mm)" htmlFor="te-probe" error={mmOk(f.probingMm) ? undefined : '0–30'}>
+                  <Input id="te-probe" inputMode="decimal" value={f.probingMm} onChange={(e) => set('probingMm', e.target.value)} />
+                </Field>
+                <Field label="Recession (mm)" htmlFor="te-rec" error={mmOk(f.recessionMm) ? undefined : '0–30'}>
+                  <Input id="te-rec" inputMode="decimal" value={f.recessionMm} onChange={(e) => set('recessionMm', e.target.value)} />
+                </Field>
+              </div>
+            </div>
+          ) : (
+            <button type="button" className="w-fit text-xs font-medium text-primary hover:underline" onClick={() => setDetails(true)}>
+              More details (furcation, pocket depth, recession)
+            </button>
+          )}
         </>
       )}
-      <Field label="Notes" htmlFor="te-notes">
-        <Textarea id="te-notes" value={f.notes} maxLength={1000} onChange={(e) => set('notes', e.target.value)} placeholder={present ? 'e.g. slab fracture, mesial root exposed' : 'e.g. extracted elsewhere 2024'} />
-      </Field>
-      <div className="flex flex-wrap justify-end gap-2">
-        <Button variant="outline" size="sm" onClick={() => setF(blankTooth())} title="Clear the form (save to remove what is recorded)">
-          Reset
-        </Button>
-        <Button size="sm" loading={saving} disabled={!mmOk(f.probingMm) || !mmOk(f.recessionMm)} onClick={() => onSave(f)}>
-          <Save /> Save {selected.length > 1 ? `${selected.length} teeth` : 'tooth'}
-        </Button>
-      </div>
+      {showNotes ? (
+        <Field label="Notes" htmlFor="te-notes">
+          <Textarea id="te-notes" value={f.notes} maxLength={1000} autoFocus={!f.notes} onChange={(e) => set('notes', e.target.value)} placeholder={present ? 'e.g. slab fracture, mesial root exposed' : 'e.g. extracted elsewhere 2024'} />
+        </Field>
+      ) : (
+        <button type="button" className="w-fit text-xs font-medium text-primary hover:underline" onClick={() => setNotesOpen(true)}>
+          + Add a note
+        </button>
+      )}
     </div>
   );
 }

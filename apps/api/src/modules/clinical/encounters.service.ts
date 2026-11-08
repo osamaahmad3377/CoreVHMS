@@ -124,6 +124,7 @@ export class EncountersService {
         client: { select: { id: true, displayName: true, mobilePhone: true } },
         clinician: { select: { id: true, user: { select: { name: true } } } },
         appointment: { select: { id: true, number: true, status: true, reason: true, location: true, visitAddress: true, appointmentType: { select: { id: true, name: true, categoryId: true } } } },
+        visitTypes: { select: { appointmentTypeId: true }, orderBy: { createdAt: 'asc' } },
         notes: { orderBy: [{ createdAt: 'asc' }, { version: 'asc' }] },
         vitals: { orderBy: { recordedAt: 'desc' } },
         diagnoses: { orderBy: { createdAt: 'asc' } },
@@ -279,6 +280,29 @@ export class EncountersService {
       for (const h of this.completedHooks) await h(tx, e.id);
       await this.audit.record({ action: 'encounter.completed', entityType: 'Encounter', entityId: e.id }, tx);
     }
+  }
+
+  /**
+   * The appointment types chosen for the consultation (several reasons can apply). Replaces the list; their prices
+   * are charged when the consultation is finished (once per price, see billing).
+   */
+  async setVisitTypes(id: string, appointmentTypeIds: string[]) {
+    const e = await this.prisma.db.encounter.findUnique({ where: { id }, include: { visitTypes: true } });
+    if (!e) throw notFound('Encounter');
+    if (e.status !== 'OPEN') throw ruleViolation('ENCOUNTER_CLOSED', 'This consultation is closed');
+    const ids = [...new Set(appointmentTypeIds)];
+    if (ids.length && (await this.prisma.db.appointmentType.count({ where: { id: { in: ids } } })) !== ids.length) throw notFound('Appointment type');
+    const before = e.visitTypes.map((v) => v.appointmentTypeId);
+    if (before.length === ids.length && before.every((x) => ids.includes(x))) return { appointmentTypeIds: before };
+    await this.prisma.db.$transaction(async (tx) => {
+      await tx.encounterVisitType.deleteMany({ where: { encounterId: id, appointmentTypeId: { notIn: ids } } });
+      for (const appointmentTypeId of ids.filter((x) => !before.includes(x))) {
+        await tx.encounterVisitType.create({ data: { organizationId: e.organizationId, encounterId: id, appointmentTypeId } });
+      }
+      const names = ids.length ? (await tx.appointmentType.findMany({ where: { id: { in: ids } }, select: { name: true } })).map((t) => t.name) : [];
+      await this.audit.record({ action: 'encounter.updated', entityType: 'Encounter', entityId: id, summary: names.length ? `Appointment types: ${names.join(', ')}` : 'Appointment types cleared' }, tx);
+    });
+    return { appointmentTypeIds: ids };
   }
 
   async update(id: string, input: { chiefComplaint?: string | null; type?: EncounterType; clinicianId?: string | null; chargeConsultation?: boolean }) {

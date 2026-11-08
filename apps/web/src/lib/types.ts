@@ -473,6 +473,8 @@ export interface Task {
 
 export interface Encounter {
   id: string;
+  /** The appointment types chosen in the consultation (charged when it is finished). */
+  visitTypes?: { appointmentTypeId: string }[];
   number: number;
   encounterNo: string;
   type: string;
@@ -741,6 +743,8 @@ export interface DiagnosticOrder {
   status: string;
   priority: string;
   clinicalNotes: string | null;
+  /** The teeth the order is for (from the dental chart). */
+  teeth?: string[];
   externalReference: string | null;
   hasCritical: boolean;
   orderedByName: string;

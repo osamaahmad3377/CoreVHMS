@@ -8,7 +8,11 @@ import { toast } from 'sonner';
 import { Companion } from './companion';
 import { DictateButton } from './dictation';
 import { ExamChips } from './exam-chips';
-import { ExamDental } from './exam-dental';
+import { DentalServices } from './dental-services';
+import { TestedTeeth } from './tested-teeth';
+import { ASA_GRADES, asaText, DENTAL_ADVICE, DENTAL_EXAM_SYSTEMS, DENTAL_STEP_TEXT, dentalDiagnosisList, STARTER_DENTAL_DX } from './dental-visit';
+import { dentalDiagnoses, ExamDental, procedureLines } from './exam-dental';
+import { dentalSummary, useVisitDental } from '../dental/visit-dental';
 import { QuickDiagnoses } from './quick-diagnoses';
 import { QuickVitals } from './quick-vitals';
 import { useDoneLines } from './use-done-lines';
@@ -32,6 +36,7 @@ import { Button } from '../ui/button';
 import { Input, Textarea } from '../ui/input';
 import { useAppointmentTypes } from '@/hooks/use-catalog';
 import { api } from '@/lib/api';
+import { fmtMoney } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import { branchTime, shiftDate, todayIn } from '@/lib/time';
 import type { Appointment, CareItem, Encounter } from '@/lib/types';
@@ -39,18 +44,24 @@ import { cn } from '@/lib/utils';
 
 /* ───────────────────────── The visit, in the order the vet runs it ───────────────────────── */
 
-const STEPS = [
-  { short: 'Reason', title: (n: string) => `Why is ${n} here today?`, hint: '' },
-  { short: 'History', title: (n: string) => `Ask the owner about ${n}`, hint: 'Ask each question and tap the answer. The history is written for you.' },
-  { short: 'Measurements', title: (n: string) => `Measure ${n}`, hint: 'Enter what you measured and press Enter. Leave out what you didn’t.' },
-  { short: 'Examination', title: (n: string) => `Examine ${n}`, hint: 'Tap “All normal”, then change only the systems that aren’t.' },
-  { short: 'Tests & X-rays', title: (n: string) => `Tests and X-rays for ${n}`, hint: 'Order any tests or X-rays before you decide on the diagnosis. Skip if none are needed.' },
-  { short: 'Diagnosis', title: () => 'What is your diagnosis?', hint: 'Tap a suggestion or type your own. Tap its label to say how sure you are.' },
-  { short: 'Treatment', title: (n: string) => `Treatment for ${n}`, hint: 'Everything you give or prescribe is added to the plan automatically.' },
-  { short: 'Owner advice', title: () => 'Advice for the owner', hint: 'Tap the advice you gave and decide on the next visit.' },
-  { short: 'Review & sign', title: () => 'Review and sign', hint: 'The complete record and the owner’s summary. Change anything, then sign.' },
-] as const;
-const LAST = STEPS.length - 1;
+type StepKey = 'reason' | 'history' | 'measure' | 'exam' | 'dental' | 'tests' | 'dx' | 'treat' | 'advice' | 'sign';
+/** The steps, by name. "Dental chart" is only there for a dental visit (an appointment type in a Dental category). */
+const STEPS: { key: StepKey; short: string; title: (n: string) => string; hint: string }[] = [
+  { key: 'reason', short: 'Reason', title: (n) => `Why is ${n} here today?`, hint: '' },
+  { key: 'history', short: 'History', title: (n) => `Ask the owner about ${n}`, hint: 'Ask each question and tap the answer. The history is written for you.' },
+  { key: 'measure', short: 'Measurements', title: (n) => `Measure ${n}`, hint: 'Enter what you measured and press Enter. Leave out what you didn’t.' },
+  { key: 'exam', short: 'Examination', title: (n) => `Examine ${n}`, hint: 'Tap “All normal”, then change only the systems that aren’t.' },
+  { key: 'dental', short: 'Dental chart', title: (n) => `Dental chart for ${n}`, hint: 'Tap a tooth to record it, or add a procedure. Everything saves as you go.' },
+  { key: 'tests', short: 'Tests & X-rays', title: (n) => `Tests and X-rays for ${n}`, hint: 'Order any tests or X-rays before you decide on the diagnosis. Skip if none are needed.' },
+  { key: 'dx', short: 'Diagnosis', title: () => 'What is your diagnosis?', hint: 'Tap a suggestion or type your own. Tap its label to say how sure you are.' },
+  { key: 'treat', short: 'Treatment', title: (n) => `Treatment for ${n}`, hint: 'Everything you give or prescribe is added to the plan automatically.' },
+  { key: 'advice', short: 'Owner advice', title: () => 'Advice for the owner', hint: 'Tap the advice you gave and decide on the next visit.' },
+  { key: 'sign', short: 'Review & sign', title: () => 'Review and sign', hint: 'The complete record and the owner’s summary. Change anything, then sign.' },
+];
+/** The steps before "Dental chart" existed, by their old number (saved visits are moved to the same step). */
+const OLD_STEPS: StepKey[] = ['reason', 'history', 'measure', 'exam', 'tests', 'dx', 'treat', 'advice', 'sign'];
+/** The assistant beside the steps still counts the original eight steps. */
+const COMPANION_STEP: Record<StepKey, number> = { reason: 0, history: 1, measure: 2, exam: 3, dental: 3, tests: 3, dx: 4, treat: 5, advice: 6, sign: 7 };
 const TARGET_MINUTES = 10;
 const RECHECK = [
   { label: '3 days', days: 3 },
@@ -62,8 +73,10 @@ const SURE: Record<string, string> = { CONFIRMED: 'sure', PROVISIONAL: 'likely',
 
 /** What the vet has chosen so far. Kept on this computer per visit, so a refresh or an interruption loses nothing. */
 interface Flow {
-  step: number;
-  /** 2 = with the Tests & X-rays step (step numbers after Examination moved up by one). */
+  /** The step the vet is on. */
+  stepKey: StepKey;
+  /** Older saves: the step's number (2 = with the Tests & X-rays step). */
+  step?: number;
   v?: number;
   /** The chosen appointment types, in the order they were tapped (several reasons in one visit). */
   reasonIds: string[];
@@ -75,6 +88,8 @@ interface Flow {
   answers: Record<string, string[]>;
   ownerExtra: string;
   examExtra: string;
+  /** Dental visits: the anaesthetic risk grade (ASA I–V). */
+  asa?: string;
   assessExtra: string;
   planExtra: string;
   nothingToday: boolean;
@@ -88,9 +103,12 @@ function loadFlow(id: string): Partial<Flow> | null {
   try {
     const raw = localStorage.getItem(storeKey(id));
     const f = raw ? (JSON.parse(raw) as Partial<Flow>) : null;
+    if (!f) return null;
     // Saved before Tests & X-rays was added: the steps after Examination are one further on now.
-    if (f && f.v !== 2 && typeof f.step === 'number' && f.step >= 4) f.step += 1;
-    return f ? { ...f, v: 2 } : null;
+    if (!f.v && typeof f.step === 'number' && f.step >= 4) f.step += 1;
+    // Saved by step number: the same step by name.
+    if (!f.stepKey && typeof f.step === 'number') f.stepKey = OLD_STEPS[f.step] ?? 'reason';
+    return { ...f, v: 3 };
   } catch {
     return null;
   }
@@ -179,7 +197,7 @@ function WillWrite({ text, label = 'In the record' }: { text: string; label?: st
 /* ───────────────────────── The screen ───────────────────────── */
 
 function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
-  const { can, canAny, session } = useSession();
+  const { can, canAny, session, currency } = useSession();
   const tz = session.branch?.timezone ?? 'UTC';
   const router = useRouter();
   const qc = useQueryClient();
@@ -197,7 +215,8 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
     const saved = loadFlow(enc.id) as (Partial<Flow> & { reasonId?: string | null }) | null;
     const f: Flow = {
     step: 0,
-    reasonIds: [],
+    // Chosen on another computer: what the visit has saved.
+    reasonIds: (enc.visitTypes ?? []).map((v) => v.appointmentTypeId),
     care: [],
     reasonText: draft?.presentingComplaint || enc.chiefComplaint || '',
     answers: {},
@@ -209,7 +228,8 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
     advice: [],
     adviceExtra: draft?.followUpInstructions ?? '',
     noRecheck: false,
-    v: 2,
+    v: 3,
+    stepKey: 'reason',
     ...saved,
     };
     // A visit started before several reasons were possible kept a single one.
@@ -226,20 +246,35 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
   // A dental appointment type shows the tooth chart in the examination.
   const dentalVisit = chosen.some((r) => visitReasons.categories.find((c) => c.id === r.categoryId)?.kind === 'DENTAL');
   const careNames = flow.care.map((k) => KINDS[k].label);
-  const step = flow.step;
+  // The steps of this visit (the dental chart only for a dental visit), and where the vet is.
+  const steps = dentalVisit
+    ? STEPS.map((s) => (DENTAL_STEP_TEXT[s.key] ? { ...s, title: DENTAL_STEP_TEXT[s.key]!.title ?? s.title, hint: DENTAL_STEP_TEXT[s.key]!.hint } : s))
+    : STEPS.filter((s) => s.key !== 'dental');
+  const LAST = steps.length - 1;
+  const cur: StepKey = steps.some((s) => s.key === flow.stepKey) ? flow.stepKey : flow.stepKey === 'dental' ? 'exam' : 'reason';
+  const step = steps.findIndex((s) => s.key === cur);
   const go = (s: number) => {
-    patch({ step: Math.max(0, Math.min(LAST, s)) });
+    patch({ stepKey: steps[Math.max(0, Math.min(LAST, s))].key });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+  // The visit's dental chart feeds the diagnosis, the treatment, the advice and the record.
+  const visitDental = useVisitDental(enc.id, dentalVisit);
+  const dentalChart = dentalVisit ? ((visitDental.data?.charts ?? []).find((c) => c.status === 'DRAFT') ?? visitDental.data?.charts[0] ?? null) : null;
+  const dentalProcedures = dentalChart ? procedureLines(dentalChart) : [];
+  // Advice to tap: the chart's home-care advice first, then the appointment types' usual advice.
+  const adviceOptions = [...new Set([...(dentalChart?.homeCare?.trim() ? [dentalChart.homeCare.trim()] : []), ...(reason?.advice ?? []), ...(dentalVisit ? DENTAL_ADVICE : [])])];
 
   /* The note is written from the taps: each part = what the taps say + the vet's own words. */
   const ownerText = reason ? answersToText(reason, flow.answers) : '';
   // Grooming done in this visit goes into the plan, like medicines given.
   const grooming = useQuery({ queryKey: groomingKey(enc.id), queryFn: () => fetchGrooming(enc.id), enabled: flow.care.includes('GROOMING') });
   const groomed = flow.care.includes('GROOMING') ? (grooming.data?.added ?? []).map((a) => a.description) : [];
-  const doneLines = useMemo(() => [...(groomed.length ? [`Grooming done: ${groomed.join(', ')}`] : []), ...done.lines], [groomed.join(), done.lines]); // eslint-disable-line react-hooks/exhaustive-deps
+  const doneLines = useMemo(
+    () => [...(dentalProcedures.length ? [`Dental: ${dentalProcedures.join('; ')}`] : []), ...(groomed.length ? [`Grooming done: ${groomed.join(', ')}`] : []), ...done.lines],
+    [dentalProcedures.join(), groomed.join(), done.lines], // eslint-disable-line react-hooks/exhaustive-deps
+  );
   const planLines = useMemo(() => {
-    const own = flow.planExtra.split('\n').filter((l) => l.trim() && !doneLines.includes(l.trim()) && !l.trim().startsWith('Grooming done:') && l.trim() !== 'No treatment needed today.');
+    const own = flow.planExtra.split('\n').filter((l) => l.trim() && !doneLines.includes(l.trim()) && !l.trim().startsWith('Grooming done:') && !l.trim().startsWith('Dental: ') && l.trim() !== 'No treatment needed today.');
     return [...doneLines, ...(flow.nothingToday ? ['No treatment needed today.'] : []), ...own];
   }, [doneLines, flow.planExtra, flow.nothingToday]);
   const adviceText = flow.advice.map(sentence).join(' ');
@@ -251,7 +286,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
       return [names.join(', '), extra].filter(Boolean).join(': ');
     })(),
     subjective: joinText(ownerText, flow.ownerExtra),
-    objective: flow.examExtra.trim(),
+    objective: joinText(joinText(flow.examExtra.trim(), dentalVisit ? asaText(flow.asa) : ''), dentalChart && dentalSummary(dentalChart) ? `Dental chart ${dentalChart.chartNo}: ${dentalSummary(dentalChart)}.` : ''),
     assessment: flow.assessExtra.trim(),
     plan: planLines.join('\n'),
     followUpInstructions: joinText(adviceText, flow.adviceExtra),
@@ -337,6 +372,31 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
     patch({ category: '', reasonIds: rest.map((r) => r.id) });
     if (rest.length !== chosen.length) qn.update({ templateId: rest.find((r) => r.template)?.template?.id ?? null });
   };
+  // The chosen appointment types are saved on the visit: their prices go on the bill when it is signed.
+  const visitTypeIds = chosen.map((r) => r.id).filter((id) => (types.data ?? []).some((t) => t.id === id));
+  const sentTypes = useRef(JSON.stringify((enc.visitTypes ?? []).map((v) => v.appointmentTypeId).sort()));
+  useEffect(() => {
+    if (!types.data || visitReasons.isLoading || enc.status !== 'OPEN') return;
+    const key = JSON.stringify([...visitTypeIds].sort());
+    if (key === sentTypes.current) return;
+    sentTypes.current = key;
+    api.put(`/encounters/${enc.id}/visit-types`, { appointmentTypeIds: visitTypeIds }).catch(() => {
+      sentTypes.current = '';
+    });
+  }, [visitTypeIds.join(), types.data, visitReasons.isLoading, enc.id, enc.status]); // eslint-disable-line react-hooks/exhaustive-deps
+  // What signing adds to the bill: each chosen appointment type's price, once per price (the booked type when none).
+  const visitFees = (() => {
+    if (!(enc.chargeConsultation ?? true)) return [];
+    const list = visitTypeIds.length ? visitTypeIds.map((id) => types.data?.find((t) => t.id === id)) : [types.data?.find((t) => t.id === bookedType?.id)];
+    const seen = new Set<string>();
+    const charted = new Set((dentalChart?.procedures ?? []).map((p) => p.serviceId).filter(Boolean));
+    return list.flatMap((t) => {
+      const s = t?.service;
+      if (!t || !s || !s.isActive || s.priceMinor <= 0 || seen.has(s.id) || charted.has(s.id)) return [];
+      seen.add(s.id);
+      return [{ name: t.name, priceMinor: s.priceMinor }];
+    });
+  })();
   // A visit from a booking starts with the booked appointment type chosen (once, before anything else is chosen).
   const preselected = useRef(false);
   useEffect(() => {
@@ -413,7 +473,19 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
     : '';
   const measurements = enc.vitals[0] ? vitalsText(enc.vitals[0]) : '';
   const nextVisit = booked ? `${branchTime(booked.startsAt, tz, 'EEEE d MMMM')} at ${branchTime(booked.startsAt, tz)}${booked.clinician ? ` with ${booked.clinician.name}` : ''}` : null;
-  const stepDone = [chosen.length > 0 || flow.care.length > 0, !!composed.subjective, enc.vitals.length > 0, abnormal.length + normal.length > 0 || !!flow.examExtra.trim(), done.counts.tests > 0, shownDx.length > 0, planLines.length > 0, !!composed.followUpInstructions && (!!booked || flow.noRecheck), false];
+  const doneBy: Record<StepKey, boolean> = {
+    reason: chosen.length > 0 || flow.care.length > 0,
+    history: !!composed.subjective,
+    measure: enc.vitals.length > 0,
+    exam: abnormal.length + normal.length > 0 || !!flow.examExtra.trim() || (dentalVisit && !!flow.asa),
+    dental: !!dentalChart && (dentalChart.teeth.length > 0 || dentalChart.procedures.length > 0),
+    tests: done.counts.tests > 0,
+    dx: shownDx.length > 0,
+    treat: planLines.length > 0,
+    advice: !!composed.followUpInstructions && (!!booked || flow.noRecheck),
+    sign: false,
+  };
+  const stepDone = steps.map((s) => doneBy[s.key]);
   const followUpType = types.data?.find((t) => t.category === 'FOLLOW_UP' && t.isActive !== false);
   const late = elapsed >= TARGET_MINUTES;
   const wordsWritten = words(ownerText) + words(examSummary) + words(done.lines.join(' ')) + words(adviceText) + words(qn.note.history);
@@ -429,7 +501,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
     history: qn.note.history,
     ownerSays: composed.subjective,
     measurements,
-    exam: joinText(examSummary, flow.examExtra),
+    exam: joinText(examSummary, composed.objective),
     diagnoses: shownDx.map((d) => ({ term: d.term, sure: SURE[d.type] ?? d.type.toLowerCase() })),
     reasoning: flow.assessExtra,
     plan: composed.plan,
@@ -442,7 +514,8 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
   };
   const checklist = [
     { label: 'Weight recorded', done: enc.vitals.some((v) => v.weightKg != null) },
-    { label: 'Examination recorded', done: stepDone[3] },
+    { label: 'Examination recorded', done: doneBy.exam },
+    ...(dentalVisit ? [{ label: 'Dental chart recorded', done: doneBy.dental }] : []),
     { label: 'Diagnosis recorded', done: shownDx.length > 0 },
     { label: 'Advice for the owner', done: !!composed.followUpInstructions },
     { label: 'Next visit decided', done: !!booked || flow.noRecheck },
@@ -486,7 +559,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
           {/* Steps, across the top: where we are, what is done; any step can be reopened. */}
           <nav aria-label="Consultation steps" className="min-w-0 rounded-xl border border-border/70 bg-background/80 p-1.5 shadow-sm xl:col-span-2">
             <ol ref={stepsRef} className="relative flex items-start gap-1 overflow-x-auto [scrollbar-width:none] lg:justify-between 2xl:justify-start">
-              {STEPS.map((s, i) => (
+              {steps.map((s, i) => (
                 <li key={s.short} className="flex items-start gap-1 2xl:flex-1 2xl:last:flex-none">
                   <button
                     type="button"
@@ -504,7 +577,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                     </span>
                     <span className="whitespace-nowrap">{s.short}</span>
                   </button>
-                  {i < STEPS.length - 1 && <span aria-hidden className={cn('mt-[18px] hidden h-px min-w-3 flex-1 2xl:block', stepDone[i] ? 'bg-success/50' : 'bg-border')} />}
+                  {i < steps.length - 1 && <span aria-hidden className={cn('mt-[18px] hidden h-px min-w-3 flex-1 2xl:block', stepDone[i] ? 'bg-success/50' : 'bg-border')} />}
                 </li>
               ))}
             </ol>
@@ -513,13 +586,13 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
           <main className="min-w-0">
             <div className="rounded-2xl surface-flat p-5 shadow-card sm:p-6">
               <header className="mb-5">
-                <h1 className="text-xl font-semibold tracking-tight">{STEPS[step].title(name)}</h1>
-                {STEPS[step].hint && <p className="mt-1 text-sm text-muted-foreground">{STEPS[step].hint}</p>}
+                <h1 className="text-xl font-semibold tracking-tight">{steps[step].title(name)}</h1>
+                {steps[step].hint && <p className="mt-1 text-sm text-muted-foreground">{steps[step].hint}</p>}
               </header>
 
-              <div className={cn('grid', step === 0 ? 'gap-5' : 'gap-6')}>
+              <div className={cn('grid', cur === 'reason' ? 'gap-5' : 'gap-6')}>
                 {/* 1 — Reason */}
-                {step === 0 && (
+                {cur === 'reason' && (
                   <>
                     {visitReasons.isLoading && <LoadingRows rows={3} />}
                     <ReasonPicker
@@ -570,7 +643,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                 )}
 
                 {/* 2 — History */}
-                {step === 1 && (
+                {cur === 'history' && (
                   <>
                     {!reason && flow.care.length > 0 ? (
                       <p className="rounded-lg border border-dashed p-4 text-[15px] text-muted-foreground">
@@ -632,20 +705,41 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                 )}
 
                 {/* 3 — Measurements */}
-                {step === 2 && <QuickVitals encounterId={enc.id} vitals={enc.vitals} lastWeightKg={enc.patient.latestWeightKg} editable onSaved={onRefresh} />}
+                {cur === 'measure' && <QuickVitals encounterId={enc.id} vitals={enc.vitals} lastWeightKg={enc.patient.latestWeightKg} editable onSaved={onRefresh} />}
 
                 {/* 4 — Examination */}
-                {step === 3 && (
+                {cur === 'exam' && (
                   <>
-                    <ExamChips findings={findings} onChange={(examFindings) => qn.update({ examFindings })} systems={reason?.examSystems} />
-                    {dentalVisit && <ExamDental encounterId={enc.id} patientId={enc.patient.id} editable />}
+                    <ExamChips
+                      findings={findings}
+                      onChange={(examFindings) => qn.update({ examFindings })}
+                      systems={dentalVisit ? [...DENTAL_EXAM_SYSTEMS, ...(reason?.examSystems ?? []).filter((x) => !DENTAL_EXAM_SYSTEMS.includes(x) && x !== 'Lymph nodes')] : reason?.examSystems}
+                    />
+                    {dentalVisit && (
+                      <div className="grid gap-2">
+                        <span className="text-[15px] font-medium">Anaesthetic risk (ASA)</span>
+                        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Anaesthetic risk (ASA)">
+                          {ASA_GRADES.map((g) => (
+                            <Choice key={g.value} on={flow.asa === g.value} onClick={() => patch({ asa: flow.asa === g.value ? undefined : g.value })}>
+                              <span className="grid text-left leading-tight">
+                                <span>{g.label}</span>
+                                <span className="text-xs font-normal opacity-80">{g.hint}</span>
+                              </span>
+                            </Choice>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <Extra id="qc-exam" label="Other findings" value={flow.examExtra} onChange={(v) => patch({ examExtra: v })} placeholder="e.g. Mild tartar on the upper molars" />
                     <WillWrite text={joinText(examSummary, flow.examExtra)} />
                   </>
                 )}
 
-                {/* 5 — Tests & X-rays: ordered before the diagnosis; results come back to this visit. */}
-                {step === 4 &&
+                {/* Dental chart: dental visits only, after the general (pre-anaesthetic) examination. */}
+                {cur === 'dental' && <ExamDental encounterId={enc.id} patientId={enc.patient.id} editable full />}
+
+                {/* Tests & X-rays: ordered before the diagnosis; results come back to this visit. */}
+                {cur === 'tests' &&
                   (can('lab.read') ? (
                     <LabOrdersPanel patient={enc.patient} encounterId={enc.id} editable={can('lab.order')} dialogOpen={labOpen} onDialogOpenChange={setLabOpen} />
                   ) : (
@@ -653,9 +747,15 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                   ))}
 
                 {/* 6 — Diagnosis */}
-                {step === 5 && (
+                {cur === 'dx' && (
                   <>
-                    <QuickDiagnoses encounterId={enc.id} patientId={enc.patient.id} diagnoses={enc.diagnoses} editable onSaved={onRefresh} suggestions={reason?.diagnoses} />
+                    {dentalVisit && <TestedTeeth encounterId={enc.id} patientId={enc.patient.id} />}
+                    <QuickDiagnoses encounterId={enc.id} patientId={enc.patient.id} diagnoses={enc.diagnoses} editable onSaved={onRefresh} suggestions={
+                        dentalVisit
+                          ? [...new Set([...(dentalChart ? dentalDiagnoses(dentalChart) : []), ...dentalDiagnosisList(dentalChart?.dentition ?? visitDental.data?.suggestedDentition), ...(reason?.diagnoses ?? []).filter((d) => !STARTER_DENTAL_DX.has(d))])]
+                          : reason?.diagnoses
+                      }
+                    />
                     {!showReasoning && (
                       <Button type="button" variant="ghost" className="w-fit" onClick={() => setShowReasoning(true)}>
                         <Pencil /> Add clinical reasoning
@@ -666,8 +766,9 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                 )}
 
                 {/* 7 — Treatment */}
-                {step === 6 && (
+                {cur === 'treat' && (
                   <>
+                    {dentalVisit && <DentalServices encounterId={enc.id} patientId={enc.patient.id} />}
                     <div className="grid grid-cols-3 gap-2.5">
                       {[
                         canAny('clinical.write', 'hospital.write', 'pharmacy.dispense') && { icon: Syringe, label: 'Give now', sub: 'Injection or tablet in the clinic', count: done.counts.given, onClick: () => setGiveOpen(true) },
@@ -719,13 +820,13 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                 )}
 
                 {/* 8 — Owner advice & next visit */}
-                {step === 7 && (
+                {cur === 'advice' && (
                   <>
-                    {reason && reason.advice.length > 0 && (
+                    {adviceOptions.length > 0 && (
                       <div className="grid gap-2">
                         <span className="text-[15px] font-medium">What did you advise?</span>
                         <div className="grid gap-2">
-                          {reason.advice.map((a) => (
+                          {adviceOptions.map((a) => (
                             <Choice key={a} on={flow.advice.includes(a)} onClick={() => patch({ advice: flow.advice.includes(a) ? flow.advice.filter((x) => x !== a) : [...flow.advice, a] })} className="justify-start text-left">
                               {a}
                             </Choice>
@@ -771,8 +872,18 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                 )}
 
                 {/* 9 — Review & sign */}
-                {step === LAST && (
+                {cur === 'sign' && (
                   <>
+                    {visitFees.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border bg-muted/30 px-4 py-2.5 text-sm" aria-label="Visit fee">
+                        <span className="text-muted-foreground">Added to the bill when you sign:</span>
+                        {visitFees.map((f) => (
+                          <span key={f.name} className="font-medium">
+                            {f.name} — <span className="tabular">{fmtMoney(f.priceMinor, currency)}</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <div className="flex flex-wrap items-center gap-2">
                       <div role="tablist" className="inline-flex rounded-lg border bg-muted/40 p-1">
                         {(
@@ -797,7 +908,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                         <ClinicalRecordView d={visitDoc} />
                         <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
                           <span className="text-muted-foreground">Change:</span>
-                          {STEPS.slice(0, LAST).map((s, i) => (
+                          {steps.slice(0, LAST).map((s, i) => (
                             <button key={s.short} type="button" onClick={() => go(i)} className="font-medium text-primary hover:underline">
                               {s.short}
                             </button>
@@ -826,7 +937,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
           </main>
 
           <aside className="xl:sticky xl:top-20 xl:col-span-1 xl:max-h-[calc(100vh-6rem)] xl:self-start xl:overflow-y-auto">
-            <Companion step={step} enc={enc} ctx={ctx} reason={reason} wordsWritten={wordsWritten} onOpenHistory={() => setHistoryOpen(true)} checklist={checklist} />
+            <Companion step={COMPANION_STEP[cur]} enc={enc} ctx={ctx} reason={reason} wordsWritten={wordsWritten} onOpenHistory={() => setHistoryOpen(true)} checklist={checklist} />
             {/* Fills the past history from the animal's own records (shown in the record). */}
             <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-border/70 px-3.5 py-2.5 text-xs text-muted-foreground">
               Past history from the record
@@ -847,7 +958,7 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
                   Skip
                 </button>
                 <Button size="lg" className="min-w-0 px-4 sm:px-6" onClick={() => go(step + 1)}>
-                  {STEPS[step + 1].short} <ArrowRight />
+                  {steps[step + 1].short} <ArrowRight />
                 </Button>
               </div>
             ) : (
