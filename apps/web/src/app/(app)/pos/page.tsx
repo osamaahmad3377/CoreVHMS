@@ -2,6 +2,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Clock, History, Landmark, Pill, Printer, ReceiptText, Undo2 } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { ClinicHeader } from '@/components/billing/invoice-document';
@@ -11,6 +12,7 @@ import { FormError } from '@/components/forms/form-error';
 import { PageHeader } from '@/components/page';
 import { PosCart } from '@/components/pos/cart';
 import { PosCatalog } from '@/components/pos/catalog';
+import { ShopTabs } from '@/components/pos/shop-tabs';
 import { MoneyInput, parseMoney } from '@/components/billing/money';
 import { Field } from '@/components/forms/field';
 import { CloseDrawerDialog, OpenDrawerDialog } from '@/components/billing/cash-dialogs';
@@ -26,7 +28,6 @@ import { ReceiptPreview, useReceiptPrinter } from '@/components/receipts/use-rec
 import { HeldSalesDialog, TodaySalesDialog, type HeldSale } from '@/components/pos/sales-dialogs';
 import { TenderDialog } from '@/components/pos/tender-dialog';
 import { RequirePermission } from '@/components/require';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Kbd } from '@/components/ui/misc';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -34,6 +35,7 @@ import { ApiError, api, qs } from '@/lib/api';
 import { fmtDateTime, fmtMoney, fmtTime } from '@/lib/format';
 import { localDate, todayIn } from '@/lib/time';
 import { useSession } from '@/lib/session';
+import { cn } from '@/lib/utils';
 import type { BillingSettings, CashRegister, Charge, Invoice, Payment, PosCatalog as CatalogBase, PosItem, ProductCategory } from '@/lib/types';
 
 type Catalog = CatalogBase & { sellableTypes?: string[]; defaultTaxRateBasisPoints?: number };
@@ -313,42 +315,69 @@ function Pos() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [printJob]);
 
+  // The cash drawer: one status with its action.
+  const drawer = openRegister ? (
+    localDate(openRegister.sessions[0].openedAt, tz) === todayIn(tz) ? (
+      <span className="inline-flex h-9 items-center gap-2 rounded-full border bg-card pl-3 pr-1 text-sm shadow-sm">
+        <span className="h-2 w-2 rounded-full bg-success" aria-hidden />
+        <span className="text-muted-foreground">
+          Drawer open <span className="hidden sm:inline">since {fmtTime(openRegister.sessions[0].openedAt)}</span>
+        </span>
+        {canCloseDrawer && (
+          <Button size="sm" variant="ghost" className="h-7 rounded-full px-3" onClick={() => setClosingDrawer(openRegister.sessions[0].id)}>
+            Close
+          </Button>
+        )}
+      </span>
+    ) : (
+      <span className="inline-flex h-9 items-center gap-2 rounded-full border border-warning/30 bg-warning/10 pl-3 pr-1 text-sm" title={`${openRegister.name} was opened on ${fmtDateTime(openRegister.sessions[0].openedAt)} and not closed.`}>
+        <span className="h-2 w-2 rounded-full bg-warning" aria-hidden />
+        <span className="font-medium text-warning">Yesterday’s drawer not closed</span>
+        {canCloseDrawer ? (
+          <Button size="sm" variant="outline" className="h-7 rounded-full px-3" onClick={() => setClosingDrawer(openRegister.sessions[0].id)}>
+            Count and close
+          </Button>
+        ) : (
+          <span className="pr-2 text-xs text-muted-foreground">Ask {openRegister.sessions[0].openedByName ?? 'the person who opened it'} or a manager</span>
+        )}
+      </span>
+    )
+  ) : registers.isSuccess ? (
+    <span className={cn('inline-flex h-9 items-center gap-2 rounded-full border pl-3 pr-1 text-sm', cashBlocked ? 'border-destructive/30 bg-destructive/[0.06]' : 'bg-card shadow-sm')}>
+      <Landmark className={cn('h-4 w-4', cashBlocked ? 'text-destructive' : 'text-muted-foreground')} aria-hidden />
+      <span className={cashBlocked ? 'font-medium text-destructive' : 'text-muted-foreground'}>{cashBlocked ? 'Open the drawer to take cash' : 'Drawer closed'}</span>
+      <Button size="sm" variant={cashBlocked ? 'default' : 'outline'} className="h-7 rounded-full px-3" onClick={() => setOpeningDrawer(true)}>
+        Open drawer
+      </Button>
+    </span>
+  ) : null;
+
   const header = (
-    <PageHeader
-        help="pos"
-      title="Shop counter"
-      description={`${session.branch?.name ?? ''} · ${session.user.name}`}
-      actions={
-        <>
-          {openRegister ? (
-            localDate(openRegister.sessions[0].openedAt, tz) === todayIn(tz) ? (
-              <>
-                <Badge variant="success" className="gap-1 py-1"><Landmark className="h-3 w-3" /> Cash drawer open since {fmtTime(openRegister.sessions[0].openedAt)}</Badge>
-                {canCloseDrawer && <Button size="sm" variant="outline" onClick={() => setClosingDrawer(openRegister.sessions[0].id)}>Close drawer</Button>}
-              </>
-            ) : (
-              <>
-                <Badge variant="warning" className="gap-1 py-1" title={`${openRegister.name} was opened on ${fmtDateTime(openRegister.sessions[0].openedAt)} and not closed.`}><Landmark className="h-3 w-3" /> Yesterday’s cash drawer was not closed</Badge>
-                {canCloseDrawer ? (
-                  <Button size="sm" variant="outline" onClick={() => setClosingDrawer(openRegister.sessions[0].id)}>Count and close it</Button>
-                ) : (
-                  <span className="text-xs text-muted-foreground">Ask {openRegister.sessions[0].openedByName ?? 'the person who opened it'} or your manager to close it.</span>
-                )}
-              </>
-            )
-          ) : registers.isSuccess ? (
-            <>
-              <Badge variant={cashBlocked ? 'destructive' : 'secondary'} className="gap-1 py-1"><Landmark className="h-3 w-3" /> Cash drawer closed{cashBlocked ? ' — open it to take cash' : ''}</Badge>
-              <Button size="sm" variant={cashBlocked ? 'default' : 'outline'} onClick={() => setOpeningDrawer(true)}>Open cash drawer</Button>
-            </>
-          ) : null}
-          {can('pharmacy.dispense') && <Button size="sm" onClick={() => setCollectOpen(true)}><Pill /> Collect a prescription</Button>}
-          {can('billing.refund') && <Button size="sm" variant="outline" onClick={() => setReturning(true)}><Undo2 /> Return items</Button>}
-          <Button size="sm" variant="outline" onClick={() => setShowHeld(true)}><Clock /> Paused sales{held.length ? ` (${held.length})` : ''}</Button>
-          <Button size="sm" variant="outline" onClick={() => setShowToday(true)}><History /> Today’s sales</Button>
-        </>
-      }
-    />
+    <>
+      <PageHeader help="pos" title="Shop" description={`${session.branch?.name ?? ''} · ${session.user.name}`} actions={drawer} />
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <ShopTabs className="mb-0" />
+        <div className="flex flex-wrap items-center gap-2">
+          {can('pharmacy.dispense') && (
+            <Button size="sm" variant="outline" onClick={() => setCollectOpen(true)}>
+              <Pill /> Collect a prescription
+            </Button>
+          )}
+          {can('billing.refund') && (
+            <Button size="sm" variant="outline" onClick={() => setReturning(true)}>
+              <Undo2 /> Return items
+            </Button>
+          )}
+          <Button size="sm" variant="outline" onClick={() => setShowHeld(true)}>
+            <Clock /> Paused sales
+            {held.length > 0 && <span className="ml-0.5 grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[11px] font-semibold tabular text-primary-foreground">{held.length}</span>}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setShowToday(true)}>
+            <History /> Today’s sales
+          </Button>
+        </div>
+      </div>
+    </>
   );
 
   /** Medicines just handed out against a prescription join the sale as fixed lines. */
@@ -507,6 +536,14 @@ function Pos() {
 }
 
 export default function PosPage() {
+  const { can, canAny } = useSession();
+  const router = useRouter();
+  // Someone who works only in the pharmacy opens the shop on its pharmacy tab.
+  const pharmacyOnly = !can('pos.use') && canAny('prescriptions.read', 'pharmacy.dispense');
+  useEffect(() => {
+    if (pharmacyOnly) router.replace('/pharmacy');
+  }, [pharmacyOnly, router]);
+  if (pharmacyOnly) return null;
   return (
     <RequirePermission anyOf={['pos.use']}>
       <Pos />

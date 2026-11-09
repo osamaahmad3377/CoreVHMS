@@ -121,11 +121,17 @@ export function PosCart({
   const items = lines.reduce((n, l) => n + l.quantity, 0);
   const stockProblem = lines.find((l) => l.item.trackStock && !allowNegative && l.item.available !== null && l.quantity > l.item.available);
   return (
-    <div className="flex h-full min-h-[480px] flex-col rounded-xl surface shadow-card">
-      <div className="border-b p-3">
+    <div className="flex h-full min-h-[480px] flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
+      <div className="flex items-center justify-between gap-2 px-4 pt-3.5">
+        <h2 className="flex items-center gap-2 text-sm font-semibold">
+          <ShoppingCart className="h-4 w-4 text-primary" /> Current sale
+        </h2>
+        {items > 0 && <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium tabular text-muted-foreground">{items} {items === 1 ? 'item' : 'items'}</span>}
+      </div>
+      <div className="border-b p-3 pt-2.5">
         {client && !pickingClient ? (
-          <div className="flex items-center gap-2 rounded-md bg-primary/5 px-3 py-2">
-            <UserRound className="h-4 w-4 text-primary" />
+          <div className="flex items-center gap-2.5 rounded-lg bg-primary/[0.06] px-3 py-2 ring-1 ring-inset ring-primary/15">
+            <span className="grid h-7 w-7 place-items-center rounded-full bg-primary/15 text-primary"><UserRound className="h-4 w-4" /></span>
             <span className="min-w-0 flex-1 truncate text-sm font-medium">{client.displayName}</span>
             <Button variant="ghost" size="icon-sm" aria-label="Remove client" onClick={() => onClient(null)}><X /></Button>
           </div>
@@ -135,8 +141,8 @@ export function PosCart({
             <Button variant="ghost" size="icon" aria-label="Cancel" onClick={() => setPickingClient(false)}><X /></Button>
           </div>
         ) : (
-          <button type="button" onClick={() => setPickingClient(true)} className="flex w-full items-center gap-2 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground hover:bg-muted">
-            <UserRound className="h-4 w-4" /> Walk-in customer <span className="ml-auto text-xs text-primary">Add client</span>
+          <button type="button" onClick={() => setPickingClient(true)} className="flex w-full items-center gap-2.5 rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted/50">
+            <span className="grid h-7 w-7 place-items-center rounded-full bg-muted"><UserRound className="h-4 w-4" /></span> Walk-in customer <span className="ml-auto text-xs font-medium text-primary">Add client</span>
           </button>
         )}
       </div>
@@ -150,7 +156,7 @@ export function PosCart({
               // Medicine already handed out against a prescription: fixed quantity and price, only removable.
               const fixed = l.item.type === 'CHARGE';
               return (
-                <li key={l.key} className="px-3 py-2.5">
+                <li key={l.key} className="px-4 py-3">
                   <div className="flex items-start gap-2">
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{l.item.name}</p>
@@ -189,14 +195,19 @@ export function PosCart({
             })}
           </ul>
         ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center text-muted-foreground">
-            <ShoppingCart className="h-8 w-8 opacity-40" />
-            <p className="text-sm">Scan or tap items to start a sale</p>
+          <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
+            <span className="grid h-14 w-14 place-items-center rounded-2xl bg-muted text-muted-foreground">
+              <ShoppingCart className="h-6 w-6" />
+            </span>
+            <div>
+              <p className="text-sm font-medium">No items yet</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Scan a barcode, search, or tap an item to start a sale.</p>
+            </div>
           </div>
         )}
       </div>
 
-      <div className="border-t bg-muted/30 p-3">
+      <div className="border-t bg-muted/30 p-4">
         {onOtherItem && (
           <Button type="button" variant="outline" size="sm" className="mb-2 w-full border-dashed" onClick={onOtherItem}><Plus /> Other item</Button>
         )}

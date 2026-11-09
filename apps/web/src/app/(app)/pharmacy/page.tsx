@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Paginated } from '@vcms/shared';
-import { BookOpen, CheckCircle2, PackageCheck, Pill } from 'lucide-react';
+import { CheckCircle2, PackageCheck, Pill } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Suspense, useState } from 'react';
@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { useConfirm } from '@/components/confirm';
 import { DataTable } from '@/components/data-table';
 import { DispenseDialog } from '@/components/pharmacy/dispense-dialog';
+import { ShopTabs } from '@/components/pos/shop-tabs';
 import { EmptyState, PageHeader } from '@/components/page';
 import { RequirePermission } from '@/components/require';
 import { SearchInput } from '@/components/search-input';
@@ -53,18 +54,8 @@ function Worklist() {
   const query = useQuery({ queryKey: ['prescriptions', params], queryFn: () => api.get<Paginated<Prescription>>(`/prescriptions${qs(params)}`), refetchInterval: 30_000, placeholderData: (p) => p });
   return (
     <>
-      <PageHeader
-        help="dispense"
-        title="Pharmacy"
-        description="Approve, hand out and track prescriptions"
-        actions={
-          (can('formulary.manage') || can('inventory.read')) && (
-            <Button size="sm" variant="outline" asChild>
-              <Link href="/pharmacy/formulary"><BookOpen /> Formulary</Link>
-            </Button>
-          )
-        }
-      />
+      <PageHeader help="dispense" title="Shop" description="Pharmacy: approve, hand out and track prescriptions" />
+      <ShopTabs />
       <Card>
         <div className="flex flex-col gap-2 border-b p-3 lg:flex-row lg:items-center">
           <div className="flex flex-wrap gap-1" role="tablist">

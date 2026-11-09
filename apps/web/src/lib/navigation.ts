@@ -62,6 +62,10 @@ export interface NavItem {
   feature?: PlanFeature;
   /** Set by visibleNav: in the menu only as an upgrade prompt. */
   locked?: boolean;
+  /** Part of another menu item (e.g. Pharmacy inside Shop): not listed, but its links keep their permissions. */
+  menu?: false;
+  /** Other pages that belong to this item, so it shows as the current one there too. */
+  alsoActive?: string[];
 }
 
 export interface NavSection {
@@ -90,7 +94,8 @@ export const NAV: NavSection[] = [
     label: 'Clinical',
     items: [
       { label: 'Consultations', href: '/consultations', icon: Stethoscope, anyOf: ['clinical.read'], ready: true },
-      { label: 'Pharmacy', href: '/pharmacy', icon: Pill, anyOf: ['prescriptions.read', 'pharmacy.dispense'], ready: true },
+      // In the Shop (a tab there), not a menu item of its own.
+      { label: 'Pharmacy', href: '/pharmacy', icon: Pill, anyOf: ['prescriptions.read', 'pharmacy.dispense'], ready: true, menu: false },
       { label: 'Lab & X-ray', href: '/lab', icon: FlaskConical, anyOf: ['lab.read'], feature: 'lab', ready: true, module: 'lab' },
       { label: 'Hospital', href: '/hospital', icon: Bed, anyOf: ['hospital.read'], feature: 'hospital', ready: true, module: 'hospital' },
       { label: 'Surgery', href: '/surgery', icon: HeartPulse, anyOf: ['surgery.read'], feature: 'surgery', ready: true, module: 'surgery' },
@@ -104,7 +109,8 @@ export const NAV: NavSection[] = [
   {
     label: 'Money & stock',
     items: [
-      { label: 'Shop counter', href: '/pos', icon: ShoppingCart, anyOf: ['pos.use'], ready: true },
+      // The counter, the pharmacy and the formulary (tabs).
+      { label: 'Shop', href: '/pos', icon: ShoppingCart, anyOf: ['pos.use', 'prescriptions.read', 'pharmacy.dispense'], ready: true, alsoActive: ['/pharmacy'] },
       { label: 'Billing', href: '/billing', icon: Receipt, anyOf: ['billing.read'], ready: true },
       { label: 'Stock', href: '/inventory', icon: Boxes, anyOf: ['inventory.read', 'procurement.read'], ready: true },
       { label: 'Reports', href: '/reports', icon: BarChart3, anyOf: ['reports.view'], feature: 'reports', ready: true },
@@ -197,7 +203,7 @@ export function visibleNav(canAny: (...p: Permission[]) => boolean, modules?: re
   return NAV.map((s) => ({
     ...s,
     items: s.items.flatMap((i): NavItem[] => {
-      if (!i.ready) return [];
+      if (!i.ready || i.menu === false) return [];
       if (i.feature && !hasFeature(entitlements, i.feature)) return owner ? [{ ...i, locked: true }] : [];
       return moduleOn(i.module, modules) && (!i.anyOf.length || canAny(...i.anyOf)) ? [i] : [];
     }),

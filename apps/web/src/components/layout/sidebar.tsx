@@ -52,11 +52,11 @@ export function SidebarNav({ collapsed, onNavigate }: { collapsed?: boolean; onN
     try { localStorage.setItem(FOLD_KEY, JSON.stringify(next)); } catch { /* storage unavailable */ }
     return next;
   });
-  const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/');
+  const isActive = (href: string, also: string[] = []) => [href, ...also].some((h) => pathname === h || pathname.startsWith(h + '/'));
   return (
     <nav aria-label="Main" className="flex flex-col gap-4 px-3 py-4">
       {sections.map((s) => {
-        const hasActive = s.items.some((i) => isActive(i.href));
+        const hasActive = s.items.some((i) => isActive(i.href, i.alsoActive));
         const open = collapsed || hasActive || !folded.includes(s.label);
         return (
           <div key={s.label}>
@@ -74,7 +74,7 @@ export function SidebarNav({ collapsed, onNavigate }: { collapsed?: boolean; onN
             {open && (
               <ul className="grid gap-0.5">
                 {s.items.map((item) => {
-                  const active = !item.locked && isActive(item.href);
+                  const active = !item.locked && isActive(item.href, item.alsoActive);
                   const link = (
                     <Link
                       href={item.href}

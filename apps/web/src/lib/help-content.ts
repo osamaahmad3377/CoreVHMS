@@ -492,7 +492,7 @@ export const GUIDES: HelpGuide[] = [
     area: 'Pharmacy',
     anyOf: ['pharmacy.dispense'],
     steps: [
-      'Open Pharmacy → Ready to dispense and click Hand over on the prescription (or open the prescription and click Dispense).',
+      'Open Shop → Pharmacy → Ready to dispense and click Hand over on the prescription (or open the prescription and click Dispense).',
       'Leave the batch empty to use the batch that expires first, or type the batch on the pack.',
       'Print labels for the packs.',
     ],
@@ -704,7 +704,7 @@ export const GUIDES: HelpGuide[] = [
       'Field visits: schedule from the farm, add work and medicines on site, then Complete with your findings. Click Create invoice to bill the farmer.',
     ],
     tips: [
-      'Withdrawal periods come from each medicine’s configured, sourced periods (Pharmacy → Medicines). The Withdrawals tab shows what must not go into the food chain yet.',
+      'Withdrawal periods come from each medicine’s configured, sourced periods (Shop → Formulary). The Withdrawals tab shows what must not go into the food chain yet.',
       'Due dates use the gestation length you set in Settings → Livestock. Nothing is pre-filled.',
       'Mistakes in breeding or production records are voided with a reason, never deleted.',
     ],

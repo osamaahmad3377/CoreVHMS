@@ -11,6 +11,7 @@ import { EmptyState, PageHeader } from '@/components/page';
 import { PrescribingPromptSetting } from '@/components/pharmacy/prescribing-settings';
 import { ProductDialog } from '@/components/pharmacy/product-dialog';
 import { productStrength } from '@/components/pharmacy/product-picker';
+import { ShopTabs } from '@/components/pos/shop-tabs';
 import { RequirePermission } from '@/components/require';
 import { SearchInput } from '@/components/search-input';
 import { StatusBadge } from '@/components/status';
@@ -34,11 +35,11 @@ function Formulary() {
   return (
     <>
       <PageHeader
-        title="Formulary"
-        breadcrumbs={[{ label: 'Pharmacy', href: '/pharmacy' }, { label: 'Formulary' }]}
-        description={<>Medicines, vaccines and consumables. The strength of each medicine and what it is given out per (tablet, mL…) are used to work out doses. Food, grooming items and accessories are managed under <Link className="underline" href="/inventory/catalog">Inventory → Products</Link>.</>}
+        title="Shop"
+        description={<>Formulary: medicines, vaccines and consumables. The strength of each medicine and what it is given out per (tablet, mL…) are used to work out doses. Food, grooming items and accessories are managed under <Link className="underline" href="/inventory/catalog">Inventory → Products</Link>.</>}
         actions={(can('formulary.manage') || can('inventory.write')) && <Button size="sm" onClick={() => setCreate(true)}><Plus /> New product</Button>}
       />
+      <ShopTabs />
       {can('formulary.manage') && <div className="mb-3"><PrescribingPromptSetting /></div>}
       <Card>
         <div className="flex flex-col gap-2 border-b p-3 sm:flex-row">
