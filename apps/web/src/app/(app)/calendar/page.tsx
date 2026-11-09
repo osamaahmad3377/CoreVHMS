@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertOctagon, CalendarPlus, Car, ChevronLeft, ChevronRight, Globe, House } from 'lucide-react';
+import { AlertOctagon, CalendarDays, CalendarPlus, Car, Check, ChevronLeft, ChevronRight, Globe, House, Users, XCircle } from 'lucide-react';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirm } from '@/components/confirm';
@@ -12,8 +12,8 @@ import { apptSummary } from '@/components/scheduling/appointment-text';
 import { BookingDialog, useTimeZoneNote, type BookingDefaults } from '@/components/scheduling/booking-dialog';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input, NativeSelect } from '@/components/ui/input';
+import { Avatar } from '@/components/ui/misc';
 import { useClinicians } from '@/hooks/use-catalog';
 import { useUrlState } from '@/hooks/use-url-state';
 import { ApiError, api, qs } from '@/lib/api';
@@ -59,6 +59,19 @@ function layout(appts: Appointment[], tz: string) {
   });
   return placed.map((p) => ({ ...p, lanes: Math.max(1, ...placed.filter((o) => o.start < p.end && o.end > p.start).map((o) => o.lane + 1)) }));
 }
+
+/** How each status looks on a card: a short label and its colour. */
+const STATUS_LOOK: Record<string, { label: string; chip: string }> = {
+  BOOKED: { label: 'Booked', chip: 'bg-muted text-muted-foreground' },
+  CONFIRMED: { label: 'Confirmed', chip: 'bg-success/15 text-success' },
+  CHECKED_IN: { label: 'Arrived', chip: 'bg-warning/15 text-warning' },
+  IN_CONSULTATION: { label: 'With vet', chip: 'bg-primary/15 text-primary' },
+  COMPLETED: { label: 'Done', chip: 'bg-muted text-muted-foreground' },
+  CANCELLED: { label: 'Cancelled', chip: 'bg-destructive/10 text-destructive' },
+  NO_SHOW: { label: 'No-show', chip: 'bg-destructive/10 text-destructive' },
+};
+/** A soft wash of the appointment type's colour behind a card. */
+const tint = (color: string, pct = 12) => `color-mix(in srgb, ${color} ${pct}%, hsl(var(--card)))`;
 
 /** Appointments that can still be moved (same rule as the server's reschedule). */
 const MOVABLE = new Set(['BOOKED', 'CONFIRMED', 'CHECKED_IN']);
@@ -256,6 +269,22 @@ function CalendarView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appts.data, showCancelled, clinicianFilter, homeOnly, tz]);
 
+  // What is on: counts for the dates shown (with the filters applied).
+  const inView = visible.filter((a) => !clinicianFilter || a.clinician?.id === clinicianFilter);
+  const live = inView.filter((a) => a.status !== 'CANCELLED' && a.status !== 'NO_SHOW');
+  const stats = [
+    { label: live.length === 1 ? 'appointment' : 'appointments', value: live.length, tone: '' },
+    { label: 'to confirm', value: live.filter((a) => a.status === 'BOOKED').length, tone: 'text-warning' },
+    ...(moduleOn('homeVisits') ? [{ label: live.filter((a) => a.location === 'HOME').length === 1 ? 'home visit' : 'home visits', value: live.filter((a) => a.location === 'HOME').length, tone: 'text-primary' }] : []),
+    { label: 'booked online', value: live.filter((a) => a.source === 'ONLINE').length, tone: '' },
+  ];
+  const isToday = view === 'day' ? date === today : days.includes(today);
+  const chip = (on: boolean) =>
+    cn(
+      'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+      on ? 'border-primary/40 bg-primary/10 text-primary' : 'bg-background text-muted-foreground hover:text-foreground',
+    );
+
   return (
     <>
       <PageHeader
@@ -271,50 +300,63 @@ function CalendarView() {
         }
       />
       <Card className="overflow-hidden">
-        <div className="flex flex-wrap items-center gap-2 border-b p-3">
-          <div className="flex items-center gap-1">
-            <Button variant="outline" size="icon-sm" aria-label="Previous" onClick={() => url.set({ date: stepBy(-1) })}>
-              <ChevronLeft />
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => url.set({ date: today })}>
-              Today
-            </Button>
-            <Button variant="outline" size="icon-sm" aria-label="Next" onClick={() => url.set({ date: stepBy(1) })}>
-              <ChevronRight />
-            </Button>
-          </div>
-          <h2 className="min-w-[200px] text-sm font-semibold">{title}</h2>
-          <Input type="date" aria-label="Go to date" className="h-8 w-[150px]" value={date} onChange={(e) => e.target.value && url.set({ date: e.target.value })} />
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            {moduleOn('homeVisits') && (
-              <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Checkbox checked={homeOnly} onCheckedChange={(v) => url.set({ where: v === true ? 'home' : null })} /> Home visits only
-              </label>
-            )}
-            <label className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Checkbox checked={showCancelled} onCheckedChange={(v) => setShowCancelled(v === true)} /> Show cancelled / no-shows
+        <div className="grid gap-3 border-b p-3 sm:p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center rounded-full border bg-background p-0.5 shadow-sm">
+              <Button variant="ghost" size="icon-sm" className="rounded-full" aria-label="Previous" onClick={() => url.set({ date: stepBy(-1) })}>
+                <ChevronLeft />
+              </Button>
+              <Button variant="ghost" size="sm" className="h-8 rounded-full px-3" onClick={() => url.set({ date: today })}>
+                Today
+              </Button>
+              <Button variant="ghost" size="icon-sm" className="rounded-full" aria-label="Next" onClick={() => url.set({ date: stepBy(1) })}>
+                <ChevronRight />
+              </Button>
+            </div>
+            <div className="flex min-w-0 items-center gap-2">
+              <h2 className="truncate text-lg font-semibold tracking-tight">{title}</h2>
+              {isToday && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">{view === 'day' ? 'Today' : 'This ' + view}</span>}
+            </div>
+            <label className="relative">
+              <span className="sr-only">Go to date</span>
+              <CalendarDays className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input type="date" aria-label="Go to date" className="h-9 w-[160px] rounded-full pl-8 text-sm" value={date} onChange={(e) => e.target.value && url.set({ date: e.target.value })} />
             </label>
-            <NativeSelect aria-label="Vet" className="h-8 w-[180px] text-xs" value={clinicianFilter} onChange={(e) => url.set({ clinician: e.target.value })}>
-              <option value="">All vets</option>
-              {clinicians.data?.map((c) => (
-                <option key={c.membershipId} value={c.membershipId}>
-                  {c.name}
-                </option>
-              ))}
-            </NativeSelect>
-            <div className={tabListClass} role="tablist" aria-label="View">
+            <div className={cn(tabListClass, 'ml-auto')} role="tablist" aria-label="View">
               {(['day', 'week', 'month'] as const).map((v) => (
-                <button
-                  key={v}
-                  role="tab"
-                  aria-selected={view === v}
-                  onClick={() => url.set({ view: v })}
-                  className={cn(tabTriggerClass(), 'h-8 capitalize')}
-                >
+                <button key={v} role="tab" aria-selected={view === v} onClick={() => url.set({ view: v })} className={cn(tabTriggerClass(view === v), 'h-8 capitalize')}>
                   {v}
                 </button>
               ))}
             </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="relative">
+              <Users className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <NativeSelect aria-label="Vet" className="h-8 w-[190px] rounded-full pl-8 text-xs" value={clinicianFilter} onChange={(e) => url.set({ clinician: e.target.value })}>
+                <option value="">All vets</option>
+                {clinicians.data?.map((c) => (
+                  <option key={c.membershipId} value={c.membershipId}>
+                    {c.name}
+                  </option>
+                ))}
+              </NativeSelect>
+            </label>
+            {moduleOn('homeVisits') && (
+              <button type="button" role="checkbox" aria-checked={homeOnly} className={chip(homeOnly)} onClick={() => url.set({ where: homeOnly ? null : 'home' })}>
+                <House className="h-3.5 w-3.5" /> Home visits only
+              </button>
+            )}
+            <button type="button" role="checkbox" aria-checked={showCancelled} className={chip(showCancelled)} onClick={() => setShowCancelled(!showCancelled)}>
+              <XCircle className="h-3.5 w-3.5" /> Show cancelled / no-shows
+            </button>
+            <ul className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground" aria-label="Summary">
+              {stats.map((st) => (
+                <li key={st.label}>
+                  <span className={cn('text-sm font-semibold tabular text-foreground', st.value > 0 && st.tone)}>{st.value}</span> {st.label}
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
 
@@ -326,7 +368,7 @@ function CalendarView() {
           <div className="overflow-x-auto">
             <div className="grid min-w-[700px] grid-cols-7" role="grid" aria-label={`Appointments in ${title}`}>
               {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
-                <div key={d} className="border-b border-r px-2 py-1.5 text-2xs font-semibold uppercase text-muted-foreground last:border-r-0">{d}</div>
+                <div key={d} className="border-b border-r bg-muted/30 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground last:border-r-0">{d}</div>
               ))}
               {days.map((d) => {
                 const list = byDay.get(d) ?? [];
@@ -336,30 +378,30 @@ function CalendarView() {
                     key={d}
                     role="gridcell"
                     aria-label={`${dayLabel(d, 'EEEE d MMMM')}: ${list.length} appointment${list.length === 1 ? '' : 's'}`}
-                    className={cn('min-h-[112px] border-b border-r p-1.5 [&:nth-child(7n)]:border-r-0', outside && 'bg-muted/40', d === today && 'bg-accent/60')}
+                    className={cn('min-h-[118px] border-b border-r p-2 transition-colors hover:bg-muted/20 [&:nth-child(7n)]:border-r-0', outside && 'bg-muted/30', d === today && 'bg-primary/[0.04]')}
                   >
                     <div className="mb-1 flex items-center justify-between">
                       <button
-                        className={cn('rounded px-1 text-xs font-medium tabular hover:bg-muted', outside && 'text-muted-foreground', d === today && 'bg-primary text-primary-foreground hover:bg-primary')}
+                        className={cn('grid h-7 min-w-7 place-items-center rounded-full px-1 text-xs font-semibold tabular hover:bg-muted', outside && 'font-normal text-muted-foreground', d === today && 'bg-primary text-primary-foreground hover:bg-primary')}
                         onClick={() => url.set({ view: 'day', date: d })}
                         aria-label={`Open ${dayLabel(d, 'EEEE d MMMM')}`}
                       >
                         {dayLabel(d, 'd')}
                       </button>
-                      {list.length > 0 && <span className="text-2xs text-muted-foreground">{list.length}</span>}
+                      {list.length > 0 && <span className="rounded-full bg-muted px-1.5 text-[11px] font-medium tabular text-muted-foreground">{list.length}</span>}
                     </div>
                     <div className="grid gap-0.5">
                       {list.slice(0, MONTH_CELL_LIMIT).map((a) => (
                         <button
                           key={a.id}
                           onClick={() => setSelected(a.id)}
-                          className={cn('flex items-center gap-1 truncate rounded border-l-2 bg-card px-1 py-0.5 text-left text-2xs hover:bg-muted', (a.status === 'CANCELLED' || a.status === 'NO_SHOW') && 'line-through opacity-50')}
-                          style={{ borderLeftColor: a.appointmentType.color }}
+                          className={cn('flex items-center gap-1.5 truncate rounded-md px-1.5 py-1 text-left text-[11px] transition-[filter] hover:brightness-95', (a.status === 'CANCELLED' || a.status === 'NO_SHOW') && 'line-through opacity-50')}
+                          style={{ background: tint(a.appointmentType.color, 14) }}
                           title={`${branchTime(a.startsAt, tz)} ${a.patient?.name ?? a.client.displayName} — ${a.appointmentType.name}`}
                         >
                           <span className="tabular text-muted-foreground">{branchTime(a.startsAt, tz)}</span>
                           {a.location === 'HOME' && <House className="h-3 w-3 shrink-0 text-primary" aria-label="Home visit" />}
-                          <span className="truncate">{a.patient?.name ?? a.client.displayName}</span>
+                          <span className="truncate font-medium">{a.patient?.name ?? a.client.displayName}</span>
                         </button>
                       ))}
                       {list.length > MONTH_CELL_LIMIT && (
@@ -377,28 +419,44 @@ function CalendarView() {
           <div ref={scroller} className="max-h-[calc(100vh-250px)] overflow-auto">
             <div className="flex min-w-fit">
               {/* time gutter */}
-              <div className="sticky left-0 z-20 w-14 shrink-0 border-r bg-card">
-                <div className="sticky top-0 z-10 h-12 border-b bg-card" />
+              <div className="sticky left-0 z-20 w-16 shrink-0 border-r bg-card">
+                <div className="sticky top-0 z-10 h-14 border-b bg-card" />
                 <div className="relative" style={{ height }}>
                   {Array.from({ length: Math.ceil((endMin - startMin) / 60) + 1 }, (_, i) => {
                     const m = Math.ceil(startMin / 60) * 60 + i * 60;
                     if (m > endMin) return null;
                     return (
-                      <span key={m} className="absolute right-1.5 -translate-y-1/2 text-2xs tabular text-muted-foreground" style={{ top: (m - startMin) * PX_PER_MIN }}>
+                      <span key={m} className="absolute right-2 -translate-y-1/2 text-[11px] font-medium tabular text-muted-foreground" style={{ top: (m - startMin) * PX_PER_MIN }}>
                         {hhmm(m)}
                       </span>
                     );
                   })}
+                  {days.includes(today) && nowMin >= startMin && nowMin <= endMin && (
+                    <span className="absolute right-1 z-10 -translate-y-1/2 rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-semibold tabular text-destructive-foreground" style={{ top: (nowMin - startMin) * PX_PER_MIN }} aria-label="Now">
+                      {branchTime(new Date(), tz)}
+                    </span>
+                  )}
                 </div>
               </div>
               {columns.map((col) => (
-                <div key={col.key} className={cn('min-w-[180px] flex-1 border-r last:border-r-0', view === 'week' && 'min-w-[140px]')}>
-                  <div className={cn('sticky top-0 z-10 flex h-12 flex-col justify-center border-b bg-card px-2', col.date === today && view === 'week' && 'bg-accent')}>
-                    <p className="truncate text-sm font-medium">{col.title}</p>
-                    <p className="truncate text-2xs text-muted-foreground">
-                      {col.subtitle}
-                      {view === 'day' && col.clinicianId && !col.available.length && ' · not working today'}
-                    </p>
+                <div key={col.key} className={cn('min-w-[190px] flex-1 border-r last:border-r-0', view === 'week' && 'min-w-[140px]')}>
+                  <div className={cn('sticky top-0 z-10 flex h-14 items-center gap-2.5 border-b bg-card px-3', col.date === today && view === 'week' && 'shadow-[inset_0_-2px_0_hsl(var(--primary))]')}>
+                    {view === 'day' ? (
+                      col.clinicianId ? <Avatar name={col.title.replace(/^Dr\.?\s+/i, '')} className="h-8 w-8 text-[11px]" /> : <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"><Users className="h-4 w-4" /></span>
+                    ) : (
+                      <span className={cn('grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-semibold tabular', col.date === today ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground')}>{dayLabel(col.date, 'd')}</span>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold">{view === 'day' ? col.title : dayLabel(col.date, 'EEEE')}</p>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        {view === 'day' ? (col.clinicianId && !col.available.length ? <span className="font-medium text-warning">Not working today</span> : col.subtitle) : dayLabel(col.date, 'MMMM')}
+                      </p>
+                    </div>
+                    {col.appointments.filter((a) => a.status !== 'CANCELLED' && a.status !== 'NO_SHOW').length > 0 && (
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold tabular text-muted-foreground" title="Appointments">
+                        {col.appointments.filter((a) => a.status !== 'CANCELLED' && a.status !== 'NO_SHOW').length}
+                      </span>
+                    )}
                   </div>
                   <div
                     className={cn('relative cursor-crosshair', dropKey === col.key && 'ring-2 ring-inset ring-primary')}
@@ -415,7 +473,7 @@ function CalendarView() {
                     data-testid={`calendar-column-${col.key}`}
                   >
                     {/* shading for non-rostered time */}
-                    <div className="pointer-events-none absolute inset-0 bg-muted/60" />
+                    <div className="pointer-events-none absolute inset-0 bg-[repeating-linear-gradient(135deg,hsl(var(--muted)/0.55),hsl(var(--muted)/0.55)_8px,hsl(var(--muted)/0.3)_8px,hsl(var(--muted)/0.3)_16px)]" />
                     {col.available.map(([s, e]) => (
                       <div key={`${s}-${e}`} className="pointer-events-none absolute inset-x-0 bg-card" style={{ top: Math.max(0, s - startMin) * PX_PER_MIN, height: (Math.min(e, endMin) - Math.max(s, startMin)) * PX_PER_MIN }} />
                     ))}
@@ -430,12 +488,10 @@ function CalendarView() {
                     ))}
                     {/* hour lines */}
                     {Array.from({ length: Math.ceil((endMin - startMin) / 30) }, (_, i) => (
-                      <div key={i} className={cn('pointer-events-none absolute inset-x-0 border-t', i % 2 ? 'border-dashed border-border/50' : 'border-border')} style={{ top: (Math.ceil(startMin / 30) * 30 - startMin + i * 30) * PX_PER_MIN }} />
+                      <div key={i} className={cn('pointer-events-none absolute inset-x-0 border-t', i % 2 ? 'border-dotted border-border/40' : 'border-border/70')} style={{ top: (Math.ceil(startMin / 30) * 30 - startMin + i * 30) * PX_PER_MIN }} />
                     ))}
                     {col.date === today && nowMin >= startMin && nowMin <= endMin && (
-                      <div className="pointer-events-none absolute inset-x-0 z-10 border-t-2 border-destructive" style={{ top: (nowMin - startMin) * PX_PER_MIN }}>
-                        <span className="absolute -left-1 -top-1.5 h-2.5 w-2.5 rounded-full bg-destructive" />
-                      </div>
+                      <div className="pointer-events-none absolute inset-x-0 z-[6] border-t-2 border-destructive/80" style={{ top: (nowMin - startMin) * PX_PER_MIN }} />
                     )}
                     {layout(col.appointments, tz).map(({ a, start, end, lane, lanes }) => {
                       const critical = a.patient?.alerts.some((x) => x.severity === 'CRITICAL');
@@ -456,10 +512,10 @@ function CalendarView() {
                           aria-roledescription={canMove(a) ? 'draggable appointment' : undefined}
                           className={cn(
                             canMove(a) && 'cursor-grab active:cursor-grabbing',
-                            'absolute z-[5] overflow-hidden rounded-md border border-l-4 bg-card px-1.5 py-0.5 text-left text-xs shadow-sm transition-shadow hover:z-10 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring',
-                            a.status === 'CHECKED_IN' && 'bg-warning/10',
-                            a.status === 'IN_CONSULTATION' && 'bg-primary/10',
-                            a.status === 'COMPLETED' && 'opacity-70',
+                            'absolute z-[5] overflow-hidden rounded-lg border border-black/[0.04] border-l-[3px] px-2 py-1 text-left text-xs shadow-[0_1px_2px_rgb(0_0_0/0.06)] transition-all hover:z-10 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring dark:border-white/[0.06]',
+                            a.status === 'CHECKED_IN' && 'ring-1 ring-warning/50',
+                            a.status === 'IN_CONSULTATION' && 'ring-1 ring-primary/50',
+                            a.status === 'COMPLETED' && 'opacity-60',
                             dim && 'line-through opacity-50',
                           )}
                           style={{
@@ -468,28 +524,35 @@ function CalendarView() {
                             left: `calc(${(lane / lanes) * 100}% + 2px)`,
                             width: `calc(${100 / lanes}% - 4px)`,
                             borderLeftColor: a.appointmentType.color,
+                            background: tint(a.appointmentType.color, a.status === 'COMPLETED' ? 6 : 12),
                           }}
                           title={`${branchTime(a.startsAt, tz)} ${a.patient?.name ?? a.client.displayName} — ${a.appointmentType.name} (${a.status.toLowerCase()})${a.location === 'HOME' ? ` · home visit: ${a.visitAddress}${travel ? ` · leaves ${branchTime(blockStart(a), tz)}` : ''}` : ''}`}
                         >
                           {/* A home visit's travel time, striped, before the visit itself. */}
                           {travel > 0 && (
                             <span
-                              className="-mx-1.5 -mt-0.5 mb-0.5 flex items-center gap-1 overflow-hidden bg-[repeating-linear-gradient(45deg,transparent,transparent_5px,hsl(var(--muted))_5px,hsl(var(--muted))_10px)] px-1.5 text-2xs text-muted-foreground"
+                              className="-mx-2 -mt-1 mb-1 flex items-center gap-1 overflow-hidden bg-[repeating-linear-gradient(45deg,transparent,transparent_5px,hsl(var(--muted))_5px,hsl(var(--muted))_10px)] px-2 text-[10px] text-muted-foreground"
                               style={{ height: Math.max(travel * PX_PER_MIN - 2, 12) }}
                             >
                               <Car className="h-3 w-3 shrink-0" aria-hidden /> {travel >= 15 && `Travel ${travel} min`}
                             </span>
                           )}
-                          <span className="flex items-center gap-1 font-medium">
-                            <span className="tabular text-muted-foreground">{branchTime(a.startsAt, tz)}</span>
-                            <span className="truncate">{a.patient?.name ?? a.client.displayName}</span>
+                          <span className="flex items-center gap-1">
+                            <span className="text-[11px] font-medium tabular text-muted-foreground">{branchTime(a.startsAt, tz)}</span>
+                            <span className="truncate font-semibold">{a.patient?.name ?? a.client.displayName}</span>
                             {a.location === 'HOME' && <House className="h-3 w-3 shrink-0 text-primary" aria-label="Home visit" />}
                             {critical && <AlertOctagon className="h-3 w-3 shrink-0 text-destructive" aria-label="Critical alert" />}
                             {a.source === 'ONLINE' && <Globe className={cn('h-3 w-3 shrink-0', a.status === 'BOOKED' ? 'text-warning' : 'text-primary')} aria-label={a.status === 'BOOKED' ? 'Booked online — to confirm' : 'Booked online'} />}
                             <PriorityDot priority={a.triage?.priority ?? a.priority} />
+                            {end - start - travel >= 25 && (view === 'day' || lanes === 1) && STATUS_LOOK[a.status] && a.status !== 'BOOKED' && (
+                              <span className={cn('ml-auto inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 text-[10px] font-semibold no-underline', STATUS_LOOK[a.status].chip)}>
+                                {a.status === 'CONFIRMED' && <Check className="h-2.5 w-2.5" />}
+                                {STATUS_LOOK[a.status].label}
+                              </span>
+                            )}
                           </span>
                           {end - start - travel >= 25 && (
-                            <span className="block truncate text-2xs text-muted-foreground">
+                            <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
                               {a.location === 'HOME' ? `Home visit · ` : ''}
                               {a.appointmentType.name}
                               {view === 'week' && a.clinician ? ` · ${a.clinician.name}` : ''}
@@ -506,11 +569,23 @@ function CalendarView() {
           </div>
         )}
       </Card>
-      <p className="mt-2 text-xs text-muted-foreground">
-        {view === 'month'
-          ? 'Click a day to open it; click an appointment for details.'
-          : 'Click an empty time to book; drag an appointment to move it. Shaded areas are outside working hours; striped areas are leave.'}
-      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
+        <span>
+          {view === 'month' ? 'Click a day to open it; click an appointment for details.' : 'Click an empty time to book · drag an appointment to move it.'}
+        </span>
+        {view !== 'month' && (
+          <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 sm:ml-auto" aria-label="Legend">
+            {(['CONFIRMED', 'CHECKED_IN', 'IN_CONSULTATION'] as const).map((k) => (
+              <li key={k} className="flex items-center gap-1.5">
+                <span className={cn('rounded-full px-1.5 text-[10px] font-semibold', STATUS_LOOK[k].chip)}>{STATUS_LOOK[k].label}</span>
+              </li>
+            ))}
+            <li className="flex items-center gap-1.5"><House className="h-3.5 w-3.5 text-primary" /> Home visit</li>
+            <li className="flex items-center gap-1.5"><Globe className="h-3.5 w-3.5 text-warning" /> Online, to confirm</li>
+            <li className="flex items-center gap-1.5"><span className="h-3 w-4 rounded-sm bg-[repeating-linear-gradient(135deg,hsl(var(--muted)),hsl(var(--muted))_3px,transparent_3px,transparent_6px)] ring-1 ring-border" /> Not working</li>
+          </ul>
+        )}
+      </div>
       <BookingDialog
         open={booking.open}
         onOpenChange={(open) => { setBooking((b) => ({ ...b, open })); if (!open && requestId) url.set({ request: null, patient: null, reason: null, client: null }); }}
