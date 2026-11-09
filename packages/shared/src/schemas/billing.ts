@@ -31,6 +31,8 @@ export const lineSchema = z
     taxRateBasisPoints: z.coerce.number().int().min(0).max(10000).optional(),
     /** Who approved selling a prescription-only item without a prescription (needed only for those items). */
     withoutPrescriptionNote: optText(200),
+    /** Sold at the counter against this client's prescription (the vet's written prescription, read at the counter). */
+    prescriptionId: optUuid(),
   })
   .refine((l) => l.kind !== 'SERVICE' || !!l.serviceId, { path: ['serviceId'], message: 'Choose a service' })
   .refine((l) => l.kind !== 'PRODUCT' || !!l.productId, { path: ['productId'], message: 'Choose a product' })
@@ -42,6 +44,8 @@ export const createInvoiceSchema = z.object({
   patientId: optUuid(),
   encounterId: optUuid(),
   chargeIds: z.array(z.string().uuid()).max(500).default([]),
+  /** Extra discount the cashier gives on a waiting charge (on top of any it already has), in minor units. */
+  chargeDiscounts: z.array(z.object({ chargeId: z.string().uuid(), discountMinor: z.coerce.number().int().min(0) })).max(500).default([]),
   lines: z.array(lineSchema).max(200).default([]),
   notes: optText(2000),
   isPos: z.boolean().default(false),

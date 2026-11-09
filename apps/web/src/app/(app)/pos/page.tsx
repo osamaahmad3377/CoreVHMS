@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import type { Paginated } from '@vcms/shared';
 import type { ClinicHeader } from '@/components/billing/invoice-document';
 import { TakePaymentDialog } from '@/components/billing/take-payment-dialog';
 import type { PickedClient } from '@/components/clients/client-picker';
@@ -19,7 +20,7 @@ import { CloseDrawerDialog, OpenDrawerDialog } from '@/components/billing/cash-d
 import { CollectPrescriptionDialog } from '@/components/pos/prescription-collect';
 import { ReturnItemsDialog } from '@/components/pos/return-dialog';
 import { RxNoteDialog } from '@/components/pos/rx-note-dialog';
-import { applySaleDiscount, blockReason, cartTotals, chargeItem, customItem, isOutOfStock, toChargeIds, toInvoiceLines, saleDiscountAmount, type CartLine, type SaleDiscount, type Tender } from '@/components/pos/model';
+import { applySaleDiscount, blockReason, cartTotals, chargeItem, customItem, isOutOfStock, toChargeDiscounts, toChargeIds, toInvoiceLines, saleDiscountAmount, type CartLine, type CounterWaiting, type RxReference, type SaleDiscount, type Tender } from '@/components/pos/model';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useConfirm } from '@/components/confirm';
@@ -37,6 +38,13 @@ import { localDate, todayIn } from '@/lib/time';
 import { useSession } from '@/lib/session';
 import { cn } from '@/lib/utils';
 import type { BillingSettings, CashRegister, Charge, Invoice, Payment, PosCatalog as CatalogBase, PosItem, ProductCategory } from '@/lib/types';
+
+/** A client's bill at the counter (GET /pos/bill/:clientId). */
+interface CounterBill {
+  client: { id: string; displayName: string; mobilePhone: string | null; clientNo: string };
+  charges: (Pick<Charge, 'id' | 'kind' | 'description' | 'quantity' | 'unitPriceMinor' | 'taxRateBasisPoints' | 'discountMinor' | 'discountNote' | 'sourceType' | 'sourceId' | 'clientId' | 'patient' | 'createdAt'> & { section: string })[];
+  prescriptions: RxReference[];
+}
 
 type Catalog = CatalogBase & { sellableTypes?: string[]; defaultTaxRateBasisPoints?: number };
 
@@ -110,6 +118,8 @@ function Pos() {
   const [category, setCategory] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [lines, setLines] = useState<CartLine[]>([]);
+  // Who is ready to pay: today's finished visits and prescriptions, refreshed as consultations finish.
+  const waiting = useQuery({ queryKey: ['pos', 'waiting'], queryFn: () => api.get<CounterWaiting[]>('/pos/waiting'), refetchInterval: 20_000 });
   const [client, setClient] = useState<PickedClient | null>(null);
   const [tendering, setTendering] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -126,6 +136,8 @@ function Pos() {
   const [closingDrawer, setClosingDrawer] = useState<string | null>(null);
   // A prescription-only item waiting for the note that says who approved selling it without a prescription.
   const [pendingRx, setPendingRx] = useState<PosItem | null>(null);
+  /** The client's recent prescriptions, read at the counter (newest first). */
+  const [rxRef, setRxRef] = useState<RxReference[]>([]);
   const heldKey = `vcms.pos.held.${session.organization?.id}.${session.branch?.id}`;
   const [held, setHeld] = useState<HeldSale[]>([]);
   useEffect(() => setHeld(readHeld(heldKey)), [heldKey]);
@@ -143,7 +155,8 @@ function Pos() {
 
   const inclusive = settings.data?.pricesIncludeTax ?? false;
   const allowNegative = catalog.data?.allowNegativeStock ?? false;
-  const allowRx = catalog.data?.sellWithoutPrescription ?? false;
+  // Prescription-only medicines can be sold to a client with a prescription (or anyone, if the clinic allows it).
+  const allowRx = (catalog.data?.sellWithoutPrescription ?? false) || rxRef.length > 0;
   const openRegister = (registers.data ?? []).find((r) => r.sessions.length);
   const canCloseDrawer = !!openRegister && (can('cash.manage') || openRegister.sessions[0].openedById === session.user.id);
   const cashBlocked = !!settings.data?.requireCashSession && registers.isSuccess && !openRegister;
@@ -153,12 +166,22 @@ function Pos() {
   const discountOnSale = useMemo(() => saleDiscountAmount(lines, saleDiscount), [lines, saleDiscount]);
   const qtyInCart = useCallback((item: PosItem) => lines.filter((l) => l.item.type === item.type && l.item.id === item.id).reduce((n, l) => n + l.quantity, 0), [lines]);
 
-  const addLine = useCallback((item: PosItem, rxNote?: string) => {
+  const addLine = useCallback((item: PosItem, rxNote?: string, onRx?: { prescriptionId: string; prescriptionNo: string }) => {
     setLines((ls) => {
       const existing = ls.find((l) => l.item.type === item.type && l.item.id === item.id);
-      return existing ? ls.map((l) => (l === existing ? { ...l, quantity: l.quantity + 1 } : l)) : [...ls, { key: crypto.randomUUID(), item, quantity: 1, priceMinor: item.priceMinor!, discountMinor: 0, rxNote }];
+      return existing ? ls.map((l) => (l === existing ? { ...l, quantity: l.quantity + 1 } : l)) : [...ls, { key: crypto.randomUUID(), item, quantity: 1, priceMinor: item.priceMinor!, discountMinor: 0, rxNote, ...onRx }];
     });
   }, []);
+
+  /** The client's prescription a shop medicine is sold against: the one naming it (by stock item or name), else the newest. */
+  const prescriptionFor = useCallback(
+    (item: PosItem) => {
+      const words = item.name.toLowerCase().split(/\s+/).filter((w) => w.length >= 4);
+      const hit = rxRef.find((r) => r.items.some((i) => i.productId === item.id)) ?? rxRef.find((r) => r.items.some((i) => words.some((w) => i.name.toLowerCase().includes(w)))) ?? rxRef[0];
+      return hit ? { prescriptionId: hit.id, prescriptionNo: hit.prescriptionNo } : undefined;
+    },
+    [rxRef],
+  );
 
   const add = useCallback(
     (item: PosItem) => {
@@ -168,14 +191,22 @@ function Pos() {
         else toast.error(`${item.name}: ${reason.toLowerCase()}`);
         return;
       }
+      const first = !lines.some((l) => l.item.type === item.type && l.item.id === item.id);
+      // A prescription-only medicine for a client with a prescription is sold against it (recorded on the invoice).
+      const onRx = item.rxOnly && first ? prescriptionFor(item) : undefined;
+      if (onRx) {
+        addLine(item, undefined, onRx);
+        toast.message(`${item.name}: sold on ${onRx.prescriptionNo}`);
+        return;
+      }
       // A prescription-only item sold without a prescription needs a note, asked once per item in the basket.
-      if (item.rxOnly && !lines.some((l) => l.item.type === item.type && l.item.id === item.id)) {
+      if (item.rxOnly && first) {
         setPendingRx(item);
         return;
       }
       addLine(item);
     },
-    [qtyInCart, allowNegative, allowRx, lines, addLine],
+    [qtyInCart, allowNegative, allowRx, lines, addLine, prescriptionFor],
   );
 
   /** Enter in the search box: a barcode scanner or a typed SKU/code adds the item directly. */
@@ -196,6 +227,7 @@ function Pos() {
   const clearSale = () => {
     setLines([]);
     setClient(null);
+    setRxRef([]);
     setSaleDiscount(null);
     setSearch('');
     searchRef.current?.focus();
@@ -216,6 +248,9 @@ function Pos() {
     }
     setLines(h.lines);
     setClient(h.client);
+    // The prescription to read comes back with the client (the paused lines are kept as they were).
+    setRxRef([]);
+    if (h.client) api.get<CounterBill>(`/pos/bill/${h.client.id}`).then((b) => setRxRef(b.prescriptions), () => undefined);
     setSaleDiscount(h.saleDiscount ?? null);
     const next = held.filter((x) => x.id !== h.id);
     setHeld(next);
@@ -229,7 +264,10 @@ function Pos() {
     setBusy(true);
     let invoice: Invoice;
     try {
-      invoice = await api.post<Invoice>('/invoices', { isPos: true, clientId: client?.id ?? null, chargeIds: toChargeIds(lines), lines: toInvoiceLines(effective), issue: true });
+      const basket = lines;
+      const sale = applySaleDiscount(basket, saleDiscount);
+      invoice = await api.post<Invoice>('/invoices', { isPos: true, clientId: client?.id ?? null, chargeIds: toChargeIds(basket), chargeDiscounts: toChargeDiscounts(basket), lines: toInvoiceLines(sale), issue: true });
+      qc.invalidateQueries({ queryKey: ['pos', 'waiting'] });
     } catch (e) {
       setBusy(false);
       toast.error(e instanceof ApiError ? e.message : 'The sale could not be completed');
@@ -380,6 +418,31 @@ function Pos() {
     </>
   );
 
+  /**
+   * Choosing the client (or their pet) brings up their bill: everything still to be paid from their visits
+   * (consultation fee, medicines given in the clinic, other charges), and the vet's prescription to read — the cashier
+   * adds the medicines the client wants from the shop's stock. Another client's lines leave the sale.
+   */
+  const pickClient = async (c: PickedClient | null) => {
+    setClient(c);
+    setRxRef([]);
+    setLines((ls) => ls.filter((l) => (l.item.type !== 'CHARGE' && !l.prescriptionId) || (!!c && (!l.item.clientId || l.item.clientId === c.id))));
+    if (!c) return;
+    try {
+      const bill = await api.get<CounterBill>(`/pos/bill/${c.id}`);
+      addCollected(bill.charges as unknown as Charge[]);
+      setRxRef(bill.prescriptions);
+      const n = bill.charges.length;
+      if (n || bill.prescriptions.length) {
+        toast.success(n ? `${c.displayName}’s bill: ${n} ${n === 1 ? 'item' : 'items'} from the visit` : `${c.displayName}: prescription to read`, {
+          description: bill.prescriptions.length ? 'Read the prescription and add the medicines they want from the shop.' : 'Remove anything they do not want.',
+        });
+      }
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+
   /** Medicines just handed out against a prescription join the sale as fixed lines. */
   const addCollected = (charges: Charge[]) =>
     setLines((ls) => [
@@ -401,7 +464,7 @@ function Pos() {
           setPendingRx(null);
         }}
       />
-      <CollectPrescriptionDialog open={collectOpen} onOpenChange={setCollectOpen} client={client} onClient={setClient} onCollected={addCollected} />
+      <CollectPrescriptionDialog open={collectOpen} onOpenChange={setCollectOpen} client={client} onClient={pickClient} onCollected={addCollected} />
       <TodaySalesDialog
         open={showToday}
         onOpenChange={setShowToday}
@@ -496,7 +559,11 @@ function Pos() {
               onSaleDiscount={setSaleDiscount}
               saleDiscountMinor={discountOnSale}
               client={client}
-              onClient={setClient}
+              onClient={pickClient}
+              waiting={waiting.data ?? []}
+              onPickWaiting={(w) => void pickClient({ id: w.client.id, displayName: w.client.displayName, clientNo: w.client.clientNo, mobilePhone: w.client.mobilePhone })}
+              prescriptions={rxRef}
+              onFindInShop={(name) => setSearch(name)}
               totals={totals}
               inclusive={inclusive}
               allowOverrides={can('billing.write')}

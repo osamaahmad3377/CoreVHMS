@@ -20,7 +20,7 @@ export function PlanFromRecords({ patientId, encounterId, plan, onAdd }: { patie
 
   const lines: string[] = [];
   for (const a of given.data ?? []) if (a.status !== 'NOT_GIVEN') lines.push(`Given in clinic: ${a.product.name} ${a.dose} ${a.doseUnit}, ${a.route.toLowerCase()}`);
-  for (const p of rx.data?.data ?? []) if (p.status !== 'CANCELLED') for (const i of p.items) lines.push(`Prescribed: ${i.name} ${i.doseValue} ${i.doseUnit}${i.outside ? ' (buy outside)' : ''}`);
+  for (const p of rx.data?.data ?? []) if (p.status !== 'CANCELLED') for (const i of p.items) lines.push(`Prescribed: ${i.name} ${i.doseValue} ${i.doseUnit}${i.outside ? '' : ''}`);
   const tests = (labs.data?.data ?? []).filter((o) => o.status !== 'CANCELLED').flatMap((o) => o.items.map((i) => i.test.name));
   if (tests.length) lines.push(`Tests ordered: ${[...new Set(tests)].join(', ')}`);
   const fresh = lines.filter((l) => !plan.includes(l));

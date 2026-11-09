@@ -42,7 +42,8 @@ interface Line {
   confirmedLarge: boolean;
 }
 
-const blankLine = (key: number): Line => ({ key, product: null, outside: false, outsideName: '', route: 'PO', doseValue: '', doseUnit: 'mg/kg', frequencyCode: 'BID', durationDays: '7', quantity: '', repeats: '0', instructions: null, overrideReason: '', confirmedLarge: false });
+// A medicine is typed by default (as on paper); picking one from stock is optional.
+const blankLine = (key: number): Line => ({ key, product: null, outside: true, outsideName: '', route: 'PO', doseValue: '1', doseUnit: 'tablet', frequencyCode: 'BID', durationDays: '7', quantity: '', repeats: '0', instructions: null, overrideReason: '', confirmedLarge: false });
 
 /** Units for the amount given each time of a medicine bought outside. */
 const OUTSIDE_UNITS = ['tablet', 'capsule', 'mL', 'drop', 'sachet', 'puff', 'application', 'injection'];
@@ -125,7 +126,7 @@ function LineEditor({ line, patientId, weightKg, alerts, onChange, onRemove, onE
       <div className="flex items-start gap-2">
         <div className="grid flex-1 gap-1">
           {line.outside ? (
-            <Field label="Medicine to buy outside (name and strength)" htmlFor={`out-${line.key}`} hint="Not stocked in our pharmacy. The client buys it elsewhere; it is printed on a prescription for them.">
+            <Field label="Medicine (name and strength)" htmlFor={`out-${line.key}`} hint="Type it as on a paper prescription — no need to pick from stock. At the counter the client can buy it from the shop, or elsewhere.">
               <Input id={`out-${line.key}`} autoFocus placeholder="e.g. Amoxicillin 250 mg tablets" maxLength={200} value={line.outsideName} onChange={(ev) => set({ outsideName: ev.target.value })} />
             </Field>
           ) : (
@@ -143,7 +144,7 @@ function LineEditor({ line, patientId, weightKg, alerts, onChange, onRemove, onE
             className="w-fit text-xs text-primary hover:underline"
             onClick={() => onChange({ ...blankLine(line.key), outside: !line.outside, doseUnit: line.outside ? 'mg/kg' : 'tablet', doseValue: line.outside ? '' : '1' })}
           >
-            {line.outside ? 'Choose from our pharmacy instead' : 'Not in our pharmacy? Write in a medicine to buy outside'}
+            {line.outside ? 'Pick from our stock instead (dose worked out from the weight)' : 'Type the medicine instead'}
           </button>
         </div>
         {onRemove && (
@@ -193,7 +194,7 @@ function LineEditor({ line, patientId, weightKg, alerts, onChange, onRemove, onE
           {err ? (
             <p className="flex items-center gap-1.5 text-xs font-medium text-destructive"><AlertTriangle className="h-3.5 w-3.5" /> {err}</p>
           ) : e ? (
-            <p className="text-xs text-muted-foreground">To buy: {qtyUnit(e.quantity, line.doseUnit.trim())}. No dose check is done for medicines bought outside — please double-check the amount.</p>
+            <p className="text-xs text-muted-foreground">To buy: {qtyUnit(e.quantity, line.doseUnit.trim())}. No dose check is done for a typed medicine — please double-check the amount.</p>
           ) : null}
           {e?.requiresOverride && (
             <Field label="Reason for overriding the safety warning" htmlFor={`ovr-${line.key}`} required hint="Recorded on the prescription and in the audit log.">
@@ -406,7 +407,7 @@ export function PrescriptionDialog({
         <DialogHeader>
           <DialogTitle>Prescribe for {patient.name}</DialogTitle>
           <DialogDescription>
-            Doses are calculated from the body weight and the medicine’s strength. Checked against allergies by medicine name, ingredient and drug family, and against the species and dose ranges your clinic has approved. A medicine not in our pharmacy can be written in for the client to buy outside.
+            Doses are calculated from the body weight and the medicine’s strength. Checked against allergies by medicine name, ingredient and drug family, and against the species and dose ranges your clinic has approved. Type any medicine as on paper, or pick one from stock to have the dose worked out from the weight.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">

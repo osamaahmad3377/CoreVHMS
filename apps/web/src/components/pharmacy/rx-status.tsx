@@ -10,7 +10,7 @@ const LABEL: Record<string, string> = { AUTHORIZED: 'Ready to hand over' };
 export const outsideOnly = (rx: Pick<Prescription, 'items'>) => rx.items.length > 0 && rx.items.every((i) => i.outside);
 
 export function RxStatusBadge({ status, outsideOnly }: { status: string; /** Only medicines bought outside: shown as "To buy outside" once authorised. */ outsideOnly?: boolean }) {
-  if (outsideOnly && status === 'DISPENSED') return <Badge variant="info">To buy outside</Badge>;
+  if (outsideOnly && status === 'DISPENSED') return <Badge variant="info">Written prescription</Badge>;
   return <Badge variant={VARIANT[status] ?? 'secondary'}>{LABEL[status] ?? enumLabel(status)}</Badge>;
 }
 

@@ -105,6 +105,20 @@ export class BillingController {
     return this.returns.returnItems(body);
   }
 
+  /** Clients ready to pay today: something waiting from today's visits, or today's prescription to hand out. */
+  @Get('pos/waiting')
+  @RequirePermissions('pos.use')
+  posWaiting() {
+    return this.pos.waiting();
+  }
+
+  /** A client's bill at the counter: waiting charges in sections and the prescribed medicines still to hand out. */
+  @Get('pos/bill/:clientId')
+  @RequirePermissions('pos.use')
+  posBill(@Param('clientId', UUID) clientId: string) {
+    return this.pos.bill(clientId);
+  }
+
   @Get('pos/recent')
   @RequirePermissions('pos.use')
   posRecent() {

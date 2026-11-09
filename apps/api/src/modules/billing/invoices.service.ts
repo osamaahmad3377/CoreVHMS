@@ -105,7 +105,7 @@ export class InvoicesService {
   }
 
   /** Resolves a manual line against the catalogue (price, description and tax), allowing explicit overrides. */
-  private async resolveLine(l: LineInputBody, isPos = false, rx?: { allowed: boolean; notes: string[] }) {
+  private async resolveLine(l: LineInputBody, isPos = false, rx?: { allowed: boolean; notes: string[]; prescriptions?: Map<string, string>; onRx?: string[] }) {
     const db = this.prisma.db;
     if (l.kind === 'SERVICE') {
       const s = await db.service.findUnique({ where: { id: l.serviceId! } });
@@ -120,6 +120,13 @@ export class InvoicesService {
       const rxOnly = p.requiresPrescription && (p.type === 'MEDICINE' || (isPos && p.type === 'VACCINE'));
       if (rxOnly) {
         if (p.isControlled) throw ruleViolation('PRESCRIPTION_REQUIRED', `${p.name} is a controlled medicine and always needs a prescription.`);
+        // Sold against the client's own prescription (checked when the invoice is made): recorded with it.
+        const onRx = l.prescriptionId ? rx?.prescriptions?.get(l.prescriptionId) : undefined;
+        if (onRx) {
+          rx!.onRx?.push(`${p.name} — ${onRx}`);
+          if (l.unitPriceMinor === undefined && p.sellPriceMinor === null) throw ruleViolation('NO_PRICE', `${p.name} has no selling price`);
+          return { kind: l.kind, productId: p.id, description: l.description ?? p.name, quantity: l.quantity, unitPriceMinor: l.unitPriceMinor ?? p.sellPriceMinor!, discountMinor: l.discountMinor, taxRateBasisPoints: l.taxRateBasisPoints ?? (await this.charges.taxFor(db, p.taxRateId)) };
+        }
         if (!rx?.allowed) {
           throw ruleViolation('PRESCRIPTION_REQUIRED', p.type === 'VACCINE' ? `${p.name} must be administered by the clinic, not sold at the counter.` : `${p.name} is prescription-only. Dispense it from an authorised prescription.`);
         }
@@ -138,7 +145,7 @@ export class InvoicesService {
     return { kind: l.kind, description: l.description!, quantity: l.quantity, unitPriceMinor: l.unitPriceMinor!, discountMinor: l.discountMinor, taxRateBasisPoints: l.taxRateBasisPoints ?? (await this.charges.defaultTaxBp(db)) };
   }
 
-  private async addLines(tx: ScopedTx, invoiceId: string, inclusive: boolean, startOrder: number, lines: Awaited<ReturnType<InvoicesService['resolveLine']>>[], chargeIds: string[], clientId: string | null) {
+  private async addLines(tx: ScopedTx, invoiceId: string, inclusive: boolean, startOrder: number, lines: Awaited<ReturnType<InvoicesService['resolveLine']>>[], chargeIds: string[], clientId: string | null, chargeDiscounts: { chargeId: string; discountMinor: number }[] = []) {
     const orgId = RequestContext.orgId();
     let order = startOrder;
     if (chargeIds.length) {
@@ -147,7 +154,10 @@ export class InvoicesService {
       for (const c of charges) {
         if (c.status !== 'PENDING') throw ruleViolation('CHARGE_NOT_PENDING', `“${c.description}” is already ${c.status.toLowerCase()}`);
         if (clientId && c.clientId !== clientId) throw ruleViolation('CHARGE_CLIENT', `“${c.description}” belongs to a different client`);
-        const amounts = calcLine({ quantity: Number(c.quantity), unitPriceMinor: c.unitPriceMinor, discountMinor: c.discountMinor, taxRateBasisPoints: c.taxRateBasisPoints }, inclusive);
+        // A discount given at the counter adds to the charge's own (never more than the line is worth).
+        const extra = chargeDiscounts.find((d) => d.chargeId === c.id)?.discountMinor ?? 0;
+        const discountMinor = Math.min(c.discountMinor + extra, Math.round(Number(c.quantity) * c.unitPriceMinor));
+        const amounts = calcLine({ quantity: Number(c.quantity), unitPriceMinor: c.unitPriceMinor, discountMinor, taxRateBasisPoints: c.taxRateBasisPoints }, inclusive);
         const line = await tx.invoiceLine.create({
           data: {
             organizationId: orgId,
@@ -155,7 +165,7 @@ export class InvoicesService {
             kind: c.kind,
             // A charge's discount (e.g. covered by a wellness plan) shows on the invoice with its reason.
             description: c.discountMinor > 0 && c.discountNote ? `${c.description} — ${c.discountNote}` : c.description,
-            discountMinor: c.discountMinor,
+            discountMinor,
             serviceId: c.serviceId,
             productId: c.productId,
             labTestId: c.labTestId,
@@ -188,7 +198,7 @@ export class InvoicesService {
     return tx.invoice.update({ where: { id: invoiceId }, data: { ...t, balanceMinor: t.totalMinor } });
   }
 
-  async create(input: { clientId?: string | null; patientId?: string | null; encounterId?: string | null; chargeIds: string[]; lines: LineInputBody[]; notes?: string | null; isPos: boolean; issue: boolean }) {
+  async create(input: { clientId?: string | null; patientId?: string | null; encounterId?: string | null; chargeIds: string[]; chargeDiscounts?: { chargeId: string; discountMinor: number }[]; lines: LineInputBody[]; notes?: string | null; isPos: boolean; issue: boolean }) {
     const ctx = RequestContext.require();
     const org = await this.org();
     if (!input.clientId && !input.isPos) throw ruleViolation('CLIENT_REQUIRED', 'Select the client to invoice');
@@ -213,9 +223,20 @@ export class InvoicesService {
       if (!encounterId && encounters.length === 1 && patients.length === 1) encounterId = encounters[0];
     }
     const resolved: Awaited<ReturnType<InvoicesService['resolveLine']>>[] = [];
-    const rx = { allowed: org.sellWithoutPrescription, notes: [] as string[] };
+    // Medicines sold against the client's prescription: it must be theirs, authorised and still valid.
+    const rxIds = [...new Set(input.lines.map((l) => l.prescriptionId).filter((x): x is string => !!x))];
+    const prescriptions = new Map<string, string>();
+    if (rxIds.length) {
+      const found = await this.prisma.db.prescription.findMany({
+        where: { id: { in: rxIds }, clientId: input.clientId ?? undefined, status: { in: ['AUTHORIZED', 'PARTIALLY_DISPENSED', 'DISPENSED'] }, OR: [{ validUntil: null }, { validUntil: { gte: new Date(new Date().toDateString()) } }] },
+        select: { id: true, number: true },
+      });
+      if (!input.clientId || found.length !== rxIds.length) throw ruleViolation('INVALID_PRESCRIPTION', 'That prescription is not this client’s, not authorised, or has expired');
+      for (const f of found) prescriptions.set(f.id, formatNumber('RX', f.number));
+    }
+    const rx = { allowed: org.sellWithoutPrescription, notes: [] as string[], prescriptions, onRx: [] as string[] };
     for (const l of input.lines) resolved.push(await this.resolveLine(l, input.isPos, rx));
-    const withoutRx = rx.notes.length ? `Sold without a prescription: ${rx.notes.join('; ')}` : null;
+    const withoutRx = [rx.notes.length ? `Sold without a prescription: ${rx.notes.join('; ')}` : null, rx.onRx.length ? `Sold on prescription: ${rx.onRx.join('; ')}` : null].filter(Boolean).join('\n') || null;
     const id = await this.prisma.db.$transaction(async (tx) => {
       const inv = await tx.invoice.create({
         data: {
@@ -232,8 +253,8 @@ export class InvoicesService {
           createdByName: ctx.userName ?? 'Unknown',
         },
       });
-      await this.addLines(tx, inv.id, org.pricesIncludeTax, 0, resolved, input.chargeIds, input.clientId ?? null);
-      if (withoutRx) await this.audit.record({ action: 'invoice.sold_without_prescription', entityType: 'Invoice', entityId: inv.id, summary: withoutRx.slice(0, 500) }, tx);
+      await this.addLines(tx, inv.id, org.pricesIncludeTax, 0, resolved, input.chargeIds, input.clientId ?? null, input.chargeDiscounts ?? []);
+      if (rx.notes.length) await this.audit.record({ action: 'invoice.sold_without_prescription', entityType: 'Invoice', entityId: inv.id, summary: rx.notes.join('; ').slice(0, 500) }, tx);
       await this.retotal(tx, inv.id);
       await this.audit.record({ action: 'invoice.drafted', entityType: 'Invoice', entityId: inv.id, summary: `${input.chargeIds.length} charge(s), ${input.lines.length} line(s)` }, tx);
       if (input.issue) await this.issueTx(tx, inv.id);

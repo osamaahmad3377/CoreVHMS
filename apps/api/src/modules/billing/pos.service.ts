@@ -1,10 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, ProductType, ServiceCategory } from '@prisma/client';
-import { PRODUCT_TYPES, PRODUCT_TYPE_LABELS } from '@vcms/shared';
+import { PRODUCT_TYPES, PRODUCT_TYPE_LABELS, chargeSection } from '@vcms/shared';
 import { RequestContext } from '../../common/context/request-context';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { formatNumber } from '../../common/counter/counter.service';
+import { notFound } from '../../common/http/errors';
 import { localDayBounds } from '../../common/time/tz';
 import { InventoryService } from '../inventory/inventory.service';
+import { ChargeCaptureService } from './charge-capture.service';
 import { shapeInvoice } from './invoices.service';
 
 export interface PosItem {
@@ -53,7 +56,116 @@ export class PosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventory: InventoryService,
+    private readonly charges: ChargeCaptureService,
   ) {}
+
+  /**
+   * Who is ready to pay at the counter today: clients with something waiting from today's visits (consultation fee,
+   * medicines given in the clinic, other charges) or a prescription written today. Newest first.
+   */
+  async waiting() {
+    const ctx = RequestContext.require();
+    if (!ctx.branchId) return [];
+    const db = this.prisma.db;
+    const branch = await db.branch.findUniqueOrThrow({ where: { id: ctx.branchId } });
+    const { start } = localDayBounds(new Date(), branch.timezone);
+    const [charges, rxs] = await Promise.all([
+      db.charge.findMany({ where: { branchId: branch.id, status: 'PENDING', createdAt: { gte: start } }, select: { clientId: true, patientId: true, quantity: true, unitPriceMinor: true, discountMinor: true, createdAt: true } }),
+      // Today's prescriptions (typed or from stock), which the counter reads.
+      db.prescription.findMany({ where: { branchId: branch.id, status: { in: ['AUTHORIZED', 'PARTIALLY_DISPENSED', 'DISPENSED'] }, authorizedAt: { gte: start } }, include: { _count: { select: { items: true } }, prescriber: { select: { user: { select: { name: true } } } } } }),
+    ]);
+    const byClient = new Map<string, { since: Date; charges: number; totalMinor: number; prescribed: number; patientIds: Set<string>; vet: string | null }>();
+    const entry = (id: string) => byClient.get(id) ?? byClient.set(id, { since: new Date(0), charges: 0, totalMinor: 0, prescribed: 0, patientIds: new Set(), vet: null }).get(id)!;
+    for (const c of charges) {
+      const e = entry(c.clientId);
+      e.charges++;
+      e.totalMinor += Math.round(Number(c.quantity) * c.unitPriceMinor) - c.discountMinor;
+      if (c.patientId) e.patientIds.add(c.patientId);
+      if (c.createdAt > e.since) e.since = c.createdAt;
+    }
+    for (const rx of rxs) {
+      const e = entry(rx.clientId);
+      e.prescribed += rx._count.items;
+      e.patientIds.add(rx.patientId);
+      e.vet ??= rx.prescriber?.user.name ?? null;
+      if ((rx.authorizedAt ?? rx.createdAt) > e.since) e.since = rx.authorizedAt ?? rx.createdAt;
+    }
+    if (!byClient.size) return [];
+    const [clients, patients] = await Promise.all([
+      db.client.findMany({ where: { id: { in: [...byClient.keys()] } }, select: { id: true, number: true, displayName: true, mobilePhone: true } }),
+      db.patient.findMany({ where: { id: { in: [...byClient.values()].flatMap((e) => [...e.patientIds]) } }, select: { id: true, name: true } }),
+    ]);
+    return clients
+      .map((c) => {
+        const e = byClient.get(c.id)!;
+        return { client: { ...c, clientNo: formatNumber('C', c.number) }, patients: patients.filter((p) => e.patientIds.has(p.id)).map((p) => p.name), vet: e.vet, since: e.since, charges: e.charges, totalMinor: e.totalMinor, prescribed: e.prescribed };
+      })
+      .sort((a, b) => b.since.getTime() - a.since.getTime());
+  }
+
+  /**
+   * A client's bill at the counter: everything waiting to be paid (in sections: consultation & services, given in the
+   * clinic, medicines handed out at the pharmacy), and the vet's recent prescriptions to read — the cashier adds the
+   * medicines the client wants from the shop's stock.
+   */
+  async bill(clientId: string) {
+    const db = this.prisma.db;
+    const client = await db.client.findUnique({ where: { id: clientId }, select: { id: true, number: true, displayName: true, mobilePhone: true } });
+    if (!client) throw notFound('Client');
+    const since = new Date(Date.now() - 30 * 86400_000);
+    const [charges, written] = await Promise.all([
+      db.charge.findMany({ where: { clientId, status: 'PENDING' }, orderBy: { createdAt: 'asc' } }),
+      // The vet's prescriptions of the last 30 days, as the counter reads them (newest first).
+      db.prescription.findMany({
+        where: { clientId, status: { in: ['AUTHORIZED', 'PARTIALLY_DISPENSED', 'DISPENSED'] }, authorizedAt: { gte: since } },
+        include: { items: { include: { product: { select: { id: true, name: true, dispensingUnit: true } } }, orderBy: { createdAt: 'asc' } }, prescriber: { select: { user: { select: { name: true } } } } },
+        orderBy: { authorizedAt: 'desc' },
+        take: 6,
+      }),
+    ]);
+    const patientIds = [...new Set([...charges.map((c) => c.patientId), ...written.map((r) => r.patientId)].filter((x): x is string => !!x))];
+    const patients = await db.patient.findMany({ where: { id: { in: patientIds } }, select: { id: true, name: true } });
+    const patientOf = (id: string | null) => patients.find((p) => p.id === id) ?? null;
+    return {
+      client: { ...client, clientNo: formatNumber('C', client.number) },
+      charges: charges.map((c) => ({
+        id: c.id,
+        kind: c.kind,
+        description: c.description,
+        quantity: Number(c.quantity),
+        unitPriceMinor: c.unitPriceMinor,
+        taxRateBasisPoints: c.taxRateBasisPoints,
+        discountMinor: c.discountMinor,
+        discountNote: c.discountNote,
+        sourceType: c.sourceType,
+        sourceId: c.sourceId,
+        section: chargeSection(c.sourceType),
+        clientId: c.clientId,
+        patient: patientOf(c.patientId),
+        createdAt: c.createdAt,
+      })),
+      prescriptions: written.map((rx) => ({
+        id: rx.id,
+        prescriptionNo: formatNumber('RX', rx.number),
+        status: rx.status,
+        authorizedAt: rx.authorizedAt,
+        validUntil: rx.validUntil,
+        patient: patientOf(rx.patientId),
+        prescriber: rx.prescriber?.user.name ?? null,
+        notes: rx.notes ?? null,
+        items: rx.items.map((i) => ({
+          id: i.id,
+          name: i.product?.name ?? i.outsideName ?? 'Medicine',
+          productId: i.product?.id ?? null,
+          instructions: i.instructions,
+          quantity: Number(i.quantity),
+          unit: i.product?.dispensingUnit ?? i.doseUnit,
+          repeats: i.repeats,
+          handedOut: Number(i.quantityDispensed),
+        })),
+      })),
+    };
+  }
 
   async catalog(q: { q?: string; category?: string; categoryId?: string; limit: number }): Promise<{
     items: PosItem[];

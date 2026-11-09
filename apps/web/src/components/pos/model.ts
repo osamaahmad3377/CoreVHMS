@@ -1,17 +1,57 @@
-import { calcLine, sumLines } from '@vcms/shared';
+import { calcLine, chargeSection, sumLines, type PosBillSection } from '@vcms/shared';
 import type { Charge, PosItem } from '@/lib/types';
 
 /** A catalogue item, or an "other item" typed in at the counter (name and price only). */
-export type CartItem = Omit<PosItem, 'type'> & { type: PosItem['type'] | 'CUSTOM' | 'CHARGE' };
+export type CartItem = Omit<PosItem, 'type'> & {
+  /** CHARGE: waiting from a visit (consultation fee, given in the clinic, handed out at the pharmacy). */
+  type: PosItem['type'] | 'CUSTOM' | 'CHARGE';
+  /** A waiting charge: whose bill it is on, and where it came from ("Max's visit · 9 Nov"). */
+  clientId?: string | null;
+  note?: string | null;
+  /** Where it shows on the bill. */
+  section?: PosBillSection;
+  /** A waiting charge's own discount (e.g. a wellness plan); the cashier can only add to it. */
+  baseDiscountMinor?: number;
+};
+
+/** The vet's prescription as the counter reads it (a reference: the cashier adds medicines from the shop's stock). */
+export interface RxReference {
+  id: string;
+  prescriptionNo: string;
+  status: string;
+  authorizedAt: string | null;
+  validUntil: string | null;
+  patient: { id: string; name: string } | null;
+  prescriber: string | null;
+  notes: string | null;
+  items: { id: string; name: string; productId: string | null; instructions: string; quantity: number; unit: string; repeats: number; handedOut: number }[];
+}
+
+/** Someone ready to pay at the counter (GET /pos/waiting). */
+export interface CounterWaiting {
+  client: { id: string; number: number; displayName: string; mobilePhone: string | null; clientNo: string };
+  patients: string[];
+  vet: string | null;
+  since: string;
+  charges: number;
+  totalMinor: number;
+  prescribed: number;
+}
+
+/** Where a basket line shows on the bill. */
+export const lineSection = (l: CartLine): PosBillSection => (l.prescriptionId ? 'PRESCRIBED' : (l.item.section ?? 'SHOP'));
 
 /**
- * Medicine already handed out against a prescription: its charge is waiting under "Not yet invoiced" and is
- * added to this sale as it is (quantity and price are fixed by what was dispensed).
+ * Something already given or done for the client and waiting under "Not yet invoiced" — a consultation fee, medicine
+ * given in the clinic, medicine handed out on a prescription — added to this sale as it is (quantity and price fixed).
  */
-export function chargeItem(c: Pick<Charge, 'id' | 'description' | 'unitPriceMinor' | 'taxRateBasisPoints'>): CartItem {
+export function chargeItem(c: Pick<Charge, 'id' | 'description' | 'unitPriceMinor' | 'taxRateBasisPoints'> & Partial<Pick<Charge, 'clientId' | 'patient' | 'createdAt' | 'sourceType' | 'discountMinor'>>): CartItem {
+  const when = c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : null;
+  const note = c.sourceType === 'Dispensation' ? 'handed out on a prescription' : [c.patient ? `${c.patient.name}’s visit` : 'from a visit', when].filter(Boolean).join(' · ');
   return {
     type: 'CHARGE', id: c.id, name: c.description, code: null, barcode: null, category: 'MEDICINE', categoryId: null, categoryName: null,
     brand: null, packSize: null, photoAttachmentId: null, unit: 'item', priceMinor: c.unitPriceMinor, taxRateBasisPoints: c.taxRateBasisPoints, trackStock: false, available: null, rxOnly: false, controlled: false,
+    clientId: c.clientId ?? null, note, section: chargeSection(c.sourceType ?? 'Dispensation'), baseDiscountMinor: c.discountMinor ?? 0,
   };
 }
 
@@ -32,6 +72,9 @@ export interface CartLine {
   discountMinor: number;
   /** Who approved selling a prescription-only item without a prescription. */
   rxNote?: string;
+  /** Sold against the client's prescription (the vet's written prescription read at the counter). */
+  prescriptionId?: string;
+  prescriptionNo?: string;
 }
 
 export interface Tender {
@@ -113,6 +156,10 @@ export const isOutOfStock = (item: CartItem, allowNegative: boolean) => item.tra
 /** The waiting charges (medicines handed out against prescriptions) in the basket, invoiced with the sale. */
 export const toChargeIds = (lines: CartLine[]) => lines.filter((l) => l.item.type === 'CHARGE').map((l) => l.item.id);
 
+/** Discounts the cashier added on waiting charges (beyond each charge's own). */
+export const toChargeDiscounts = (lines: CartLine[]) =>
+  lines.filter((l) => l.item.type === 'CHARGE' && l.discountMinor > (l.item.baseDiscountMinor ?? 0)).map((l) => ({ chargeId: l.item.id, discountMinor: l.discountMinor - (l.item.baseDiscountMinor ?? 0) }));
+
 export function toInvoiceLines(lines: CartLine[]) {
   return lines.filter((l) => l.item.type !== 'CHARGE').map((l) => {
     if (l.item.type === 'CUSTOM') return { kind: 'CUSTOM' as const, description: l.item.name, quantity: l.quantity, unitPriceMinor: l.priceMinor, discountMinor: l.discountMinor };
@@ -124,6 +171,7 @@ export function toInvoiceLines(lines: CartLine[]) {
       unitPriceMinor: l.priceMinor !== l.item.priceMinor ? l.priceMinor : undefined,
       discountMinor: l.discountMinor,
       withoutPrescriptionNote: l.rxNote,
+      prescriptionId: l.prescriptionId,
     };
   });
 }

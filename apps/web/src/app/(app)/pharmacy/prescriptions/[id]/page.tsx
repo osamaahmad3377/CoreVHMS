@@ -94,7 +94,7 @@ function Detail() {
                 <CardHeader>
                   <CardTitle className="flex flex-wrap items-center gap-2">
                     {i.name}
-                    {i.product ? <span className="text-xs font-normal text-muted-foreground">{productStrength(i.product)}</span> : <Badge variant="info">Buy outside</Badge>}
+                    {i.product ? <span className="text-xs font-normal text-muted-foreground">{productStrength(i.product)}</span> : <Badge variant="info">Written</Badge>}
                     {i.product?.isControlled && <Badge variant="warning">Controlled</Badge>}
                     {rx.status !== 'CANCELLED' && allergyMatches(rx.patient.alerts, i.product ?? { name: i.name }).length > 0 && <AllergyConflictChip />}
                   </CardTitle>

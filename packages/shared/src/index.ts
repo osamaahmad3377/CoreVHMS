@@ -34,6 +34,7 @@ export * from './consultation-templates';
 export * from './care-repeat';
 export * from './whatsapp';
 export * from './online-booking';
+export * from './pos-bill';
 export * from './waiting-room';
 export * from './automations';
 export * from './diary';

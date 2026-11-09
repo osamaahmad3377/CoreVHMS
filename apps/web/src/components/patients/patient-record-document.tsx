@@ -144,7 +144,7 @@ function Prescriptions({ rows }: { rows: Row[] }) {
           <MiniTable
             head={['Medicine', 'How to give', 'For', 'Qty', 'Supplied']}
             rows={(p.items ?? []).map((i: Row) => [
-              i.product?.name ?? `${i.outsideName} (bought outside)`,
+              i.product?.name ?? `${i.outsideName} (written)`,
               `${i.doseValue} ${i.doseUnit} ${label(i.route).toLowerCase()}, ${i.frequencyText}${i.instructions ? ` — ${i.instructions}` : ''}`,
               i.durationDays ? `${i.durationDays} days` : '—',
               i.quantity,

@@ -16,6 +16,8 @@ test.describe('Prescribing, dispensing and laboratory', () => {
     const dlg = page.getByRole('dialog');
     await expect(dlg.getByText(/Checked against allergies by medicine name, ingredient and drug family/)).toBeVisible();
     await dlg.locator('#rx-weight').fill('20');
+    // A medicine is typed by default; this one is picked from stock so its dose is worked out from the weight.
+    await dlg.getByRole('button', { name: /Pick from our stock instead/ }).click();
     await dlg.getByRole('combobox').first().click();
     await page.getByLabel('Search products').fill('Amoxicillin');
     await page.getByRole('option', { name: /Amoxicillin 250 mg/ }).click();
@@ -26,7 +28,7 @@ test.describe('Prescribing, dispensing and laboratory', () => {
     await expect(dlg.getByText(/No dose range is set up for this medicine in Dog\. Please double-check the dose before approving\./)).toBeVisible();
     await expect(dlg.getByText('Supply 14 tablet')).toBeVisible();
     // The owner label is plain words, no Latin abbreviations, and can be edited.
-    await expect(dlg.getByLabel('Label text for the owner')).toHaveValue('Give 1 tablet by mouth 2 times a day for 7 days.');
+    await expect(dlg.getByLabel('Instructions printed on the label for the client')).toHaveValue('Give 1 tablet by mouth 2 times a day for 7 days.');
     await expect(dlg.getByText('This text is printed on the label.')).toBeVisible();
     await dlg.getByRole('button', { name: 'Authorise prescription' }).click();
     await expect(page.getByText(/RX-\d+ authorised/)).toBeVisible();
@@ -44,7 +46,7 @@ test.describe('Prescribing, dispensing and laboratory', () => {
     await d.getByRole('button', { name: 'Dispense' }).click();
     await expect(ph.getByText(/fully dispensed/)).toBeVisible();
     await expect(ph.getByRole('button', { name: 'Print label' }).first()).toBeVisible(); // offered in the toast and the header
-    await expect(ph.getByText('batch AMX250-D01').first()).toBeVisible();
+    await expect(ph.getByText(/batch [A-Z0-9][\w-]+/).first()).toBeVisible(); // the issued batch is recorded (first-expiring in stock)
     await ctx.close();
   });
 

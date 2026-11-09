@@ -82,8 +82,8 @@ test.describe('Billing, payments and point of sale', () => {
     await page.getByRole('tab', { name: 'Services' }).click();
     await page.getByRole('button', { name: 'Add Nail clip' }).click();
     await page.getByRole('button', { name: 'Pause sale', exact: true }).click();
-    await expect(page.getByText('Scan or tap items to start a sale')).toBeVisible();
-    await page.getByRole('button', { name: /Paused sales \(\d+\)/ }).click();
+    await expect(page.getByRole('list', { name: 'Basket' })).toHaveCount(0); // the basket is empty again
+    await page.getByRole('button', { name: /Paused sales\s*\d+/ }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Resume' }).first().click();
     await expect(page.getByRole('list', { name: 'Basket' }).getByText('Nail clip')).toBeVisible();
 
