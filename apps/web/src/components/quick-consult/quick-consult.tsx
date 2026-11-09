@@ -403,10 +403,20 @@ function Visit({ enc, onRefresh }: { enc: Encounter; onRefresh: () => void }) {
     if (preselected.current || visitReasons.isLoading || enc.status !== 'OPEN') return;
     preselected.current = true;
     if (flow.reasonIds.length || flow.care.length || !bookedType?.id) return;
-    const r = visitReasons.reasons.find((x) => x.id === bookedType.id);
-    const care = visitReasons.categories.find((c) => c.id === (r?.categoryId ?? bookedType.categoryId))?.care;
-    if (care) patch({ care: [care] });
-    else if (r) pickReason(r);
+    // Every service booked (a client may choose several online): vaccination, deworming and grooming by their
+    // category, the others as reasons for the visit.
+    const cares: CareKind[] = [];
+    const picks: VisitReason[] = [];
+    for (const id of [bookedType.id, ...(enc.appointment?.extraTypeIds ?? [])]) {
+      const r = visitReasons.reasons.find((x) => x.id === id);
+      const care = visitReasons.categories.find((c) => c.id === (r?.categoryId ?? (id === bookedType.id ? bookedType.categoryId : undefined)))?.care;
+      if (care) {
+        if (!cares.includes(care)) cares.push(care);
+      } else if (r && !picks.includes(r)) picks.push(r);
+    }
+    if (cares.length) patch({ care: cares });
+    if (picks[0]) pickReason(picks[0]);
+    if (picks.length > 1) setFlow((f) => ({ ...f, reasonIds: [...new Set([...f.reasonIds, ...picks.map((r) => r.id)])] }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visitReasons.isLoading]);
   // On a narrow screen the steps scroll sideways: keep the current one in view.

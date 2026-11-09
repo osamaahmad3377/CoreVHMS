@@ -1,5 +1,6 @@
+import { enumLabel } from '@vcms/shared';
 import { Injectable } from '@nestjs/common';
-import { Prisma, type OnlineBookingSettings } from '@prisma/client';
+import { Prisma, type AppointmentCategory, type OnlineBookingSettings } from '@prisma/client';
 import type { OnlineBookingSettingsInput, PublicBookingInput } from '@vcms/shared';
 import { AuditService } from '../../common/audit/audit.service';
 import { RequestContext } from '../../common/context/request-context';
@@ -7,6 +8,7 @@ import { randomToken, sha256 } from '../../common/crypto/crypto';
 import { ClientEvents } from '../../common/events/client-events';
 import { conflict, notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import type { ScopedTx } from '../../common/prisma/tenant-extension';
 import { localParts } from '../../common/time/tz';
 import { AttachmentsService } from '../attachments/attachments.service';
 import { ClientsService, phoneKey } from '../clients/clients.service';
@@ -34,6 +36,23 @@ const fullAddress = (b: { addressLine1: string | null; addressLine2: string | nu
  * from the real calendar, and enter their details. Existing clients are recognised by mobile number; new ones
  * are registered with their pet. Each booking gets a private link to change or cancel it.
  */
+/** A category name typed in capitals ("DEWORMING") shown as a word ("Deworming"). */
+const pretty = (name: string) => (name.length > 3 && name === name.toUpperCase() && /[A-Z]/.test(name) ? name.charAt(0) + name.slice(1).toLowerCase() : name);
+
+/** The clinic's category of an appointment type, so the booking page can group its services. */
+const CATEGORY = { select: { name: true, sortOrder: true, isActive: true } } as const;
+function withCategory<T extends { category: string; categoryRef: { name: string; sortOrder: number; isActive: boolean } | null }>({ categoryRef, ...t }: T) {
+  const own = categoryRef?.isActive ? categoryRef : null;
+  return { ...t, categoryName: pretty(own?.name ?? enumLabel(t.category)), categorySort: own?.sortOrder ?? 1000 };
+}
+
+/** Vaccination and deworming can always be offered online (as in the consultation), even where the clinic has no such category yet. */
+const PREVENTIVE = [
+  { key: 'new:vaccination', name: 'Vaccination', kind: 'VACCINATION', sortOrder: 20, is: (c: { name: string; kind: string }) => c.kind === 'VACCINATION' && !/deworm/i.test(c.name) },
+  { key: 'new:deworming', name: 'Deworming', kind: 'VACCINATION', sortOrder: 25, is: (c: { name: string; kind: string }) => /deworm/i.test(c.name) },
+] as const;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 @Injectable()
 export class OnlineBookingService {
   constructor(
@@ -52,13 +71,16 @@ export class OnlineBookingService {
   async settings() {
     const db = this.prisma.db;
     const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: RequestContext.orgId() } });
-    const [s, types, branches, clinicians, last30] = await Promise.all([
+    const [s, types, branches, clinicians, last30, cats] = await Promise.all([
       db.onlineBookingSettings.findFirst(),
-      db.appointmentType.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, durationMinutes: true, priceMinor: true, allowOnlineBooking: true, category: true } }),
+      db.appointmentType.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, durationMinutes: true, priceMinor: true, allowOnlineBooking: true, category: true, categoryRef: CATEGORY } }),
       db.branch.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
       db.membership.findMany({ where: { status: 'ACTIVE', isClinician: true }, orderBy: { user: { name: 'asc' } }, select: { id: true, jobTitle: true, user: { select: { name: true } }, workingHours: { select: { branchId: true } } } }),
       db.appointment.count({ where: { source: 'ONLINE', createdAt: { gte: new Date(Date.now() - 30 * DAY) } } }),
+      db.appointmentTypeCategory.findMany({ where: { isActive: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }], select: { id: true, name: true, kind: true, sortOrder: true } }),
     ]);
+    // Every category, so one with no appointment type yet can be offered too; vaccination and deworming always.
+    const categories = [...cats.map((c) => ({ id: c.id, name: pretty(c.name), sortOrder: c.sortOrder })), ...PREVENTIVE.filter((p) => !cats.some(p.is)).map((p) => ({ id: p.key, name: p.name, sortOrder: p.sortOrder }))];
     return {
       enabled: s?.enabled ?? false,
       slug: s?.slug ?? (await this.freeSlug(slugify(org.name))),
@@ -70,9 +92,13 @@ export class OnlineBookingService {
       clinicianIds: s?.clinicianIds ?? [],
       allowNewClients: s?.allowNewClients ?? true,
       autoConfirm: s?.autoConfirm ?? false,
+      allowHomeVisits: s?.allowHomeVisits ?? false,
+      // Home visits can be offered online only while the clinic has them switched on.
+      homeVisits: { available: !org.disabledModules.includes('homeVisits'), travelMinutes: org.homeVisitTravelMinutes },
       welcomeMessage: s?.welcomeMessage ?? '',
       updatedByName: s?.updatedByName ?? null,
-      appointmentTypes: types,
+      appointmentTypes: types.map(withCategory),
+      categories,
       // Whether anyone can be booked there: a branch needs at least one vet with working hours.
       branches: branches.map((b) => ({ ...b, rosteredVets: clinicians.filter((c) => c.workingHours.some((h) => h.branchId === b.id)).length })),
       clinicians: clinicians.map((c) => ({ id: c.id, name: c.user.name, jobTitle: c.jobTitle, hasHours: c.workingHours.length > 0 })),
@@ -103,7 +129,11 @@ export class OnlineBookingService {
       db.appointmentType.count({ where: { id: { in: input.appointmentTypeIds } } }),
     ]);
     if (branches !== input.branchIds.length || vets !== input.clinicianIds.length || types !== input.appointmentTypeIds.length) throw ruleViolation('INVALID_CHOICE', 'One of the chosen branches, vets or services was not found.');
-    if (input.enabled && !input.appointmentTypeIds.length) throw ruleViolation('NO_SERVICES', 'Choose at least one service clients can book online.');
+    if (input.allowHomeVisits) {
+      const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: ctx.organizationId! }, select: { disabledModules: true } });
+      if (org.disabledModules.includes('homeVisits')) throw ruleViolation('HOME_VISITS_OFF', 'Switch on Home visits (Settings → Services you offer) before offering them online.');
+    }
+    if (input.enabled && !input.appointmentTypeIds.length && !input.offerCategoryIds.length) throw ruleViolation('NO_SERVICES', 'Choose at least one service clients can book online.');
     const data = {
       enabled: input.enabled,
       slug: input.slug,
@@ -114,16 +144,55 @@ export class OnlineBookingService {
       clinicianIds: input.clinicianIds,
       allowNewClients: input.allowNewClients,
       autoConfirm: input.autoConfirm,
+      allowHomeVisits: input.allowHomeVisits,
       welcomeMessage: input.welcomeMessage || null,
       updatedByName: ctx.userName ?? null,
     };
     await db.$transaction(async (tx) => {
       await tx.onlineBookingSettings.upsert({ where: { organizationId: ctx.organizationId! }, update: data, create: { ...data, organizationId: ctx.organizationId! } });
-      await tx.appointmentType.updateMany({ where: { id: { in: input.appointmentTypeIds } }, data: { allowOnlineBooking: true } });
-      await tx.appointmentType.updateMany({ where: { id: { notIn: input.appointmentTypeIds } }, data: { allowOnlineBooking: false } });
-      await this.audit.record({ action: 'online_booking.updated', entityType: 'Organization', entityId: ctx.organizationId!, summary: `${input.enabled ? 'On' : 'Off'} · /book/${input.slug} · ${input.appointmentTypeIds.length} service(s)` }, tx);
+      // Categories offered with no appointment type yet get one.
+      const ids = [...input.appointmentTypeIds];
+      for (const ref of [...new Set(input.offerCategoryIds)]) {
+        const id = await this.typeForCategory(tx, ref);
+        if (!ids.includes(id)) ids.push(id);
+      }
+      await tx.appointmentType.updateMany({ where: { id: { in: ids } }, data: { allowOnlineBooking: true } });
+      await tx.appointmentType.updateMany({ where: { id: { notIn: ids } }, data: { allowOnlineBooking: false } });
+      await this.audit.record({ action: 'online_booking.updated', entityType: 'Organization', entityId: ctx.organizationId!, summary: `${input.enabled ? 'On' : 'Off'} · /book/${input.slug} · ${ids.length} service(s)` }, tx);
     });
     return this.settings();
+  }
+
+  /**
+   * The appointment type a category is booked as online: its own active one (the one named like it first), else
+   * the clinic's switched-off type of that name switched back on in it, else a new one named after it (15 minutes;
+   * the clinic can change it under Appointment types).
+   */
+  private async typeForCategory(tx: ScopedTx, ref: string) {
+    const orgId = RequestContext.orgId();
+    const pre = PREVENTIVE.find((p) => p.key === ref);
+    let cat: { id: string; name: string; kind: AppointmentCategory } | null = null;
+    if (pre) {
+      cat =
+        (await tx.appointmentTypeCategory.findMany({ where: { isActive: true }, orderBy: { sortOrder: 'asc' } })).find(pre.is) ??
+        (await tx.appointmentTypeCategory.upsert({ where: { organizationId_name: { organizationId: orgId, name: pre.name } }, create: { organizationId: orgId, name: pre.name, kind: pre.kind, sortOrder: pre.sortOrder }, update: { isActive: true } }));
+    } else if (UUID.test(ref)) {
+      cat = await tx.appointmentTypeCategory.findFirst({ where: { id: ref, isActive: true } });
+    }
+    if (!cat) throw ruleViolation('INVALID_CHOICE', 'One of the chosen categories was not found.');
+    const name = pretty(cat.name);
+    const own = await tx.appointmentType.findMany({ where: { categoryId: cat.id, isActive: true }, orderBy: { name: 'asc' } });
+    if (own.length) return (own.find((t) => t.name.toLowerCase() === name.toLowerCase()) ?? own[0]).id;
+    const same = await tx.appointmentType.findFirst({ where: { name: { equals: name, mode: 'insensitive' } } });
+    if (same?.isActive) return same.id;
+    if (same) {
+      await tx.appointmentType.update({ where: { id: same.id }, data: { isActive: true, categoryId: cat.id, category: cat.kind } });
+      await this.audit.record({ action: 'appointment_type.updated', entityType: 'AppointmentType', entityId: same.id, summary: `${same.name} switched on to offer ${name} online` }, tx);
+      return same.id;
+    }
+    const created = await tx.appointmentType.create({ data: { organizationId: orgId, name, category: cat.kind, categoryId: cat.id, durationMinutes: 15 } });
+    await this.audit.record({ action: 'appointment_type.created', entityType: 'AppointmentType', entityId: created.id, summary: `${name} (to offer it online)` }, tx);
+    return created.id;
   }
 
   // ── Public page ──
@@ -148,7 +217,7 @@ export class OnlineBookingService {
       const db = this.prisma.db;
       const [branches, types, clinicians, species] = await Promise.all([
         db.branch.findMany({ where: { isActive: true, ...(s.branchIds.length ? { id: { in: s.branchIds } } : {}) }, orderBy: { name: 'asc' } }),
-        db.appointmentType.findMany({ where: { isActive: true, allowOnlineBooking: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, durationMinutes: true, priceMinor: true, category: true, color: true } }),
+        db.appointmentType.findMany({ where: { isActive: true, allowOnlineBooking: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, durationMinutes: true, category: true, color: true, categoryRef: CATEGORY } }), // no prices online
         db.membership.findMany({ where: { status: 'ACTIVE', isClinician: true, ...(s.clinicianIds.length ? { id: { in: s.clinicianIds } } : {}) }, orderBy: { user: { name: 'asc' } }, select: { id: true, jobTitle: true, user: { select: { name: true } }, branches: { select: { branchId: true } }, workingHours: { select: { branchId: true } } } }),
         db.species.findMany({ where: { isActive: true }, orderBy: [{ category: 'asc' }, { name: 'asc' }], select: { id: true, name: true, category: true } }),
       ]);
@@ -164,9 +233,9 @@ export class OnlineBookingService {
       const open = branches;
       return {
         clinic: { name: branding.brandName, phone: org.phone, country: org.country, currency: org.currency, branding },
-        settings: { daysAhead: s.daysAhead, minNoticeHours: s.minNoticeHours, cancelNoticeHours: s.cancelNoticeHours, allowNewClients: s.allowNewClients, autoConfirm: s.autoConfirm, welcomeMessage: s.welcomeMessage },
+        settings: { daysAhead: s.daysAhead, minNoticeHours: s.minNoticeHours, cancelNoticeHours: s.cancelNoticeHours, allowNewClients: s.allowNewClients, autoConfirm: s.autoConfirm, allowHomeVisits: s.allowHomeVisits && !org.disabledModules.includes('homeVisits'), welcomeMessage: s.welcomeMessage },
         branches: open.map((b) => ({ id: b.id, name: b.name, address: fullAddress(b), phone: b.phone, timezone: b.timezone, vetCount: vets.filter((v) => v.branchIds.includes(b.id)).length })),
-        appointmentTypes: types,
+        appointmentTypes: types.map(withCategory),
         clinicians: vets,
         species,
       };
@@ -185,15 +254,38 @@ export class OnlineBookingService {
     return { earliest: Date.now() + s.minNoticeHours * 3600_000, latest: Date.now() + s.daysAhead * DAY };
   }
 
+  /**
+   * The services of one visit (the first one chosen, then any others), each bookable online, and their total
+   * length. `online: false` for a visit already booked (rescheduling keeps its services even if one was taken
+   * off the booking page since).
+   */
+  private async visitTypes(mainId: string, extraIds: string[] = [], online = true) {
+    const ids = [mainId, ...extraIds.filter((id) => id !== mainId)].filter((id, i, a) => a.indexOf(id) === i);
+    const types = await this.prisma.db.appointmentType.findMany({ where: { id: { in: ids }, ...(online ? { isActive: true, allowOnlineBooking: true } : {}) }, select: { id: true, name: true, durationMinutes: true } });
+    if (types.length !== ids.length) throw notFound('Service');
+    const ordered = ids.map((id) => types.find((t) => t.id === id)!);
+    return { ids, extraTypeIds: ids.slice(1), names: ordered.map((t) => t.name), minutes: ordered.reduce((n, t) => n + t.durationMinutes, 0) };
+  }
+
+  /**
+   * A home visit's travel time (blocked on the vet's calendar before it), or 0 at the clinic. Online, home visits
+   * need the clinic to offer them; a booking already made keeps its home visit while Home visits stay on.
+   */
+  private async travelFor(s: OnlineBookingSettings, location: 'CLINIC' | 'HOME' | undefined, online: boolean) {
+    if (location !== 'HOME') return 0;
+    const org = await this.prisma.raw.organization.findUniqueOrThrow({ where: { id: s.organizationId }, select: { disabledModules: true, homeVisitTravelMinutes: true } });
+    if (org.disabledModules.includes('homeVisits') || (online && !s.allowHomeVisits)) throw ruleViolation('HOME_VISITS_OFF', 'Home visits cannot be booked online. Please call the clinic.');
+    return org.homeVisitTravelMinutes;
+  }
+
   /** Free times on one day: each start time and the vets free then (only bookable services, vets and window). */
-  private async freeTimes(s: OnlineBookingSettings, q: { branchId: string; appointmentTypeId: string; clinicianId?: string; date: string }) {
-    const db = this.prisma.db;
+  private async freeTimes(s: OnlineBookingSettings, q: { branchId: string; appointmentTypeId: string; extraTypeIds?: string[]; location?: 'CLINIC' | 'HOME'; clinicianId?: string; date: string }, online = true) {
     if (s.branchIds.length && !s.branchIds.includes(q.branchId)) throw notFound('Branch');
-    const type = await db.appointmentType.findFirst({ where: { id: q.appointmentTypeId, isActive: true, allowOnlineBooking: true } });
-    if (!type) throw notFound('Service');
+    const visit = await this.visitTypes(q.appointmentTypeId, q.extraTypeIds, online);
     if (q.clinicianId && s.clinicianIds.length && !s.clinicianIds.includes(q.clinicianId)) throw notFound('Vet');
+    const travelMinutes = await this.travelFor(s, q.location, online);
     const { earliest, latest } = this.window(s);
-    const perVet = await this.appointments.availability({ branchId: q.branchId, date: q.date, appointmentTypeId: q.appointmentTypeId, clinicianId: q.clinicianId || undefined });
+    const perVet = await this.appointments.availability({ branchId: q.branchId, date: q.date, appointmentTypeId: q.appointmentTypeId, clinicianId: q.clinicianId || undefined, durationMinutes: visit.minutes, travelMinutes });
     const times = new Map<string, string[]>();
     for (const v of perVet) {
       if (s.clinicianIds.length && !s.clinicianIds.includes(v.clinicianId)) continue;
@@ -206,13 +298,13 @@ export class OnlineBookingService {
     return [...times.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([startsAt, clinicianIds]) => ({ startsAt, clinicianIds }));
   }
 
-  async slots(slug: string, q: { branchId: string; appointmentTypeId: string; clinicianId?: string; date: string }) {
+  async slots(slug: string, q: { branchId: string; appointmentTypeId: string; extraTypeIds?: string[]; location?: 'CLINIC' | 'HOME'; clinicianId?: string; date: string }) {
     const { s } = await this.page(slug);
     return this.inClinic(s, () => this.freeTimes(s, q));
   }
 
   /** How many free times each day has, for the date strip (up to 14 days per call, within the booking window). */
-  async days(slug: string, q: { branchId: string; appointmentTypeId: string; clinicianId?: string; from: string; count: number }) {
+  async days(slug: string, q: { branchId: string; appointmentTypeId: string; extraTypeIds?: string[]; location?: 'CLINIC' | 'HOME'; clinicianId?: string; from: string; count: number }) {
     const { s } = await this.page(slug);
     return this.inClinic(s, async () => {
       const branch = await this.prisma.db.branch.findUnique({ where: { id: q.branchId } });
@@ -236,9 +328,10 @@ export class OnlineBookingService {
       const db = this.prisma.db;
       const startsAt = new Date(input.startsAt);
       const date = localParts(startsAt, (await db.branch.findUniqueOrThrow({ where: { id: input.branchId } })).timezone).date;
-      const free = (await this.freeTimes(s, { branchId: input.branchId, appointmentTypeId: input.appointmentTypeId, clinicianId: input.clinicianId || undefined, date })).find((t) => t.startsAt === startsAt.toISOString());
+      const free = (await this.freeTimes(s, { branchId: input.branchId, appointmentTypeId: input.appointmentTypeId, extraTypeIds: input.extraTypeIds, location: input.location, clinicianId: input.clinicianId || undefined, date })).find((t) => t.startsAt === startsAt.toISOString());
       if (!free) throw conflict('Sorry — this time has just been taken. Please choose another time.', { code: 'SLOT_TAKEN' });
       const clinicianId = input.clinicianId || free.clinicianIds[0];
+      const visit = await this.visitTypes(input.appointmentTypeId, input.extraTypeIds);
 
       // Who is booking: an existing client with this mobile number, or a new one.
       const key = phoneKey(input.mobilePhone);
@@ -286,8 +379,15 @@ export class OnlineBookingService {
           appointmentTypeId: input.appointmentTypeId,
           clinicianId,
           startsAt,
+          // Several services: the visit is long enough for them all.
+          durationMinutes: visit.extraTypeIds.length ? visit.minutes : undefined,
           source: 'ONLINE',
-          reason: input.reason || 'Booked online',
+          // A home visit: the address the client gave (travel time is blocked before it).
+          location: input.location,
+          visitAddress: input.location === 'HOME' ? input.visitAddress : null,
+          visitDirections: input.location === 'HOME' ? input.visitDirections || null : null,
+          visitMapUrl: input.location === 'HOME' ? input.visitMapUrl : null,
+          reason: input.reason || (visit.extraTypeIds.length ? `Booked online: ${visit.names.join(' + ')}` : 'Booked online'),
           notes: null,
           allowOverbook: false,
           allowOutsideHours: false,
@@ -301,8 +401,8 @@ export class OnlineBookingService {
         throw e;
       }
       await db.$transaction(async (tx) => {
-        await tx.appointment.update({ where: { id: appointmentId }, data: { manageTokenHash: sha256(token), ...(s.autoConfirm ? { status: 'CONFIRMED', confirmedAt: new Date() } : {}) } });
-        await this.audit.record({ action: 'appointment.booked_online', entityType: 'Appointment', entityId: appointmentId, summary: `${input.ownerName} · ${input.petName}` }, tx);
+        await tx.appointment.update({ where: { id: appointmentId }, data: { manageTokenHash: sha256(token), extraTypeIds: visit.extraTypeIds, ...(s.autoConfirm ? { status: 'CONFIRMED', confirmedAt: new Date() } : {}) } });
+        await this.audit.record({ action: 'appointment.booked_online', entityType: 'Appointment', entityId: appointmentId, summary: `${input.ownerName} · ${input.petName}${input.location === 'HOME' ? ' · home visit' : ''}` }, tx);
       });
       const manageLink = `${origin}/book/manage/${token}`;
       await this.events.emit({ type: 'APPOINTMENT_BOOKED', appointmentId, online: { manageLink } });
@@ -316,6 +416,8 @@ export class OnlineBookingService {
       where: { id },
       include: { patient: { select: { name: true } }, client: { select: { displayName: true } }, appointmentType: { select: { name: true, durationMinutes: true } }, clinician: { select: { user: { select: { name: true } } } }, branch: true },
     });
+    const extras = a.extraTypeIds.length ? await this.prisma.db.appointmentType.findMany({ where: { id: { in: a.extraTypeIds } }, select: { id: true, name: true } }) : [];
+    const names = [a.appointmentType.name, ...a.extraTypeIds.map((id) => extras.find((t) => t.id === id)?.name).filter(Boolean)];
     return {
       id: a.id,
       status: a.status,
@@ -323,8 +425,11 @@ export class OnlineBookingService {
       endsAt: a.endsAt,
       petName: a.patient?.name ?? null,
       ownerName: a.client.displayName,
-      service: a.appointmentType.name,
+      service: names.join(' + '),
       appointmentTypeId: a.appointmentTypeId,
+      extraTypeIds: a.extraTypeIds,
+      location: a.location,
+      visitAddress: a.visitAddress,
       vet: a.clinician?.user.name ?? null,
       clinicianId: a.clinicianId,
       branch: { id: a.branch.id, name: a.branch.name, address: fullAddress(a.branch), phone: a.branch.phone, timezone: a.branch.timezone },
@@ -369,7 +474,7 @@ export class OnlineBookingService {
       }
       const startsAt = new Date(input.startsAt);
       const date = localParts(startsAt, current.branch.timezone).date;
-      const free = (await this.freeTimes(s, { branchId: current.branch.id, appointmentTypeId: current.appointmentTypeId, clinicianId: input.clinicianId || undefined, date })).find((t) => t.startsAt === startsAt.toISOString());
+      const free = (await this.freeTimes(s, { branchId: current.branch.id, appointmentTypeId: current.appointmentTypeId, extraTypeIds: current.extraTypeIds, location: current.location, clinicianId: input.clinicianId || undefined, date }, false)).find((t) => t.startsAt === startsAt.toISOString());
       if (!free) throw conflict('Sorry — this time has just been taken. Please choose another time.', { code: 'SLOT_TAKEN' });
       await this.appointments.reschedule(a.id, { startsAt, clinicianId: input.clinicianId || (free.clinicianIds.includes(current.clinicianId ?? '') ? current.clinicianId : free.clinicianIds[0]) } as never);
       return this.manage(token);

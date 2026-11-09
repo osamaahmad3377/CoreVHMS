@@ -1,7 +1,8 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { formatMoney, onlineBookingSettingsSchema } from '@vcms/shared';
-import { AlertTriangle, CalendarCheck, Code2, Download, ExternalLink, Globe, MessageCircle, QrCode, Share2 } from 'lucide-react';
+import { onlineBookingSettingsSchema } from '@vcms/shared';
+import { AlertTriangle, CalendarCheck, Home, Code2, Download, ExternalLink, Globe, MessageCircle, QrCode, Share2 } from 'lucide-react';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Field } from '@/components/forms/field';
@@ -13,10 +14,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox, Switch } from '@/components/ui/checkbox';
-import { Input, Textarea } from '@/components/ui/input';
+import { Input, NativeSelect, Textarea } from '@/components/ui/input';
 import { tabListClass, tabTriggerClass } from '@/components/ui/tabs';
 import { api } from '@/lib/api';
-import { useSession } from '@/lib/session';
 import { cn } from '@/lib/utils';
 
 interface Settings {
@@ -30,15 +30,20 @@ interface Settings {
   clinicianIds: string[];
   allowNewClients: boolean;
   autoConfirm: boolean;
+  allowHomeVisits: boolean;
+  /** Home visits can be offered online only while the clinic has them switched on. */
+  homeVisits: { available: boolean; travelMinutes: number };
   welcomeMessage: string;
   updatedByName: string | null;
-  appointmentTypes: { id: string; name: string; durationMinutes: number; priceMinor: number | null; allowOnlineBooking: boolean; category: string }[];
+  appointmentTypes: { id: string; name: string; durationMinutes: number; priceMinor: number | null; allowOnlineBooking: boolean; category: string; categoryName: string; categorySort: number }[];
+  /** Every category, so one with no appointment type yet (e.g. Vaccination, Deworming) can be offered too. */
+  categories: { id: string; name: string; sortOrder: number }[];
   branches: { id: string; name: string; rosteredVets: number }[];
   clinicians: { id: string; name: string; jobTitle: string | null; hasHours: boolean }[];
   last30Days: number;
 }
 
-type Draft = Omit<Settings, 'saved' | 'updatedByName' | 'appointmentTypes' | 'branches' | 'clinicians' | 'last30Days'> & { appointmentTypeIds: string[] };
+type Draft = Omit<Settings, 'saved' | 'updatedByName' | 'appointmentTypes' | 'categories' | 'homeVisits' | 'branches' | 'clinicians' | 'last30Days'> & { appointmentTypeIds: string[]; offerCategoryIds: string[] };
 const draftOf = (s: Settings): Draft => ({
   enabled: s.enabled,
   slug: s.slug,
@@ -49,8 +54,10 @@ const draftOf = (s: Settings): Draft => ({
   clinicianIds: s.clinicianIds,
   allowNewClients: s.allowNewClients,
   autoConfirm: s.autoConfirm,
+  allowHomeVisits: s.allowHomeVisits,
   welcomeMessage: s.welcomeMessage,
   appointmentTypeIds: s.appointmentTypes.filter((t) => t.allowOnlineBooking).map((t) => t.id),
+  offerCategoryIds: [],
 });
 const toggle = (list: string[], id: string, on: boolean) => (on ? [...new Set([...list, id])] : list.filter((x) => x !== id));
 
@@ -125,7 +132,6 @@ function ShareCard({ link, live }: { link: string; live: boolean }) {
 
 function OnlineBookingSettingsPage() {
   const qc = useQueryClient();
-  const { currency } = useSession();
   const q = useQuery({ queryKey: ['online-booking'], queryFn: () => api.get<Settings>('/online-booking') });
   const [d, setD] = useState<Draft | null>(null);
   const [tried, setTried] = useState(false);
@@ -148,14 +154,14 @@ function OnlineBookingSettingsPage() {
   const parsed = onlineBookingSettingsSchema.safeParse(d);
   const errs: Record<string, string | undefined> = {};
   if (!parsed.success) for (const i of parsed.error.issues) errs[String(i.path[0])] ??= i.message;
-  if (d.enabled && !d.appointmentTypeIds.length) errs.appointmentTypeIds = 'Choose at least one service';
+  if (d.enabled && !d.appointmentTypeIds.length && !d.offerCategoryIds.length) errs.appointmentTypeIds = 'Choose at least one service';
   const dirty = JSON.stringify(d) !== JSON.stringify(draftOf(s));
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD({ ...d, [k]: v });
   const submit = (next = d) => {
     setTried(true);
     setError(null);
     const p = onlineBookingSettingsSchema.safeParse(next);
-    if (!p.success || (next.enabled && !next.appointmentTypeIds.length)) return;
+    if (!p.success || (next.enabled && !next.appointmentTypeIds.length && !next.offerCategoryIds.length)) return;
     save.mutate(next);
   };
 
@@ -194,25 +200,17 @@ function OnlineBookingSettingsPage() {
       {error && <FormError message={error} />}
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <Card>
+        <Card className="xl:col-span-2">
           <CardHeader>
             <div>
               <CardTitle>What clients can book</CardTitle>
-              <CardDescription className="mt-1">Only these services appear on the page. Times come from each vet’s working hours and existing bookings.</CardDescription>
+              <CardDescription className="mt-1">
+                Clients choose categories — one or several for the same visit. Each is booked as the appointment type shown; times come from each vet’s working hours and existing bookings.
+              </CardDescription>
             </div>
           </CardHeader>
           <CardContent className="grid gap-2">
-            {s.appointmentTypes.map((t) => (
-              <label key={t.id} className={cn('flex cursor-pointer items-center gap-3 rounded-xl surface-flat p-3 transition-colors', d.appointmentTypeIds.includes(t.id) && 'border-primary/40 bg-primary/[0.06]')}>
-                <Checkbox checked={d.appointmentTypeIds.includes(t.id)} onCheckedChange={(v) => set('appointmentTypeIds', toggle(d.appointmentTypeIds, t.id, v === true))} />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold">{t.name}</span>
-                  <span className="block text-xs text-muted-foreground">
-                    {t.durationMinutes} min{t.priceMinor ? ` · shows “from ${formatMoney(t.priceMinor, currency)}”` : ''}
-                  </span>
-                </span>
-              </label>
-            ))}
+            <BookableCategories types={s.appointmentTypes} categories={s.categories} chosen={d.appointmentTypeIds} offers={d.offerCategoryIds} onChange={(ids) => set('appointmentTypeIds', ids)} onOffersChange={(ids) => set('offerCategoryIds', ids)} />
             {!s.appointmentTypes.length && <p className="text-sm text-muted-foreground">Add appointment types under Settings → Appointment types first.</p>}
             {tried && errs.appointmentTypeIds && <p className="text-sm text-destructive">{errs.appointmentTypeIds}</p>}
           </CardContent>
@@ -301,6 +299,39 @@ function OnlineBookingSettingsPage() {
               </span>
               <Switch checked={d.allowNewClients} onCheckedChange={(v) => set('allowNewClients', v)} aria-label="New clients can book" />
             </label>
+            <div className="grid gap-2 border-t pt-4">
+              <label className="flex items-start justify-between gap-4">
+                <span>
+                  <span className="flex items-center gap-2 text-sm font-semibold">
+                    <Home className="h-4 w-4 text-primary" /> Home visits
+                  </span>
+                  <span className="block text-sm text-muted-foreground">
+                    {d.allowHomeVisits ? 'Clients choose first: at the clinic or a home visit, and give their address.' : 'Off: clients book visits at the clinic only.'}
+                  </span>
+                </span>
+                <Switch checked={d.allowHomeVisits} disabled={!s.homeVisits.available && !d.allowHomeVisits} onCheckedChange={(v) => set('allowHomeVisits', v)} aria-label="Clients can book home visits" />
+              </label>
+              {s.homeVisits.available ? (
+                d.allowHomeVisits && (
+                  <p className="text-xs text-muted-foreground">
+                    {s.homeVisits.travelMinutes ? `${s.homeVisits.travelMinutes} min travel is kept free on the vet’s calendar before each home visit. ` : ''}
+                    Call-out fee, travel charge and travel time are under{' '}
+                    <Link href="/settings/home-visits" className="font-medium text-primary hover:underline">
+                      Home visits
+                    </Link>
+                    .
+                  </p>
+                )
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Home visits are switched off for your clinic. Switch them on under{' '}
+                  <Link href="/settings/modules" className="font-medium text-primary hover:underline">
+                    Services you offer
+                  </Link>{' '}
+                  to offer them online.
+                </p>
+              )}
+            </div>
           </CardContent>
         </Card>
 
@@ -335,6 +366,91 @@ function OnlineBookingSettingsPage() {
         </Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * What clients can book: the categories (as in step 1 of the consultation), each offered or not, and the
+ * appointment type a booking in it is made as — which sets its length and the vets' free times. Clients can choose
+ * several categories for one visit.
+ */
+function BookableCategories({
+  types,
+  categories,
+  chosen,
+  offers,
+  onChange,
+  onOffersChange,
+}: {
+  types: Settings['appointmentTypes'];
+  categories: Settings['categories'];
+  chosen: string[];
+  offers: string[];
+  onChange: (ids: string[]) => void;
+  onOffersChange: (ids: string[]) => void;
+}) {
+  const groups: { name: string; sort: number; types: Settings['appointmentTypes']; emptyId?: string }[] = [];
+  for (const t of types) {
+    const g = groups.find((x) => x.name === t.categoryName);
+    if (g) g.types.push(t);
+    else groups.push({ name: t.categoryName, sort: t.categorySort, types: [t] });
+  }
+  // Categories with no appointment type yet: offering one adds its type when saved.
+  for (const c of categories) if (!groups.some((g) => g.name.toLowerCase() === c.name.toLowerCase())) groups.push({ name: c.name, sort: c.sortOrder, types: [], emptyId: c.id });
+  groups.sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name));
+  const usual = (g: (typeof groups)[number]) => g.types.find((t) => t.name.toLowerCase() === g.name.toLowerCase()) ?? g.types[0];
+  /** The category's types off, then this one on (one type per category). */
+  const pick = (g: (typeof groups)[number], id: string | null) => onChange([...chosen.filter((x) => !g.types.some((t) => t.id === x)), ...(id ? [id] : [])]);
+  return (
+    <ul className="grid gap-2">
+      {groups.map((g) => {
+        if (g.emptyId) return <EmptyCategory key={g.emptyId} name={g.name} on={offers.includes(g.emptyId)} onChange={(v) => onOffersChange(v ? [...offers, g.emptyId!] : offers.filter((x) => x !== g.emptyId))} />;
+        // The same one the booking page uses: the one named like the category, else the first ticked.
+        const current = (chosen.includes(usual(g).id) ? usual(g) : g.types.find((t) => chosen.includes(t.id))) ?? null;
+        const on = !!current;
+        const shown = current ?? usual(g);
+        return (
+          <li key={g.name} className={cn('flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border px-3 py-2.5 transition-colors', on && 'border-primary/40 bg-primary/[0.04]')}>
+            <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+              <Checkbox checked={on} aria-label={`Offer ${g.name} online`} onCheckedChange={(v) => pick(g, v === true ? usual(g).id : null)} />
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold">{g.name}</span>
+                <span className="block text-xs text-muted-foreground">
+                  {on ? `${shown.durationMinutes} min` : 'Not offered online'}
+                </span>
+              </span>
+            </label>
+            {g.types.length > 1 && (
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                Booked as
+                <NativeSelect aria-label={`${g.name} is booked as`} className="h-9 w-56 text-sm" value={shown.id} disabled={!on} onChange={(e) => pick(g, e.target.value)}>
+                  {g.types.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} · {t.durationMinutes} min
+                    </option>
+                  ))}
+                </NativeSelect>
+              </label>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** A category with no appointment type yet: offering it online adds one when saved. */
+function EmptyCategory({ name, on, onChange }: { name: string; on: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <li className={cn('flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border px-3 py-2.5 transition-colors', on && 'border-primary/40 bg-primary/[0.04]')}>
+      <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+        <Checkbox checked={on} aria-label={`Offer ${name} online`} onCheckedChange={(v) => onChange(v === true)} />
+        <span className="min-w-0">
+          <span className="block text-sm font-semibold">{name}</span>
+          <span className="block text-xs text-muted-foreground">{on ? `A “${name}” appointment type (15 min) is added when you save — change its length under Appointment types.` : 'Not offered online · no appointment type yet'}</span>
+        </span>
+      </label>
+    </li>
   );
 }
 

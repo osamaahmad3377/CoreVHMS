@@ -487,7 +487,7 @@ export interface Encounter {
   patientId: string;
   appointmentId: string | null;
   clinician: { id: string; name: string } | null;
-  appointment: { id: string; number: number; status: string; reason: string | null; location?: 'CLINIC' | 'HOME'; visitAddress?: string | null; appointmentType: { id?: string; name: string; categoryId?: string | null } } | null;
+  appointment: { id: string; number: number; status: string; reason: string | null; location?: 'CLINIC' | 'HOME'; visitAddress?: string | null; extraTypeIds?: string[]; appointmentType: { id?: string; name: string; categoryId?: string | null } } | null;
   patient: import('@/components/patients/patient-banner').BannerPatient & { species: { id: string; name: string; category: string } };
   client: { id: string; displayName: string; mobilePhone: string | null };
   notes: ClinicalNote[];

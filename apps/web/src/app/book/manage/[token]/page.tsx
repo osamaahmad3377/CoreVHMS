@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { bookingIcs } from '@vcms/shared';
-import { CalendarCheck, CalendarPlus, CalendarX, Clock, PawPrint, Phone, RefreshCw, Stethoscope, User } from 'lucide-react';
+import { CalendarCheck, CalendarPlus, CalendarX, Clock, Home, PawPrint, Phone, RefreshCw, Stethoscope, User } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -102,7 +102,9 @@ function ManageBooking() {
               { icon: Stethoscope, label: 'Service', value: b.service },
               { icon: PawPrint, label: 'For', value: b.petName ?? '—' },
               { icon: User, label: 'Vet', value: b.vet ?? 'The first free vet' },
-              { icon: CalendarCheck, label: 'Where', value: [b.branch.name, b.branch.address].filter(Boolean).join(' · ') },
+              b.location === 'HOME'
+                ? { icon: Home, label: 'Where', value: `Home visit · ${b.visitAddress ?? ''}` }
+                : { icon: CalendarCheck, label: 'Where', value: [b.branch.name, b.branch.address].filter(Boolean).join(' · ') },
             ].map((r) => (
               <li key={r.label} className="flex items-start gap-3">
                 <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -120,7 +122,7 @@ function ManageBooking() {
               <Button
                 variant="outline"
                 onClick={() => {
-                  const ics = bookingIcs({ uid: `${b.id}@nextcore`, startsAt: b.startsAt, endsAt: b.endsAt, title: `${b.service}${b.petName ? ` — ${b.petName}` : ''} at ${clinic.name}`, location: [b.branch.name, b.branch.address].filter(Boolean).join(', ') });
+                  const ics = bookingIcs({ uid: `${b.id}@nextcore`, startsAt: b.startsAt, endsAt: b.endsAt, title: `${b.service}${b.petName ? ` — ${b.petName}` : ''} ${b.location === 'HOME' ? `home visit from ${clinic.name}` : `at ${clinic.name}`}`, location: b.location === 'HOME' ? (b.visitAddress ?? '') : [b.branch.name, b.branch.address].filter(Boolean).join(', ') });
                   const url = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
                   Object.assign(document.createElement('a'), { href: url, download: 'appointment.ics' }).click();
                   URL.revokeObjectURL(url);
@@ -156,7 +158,7 @@ function ManageBooking() {
           <div className="surface grid grid-cols-[minmax(0,1fr)] gap-5 rounded-2xl p-6 sm:p-8">
             <h3 className="text-lg font-semibold">Choose a new time</h3>
             {error && <FormError message={error} />}
-            <SlotPicker slug={q.data.slug} branchId={b.branch.id} appointmentTypeId={b.appointmentTypeId} timezone={tz} value={time} onChange={(t) => { setTime(t); setError(null); }} />
+            <SlotPicker slug={q.data.slug} branchId={b.branch.id} appointmentTypeId={b.appointmentTypeId} extraTypeIds={b.extraTypeIds} location={b.location} timezone={tz} value={time} onChange={(t) => { setTime(t); setError(null); }} />
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button variant="ghost" onClick={() => setMoving(false)}>
                 Keep my time

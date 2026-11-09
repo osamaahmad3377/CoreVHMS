@@ -12,8 +12,15 @@ import { env } from '../../config/env';
 import { OnlineBookingService } from './online-booking.service';
 
 const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-10-25');
-const slotsQuery = z.object({ branchId: z.string().uuid(), appointmentTypeId: z.string().uuid(), clinicianId: z.string().uuid().optional().or(z.literal('')), date: DATE });
-const daysQuery = z.object({ branchId: z.string().uuid(), appointmentTypeId: z.string().uuid(), clinicianId: z.string().uuid().optional().or(z.literal('')), from: DATE, count: z.coerce.number().int().min(1).max(14).default(14) });
+/** Other services for the same visit, comma-separated. */
+const EXTRAS = z
+  .string()
+  .optional()
+  .transform((s) => (s ? s.split(',').filter(Boolean) : []))
+  .pipe(z.array(z.string().uuid()).max(10));
+const LOCATION = z.enum(['CLINIC', 'HOME']).default('CLINIC');
+const slotsQuery = z.object({ branchId: z.string().uuid(), appointmentTypeId: z.string().uuid(), extraTypeIds: EXTRAS, location: LOCATION, clinicianId: z.string().uuid().optional().or(z.literal('')), date: DATE });
+const daysQuery = z.object({ branchId: z.string().uuid(), appointmentTypeId: z.string().uuid(), extraTypeIds: EXTRAS, location: LOCATION, clinicianId: z.string().uuid().optional().or(z.literal('')), from: DATE, count: z.coerce.number().int().min(1).max(14).default(14) });
 
 /** Settings → Online booking (staff). */
 @ApiTags('online-booking')

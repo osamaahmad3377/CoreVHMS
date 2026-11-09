@@ -1,3 +1,4 @@
+import { OPTIONAL_MODULES } from '@vcms/shared';
 import { closeApp, futureDate, getApp, prisma, registerOrg, schedulingFixture, staff, TestClient, unique } from './helpers';
 
 const settings = (typeId: string, extra: Record<string, unknown> = {}) => ({
@@ -30,6 +31,8 @@ describe('Online booking page', () => {
     const info = await anon.get(`/public/booking/${s.slug}`);
     expect(info.status).toBe(200);
     expect(info.body).toMatchObject({ settings: { welcomeMessage: 'Book in under a minute.' }, appointmentTypes: [expect.objectContaining({ id: f.typeId })], clinicians: [expect.objectContaining({ id: f.vet.membershipId })] });
+    // No prices on the public page.
+    expect(info.body.appointmentTypes[0]).not.toHaveProperty('priceMinor');
     const branchId = info.body.branches[0].id;
     const speciesId = info.body.species[0].id;
     const day = futureDate(5);
@@ -95,6 +98,97 @@ describe('Online booking page', () => {
     const known = await anon.post(`/public/booking/${s.slug}`, { ...body, mobilePhone: f.client.mobilePhone, petName: f.patient.name });
     expect(known.status).toBe(201);
     expect(known.body.status).toBe('CONFIRMED');
+  });
+
+  it('books several services in one visit, long enough for them all, and the consultation knows them', async () => {
+    const org = await registerOrg();
+    const f = await schedulingFixture(org); // a 20-minute consultation
+    const nails = await org.owner.post('/appointment-types', { name: unique('Nail trim'), durationMinutes: 15, category: 'GROOMING' });
+    expect(nails.status).toBe(201);
+    const s = settings(f.typeId, { appointmentTypeIds: [f.typeId, nails.body.id] });
+    expect((await org.owner.call('put', '/online-booking', s)).status).toBe(200);
+    const anon = new TestClient(await getApp());
+    const info = (await anon.get(`/public/booking/${s.slug}`)).body;
+    expect(info.appointmentTypes.map((t: { categoryName: string }) => t.categoryName).sort()).toEqual(['Consultation', 'Grooming']);
+    const branchId = info.branches[0].id;
+    const day = futureDate(5);
+    const slots = (await anon.get(`/public/booking/${s.slug}/slots?branchId=${branchId}&appointmentTypeId=${f.typeId}&extraTypeIds=${nails.body.id}&date=${day}`)).body;
+    expect(slots.length).toBeGreaterThan(0);
+    const booked = await anon.post(`/public/booking/${s.slug}`, { branchId, appointmentTypeId: f.typeId, extraTypeIds: [nails.body.id], startsAt: slots[0].startsAt, ownerName: 'Ayesha Khan', mobilePhone: '0333 7776661', petName: 'Coco', speciesId: info.species[0].id });
+    expect(booked.status).toBe(201);
+    expect(booked.body.service).toBe(`${(await prisma().appointmentType.findUniqueOrThrow({ where: { id: f.typeId } })).name} + ${nails.body.name}`);
+    const appt = await prisma().appointment.findUniqueOrThrow({ where: { id: booked.body.id } });
+    expect(appt.extraTypeIds).toEqual([nails.body.id]);
+    expect((appt.endsAt.getTime() - appt.startsAt.getTime()) / 60_000).toBe(35);
+    // A service not offered online cannot be added.
+    const hidden = await org.owner.post('/appointment-types', { name: unique('Surgery'), durationMinutes: 60, category: 'SURGERY' });
+    expect((await anon.get(`/public/booking/${s.slug}/slots?branchId=${branchId}&appointmentTypeId=${f.typeId}&extraTypeIds=${hidden.body.id}&date=${day}`)).status).toBe(404);
+    // The consultation opened from it sees every service booked.
+    const e = await org.owner.post('/encounters', { patientId: appt.patientId, appointmentId: appt.id, chiefComplaint: 'Check' });
+    expect(e.status).toBe(201);
+    expect(e.body.appointment.extraTypeIds).toEqual([nails.body.id]);
+  });
+
+  it('offers vaccination and deworming even with no appointment type for them yet', async () => {
+    const org = await registerOrg();
+    const f = await schedulingFixture(org);
+    const view = (await org.owner.get('/online-booking')).body;
+    const cats = view.categories as { id: string; name: string }[];
+    // Both are always listed (the starter categories, or `new:` ones).
+    expect(cats.map((c) => c.name)).toEqual(expect.arrayContaining(['Vaccination', 'Deworming']));
+    const deworm = cats.find((c) => c.name === 'Deworming')!;
+    const s = settings(f.typeId, { offerCategoryIds: [deworm.id] });
+    const saved = await org.owner.call('put', '/online-booking', s);
+    expect(saved.status).toBe(200);
+    const offered = (saved.body.appointmentTypes as { name: string; categoryName: string; allowOnlineBooking: boolean }[]).filter((t) => t.categoryName === 'Deworming' && t.allowOnlineBooking);
+    expect(offered).toHaveLength(1);
+    // Saving again with the category offered does not add a second type.
+    await org.owner.call('put', '/online-booking', s);
+    expect(await prisma().appointmentType.count({ where: { organizationId: org.orgId, categoryId: deworm.id, isActive: true, allowOnlineBooking: true } })).toBe(1);
+    const anon = new TestClient(await getApp());
+    const info = (await anon.get(`/public/booking/${s.slug}`)).body;
+    expect(info.appointmentTypes.map((t: { categoryName: string }) => t.categoryName)).toEqual(expect.arrayContaining(['Consultation', 'Deworming']));
+    // Someone else's or an unknown category is refused.
+    expect((await org.owner.call('put', '/online-booking', settings(f.typeId, { slug: s.slug, offerCategoryIds: ['00000000-0000-4000-8000-000000000000'] }))).status).toBe(422);
+  });
+
+  it('asks clinic or home visit first when home visits are offered, keeps travel time free, and can be switched off', async () => {
+    const org = await registerOrg();
+    const f = await schedulingFixture(org);
+    await org.owner.call('put', '/home-visits/settings', { calloutServiceId: null, perKmServiceId: null, travelMinutes: 30 });
+    const s = settings(f.typeId);
+    await org.owner.call('put', '/online-booking', s);
+    const anon = new TestClient(await getApp());
+    let info = (await anon.get(`/public/booking/${s.slug}`)).body;
+    expect(info.settings.allowHomeVisits).toBe(false);
+    const branchId = info.branches[0].id;
+    const day = futureDate(5);
+    const q = (extra = '') => `/public/booking/${s.slug}/slots?branchId=${branchId}&appointmentTypeId=${f.typeId}&date=${day}${extra}`;
+    // Off: home visits cannot be asked for.
+    expect((await anon.get(q('&location=HOME'))).status).toBe(422);
+
+    expect((await org.owner.call('put', '/online-booking', { ...s, allowHomeVisits: true })).body).toMatchObject({ allowHomeVisits: true, homeVisits: { available: true, travelMinutes: 30 } });
+    info = (await anon.get(`/public/booking/${s.slug}`)).body;
+    expect(info.settings.allowHomeVisits).toBe(true);
+    // The vet needs the travel time free before a home visit, so the first home slot is later than the first clinic slot.
+    const clinic = (await anon.get(q())).body as { startsAt: string }[];
+    const homeSlots = (await anon.get(q('&location=HOME'))).body as { startsAt: string }[];
+    expect(new Date(homeSlots[0].startsAt).getTime() - new Date(clinic[0].startsAt).getTime()).toBeGreaterThanOrEqual(30 * 60_000);
+    const body = { branchId, appointmentTypeId: f.typeId, startsAt: homeSlots[0].startsAt, ownerName: 'Hina Ali', mobilePhone: '0321 4445556', petName: 'Snowy', speciesId: info.species[0].id, location: 'HOME' };
+    const noAddress = await anon.post(`/public/booking/${s.slug}`, body);
+    expect(noAddress.status).toBe(400);
+    const booked = await anon.post(`/public/booking/${s.slug}`, { ...body, visitAddress: 'House 7, Street 2, Gulberg III, Lahore', visitDirections: 'Blue gate' });
+    expect(booked.status).toBe(201);
+    expect(booked.body).toMatchObject({ location: 'HOME', visitAddress: 'House 7, Street 2, Gulberg III, Lahore' });
+    const appt = await prisma().appointment.findUniqueOrThrow({ where: { id: booked.body.id } });
+    expect(appt).toMatchObject({ location: 'HOME', visitDirections: 'Blue gate' });
+    expect((appt.startsAt.getTime() - appt.travelStartsAt!.getTime()) / 60_000).toBe(30);
+
+    // Home visits switched off for the clinic: not offered online, and cannot be switched on there.
+    await org.owner.call('put', '/setup/modules', { enabled: OPTIONAL_MODULES.filter((m) => m !== 'homeVisits') });
+    expect((await anon.get(`/public/booking/${s.slug}`)).body.settings.allowHomeVisits).toBe(false);
+    expect((await org.owner.call('put', '/online-booking', { ...s, allowHomeVisits: true })).status).toBe(422);
+    expect((await org.owner.get('/online-booking')).body.homeVisits.available).toBe(false);
   });
 
   it('lists every branch, with only vets who have working hours there', async () => {

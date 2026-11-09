@@ -567,7 +567,7 @@ export class AppointmentsService {
   // ── Availability ──
 
   /** Free start times per clinician for a branch-local date and appointment type. */
-  async availability(q: { branchId: string; date: string; appointmentTypeId: string; clinicianId?: string; travelMinutes?: number }) {
+  async availability(q: { branchId: string; date: string; appointmentTypeId: string; clinicianId?: string; travelMinutes?: number; /** Several services in one visit: their total length. */ durationMinutes?: number }) {
     const branch = await this.prisma.db.branch.findUnique({ where: { id: q.branchId } });
     if (!branch) throw notFound('Branch');
     const type = await this.prisma.db.appointmentType.findUnique({ where: { id: q.appointmentTypeId } });
@@ -596,14 +596,15 @@ export class AppointmentsService {
       orderBy: { user: { name: 'asc' } },
     });
     const now = Date.now();
-    const duration = type.durationMinutes * 60_000;
+    const minutes = q.durationMinutes ?? type.durationMinutes;
+    const duration = minutes * 60_000;
     // A home visit also needs the vet free (and working) for the travel time before it.
     const travel = q.travelMinutes ?? 0;
     return clinicians.map((c) => {
       const busy = [...c.leave.map((l) => [l.startsAt.getTime(), l.endsAt.getTime()] as const), ...c.appointments.map((b) => [blockStart(b).getTime(), b.endsAt.getTime()] as const)];
       const slots: string[] = [];
       for (const h of c.workingHours) {
-        for (let m = h.startMinute + travel; m + type.durationMinutes <= h.endMinute; m += SLOT_STEP_MIN) {
+        for (let m = h.startMinute + travel; m + minutes <= h.endMinute; m += SLOT_STEP_MIN) {
           const start = zonedToUtc(q.date, m, tz).getTime();
           const end = start + duration;
           const from = start - travel * 60_000;

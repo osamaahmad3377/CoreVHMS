@@ -1502,6 +1502,9 @@ model Appointment {
   clientId          String            @db.Uuid
   patientId         String?           @db.Uuid
   appointmentTypeId String            @db.Uuid
+  /// Other appointment types booked for the same visit (e.g. a client who chose a consultation and a nail trim
+  /// online). The visit's length covers them all; the consultation starts with them chosen.
+  extraTypeIds      String[]          @default([]) @db.Uuid
   clinicianId       String?           @db.Uuid
   startsAt          DateTime          @db.Timestamptz(3)
   endsAt            DateTime          @db.Timestamptz(3)
@@ -5151,6 +5154,8 @@ model OnlineBookingSettings {
   allowNewClients   Boolean  @default(true)
   /// Bookings are confirmed at once; otherwise they arrive as "booked" for the front desk to confirm.
   autoConfirm       Boolean  @default(false)
+  /// Clients can ask for a home visit as well as a visit at the clinic (only while Home visits are switched on).
+  allowHomeVisits   Boolean  @default(false)
   /// Shown at the top of the booking page.
   welcomeMessage    String?
   /// Clients can cancel or move their booking themselves up to this many hours before.

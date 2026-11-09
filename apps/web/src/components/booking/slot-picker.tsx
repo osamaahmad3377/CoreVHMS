@@ -23,6 +23,8 @@ export function SlotPicker({
   slug,
   branchId,
   appointmentTypeId,
+  extraTypeIds,
+  location,
   clinicianId,
   timezone,
   value,
@@ -31,6 +33,10 @@ export function SlotPicker({
   slug: string;
   branchId: string;
   appointmentTypeId: string;
+  /** Other services in the same visit: the times found are long enough for them all. */
+  extraTypeIds?: string[];
+  /** A home visit: times leave room for the vet's travel first. */
+  location?: 'CLINIC' | 'HOME';
   clinicianId?: string;
   timezone: string;
   value: FreeTime | null;
@@ -39,7 +45,7 @@ export function SlotPicker({
   const today = todayIn(timezone);
   const [from, setFrom] = useState(today);
   const [date, setDate] = useState<string | null>(null);
-  const base = { branchId, appointmentTypeId, clinicianId: clinicianId ?? '' };
+  const base = { branchId, appointmentTypeId, extraTypeIds: extraTypeIds?.length ? extraTypeIds.join(',') : undefined, location: location === 'HOME' ? 'HOME' : undefined, clinicianId: clinicianId ?? '' };
   const days = useQuery({
     queryKey: ['public-days', slug, base, from],
     queryFn: () => api.get<{ days: { date: string; free: number }[]; lastDate: string }>(`/public/booking/${slug}/days${qs({ ...base, from, count: 14 })}`),
