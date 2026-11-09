@@ -102,6 +102,29 @@ Both are used by the containers' Docker health checks and are suitable for an ex
    — the API applies new migrations automatically on start (set `SKIP_MIGRATIONS=true` to run them as a separate step).
 5. Check `ps` shows all services healthy and sign in.
 
+### Automatic updates from GitHub
+
+Every push to `main` that passes the tests and the image build is deployed by the `deploy` job in
+`.github/workflows/ci.yml`. It connects to the server over SSH and runs `scripts/deploy.sh`, which backs up
+every database (the update stops if the backup fails), pulls `main` (fast-forward only), rebuilds and
+restarts, and waits until the containers are healthy. The API then updates the platform database and every
+clinic database, so all clinics move to the new version together.
+
+One-time setup, in GitHub → Settings → Secrets and variables → Actions:
+
+| Secret | Value |
+|---|---|
+| `DEPLOY_HOST` | the server's address |
+| `DEPLOY_USER` | the user that runs Docker on the server |
+| `DEPLOY_SSH_KEY` | a private key for that user (put its public key in `~/.ssh/authorized_keys` on the server) |
+| `DEPLOY_PATH` | the folder where the app is checked out (the one with `.env.production`) |
+| `DEPLOY_PORT` | optional, default 22 |
+| `DEPLOY_KNOWN_HOSTS` | optional, the output of `ssh-keyscan <host>`, to pin the server's key |
+
+The server must be able to `git fetch` from GitHub (a read-only deploy key for a private repository).
+Without the secrets the job is skipped with a warning. The same update can be run by hand on the server:
+`scripts/deploy.sh`.
+
 **Rolling back:** migrations are forward-only. Restore the backup taken in step 2 (`scripts/restore.sh`)
 and start the previous image tag (`APP_VERSION=<previous>`).
 
