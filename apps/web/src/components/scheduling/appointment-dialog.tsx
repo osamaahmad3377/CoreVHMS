@@ -100,7 +100,18 @@ function CancelAppointmentDialog({
   );
 }
 
-export function AppointmentDialog({ id, open, onOpenChange }: { id: string | null; open: boolean; onOpenChange: (o: boolean) => void }) {
+export function AppointmentDialog({
+  id,
+  open,
+  onOpenChange,
+  allowStart = true,
+}: {
+  id: string | null;
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  /** Off on the front desk: consultations are started from Consultations. */
+  allowStart?: boolean;
+}) {
   const { session, can } = useSession();
   const tz = session.branch?.timezone ?? 'UTC';
   const qc = useQueryClient();
@@ -183,7 +194,7 @@ export function AppointmentDialog({ id, open, onOpenChange }: { id: string | nul
         { key: 'confirm', label: 'Owner confirmed', icon: ClipboardCheck, show: s === 'BOOKED' && (can('appointments.write') || can('appointments.checkin')), variant: 'outline' },
         // A home visit is not checked in at the desk; the vet marks arrival instead.
         { key: 'check-in', label: 'Check in', icon: LogIn, show: (s === 'BOOKED' || s === 'CONFIRMED') && a.location !== 'HOME' && can('appointments.checkin') },
-        { key: 'start', label: 'Start consultation', icon: Play, show: ['BOOKED', 'CONFIRMED', 'CHECKED_IN'].includes(s!) && !!a.patient && can('clinical.write') },
+        { key: 'start', label: 'Start consultation', icon: Play, show: allowStart && ['BOOKED', 'CONFIRMED', 'CHECKED_IN'].includes(s!) && !!a.patient && can('clinical.write') },
         { key: 'complete', label: 'Mark finished', icon: CheckCircle2, show: (s === 'CHECKED_IN' || s === 'IN_CONSULTATION') && (can('clinical.write') || can('appointments.checkin')), variant: 'outline' },
         { key: 'no-show', label: 'No-show', icon: UserX, show: (s === 'BOOKED' || s === 'CONFIRMED') && new Date(a.startsAt) < new Date() && (can('appointments.write') || can('appointments.checkin')), variant: 'outline' },
         { key: 'revert', label: s === 'NO_SHOW' ? 'Undo no-show' : 'Undo check-in', icon: XCircle, show: (s === 'CHECKED_IN' || s === 'NO_SHOW') && can('appointments.checkin'), variant: 'outline' },
