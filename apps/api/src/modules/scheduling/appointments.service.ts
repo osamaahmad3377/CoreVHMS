@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AppointmentStatus, Prisma } from '@prisma/client';
-import type { CreateAppointmentInput, RescheduleAppointmentInput } from '@vcms/shared';
+import type { AppointmentBookingsQuery, CreateAppointmentInput, RescheduleAppointmentInput } from '@vcms/shared';
 import { randomUUID } from 'node:crypto';
 import { AuditService, diff } from '../../common/audit/audit.service';
 import { ClientEvents } from '../../common/events/client-events';
@@ -150,6 +150,53 @@ export class AppointmentsService {
       take: 2000,
     });
     return rows.map(shapeAppointment);
+  }
+
+  /**
+   * Every booking as a list, with a search, filters and a page at a time, and how many there are of each kind
+   * (all, online, home visits, at the clinic) for the same search and filters.
+   */
+  async bookings(q: AppointmentBookingsQuery) {
+    const now = new Date();
+    const statusIn: Record<AppointmentBookingsQuery['status'], AppointmentStatus[] | undefined> = {
+      any: undefined,
+      active: ['BOOKED', 'CONFIRMED', 'CHECKED_IN', 'IN_CONSULTATION'],
+      toConfirm: ['BOOKED'],
+      done: ['COMPLETED'],
+      cancelled: ['CANCELLED', 'NO_SHOW'],
+    };
+    const text = q.q?.trim();
+    const number = text && /^(a-?)?0*(\d{1,9})$/i.exec(text)?.[2];
+    const digits = text?.replace(/\D/g, '') ?? '';
+    const base: Prisma.AppointmentWhereInput = {
+      branchId: q.branchId,
+      clinicianId: q.clinicianId,
+      status: statusIn[q.status] ? { in: statusIn[q.status] } : undefined,
+      ...(q.when === 'upcoming' ? { endsAt: { gte: now } } : q.when === 'past' ? { endsAt: { lt: now } } : {}),
+      ...(text
+        ? {
+            OR: [
+              { patient: { name: { contains: text, mode: 'insensitive' } } },
+              { client: { displayName: { contains: text, mode: 'insensitive' } } },
+              ...(digits.length >= 4 ? [{ client: { phoneDigits: { contains: digits } } }] : []),
+              { reason: { contains: text, mode: 'insensitive' } },
+              ...(number ? [{ number: Number(number) }] : []),
+            ],
+          }
+        : {}),
+    };
+    const KIND: Record<AppointmentBookingsQuery['kind'], Prisma.AppointmentWhereInput> = { all: {}, online: { source: 'ONLINE' }, home: { location: 'HOME' }, clinic: { location: 'CLINIC' } };
+    const where = { ...base, ...KIND[q.kind] };
+    const db = this.prisma.db;
+    const [rows, total, all, online, home, clinic] = await Promise.all([
+      db.appointment.findMany({ where, include: appointmentInclude, orderBy: { startsAt: q.when === 'upcoming' ? 'asc' : 'desc' }, skip: (q.page - 1) * q.pageSize, take: q.pageSize }),
+      db.appointment.count({ where }),
+      db.appointment.count({ where: base }),
+      db.appointment.count({ where: { ...base, ...KIND.online } }),
+      db.appointment.count({ where: { ...base, ...KIND.home } }),
+      db.appointment.count({ where: { ...base, ...KIND.clinic } }),
+    ]);
+    return { data: rows.map(shapeAppointment), meta: { page: q.page, pageSize: q.pageSize, total }, counts: { all, online, home, clinic } };
   }
 
   async get(id: string) {

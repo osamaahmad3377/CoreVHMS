@@ -94,7 +94,7 @@ export const GUIDES: HelpGuide[] = [
       'If the client never arrived, open the appointment after its start time and click No-show.',
     ],
     tips: ['Times are always shown in the branch’s own time zone.', 'If the vet is not working at that time you will be asked “Book anyway?”.'],
-    links: [{ label: 'Calendar', href: '/calendar' }],
+    links: [{ label: 'Calendar & appointments', href: '/calendar' }],
     keywords: ['schedule', 'reschedule', 'booking', 'slot', 'no show', 'did not arrive', 'cancel'],
   },
   {
@@ -333,7 +333,7 @@ export const GUIDES: HelpGuide[] = [
       'Marked by mistake? Open it again and click Undo no-show.',
     ],
     tips: ['To book them again, open the no-show appointment and click Book again.'],
-    links: [{ label: 'Front desk', href: '/front-desk' }, { label: 'Calendar', href: '/calendar' }],
+    links: [{ label: 'Front desk', href: '/front-desk' }, { label: 'Calendar & appointments', href: '/calendar' }],
     keywords: ['no show', 'noshow', 'did not come', 'did not arrive', 'missed', 'absent'],
   },
   {

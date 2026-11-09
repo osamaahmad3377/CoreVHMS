@@ -161,6 +161,23 @@ export const appointmentListQuery = z.object({
   status: z.string().optional(),
 });
 
+/** The appointments list (Calendar & appointments → Appointments): every booking, newest or next first. */
+export const appointmentBookingsQuery = z.object({
+  branchId: z.string().uuid().optional(),
+  /** upcoming: from now on (next first) · past: before now (latest first) · all (latest first). */
+  when: z.enum(['upcoming', 'past', 'all']).default('upcoming'),
+  /** all · online (booked by the client online) · home (home visits) · clinic (at the clinic). */
+  kind: z.enum(['all', 'online', 'home', 'clinic']).default('all'),
+  /** active (booked to with the vet) · toConfirm (booked, not yet confirmed) · done · cancelled (incl. no-shows). */
+  status: z.enum(['any', 'active', 'toConfirm', 'done', 'cancelled']).default('any'),
+  clinicianId: z.string().uuid().optional(),
+  /** Patient, client, mobile number, reason, or the booking number (A-000123). */
+  q: z.string().trim().max(100).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+});
+export type AppointmentBookingsQuery = z.infer<typeof appointmentBookingsQuery>;
+
 export const availabilityQuery = z.object({
   branchId: z.string().uuid(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),

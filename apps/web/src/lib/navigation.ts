@@ -84,7 +84,7 @@ export const NAV: NavSection[] = [
     label: 'Front desk',
     items: [
       { label: 'Front desk', href: '/front-desk', icon: ClipboardList, anyOf: ['appointments.checkin'], ready: true },
-      { label: 'Calendar', href: '/calendar', icon: CalendarDays, anyOf: ['appointments.read'], ready: true },
+      { label: 'Calendar & appointments', href: '/calendar', icon: CalendarDays, anyOf: ['appointments.read'], ready: true },
       { label: 'Home visits', href: '/home-visits', icon: House, anyOf: ['appointments.read'], ready: true, module: 'homeVisits' },
       { label: 'Clients', href: '/clients', icon: Users, anyOf: ['clients.read'], ready: true },
       { label: 'Patients', href: '/patients', icon: PawPrint, anyOf: ['patients.read'], ready: true },

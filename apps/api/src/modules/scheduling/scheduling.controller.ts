@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, P
 import { ApiTags } from '@nestjs/swagger';
 import {
   appointmentCategorySchema,
+  appointmentBookingsQuery,
   appointmentListQuery,
   callPatientSchema,
   appointmentStatusActionSchema,
@@ -172,6 +173,13 @@ export class SchedulingController {
   @ApiZodQuery(appointmentListQuery)
   list(@Query(zp(appointmentListQuery)) q: z.infer<typeof appointmentListQuery>) {
     return this.appointments.list(q);
+  }
+
+  @Get('appointments/bookings')
+  @RequirePermissions('appointments.read')
+  @ApiZodQuery(appointmentBookingsQuery)
+  bookings(@Query(zp(appointmentBookingsQuery)) q: z.infer<typeof appointmentBookingsQuery>) {
+    return this.appointments.bookings(q);
   }
 
   @Get('appointments/availability')
