@@ -1958,17 +1958,6 @@ export interface ReceiptContext {
   logoVersion: string | null;
 }
 
-export interface NotePhraseRow {
-  id: string;
-  field: string;
-  groupName: string | null;
-  label: string;
-  text: string | null;
-  sortOrder: number;
-  isActive: boolean;
-  isDefault: boolean;
-}
-
 // ── Wellness plans ──
 
 export interface WellnessPlanItem {

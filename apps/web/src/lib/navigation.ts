@@ -186,7 +186,6 @@ export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyO
   { label: 'Pet diary', href: '/settings/pet-diary', icon: BookOpen, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Design the printed health book and the owner’s online diary; send links automatically' },
   // Part of Appointment types: each type's consultation questions.
   { label: 'Consultation questions', href: '/settings/templates', icon: FileText, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'The questions, examination, diagnoses and advice for each appointment type', partOf: '/settings/appointment-types' },
-  { label: 'Quick note phrases', href: '/settings/note-phrases', icon: FileText, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'The buttons vets tap in consultation notes instead of typing' },
   { label: 'Species & breeds', href: '/settings/species', icon: PawPrint, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Already filled in; add a breed if one is missing' },
   { label: 'Normal vital-sign ranges', href: '/settings/vital-references', icon: Activity, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Normal temperature, heart rate… per species, to flag readings' },
   { label: 'Surgical checklist', href: '/settings/surgery-checklist', icon: Scissors, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Safety checks ticked before each operation', module: 'surgery' },

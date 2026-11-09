@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { EXAM_SYSTEMS, NOTE_PHRASE_FIELDS, type NotePhraseField } from '@vcms/shared';
-import { Activity, ArrowLeft, ArrowRight, Check, CheckCircle2, FileSignature, History, Loader2, MousePointerClick, Save, Settings2, Trash2 } from 'lucide-react';
+import { Activity, ArrowLeft, ArrowRight, Check, CheckCircle2, FileSignature, History, Loader2, Save, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -13,8 +13,7 @@ import { Input, NativeSelect, Textarea } from '../ui/input';
 import { Label } from '../ui/label';
 import { NoteSection } from './note-section';
 import { PastButton, usePastRecords, type PastTab } from './past-records';
-import { QuickPicks } from './quick-picks';
-import { useNotePhrases, useTemplates } from '@/hooks/use-catalog';
+import { useTemplates } from '@/hooks/use-catalog';
 import { api } from '@/lib/api';
 import { fmtDateTime, fmtTemp, fmtWeight } from '@/lib/format';
 import { useSession } from '@/lib/session';
@@ -202,29 +201,10 @@ export function NoteEditor({
   const qc = useQueryClient();
   const confirm = useConfirm();
   const templates = useTemplates();
-  const phrases = useNotePhrases();
   const past = usePastRecords();
-  // Tap-to-add buttons can be switched off by people who prefer typing; remembered on this computer.
-  const [picksOn, setPicksOn] = useState(true);
-  useEffect(() => {
-    try {
-      setPicksOn(localStorage.getItem('vcms.quickpicks') !== 'off');
-    } catch {
-      /* storage unavailable: keep them on */
-    }
-  }, []);
   const [openId, setOpenId] = useState('complaint');
   const [showAll, setShowAll] = useState(false);
   const started = useRef(false);
-  const togglePicks = () =>
-    setPicksOn((on) => {
-      try {
-        localStorage.setItem('vcms.quickpicks', on ? 'off' : 'on');
-      } catch {
-        /* ignore */
-      }
-      return !on;
-    });
   const [content, setContent] = useState<Content>(() => fromNote(note, amending ? null : chiefComplaint));
   // An existing draft without a presenting complaint gets the check-in reason; save it like any other change.
   const prefilled = !amending && !!note && note.status === 'DRAFT' && !note.amendsId && !note.presentingComplaint && !!chiefComplaint;
@@ -382,10 +362,6 @@ export function NoteEditor({
           {past && (NOTE_PHRASE_FIELDS as readonly string[]).includes(f.key) && <PastTools field={f.key as NotePhraseField} value={String(content[f.key] ?? '')} onFill={(t) => set(f.key, t)} />}
         </div>
       </div>
-      {/* Once the examination checklist is started it is the one way to tap findings; the text box stays for extra words. */}
-      {picksOn && !(f.key === 'objective' && content.examFindings.length > 0) && (NOTE_PHRASE_FIELDS as readonly string[]).includes(f.key) && (
-        <QuickPicks field={f.key as NotePhraseField} value={String(content[f.key] ?? '')} onChange={(v) => set(f.key, v)} phrases={phrases.data ?? []} />
-      )}
       <Textarea id={`n-${f.key}`} rows={f.rows} placeholder={f.hint} value={String(content[f.key] ?? '')} onChange={(e) => set(f.key, e.target.value)} />
     </div>
   );
@@ -602,13 +578,6 @@ export function NoteEditor({
             workflow ? `✓ Saved automatically · ${fmtDateTime(savedAt)}` : `Saved ${fmtDateTime(savedAt)}`
           ) : (
             'Not saved yet'
-          )}
-        </span>
-        <span className="flex items-center gap-2 text-xs text-muted-foreground" title="Tap a button to add it; tap again to remove it.">
-          <MousePointerClick className="h-3.5 w-3.5 text-primary" /> Quick picks {picksOn ? 'on' : 'off'}
-          <button type="button" onClick={togglePicks} className="font-medium text-primary hover:underline">{picksOn ? 'Hide' : 'Show'}</button>
-          {can('settings.manage') && (
-            <Link href="/settings/note-phrases" aria-label="Edit the buttons" title="Edit the buttons" className="text-primary hover:text-primary/80"><Settings2 className="h-3.5 w-3.5" /></Link>
           )}
         </span>
         {!amending && (
