@@ -125,6 +125,13 @@
   html {
     -webkit-text-size-adjust: 100%;
   }
+  /* Desktops and laptops: a compact, professional scale. Text, spacing, buttons and cards are all measured in rem,
+     so they shrink together; phones (and printouts) keep the full size for reading and tapping. */
+  @media screen and (min-width: 1024px) {
+    html {
+      font-size: 14.5px;
+    }
+  }
   body {
     @apply bg-background text-foreground antialiased;
     font-size: 0.9375rem;

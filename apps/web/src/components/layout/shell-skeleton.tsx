@@ -2,7 +2,7 @@
 export function ShellSkeleton() {
   return (
     <div className="app-canvas flex min-h-screen" aria-busy="true" aria-label="Loading">
-      <aside className="hidden h-screen w-[272px] shrink-0 p-3 pr-0 lg:block">
+      <aside className="hidden h-screen w-[248px] shrink-0 p-3 pr-0 lg:block">
         <div className="surface-menu flex h-full flex-col gap-4 rounded-2xl p-4">
           {/* The clinic's own logo appears once the session has loaded (white label). */}
           <div className="mx-auto mb-2 h-12 w-12 rounded-2xl bg-sidebar-strong/10" />

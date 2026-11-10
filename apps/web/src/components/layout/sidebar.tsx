@@ -124,7 +124,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
     <aside
       className={cn(
         'no-print sticky top-0 hidden h-screen shrink-0 p-3 pr-0 transition-[width] duration-300 ease-apple lg:block',
-        collapsed ? 'w-[88px]' : 'w-[272px]',
+        collapsed ? 'w-[80px]' : 'w-[248px]',
       )}
     >
       <div className="surface-menu flex h-full flex-col overflow-hidden rounded-2xl">

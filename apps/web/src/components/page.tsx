@@ -42,7 +42,7 @@ export function PageHeader({
             ))}
           </nav>
         )}
-        <h1 className="truncate text-[1.75rem] font-bold leading-tight tracking-[-0.03em] sm:text-[2.125rem]">{title}</h1>
+        <h1 className="truncate text-[1.5rem] font-bold leading-tight tracking-[-0.025em] sm:text-[1.75rem]">{title}</h1>
         {description && <p className="mt-1.5 text-[0.9375rem] text-muted-foreground">{description}</p>}
       </div>
       {(actions || help) && (

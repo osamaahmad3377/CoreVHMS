@@ -22,11 +22,11 @@ export function DashboardHero({ date, stats }: { date: string; stats: HeroStat[]
           {stats.map((s) => {
             const body = (
               <>
-                <span className={cn('block text-[1.75rem] font-semibold leading-none tabular tracking-[-0.03em] sm:text-[2.5rem]', s.alert && 'text-primary')}>{s.value}</span>
+                <span className={cn('block text-[1.625rem] font-semibold leading-none tabular tracking-[-0.03em] sm:text-[2.125rem]', s.alert && 'text-primary')}>{s.value}</span>
                 <span className="mt-2 line-clamp-2 block text-[0.6875rem] font-medium leading-tight text-muted-foreground [overflow-wrap:anywhere] min-[400px]:text-xs sm:text-sm">{s.label}</span>
               </>
             );
-            const cls = 'surface block h-full rounded-2xl p-3.5 sm:p-6' + (s.href ? ' surface-hover' : '');
+            const cls = 'surface block h-full rounded-2xl p-3.5 sm:p-5' + (s.href ? ' surface-hover' : '');
             return <li key={s.label}>{s.href ? <Link href={s.href} className={cls}>{body}</Link> : <div className={cls}>{body}</div>}</li>;
           })}
         </ul>
