@@ -8,8 +8,7 @@ test.describe('Front desk: clients and patients', () => {
     const petName = uniq('Pet');
 
     await page.goto('/clients/new');
-    await page.getByLabel('First name').fill('Erum');
-    await page.locator('#lastName').fill(surname);
+    await page.getByLabel('Full name').fill(`Erum ${surname}`);
     await page.getByLabel('Mobile').fill(`0300 ${Math.floor(1000000 + Math.random() * 8999999)}`);
     await page.getByRole('button', { name: 'Add address' }).click();
     await page.locator('#a1').fill('House 5, Street 9');
@@ -32,7 +31,7 @@ test.describe('Front desk: clients and patients', () => {
     await expect(page.getByText('3.4 kg').first()).toBeVisible();
 
     await page.keyboard.press('Meta+k');
-    await page.getByPlaceholder(/Search by name, patient or phone/).fill(petName);
+    await page.getByPlaceholder(/Search a name or phone/).fill(petName);
     await expect(page.getByRole('option', { name: new RegExp(petName) })).toBeVisible();
   });
 
@@ -71,7 +70,7 @@ test.describe('Front desk: clients and patients', () => {
   test('finds a client by a phone number typed with spaces', async ({ page }) => {
     await login(page, 'reception@demo.pk');
     await page.keyboard.press('Control+k');
-    await page.getByPlaceholder(/Search by name, patient or phone/).fill('0300 1234');
+    await page.getByPlaceholder(/Search a name or phone/).fill('0300 1234');
     await expect(page.getByRole('option', { name: /Ahmed Khan/ }).first()).toBeVisible();
   });
 

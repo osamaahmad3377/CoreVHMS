@@ -10,7 +10,7 @@ export default function NewClientPage() {
   const router = useRouter();
   return (
     <RequirePermission anyOf={['clients.write']}>
-      <PageHeader title="Add client" breadcrumbs={[{ label: 'Clients', href: '/clients' }, { label: 'Add client' }]} />
+      <PageHeader title="Add client" description="Register a pet owner — and their animal, if you like." breadcrumbs={[{ label: 'Clients', href: '/clients' }, { label: 'Add client' }]} />
       <Card className="max-w-5xl">
         <CardContent className="pb-0 pt-5">
           <ClientForm

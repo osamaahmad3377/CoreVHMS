@@ -448,11 +448,21 @@ export function PosCart({
           <div className="mt-1 flex items-baseline justify-between border-t pt-2"><dt className="text-base font-semibold">Total</dt><dd className="text-2xl font-bold tabular tracking-tight">{fmtMoney(totals.totalMinor, currency)}</dd></div>
         </dl>
         {stockProblem && <p className="mt-2 text-xs text-destructive" role="alert">Only {qtyUnit(stockProblem.item.available ?? 0, stockProblem.item.unit)} of {stockProblem.item.name} in stock.</p>}
-        <div className="mt-3 grid grid-cols-[auto_auto_minmax(0,1fr)] gap-2">
-          <Button variant="outline" disabled={!lines.length} onClick={onHold}>Pause sale</Button>
-          <Button variant="outline" disabled={!lines.length && !client} onClick={onClear}>Clear</Button>
-          <Button size="lg" className="h-12 min-w-0 px-3 text-base" disabled={!lines.length || totals.totalMinor <= 0 || !!stockProblem} onClick={onCharge}>
-            Take payment {fmtMoney(totals.totalMinor, currency)} <span className="hidden rounded bg-primary-foreground/20 px-1.5 py-0.5 font-mono text-2xs xl:inline">F9</span>
+        <div className="mt-3 grid gap-2">
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="outline" className="h-10" disabled={!lines.length} onClick={onHold}>
+              Pause sale <span className="ml-1 hidden font-mono text-[10px] text-muted-foreground xl:inline">F8</span>
+            </Button>
+            <Button variant="outline" className="h-10" disabled={!lines.length && !client} onClick={onClear}>
+              Clear
+            </Button>
+          </div>
+          <Button size="lg" className="h-12 w-full justify-between gap-3 px-5 text-base" disabled={!lines.length || totals.totalMinor <= 0 || !!stockProblem} onClick={onCharge}>
+            <span className="flex items-center gap-2">
+              Take payment
+              <span className="hidden rounded-md bg-primary-foreground/20 px-1.5 py-0.5 font-mono text-[10px] font-semibold xl:inline">F9</span>
+            </span>
+            <span className="font-bold tabular">{fmtMoney(totals.totalMinor, currency)}</span>
           </Button>
         </div>
       </div>

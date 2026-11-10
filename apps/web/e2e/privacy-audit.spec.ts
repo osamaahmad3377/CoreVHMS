@@ -8,8 +8,7 @@ test.describe('Privacy requests and audit export', () => {
     const surname = uniq('Privacy');
 
     await page.goto('/clients/new');
-    await page.getByLabel('First name').fill('Sana');
-    await page.locator('#lastName').fill(surname);
+    await page.getByLabel('Full name').fill(`Sana ${surname}`);
     await page.getByLabel('Mobile').fill(`0301 ${Math.floor(1000000 + Math.random() * 8999999)}`);
     await page.getByRole('button', { name: 'Add address' }).click();
     await page.locator('#a1').fill('House 1, Street 2');

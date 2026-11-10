@@ -78,19 +78,34 @@ export function Topbar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () 
         {quick.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="sm" className="gap-1" title="Add a client, patient, appointment and more">
+              <Button size="sm" className="gap-1" title="Start a visit, add a client, sell and more">
                 <Plus /> New
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Quick actions</DropdownMenuLabel>
-              {quick.map((q) => (
-                <DropdownMenuItem key={q.href} asChild>
-                  <Link href={q.href}>
-                    <q.icon /> {q.label}
-                  </Link>
-                </DropdownMenuItem>
-              ))}
+            <DropdownMenuContent align="end" className="w-72">
+              {(['Visits', 'Clients & animals', 'Money & stock'] as const).map((g, gi) => {
+                const items = quick.filter((q) => q.group === g);
+                if (!items.length) return null;
+                return (
+                  <div key={g}>
+                    {gi > 0 && quick.some((q) => (['Visits', 'Clients & animals', 'Money & stock'] as const).indexOf(q.group) < gi) && <DropdownMenuSeparator />}
+                    <DropdownMenuLabel className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{g}</DropdownMenuLabel>
+                    {items.map((q) => (
+                      <DropdownMenuItem key={q.href} asChild className="items-start gap-3 py-2">
+                        <Link href={q.href}>
+                          <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary [&_svg]:h-4 [&_svg]:w-4">
+                            <q.icon />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium">{q.label}</span>
+                            <span className="block text-xs text-muted-foreground">{q.hint}</span>
+                          </span>
+                        </Link>
+                      </DropdownMenuItem>
+                    ))}
+                  </div>
+                );
+              })}
             </DropdownMenuContent>
           </DropdownMenu>
         )}

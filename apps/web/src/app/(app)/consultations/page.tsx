@@ -99,7 +99,7 @@ function ConsultationsList() {
         actions={
           can('clinical.write') && (
             <Button size="sm" onClick={() => setStart(true)}>
-              <Plus /> Start consultation
+              <Plus /> New visit or consultation
             </Button>
           )
         }

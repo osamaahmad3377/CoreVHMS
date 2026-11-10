@@ -31,15 +31,16 @@ test.describe('Everyday flow', () => {
     await login(page, 'vet@demo.pk');
     await expect(page.getByRole('heading', { name: /^Good (morning|afternoon|evening)/ })).toBeVisible();
     await page.keyboard.press('Meta+k');
-    await page.getByPlaceholder(/Search by name, patient or phone/).fill('book');
-    await page.getByRole('option', { name: 'Book appointment' }).click();
-    await expect(page).toHaveURL(/\/calendar/);
-    await expect(page.getByRole('dialog', { name: /Book appointment/ })).toBeVisible();
+    await page.getByPlaceholder(/Search a name or phone/).fill('book');
+    // One action for every visit: the waiting queue or a booking.
+    await page.getByRole('option', { name: /New visit or booking/ }).click();
+    await expect(page).toHaveURL(/\/front-desk/);
+    await expect(page.getByRole('dialog', { name: /New visit or booking/ })).toBeVisible();
     await page.keyboard.press('Escape');
 
     const complaint = uniq('E2E flow check ');
     await page.goto('/consultations');
-    await page.getByRole('button', { name: 'Start consultation' }).click();
+    await page.getByRole('button', { name: 'New visit or consultation' }).click();
     const dlg = page.getByRole('dialog');
     // Owner → animal → start (the window opens on "Start consultation now").
     await dlg.getByLabel('Owner’s name').fill('Kamran Akmal');

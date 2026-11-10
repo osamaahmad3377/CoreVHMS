@@ -435,7 +435,10 @@ function NextStep({ patient, initialAction, allowConsult, onBack, onBook, onDone
     can('appointments.checkin') && { key: 'queue' as const, icon: LogIn, title: 'Add to waiting queue', hint: 'Check in now; the vet sees them in turn' },
     can('appointments.write') && { key: 'book' as const, icon: CalendarPlus, title: 'Book an appointment', hint: 'Choose a day and time for a later visit' },
     allowConsult && can('clinical.write') && { key: 'consult' as const, icon: Stethoscope, title: 'Start consultation now', hint: 'Open the consultation straight away' },
-  ].filter(Boolean) as { key: Action; icon: React.ComponentType<{ className?: string }>; title: string; hint: string }[];
+  ]
+    .filter(Boolean)
+    // The action this window was opened for comes first (e.g. "Start consultation now" from Consultations).
+    .sort((a, b) => Number((b as { key: Action }).key === initialAction) - Number((a as { key: Action }).key === initialAction)) as { key: Action; icon: React.ComponentType<{ className?: string }>; title: string; hint: string }[];
   const [action, setAction] = useState<Action | undefined>(initialAction && actions.some((a) => a.key === initialAction) ? initialAction : actions[0]?.key);
   // Queue
   const [typeId, setTypeId] = useState('');
@@ -655,8 +658,8 @@ export function NewVisitDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="lg" className="max-h-[92vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>New visit</DialogTitle>
-          <DialogDescription>Find the owner, choose the animal, then {allowConsult ? 'send them to the queue, book a time, or start the consultation.' : 'send them to the waiting queue or book a time.'}</DialogDescription>
+          <DialogTitle>{allowConsult ? 'New visit or consultation' : 'New visit or booking'}</DialogTitle>
+          <DialogDescription>Find the owner, choose the animal, then {allowConsult ? 'start the consultation now — or add them to the waiting queue, or book an appointment.' : 'add them to the waiting queue now, or book an appointment for later.'}</DialogDescription>
         </DialogHeader>
         <Steps step={step} />
         {step === 'who' && (

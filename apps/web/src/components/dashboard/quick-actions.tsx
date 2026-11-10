@@ -8,8 +8,8 @@ type ActionKey = 'front-desk' | 'book' | 'new-client' | 'consultations' | 'pharm
 
 const ACTIONS: Record<ActionKey, { label: string; hint: string; href: string; icon: LucideIcon; anyOf: Permission[]; module?: OptionalModule }> = {
   'front-desk': { label: 'Front desk', hint: 'Check in and the waiting room', href: '/front-desk', icon: ClipboardList, anyOf: ['appointments.checkin'] },
-  book: { label: 'Book appointment', hint: 'Book an appointment in a free slot', href: '/calendar', icon: CalendarPlus, anyOf: ['appointments.write'] },
-  'new-client': { label: 'New client', hint: 'Add a pet owner and their animals', href: '/clients/new', icon: UserPlus, anyOf: ['clients.write'] },
+  book: { label: 'New visit or booking', hint: 'Check in now, or book for later', href: '/front-desk?visit=1', icon: CalendarPlus, anyOf: ['appointments.write', 'appointments.checkin'] },
+  'new-client': { label: 'Add client', hint: 'A new owner — and their animal', href: '/clients/new', icon: UserPlus, anyOf: ['clients.write'] },
   consultations: { label: 'Consultations', hint: 'Notes, prescribing, tests', href: '/consultations', icon: Stethoscope, anyOf: ['clinical.read'] },
   pharmacy: { label: 'Pharmacy', hint: 'Prescriptions to authorise and hand over', href: '/pharmacy', icon: Pill, anyOf: ['prescriptions.read', 'pharmacy.dispense'] },
   lab: { label: 'Lab', hint: 'Samples and results', href: '/lab', icon: FlaskConical, anyOf: ['lab.read'], module: 'lab' },

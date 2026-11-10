@@ -1,6 +1,6 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarPlus, Clock, DoorOpen, UserPlus, Users } from 'lucide-react';
+import { Clock, DoorOpen, UserPlus, Users } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { ErrorState, LoadingRows, PageHeader } from '@/components/page';
@@ -59,14 +59,10 @@ function FrontDesk() {
         description={q.data ? `${dayLabel(q.data.date, 'EEEE d MMMM')} · ${session.branch?.name}` : session.branch?.name}
         actions={
           <>
-            {can('appointments.write') && (
-              <Button size="sm" variant="outline" onClick={() => { setBookFor(null); setBook(true); }}>
-                <CalendarPlus /> Book appointment
-              </Button>
-            )}
-            {can('appointments.checkin') && (
+            {/* One start for every visit: find the owner and animal, then the waiting queue or a booking. */}
+            {(can('appointments.checkin') || can('appointments.write')) && (
               <Button size="sm" onClick={() => setWalkIn(true)}>
-                <UserPlus /> New visit
+                <UserPlus /> New visit or booking
               </Button>
             )}
           </>
