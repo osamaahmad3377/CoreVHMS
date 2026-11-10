@@ -141,12 +141,16 @@ export class PosService {
     const db = this.prisma.db;
     const client = await db.client.findUnique({ where: { id: clientId }, select: { id: true, number: true, displayName: true, mobilePhone: true } });
     if (!client) throw notFound('Client');
-    const since = new Date(Date.now() - 30 * 86400_000);
+    // Only prescriptions not yet paid for: written in the last 30 days and after the client's last checkout (an
+    // invoice), as on the "To pay" list — a checkout without the medicines still closes them.
+    const lastSale = await db.invoice.findFirst({ where: { clientId, status: { notIn: ['DRAFT', 'VOID'] } }, orderBy: { issuedAt: 'desc' }, select: { issuedAt: true } });
+    const monthAgo = new Date(Date.now() - 30 * 86400_000);
+    const since = lastSale?.issuedAt && lastSale.issuedAt > monthAgo ? lastSale.issuedAt : monthAgo;
     const [charges, written] = await Promise.all([
       db.charge.findMany({ where: { clientId, status: 'PENDING' }, orderBy: { createdAt: 'asc' } }),
-      // The vet's prescriptions of the last 30 days, as the counter reads them (newest first).
+      // The vet's unpaid prescriptions, as the counter reads them (newest first).
       db.prescription.findMany({
-        where: { clientId, status: { in: ['AUTHORIZED', 'PARTIALLY_DISPENSED', 'DISPENSED'] }, authorizedAt: { gte: since } },
+        where: { clientId, status: { in: ['AUTHORIZED', 'PARTIALLY_DISPENSED', 'DISPENSED'] }, authorizedAt: { gt: since } },
         include: { items: { include: { product: { select: { id: true, name: true, dispensingUnit: true } } }, orderBy: { createdAt: 'asc' } }, prescriber: { select: { user: { select: { name: true } } } } },
         orderBy: { authorizedAt: 'desc' },
         take: 6,

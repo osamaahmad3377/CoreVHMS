@@ -72,10 +72,14 @@ describe('Consultation → shop counter bill', () => {
     expect((await org.owner.get('/pos/waiting')).body).toEqual([
       expect.objectContaining({ client: expect.objectContaining({ id: client.id }), status: 'DONE', charges: 0, invoices: [expect.objectContaining({ id: inv.body.id, invoiceNo: inv.body.invoiceNo, totalMinor: inv.body.totalMinor })] }),
     ]);
+    // The prescription now paid for no longer shows on their bill.
+    expect((await org.owner.get(`/pos/bill/${client.id}`)).body.prescriptions).toEqual([]);
     // Another prescription later in the day puts them back on the list until the next sale.
     const again = await vet.client.post('/prescriptions', { patientId: patient.id, authorize: true, items: [{ outsideName: 'Laterol drops', route: 'TOPICAL', doseValue: 2, doseUnit: 'drop', frequencyCode: 'BID', durationDays: 3, instructions: 'Two drops twice a day for 3 days.' }] });
     expect(again.status).toBe(201);
     expect((await org.owner.get('/pos/waiting')).body[0]).toMatchObject({ status: 'TO_PAY', prescribed: 2 });
+    // … and only that new one shows on their bill.
+    expect((await org.owner.get(`/pos/bill/${client.id}`)).body.prescriptions).toEqual([expect.objectContaining({ id: again.body.id })]);
 
     // Point-of-sale staff see who is ready to pay.
     const shop = await staff(org, 'pharmacy');
