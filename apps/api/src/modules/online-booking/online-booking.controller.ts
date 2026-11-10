@@ -1,7 +1,7 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Put, Query, Req, Res } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { onlineBookingSettingsSchema, publicBookingSchema, publicCancelSchema, publicRescheduleSchema } from '@vcms/shared';
+import { onlineBookingSettingsSchema, publicBookingSchema, publicCancelSchema, publicLookupSchema, publicRescheduleSchema } from '@vcms/shared';
 import type { Request, Response } from 'express';
 import QRCode from 'qrcode';
 import { z } from 'zod';
@@ -109,6 +109,16 @@ export class PublicBookingController {
   @ApiZodQuery(slotsQuery)
   slots(@Param('slug') slug: string, @Query(zp(slotsQuery)) q: z.infer<typeof slotsQuery>) {
     return this.booking.slots(slug, { ...q, clinicianId: q.clinicianId || undefined });
+  }
+
+  /** "Is this you?": the client's pets, shown only when the name and mobile number both match (rate-limited). */
+  @Post(':slug/lookup')
+  @HttpCode(200)
+  @SkipCsrf()
+  @Throttle({ default: { limit: 10, ttl: 600_000 } })
+  @ApiZodBody(publicLookupSchema)
+  lookup(@Param('slug') slug: string, @Body(zp(publicLookupSchema)) body: z.infer<typeof publicLookupSchema>) {
+    return this.booking.lookup(slug, body);
   }
 
   @Post(':slug')

@@ -191,6 +191,39 @@ describe('Online booking page', () => {
     expect((await org.owner.get('/online-booking')).body.homeVisits.available).toBe(false);
   });
 
+  it('asks name and mobile first: shows the pets only when both match, and books for the pet chosen', async () => {
+    const org = await registerOrg();
+    const f = await schedulingFixture(org);
+    const s = settings(f.typeId);
+    await org.owner.call('put', '/online-booking', s);
+    const anon = new TestClient(await getApp());
+    const info = (await anon.get(`/public/booking/${s.slug}`)).body;
+    const owner = f.client.displayName as string;
+    const look = (ownerName: string, mobilePhone: string) => anon.post(`/public/booking/${s.slug}/lookup`, { ownerName, mobilePhone });
+
+    // Name and mobile both match: their pets, to choose from.
+    const known = await look(owner.split(' ')[0].toLowerCase(), f.client.mobilePhone);
+    expect(known.status).toBe(200);
+    expect(known.body).toMatchObject({ known: true, pets: [expect.objectContaining({ id: f.patient.id, name: f.patient.name })] });
+    // The right number with another name, or an unknown number: nothing is given away.
+    expect((await look('Somebody Else', f.client.mobilePhone)).body).toEqual({ known: false, firstName: null, pets: [], allowNewClients: true });
+    expect((await look(owner, '0399 1112223')).body).toMatchObject({ known: false, pets: [] });
+
+    // Booked for the pet chosen (no pet name or species needed).
+    const day = futureDate(5);
+    const slots = (await anon.get(`/public/booking/${s.slug}/slots?branchId=${info.branches[0].id}&appointmentTypeId=${f.typeId}&date=${day}`)).body;
+    const base = { branchId: info.branches[0].id, appointmentTypeId: f.typeId, ownerName: owner, mobilePhone: f.client.mobilePhone };
+    const booked = await anon.post(`/public/booking/${s.slug}`, { ...base, startsAt: slots[0].startsAt, patientId: f.patient.id });
+    expect(booked.status).toBe(201);
+    expect(booked.body.petName).toBe(f.patient.name);
+    // Someone else's pet cannot be booked with this number.
+    const other = await org.owner.post('/patients', { ownerId: (await org.owner.post('/clients', { type: 'INDIVIDUAL', firstName: 'Other', lastName: 'Owner', mobilePhone: '0311 5556667', preferredChannel: 'SMS' })).body.id, name: 'Notmine', speciesId: info.species[0].id, sex: 'UNKNOWN', identifiers: [] });
+    expect(other.status).toBe(201);
+    expect((await anon.post(`/public/booking/${s.slug}`, { ...base, startsAt: slots[slots.length - 1].startsAt, patientId: other.body.id })).body.error.code).toBe('INVALID_PET');
+    // Neither a pet chosen nor a new pet named: refused.
+    expect((await anon.post(`/public/booking/${s.slug}`, { ...base, startsAt: slots[slots.length - 1].startsAt })).status).toBe(400);
+  });
+
   it('lists every branch, with only vets who have working hours there', async () => {
     const org = await registerOrg();
     const f = await schedulingFixture(org); // the vet works at the main branch only

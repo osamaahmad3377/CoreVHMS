@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { bookingIcs, publicBookingSchema } from '@vcms/shared';
+import { bookingIcs, publicBookingSchema, publicLookupSchema } from '@vcms/shared';
 import {
   Ambulance,
   ArrowLeft,
@@ -18,6 +18,7 @@ import {
   MapPin,
   PawPrint,
   Pencil,
+  Plus,
   RotateCcw,
   Scissors,
   Smile,
@@ -43,12 +44,22 @@ import { ApiError, api } from '@/lib/api';
 import { branchTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
 
-type Step = 'service' | 'time' | 'details' | 'done';
+type Step = 'you' | 'pet' | 'service' | 'time' | 'details' | 'done';
 const STEPS: { key: Exclude<Step, 'done'>; label: string }[] = [
-  { key: 'service', label: 'Service' },
+  { key: 'you', label: 'You' },
+  { key: 'pet', label: 'Pet' },
+  { key: 'service', label: 'Visit' },
   { key: 'time', label: 'Day & time' },
-  { key: 'details', label: 'Your details' },
+  { key: 'details', label: 'Confirm' },
 ];
+
+/** The client, as the clinic knows them (only when their name and mobile number both match). */
+interface Me {
+  known: boolean;
+  firstName: string | null;
+  pets: { id: string; name: string; species: string }[];
+  allowNewClients: boolean;
+}
 
 /** Saves the .ics so the visit lands in the client's own phone calendar. */
 function downloadIcs(b: BookingSummary, clinic: string) {
@@ -172,7 +183,10 @@ function BookingPage() {
     queryFn: () => api.get<BookingInfo>(`/public/booking/${slug}`),
     retry: false,
   });
-  const [step, setStep] = useState<Step>('service');
+  const [step, setStep] = useState<Step>('you');
+  const [me, setMe] = useState<Me | null>(null);
+  /** The pet chosen from their own; '' = a new pet (name and kind below). */
+  const [petId, setPetId] = useState('');
   const [branchId, setBranchId] = useState('');
   /** The categories chosen (as the appointment type each is booked as), in the order chosen: the first is the main one. */
   const [typeIds, setTypeIds] = useState<string[]>([]);
@@ -225,8 +239,30 @@ function BookingPage() {
     : { location: 'CLINIC' as const };
   const { visitAddress: _a, visitDirections: _d, visitMapUrl: _m, ...person } = f;
 
+  // A pet chosen from their own needs no name or kind; a new one does.
+  const pet = petId ? { patientId: petId, petName: '', speciesId: '' } : { patientId: '' };
+  const chosenPet = me?.pets.find((p) => p.id === petId);
+  const petLabel = chosenPet ? `${chosenPet.name} · ${chosenPet.species}` : [f.petName.trim(), d?.species.find((s) => s.id === f.speciesId)?.name].filter(Boolean).join(' · ');
+  const youCheck = publicLookupSchema.safeParse({ ownerName: f.ownerName, mobilePhone: f.mobilePhone });
+  const youErrs: Record<string, string | undefined> = {};
+  if (!youCheck.success) for (const i of youCheck.error.issues) youErrs[String(i.path[0])] ??= i.message;
+  const [triedYou, setTriedYou] = useState(false);
+  const [triedPet, setTriedPet] = useState(false);
+  const lookup = useMutation({
+    mutationFn: () => api.post<Me>(`/public/booking/${slug}/lookup`, { ownerName: f.ownerName, mobilePhone: f.mobilePhone }),
+    onSuccess: (r) => {
+      setMe(r);
+      // Back with the same pet if it is still theirs; otherwise their first pet (or a new one).
+      setPetId((id) => (r.pets.some((p) => p.id === id) ? id : (r.pets[0]?.id ?? '')));
+      setError(null);
+      setStep('pet');
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
   const parsed = publicBookingSchema.safeParse({
     ...person,
+    ...pet,
     ...visit,
     branchId: branch?.id,
     appointmentTypeId: type?.id,
@@ -241,6 +277,7 @@ function BookingPage() {
     mutationFn: () =>
       api.post<BookingSummary & { manageLink: string }>(`/public/booking/${slug}`, {
         ...person,
+        ...pet,
         ...visit,
         branchId: branch!.id,
         appointmentTypeId: type!.id,
@@ -286,6 +323,8 @@ function BookingPage() {
   const categories = bookableCategories(d.appointmentTypes);
   const when = time ? `${branchTime(time.startsAt, tz, 'EEEE d MMMM')} at ${branchTime(time.startsAt, tz, 'h:mm a')}` : '';
   const summaryRows = [
+    { icon: User, label: 'You', value: [f.ownerName.trim(), f.mobilePhone.trim()].filter(Boolean).join(' · ') },
+    petLabel && { icon: PawPrint, label: 'Pet', value: petLabel },
     type && {
       icon: Stethoscope,
       label: chosen.length > 1 ? 'Services' : 'Service',
@@ -325,6 +364,135 @@ function BookingPage() {
           </div>
           <Progress step={step} />
         </>
+      )}
+
+      {step === 'you' && (
+        <form
+          className="surface mx-auto grid w-full max-w-xl gap-5 rounded-2xl p-5 sm:p-8"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            setTriedYou(true);
+            setError(null);
+            if (youCheck.success) lookup.mutate();
+          }}
+        >
+          <div>
+            <h3 className="text-lg font-semibold">About you</h3>
+            <p className="text-sm text-muted-foreground">Your name and mobile number. If you have been to us before, we’ll find your pets.</p>
+          </div>
+          {error && <FormError message={error} />}
+          <Field label="Your name" htmlFor="b-name" required error={triedYou ? youErrs.ownerName : undefined}>
+            <Input id="b-name" autoFocus autoComplete="name" placeholder="e.g. Sana Malik" value={f.ownerName} onChange={(e) => setF({ ...f, ownerName: e.target.value })} aria-invalid={triedYou && !!youErrs.ownerName} />
+          </Field>
+          <Field label="Mobile (WhatsApp)" htmlFor="b-phone" required hint="We send your confirmation here." error={triedYou ? youErrs.mobilePhone : undefined}>
+            <Input id="b-phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="0300 1234567" value={f.mobilePhone} onChange={(e) => setF({ ...f, mobilePhone: e.target.value })} aria-invalid={triedYou && !!youErrs.mobilePhone} />
+          </Field>
+          <div className="flex justify-end">
+            <Button type="submit" size="lg" className="w-full sm:w-auto" loading={lookup.isPending}>
+              Continue <ArrowRight />
+            </Button>
+          </div>
+        </form>
+      )}
+
+      {step === 'pet' && me && (
+        <div className="surface mx-auto grid w-full max-w-2xl gap-5 rounded-2xl p-5 sm:p-8">
+          {me.known ? (
+            <div>
+              <h3 className="text-lg font-semibold">Welcome back{me.firstName ? `, ${me.firstName}` : ''}!</h3>
+              <p className="text-sm text-muted-foreground">Which pet is this visit for?</p>
+            </div>
+          ) : (
+            <div>
+              <h3 className="text-lg font-semibold">Your pet</h3>
+              <p className="text-sm text-muted-foreground">Tell us who is coming to see us.</p>
+            </div>
+          )}
+          {!me.known && !me.allowNewClients ? (
+            <div className="grid gap-3 rounded-2xl bg-warning/10 p-4 text-sm ring-1 ring-inset ring-warning/25">
+              <p>
+                We couldn’t find a registration with this name and mobile number. Online booking is for clients already registered with the clinic — please check the
+                spelling and the number, or call {d.clinic.phone ?? 'the clinic'} to book your first visit.
+              </p>
+            </div>
+          ) : (
+            <>
+              {me.known && (
+                <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Which pet">
+                  {me.pets.map((p) => {
+                    const on = petId === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={on}
+                        onClick={() => setPetId(p.id)}
+                        className={cn('flex items-center gap-3 rounded-2xl p-4 text-left transition-all duration-200 ease-apple', on ? 'bg-primary/10 ring-2 ring-primary' : 'surface-flat hover:-translate-y-0.5')}
+                      >
+                        <span className={cn('grid h-11 w-11 shrink-0 place-items-center rounded-xl', on ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary')}>
+                          <PawPrint className="h-5 w-5" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-semibold">{p.name}</span>
+                          <span className="block text-sm text-muted-foreground">{p.species}</span>
+                        </span>
+                        {on && <CheckCircle2 className="h-5 w-5 shrink-0 text-primary" />}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={petId === ''}
+                    onClick={() => setPetId('')}
+                    className={cn('flex items-center gap-3 rounded-2xl border-2 border-dashed p-4 text-left transition-all duration-200 ease-apple', petId === '' ? 'border-primary bg-primary/[0.06]' : 'border-border hover:border-primary/40')}
+                  >
+                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                      <Plus className="h-5 w-5" />
+                    </span>
+                    <span className="font-semibold">{me.pets.length ? 'Another pet' : 'Add your pet'}</span>
+                  </button>
+                </div>
+              )}
+              {petId === '' && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Pet’s name" htmlFor="b-pet" required error={triedPet ? errs.petName : undefined}>
+                    <Input id="b-pet" value={f.petName} onChange={(e) => setF({ ...f, petName: e.target.value })} aria-invalid={triedPet && !!errs.petName} />
+                  </Field>
+                  <Field label="Kind of animal" htmlFor="b-species" required error={triedPet ? errs.speciesId : undefined}>
+                    <NativeSelect id="b-species" value={f.speciesId} onChange={(e) => setF({ ...f, speciesId: e.target.value })} aria-invalid={triedPet && !!errs.speciesId}>
+                      <option value="">Choose…</option>
+                      {d.species.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  </Field>
+                </div>
+              )}
+            </>
+          )}
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+            <Button variant="ghost" onClick={() => setStep('you')}>
+              <ArrowLeft /> Back
+            </Button>
+            {(me.known || me.allowNewClients) && (
+              <Button
+                size="lg"
+                onClick={() => {
+                  setTriedPet(true);
+                  if (!petId && (errs.petName || errs.speciesId)) return;
+                  setStep('service');
+                }}
+              >
+                Continue <ArrowRight />
+              </Button>
+            )}
+          </div>
+        </div>
       )}
 
       {step === 'service' && (
@@ -487,8 +655,11 @@ function BookingPage() {
             </section>
           )}
           <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-end">
+            <Button variant="ghost" className="sm:mr-auto" onClick={() => setStep('pet')}>
+              <ArrowLeft /> Back
+            </Button>
             {(!location || !type || !branch) && (
-              <p className="text-sm text-muted-foreground sm:mr-auto">{!location ? 'Choose a visit at the clinic or at home.' : !branch ? 'Choose the clinic first.' : 'Choose what the visit is for.'}</p>
+              <p className="text-sm text-muted-foreground">{!location ? 'Choose a visit at the clinic or at home.' : !branch ? 'Choose the clinic first.' : 'Choose what the visit is for.'}</p>
             )}
             <Button size="lg" className="w-full sm:w-auto" disabled={!location || !type || !branch} onClick={() => setStep('time')}>
               Choose a time <ArrowRight />
@@ -550,39 +721,16 @@ function BookingPage() {
               setTried(true);
               setError(null);
               if (parsed.success) book.mutate();
+              // Something from an earlier step is missing (e.g. the pet's name): say what.
+              else if (!errs.visitAddress && !errs.visitMapUrl && !errs.email) setError(Object.values(errs).find(Boolean) ?? 'Please check your details.');
             }}
           >
-            <h3 className="text-lg font-semibold">Your details</h3>
+            <div>
+              <h3 className="text-lg font-semibold">Almost done</h3>
+              <p className="text-sm text-muted-foreground">Check your visit, add anything we should know, and confirm.</p>
+            </div>
             {error && <FormError message={error} />}
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Your name" htmlFor="b-name" required error={tried ? errs.ownerName : undefined}>
-                <Input id="b-name" autoComplete="name" value={f.ownerName} onChange={(e) => setF({ ...f, ownerName: e.target.value })} aria-invalid={tried && !!errs.ownerName} />
-              </Field>
-              <Field label="Mobile (WhatsApp)" htmlFor="b-phone" required hint="We send your confirmation here." error={tried ? errs.mobilePhone : undefined}>
-                <Input
-                  id="b-phone"
-                  type="tel"
-                  inputMode="tel"
-                  autoComplete="tel"
-                  placeholder="0300 1234567"
-                  value={f.mobilePhone}
-                  onChange={(e) => setF({ ...f, mobilePhone: e.target.value })}
-                  aria-invalid={tried && !!errs.mobilePhone}
-                />
-              </Field>
-              <Field label="Pet’s name" htmlFor="b-pet" required error={tried ? errs.petName : undefined}>
-                <Input id="b-pet" value={f.petName} onChange={(e) => setF({ ...f, petName: e.target.value })} aria-invalid={tried && !!errs.petName} />
-              </Field>
-              <Field label="Kind of animal" htmlFor="b-species" required error={tried ? errs.speciesId : undefined}>
-                <NativeSelect id="b-species" value={f.speciesId} onChange={(e) => setF({ ...f, speciesId: e.target.value })} aria-invalid={tried && !!errs.speciesId}>
-                  <option value="">Choose…</option>
-                  {d.species.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </Field>
               {home && (
                 <fieldset className="grid gap-4 rounded-2xl bg-primary/[0.04] p-4 ring-1 ring-inset ring-primary/15 sm:col-span-2">
                   <legend className="sr-only">Where should the vet come?</legend>
@@ -631,7 +779,6 @@ function BookingPage() {
                 <input id="b-website" tabIndex={-1} autoComplete="off" value={f.website} onChange={(e) => setF({ ...f, website: e.target.value })} />
               </div>
             </div>
-            {!d.settings.allowNewClients && <p className="text-xs text-muted-foreground">Online booking is for clients already registered with the clinic — use the mobile number they have for you.</p>}
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
               <Button type="button" variant="ghost" onClick={() => setStep('time')}>
                 <ArrowLeft /> Back

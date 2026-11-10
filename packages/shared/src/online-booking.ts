@@ -52,8 +52,10 @@ export const publicBookingSchema = z
       .trim()
       .regex(/^\+?[0-9 ()-]{7,24}$/, 'Enter your mobile number, e.g. 0300 1234567'),
     email: z.union([z.literal(''), z.string().trim().toLowerCase().email('Email looks incomplete — e.g. name@gmail.com').max(254)]).optional(),
-    petName: z.string().trim().min(1, 'Enter your pet’s name').max(80),
-    speciesId: z.string().uuid('Choose the kind of animal'),
+    /** A pet already registered to this client (shown after they gave their name and mobile); else a new one below. */
+    patientId: z.string().uuid().optional().or(z.literal('')),
+    petName: z.string().trim().max(80).optional().or(z.literal('')),
+    speciesId: z.string().uuid('Choose the kind of animal').optional().or(z.literal('')),
     reason: z.string().trim().max(500).optional().or(z.literal('')),
     /** Hidden field: people leave it empty, spam robots fill it in. */
     website: z.string().max(0, 'Please leave this empty').optional().or(z.literal('')),
@@ -61,8 +63,19 @@ export const publicBookingSchema = z
   .refine((v) => v.location !== 'HOME' || (v.visitAddress ?? '').trim().length >= 5, {
     path: ['visitAddress'],
     message: 'Enter the full address the vet should come to',
-  });
+  })
+  .refine((v) => !!v.patientId || !!v.petName?.trim(), { path: ['petName'], message: 'Enter your pet’s name' })
+  .refine((v) => !!v.patientId || !!v.speciesId, { path: ['speciesId'], message: 'Choose the kind of animal' });
 export type PublicBookingInput = z.infer<typeof publicBookingSchema>;
+
+/** "Is this you?" on the booking page: the pets are shown only when the name and the mobile number both match. */
+export const publicLookupSchema = z.object({
+  ownerName: z.string().trim().min(2, 'Enter your name').max(120),
+  mobilePhone: z
+    .string()
+    .trim()
+    .regex(/^\+?[0-9 ()-]{7,24}$/, 'Enter your mobile number, e.g. 0300 1234567'),
+});
 
 export const publicRescheduleSchema = z.object({
   startsAt: z.coerce.date({ invalid_type_error: 'Choose a time' }),

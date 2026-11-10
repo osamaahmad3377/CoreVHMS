@@ -321,6 +321,29 @@ export class OnlineBookingService {
     });
   }
 
+  /**
+   * "Is this you?": a client who gives their name and mobile number sees their pets to choose from. The pets are shown
+   * only when both match a registered client — the page never says whether a number is registered.
+   */
+  async lookup(slug: string, input: { ownerName: string; mobilePhone: string }) {
+    const { s } = await this.page(slug);
+    return this.inClinic(s, async () => {
+      const db = this.prisma.db;
+      const key = phoneKey(input.mobilePhone);
+      const client = key ? await db.client.findFirst({ where: { phoneDigits: key, status: 'ACTIVE' }, orderBy: { createdAt: 'asc' }, select: { id: true, firstName: true, lastName: true, displayName: true, organizationName: true } }) : null;
+      const words = (t: string | null | undefined) => (t ?? '').toLowerCase().normalize('NFKD').replace(/[^a-z\s]/g, ' ').split(/\s+/).filter((w) => w.length >= 2);
+      const theirs = new Set([client?.firstName, client?.lastName, client?.displayName, client?.organizationName].flatMap(words));
+      const matches = !!client && words(input.ownerName).some((w) => theirs.has(w));
+      if (!client || !matches) return { known: false, firstName: null, pets: [], allowNewClients: s.allowNewClients };
+      const pets = await db.patient.findMany({
+        where: { status: 'ACTIVE', ownerships: { some: { clientId: client.id, endedAt: null } } },
+        select: { id: true, name: true, species: { select: { name: true } } },
+        orderBy: { name: 'asc' },
+      });
+      return { known: true, firstName: client.firstName ?? client.displayName.split(/\s+/)[0], pets: pets.map((p) => ({ id: p.id, name: p.name, species: p.species.name })), allowNewClients: s.allowNewClients };
+    });
+  }
+
   /** Books a visit: recognises or registers the client and pet, takes a free vet, and returns a private change link. */
   async book(slug: string, input: PublicBookingInput, origin: string) {
     const { s, org } = await this.page(slug);
@@ -360,13 +383,20 @@ export class OnlineBookingService {
         await db.client.update({ where: { id: client.id }, data: { email: input.email } });
       }
 
-      // Their pet: the one with this name, or a new one.
+      // Their pet: one they chose from their own (after giving their name and mobile), the one with this name, or a new one.
       const owned = await db.patient.findMany({ where: { status: 'ACTIVE', ownerships: { some: { clientId: client.id, endedAt: null } } }, select: { id: true, name: true } });
-      let patientId = owned.find((p) => p.name.trim().toLowerCase() === input.petName.trim().toLowerCase())?.id;
+      let patientId: string | undefined;
+      if (input.patientId) {
+        patientId = owned.find((p) => p.id === input.patientId)?.id;
+        if (!patientId) throw ruleViolation('INVALID_PET', 'Please choose your pet again.');
+      } else {
+        patientId = owned.find((p) => p.name.trim().toLowerCase() === (input.petName ?? '').trim().toLowerCase())?.id;
+      }
       if (!patientId) {
+        if (!input.petName?.trim()) throw ruleViolation('PET_REQUIRED', 'Enter your pet’s name.');
         const species = await db.species.findFirst({ where: { id: input.speciesId, isActive: true } });
         if (!species) throw ruleViolation('INVALID_SPECIES', 'Choose the kind of animal.');
-        patientId = ((await this.patients.create({ ownerId: client.id, name: input.petName.trim(), speciesId: species.id, sex: 'UNKNOWN', dobEstimated: false, identifiers: [], primaryBranchId: input.branchId, notes: 'Added through online booking.' } as never)) as { id: string }).id;
+        patientId = ((await this.patients.create({ ownerId: client.id, name: input.petName!.trim(), speciesId: species.id, sex: 'UNKNOWN', dobEstimated: false, identifiers: [], primaryBranchId: input.branchId, notes: 'Added through online booking.' } as never)) as { id: string }).id;
       }
 
       const token = randomToken(24);
@@ -402,7 +432,7 @@ export class OnlineBookingService {
       }
       await db.$transaction(async (tx) => {
         await tx.appointment.update({ where: { id: appointmentId }, data: { manageTokenHash: sha256(token), extraTypeIds: visit.extraTypeIds, ...(s.autoConfirm ? { status: 'CONFIRMED', confirmedAt: new Date() } : {}) } });
-        await this.audit.record({ action: 'appointment.booked_online', entityType: 'Appointment', entityId: appointmentId, summary: `${input.ownerName} · ${input.petName}${input.location === 'HOME' ? ' · home visit' : ''}` }, tx);
+        await this.audit.record({ action: 'appointment.booked_online', entityType: 'Appointment', entityId: appointmentId, summary: `${input.ownerName} · ${owned.find((p) => p.id === patientId)?.name ?? input.petName ?? ''}${input.location === 'HOME' ? ' · home visit' : ''}` }, tx);
       });
       const manageLink = `${origin}/book/manage/${token}`;
       await this.events.emit({ type: 'APPOINTMENT_BOOKED', appointmentId, online: { manageLink } });
