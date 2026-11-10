@@ -1563,8 +1563,9 @@ model Appointment {
 
   reminderSentAt DateTime? @db.Timestamptz(3)
 
-  fieldVisit  FieldVisit?
-  groomingJob GroomingJob?
+  fieldVisit         FieldVisit?
+  groomingJob        GroomingJob?
+  staffNotifications StaffNotification[]
 
   @@unique([organizationId, number])
   @@unique([branchId, tokenDay, tokenNumber])
@@ -5135,6 +5136,42 @@ model ClientNotificationRule {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   @@unique([organizationId, event])
+}
+
+enum StaffNotificationKind {
+  ONLINE_BOOKED
+  ONLINE_RESCHEDULED
+  ONLINE_CANCELLED
+}
+
+/// The bell in the top bar: things staff should know about as they happen (a client booked, moved or cancelled online).
+model StaffNotification {
+  id               String                  @id @default(uuid()) @db.Uuid
+  organizationId   String                  @db.Uuid
+  branchId         String                  @db.Uuid
+  kind             StaffNotificationKind
+  appointmentId    String?                 @db.Uuid
+  appointment      Appointment?            @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  /// Moved online: when it was before.
+  previousStartsAt DateTime?               @db.Timestamptz(6)
+  /// Cancelled online: the client's reason.
+  detail           String?
+  createdAt        DateTime                @default(now()) @db.Timestamptz(6)
+  reads            StaffNotificationRead[]
+
+  @@index([organizationId, branchId, createdAt])
+}
+
+/// Who has seen a notification (each member of staff has their own unread count).
+model StaffNotificationRead {
+  notificationId String            @db.Uuid
+  notification   StaffNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  organizationId String            @db.Uuid
+  userId         String            @db.Uuid
+  readAt         DateTime          @default(now()) @db.Timestamptz(6)
+
+  @@id([notificationId, userId])
+  @@index([userId])
 }
 
 /// Online booking page (Settings → Online booking): the public link clients use to book a free time themselves.

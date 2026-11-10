@@ -41,6 +41,7 @@ import { InsuranceModule } from './modules/insurance/insurance.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { PatientsModule } from './modules/patients/patients.module';
 import { SearchModule } from './modules/search/search.module';
@@ -76,6 +77,7 @@ import { env } from './config/env';
     PatientsModule,
     SearchModule,
     DashboardModule,
+    NotificationsModule,
     ClinicalModule,
     SchedulingModule,
     HomeVisitsModule,

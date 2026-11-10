@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { visibleNav } from '@/lib/navigation';
 import { useSession } from '@/lib/session';
-import { cn, initials as initialsOf } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { MENU_LOGO_HEIGHT } from '@vcms/shared';
 import { logoFor, menuIsDark } from '../branding/brand-theme';
 import { Tip } from '../ui/tooltip';
@@ -105,21 +105,9 @@ export function SidebarNav({ collapsed, onNavigate }: { collapsed?: boolean; onN
 }
 
 function SidebarFooter({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
-  const { session } = useSession();
-  const name = session.user.name;
-  const initials = initialsOf(name);
-  const role = session.roles.map((r) => r.name.replace(/ & procurement officer$/, ' officer')).join(', ');
+  // Who is signed in shows in the header's account menu, not here.
   return (
     <div className={cn('p-3', collapsed && 'px-2')}>
-      {!collapsed && (
-        <div className="mb-2 flex items-center gap-3 rounded-pill bg-sidebar-strong/[0.06] p-1.5 pr-3">
-          <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sidebar-active to-brand-2 text-xs font-semibold text-white shadow-sm">{initials}</span>
-          <span className="min-w-0 leading-tight">
-            <span className="block truncate text-[0.8125rem] font-semibold text-sidebar-strong">{name}</span>
-            <span className="block truncate text-2xs text-sidebar-foreground/70" title={role}>{role}</span>
-          </span>
-        </div>
-      )}
       <button
         onClick={onToggle}
         className={cn('flex h-10 w-full items-center justify-center gap-2 rounded-pill text-xs font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-hover hover:text-sidebar-strong')}

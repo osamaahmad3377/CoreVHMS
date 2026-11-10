@@ -124,9 +124,7 @@ export default function DashboardPage() {
   return (
     <>
       <DashboardHero
-        greeting={`Good ${greeting()}, ${session.user.name.split(' ')[0] === 'Dr.' ? session.user.name.split(' ').slice(0, 2).join(' ') : session.user.name.split(' ')[0]}`}
         date={today}
-        subtitle={`${session.organization?.name}${session.branch ? ` · ${session.branch.name}` : ''}`}
         stats={glance.slice(0, 3).map((g) => ({ label: g.label, value: g.value, href: g.href, alert: g.tone === 'warning' }))}
       />
 
@@ -412,9 +410,4 @@ export default function DashboardPage() {
       )}
     </>
   );
-}
-
-function greeting() {
-  const h = new Date().getHours();
-  return h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
 }

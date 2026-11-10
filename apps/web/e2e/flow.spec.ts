@@ -29,7 +29,7 @@ test.describe('Everyday flow', () => {
 
   test('⌘K offers actions, and a completed consultation leads straight to billing', async ({ page }) => {
     await login(page, 'vet@demo.pk');
-    await expect(page.getByRole('heading', { name: /^Good (morning|afternoon|evening)/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeAttached();
     await page.keyboard.press('Meta+k');
     await page.getByPlaceholder(/Search a name or phone/).fill('book');
     // One action for every visit: the waiting queue or a booking.

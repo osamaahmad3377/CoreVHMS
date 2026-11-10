@@ -9,26 +9,16 @@ export interface HeroStat {
 }
 
 /**
- * The dashboard's welcome: the date, a large greeting and the day's key numbers as quiet widgets. Colours come
+ * The top of the dashboard: the date and the day's key numbers as quiet widgets. Colours come
  * from the theme, so a clinic's own branding carries through.
  */
-export function DashboardHero({ greeting, subtitle, date, stats }: { greeting: string; subtitle: string; date: string; stats: HeroStat[] }) {
+export function DashboardHero({ date, stats }: { date: string; stats: HeroStat[] }) {
   return (
-    <section aria-label="Welcome" className="mb-8">
+    <section aria-label="Today" className="mb-8">
+      <h1 className="sr-only">Dashboard</h1>
       <p className="inline-flex items-center gap-2 rounded-pill bg-[hsl(var(--glass)/0.6)] px-3 py-1 text-xs font-semibold text-muted-foreground ring-1 ring-inset ring-[hsl(var(--glass-edge))] backdrop-blur">{date}</p>
-      <h1 className="mt-4 text-balance text-[2rem] font-bold leading-[1.1] tracking-[-0.03em] sm:text-[2.75rem]">
-        {/* The name in the brand gradient. */}
-        {greeting.includes(', ') ? (
-          <>
-            {greeting.slice(0, greeting.indexOf(', ') + 1)} <span className="text-gradient">{greeting.slice(greeting.indexOf(', ') + 2)}</span>
-          </>
-        ) : (
-          greeting
-        )}
-      </h1>
-      <p className="mt-2 max-w-2xl text-[0.9375rem] text-muted-foreground sm:text-base">{subtitle}</p>
       {stats.length > 0 && (
-        <ul className="mt-6 grid grid-cols-3 gap-2.5 sm:gap-4">
+        <ul className="mt-4 grid grid-cols-3 gap-2.5 sm:gap-4">
           {stats.map((s) => {
             const body = (
               <>

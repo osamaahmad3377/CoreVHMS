@@ -8,6 +8,7 @@ import { randomToken, sha256 } from '../../common/crypto/crypto';
 import { ClientEvents } from '../../common/events/client-events';
 import { conflict, notFound, ruleViolation } from '../../common/http/errors';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import type { ScopedTx } from '../../common/prisma/tenant-extension';
 import { localParts } from '../../common/time/tz';
 import { AttachmentsService } from '../attachments/attachments.service';
@@ -64,6 +65,7 @@ export class OnlineBookingService {
     private readonly events: ClientEvents,
     private readonly orgs: OrganizationsService,
     private readonly attachments: AttachmentsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ── Settings (staff) ──
@@ -432,6 +434,8 @@ export class OnlineBookingService {
       }
       await db.$transaction(async (tx) => {
         await tx.appointment.update({ where: { id: appointmentId }, data: { manageTokenHash: sha256(token), extraTypeIds: visit.extraTypeIds, ...(s.autoConfirm ? { status: 'CONFIRMED', confirmedAt: new Date() } : {}) } });
+        // The bell in the top bar: staff see the new booking straight away.
+        await this.notifications.notify({ kind: 'ONLINE_BOOKED', branchId: input.branchId, appointmentId }, tx);
         await this.audit.record({ action: 'appointment.booked_online', entityType: 'Appointment', entityId: appointmentId, summary: `${input.ownerName} · ${owned.find((p) => p.id === patientId)?.name ?? input.petName ?? ''}${input.location === 'HOME' ? ' · home visit' : ''}` }, tx);
       });
       const manageLink = `${origin}/book/manage/${token}`;
@@ -490,6 +494,8 @@ export class OnlineBookingService {
     const { a, s } = await this.byToken(token);
     return this.inClinic(s, async () => {
       await this.appointments.cancelByClient(a.id, a.clientId, reason || 'Cancelled online', s.cancelNoticeHours);
+      const { branchId } = await this.prisma.db.appointment.findUniqueOrThrow({ where: { id: a.id }, select: { branchId: true } });
+      await this.notifications.notify({ kind: 'ONLINE_CANCELLED', branchId, appointmentId: a.id, detail: reason || null });
       return this.manage(token);
     });
   }
@@ -507,6 +513,7 @@ export class OnlineBookingService {
       const free = (await this.freeTimes(s, { branchId: current.branch.id, appointmentTypeId: current.appointmentTypeId, extraTypeIds: current.extraTypeIds, location: current.location, clinicianId: input.clinicianId || undefined, date }, false)).find((t) => t.startsAt === startsAt.toISOString());
       if (!free) throw conflict('Sorry — this time has just been taken. Please choose another time.', { code: 'SLOT_TAKEN' });
       await this.appointments.reschedule(a.id, { startsAt, clinicianId: input.clinicianId || (free.clinicianIds.includes(current.clinicianId ?? '') ? current.clinicianId : free.clinicianIds[0]) } as never);
+      await this.notifications.notify({ kind: 'ONLINE_RESCHEDULED', branchId: current.branch.id, appointmentId: a.id, previousStartsAt: current.startsAt });
       return this.manage(token);
     });
   }

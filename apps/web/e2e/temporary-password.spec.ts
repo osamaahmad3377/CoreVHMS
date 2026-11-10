@@ -42,7 +42,8 @@ test.describe('Staff with a temporary password', () => {
     await expect(page.getByRole('button', { name: 'Save password and continue' })).toBeDisabled();
     await page.locator('#fp-repeat').fill('Reception2026x');
     await page.getByRole('button', { name: 'Save password and continue' }).click();
-    await expect(page.getByRole('heading', { name: /Good (morning|afternoon|evening), Temp/ })).toBeVisible();
+    await expect(page).toHaveURL(/\/dashboard/);
+    await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeAttached();
 
     // From now on the temporary password is useless and their own works.
     await page.context().clearCookies();

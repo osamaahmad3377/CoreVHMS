@@ -71,8 +71,25 @@ describe('Online booking page', () => {
     expect(cancelled.body).toMatchObject({ booking: { status: 'CANCELLED' }, changeable: false });
     expect((await anon.get('/public/booking/manage/not-a-real-token-at-all-123')).status).toBe(404);
 
-    // Settings: staff-only, unique address; switched off = not found.
+    // The bell in the top bar: staff see each online booking, move and cancellation, newest first, each with their own unread count.
     const reception = await staff(org, 'receptionist');
+    const bell = await reception.client.get(`/notifications?branchId=${branchId}`);
+    expect(bell.status).toBe(200);
+    expect(bell.body.items.map((n: { kind: string }) => n.kind)).toEqual(['ONLINE_CANCELLED', 'ONLINE_RESCHEDULED', 'ONLINE_BOOKED', 'ONLINE_BOOKED']);
+    expect(bell.body.unread).toBe(4);
+    expect(bell.body.items[0]).toMatchObject({ read: false, detail: 'Feeling better', appointment: { id: booked.body.id, status: 'CANCELLED', patient: { name: 'Moti' }, client: { displayName: expect.stringContaining('Sana') } } });
+    expect(new Date(bell.body.items[1].previousStartsAt).toISOString()).toBe(slots[0].startsAt);
+    // Reading one, then the rest; the owner's count is untouched.
+    expect((await reception.client.post('/notifications/read', { ids: [bell.body.items[0].id] })).body).toEqual({ marked: 1 });
+    expect((await reception.client.get(`/notifications?branchId=${branchId}&unread=true`)).body).toMatchObject({ unread: 3, items: expect.arrayContaining([expect.objectContaining({ kind: 'ONLINE_BOOKED' })]) });
+    expect((await reception.client.post('/notifications/read', { branchId })).body).toEqual({ marked: 3 });
+    expect((await reception.client.get('/notifications')).body.unread).toBe(0);
+    expect((await org.owner.get('/notifications')).body.unread).toBe(4);
+    // Another clinic sees none of them.
+    const elsewhere = await registerOrg();
+    expect((await elsewhere.owner.get('/notifications')).body).toEqual({ unread: 0, items: [] });
+
+    // Settings: staff-only, unique address; switched off = not found.
     expect((await reception.client.call('put', '/online-booking', s)).status).toBe(403);
     const other = await registerOrg();
     const g = await schedulingFixture(other);
