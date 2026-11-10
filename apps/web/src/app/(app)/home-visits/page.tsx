@@ -10,6 +10,7 @@ import { RequirePermission } from '@/components/require';
 import { AppointmentDialog } from '@/components/scheduling/appointment-dialog';
 import { AppointmentStatusBadge } from '@/components/scheduling/appointment-status';
 import { BookingDialog } from '@/components/scheduling/booking-dialog';
+import { CalendarTabs } from '@/components/scheduling/calendar-tabs';
 import { HomeVisitActions } from '@/components/scheduling/home-visit-actions';
 import { mapsHref } from '@/components/scheduling/home-visit-fields';
 import { Stat } from '@/components/stat';
@@ -167,8 +168,8 @@ function HomeVisitsView() {
     <>
       <PageHeader
         help="home-visits"
-        title="Home visits"
-        description={`${session.branch?.name ?? ''} · ${dayLabel(date, 'EEEE d MMMM')}`}
+        title="Calendar & appointments"
+        description={`Home visits · ${session.branch?.name ?? ''} · ${dayLabel(date, 'EEEE d MMMM')}`}
         actions={
           can('appointments.write') && (
             <Button size="sm" onClick={() => setBooking(true)}>
@@ -177,6 +178,7 @@ function HomeVisitsView() {
           )
         }
       />
+      <CalendarTabs active="homeVisits" />
       <Card className="mb-4 flex flex-wrap items-center gap-2 p-3">
         <div className="flex items-center gap-1">
           <Button variant="outline" size="icon-sm" aria-label="Previous day" onClick={() => url.set({ date: shiftDate(date, -1) })}>

@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertOctagon, CalendarDays, CalendarPlus, Car, Check, ChevronLeft, ChevronRight, Globe, House, ListChecks, Users, XCircle } from 'lucide-react';
+import { AlertOctagon, CalendarDays, CalendarPlus, Car, Check, ChevronLeft, ChevronRight, Globe, House, Users, XCircle } from 'lucide-react';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useConfirm } from '@/components/confirm';
@@ -10,6 +10,7 @@ import { AppointmentDialog } from '@/components/scheduling/appointment-dialog';
 import { PriorityDot } from '@/components/scheduling/appointment-status';
 import { apptSummary } from '@/components/scheduling/appointment-text';
 import { AppointmentsList } from '@/components/scheduling/appointments-list';
+import { CalendarTabs } from '@/components/scheduling/calendar-tabs';
 import { BookingDialog, useTimeZoneNote, type BookingDefaults } from '@/components/scheduling/booking-dialog';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -87,11 +88,6 @@ function CalendarView() {
   const view = url.get('view', 'day') as 'day' | 'week' | 'month';
   // The calendar grid, or every booking as a list.
   const tab = url.get('tab') === 'appointments' ? 'appointments' : 'calendar';
-  const toConfirm = useQuery({
-    queryKey: ['appointment-bookings', 'to-confirm', session.branch?.id],
-    queryFn: () => api.get<{ meta: { total: number } }>(`/appointments/bookings${qs({ branchId: session.branch?.id, status: 'toConfirm', when: 'upcoming', pageSize: 1 })}`),
-    refetchInterval: 60_000,
-  });
   const date = url.get('date', todayIn(tz));
   const clinicianFilter = url.get('clinician');
   const moduleOn = useModuleOn();
@@ -307,19 +303,7 @@ function CalendarView() {
           )
         }
       />
-      <div className={cn(tabListClass, 'mb-4 w-fit')} role="tablist" aria-label="Calendar or list">
-        <button type="button" role="tab" aria-selected={tab === 'calendar'} className={tabTriggerClass(tab === 'calendar')} onClick={() => url.set({ tab: null })}>
-          <CalendarDays className="h-4 w-4" /> Calendar
-        </button>
-        <button type="button" role="tab" aria-selected={tab === 'appointments'} className={tabTriggerClass(tab === 'appointments')} onClick={() => url.set({ tab: 'appointments' })}>
-          <ListChecks className="h-4 w-4" /> Appointments
-          {!!toConfirm.data?.meta.total && (
-            <span className="ml-1 rounded-full bg-warning/15 px-1.5 text-xs font-semibold tabular text-warning" title="Booked, still to confirm">
-              {toConfirm.data.meta.total} to confirm
-            </span>
-          )}
-        </button>
-      </div>
+      <CalendarTabs active={tab} onSelect={(t) => url.set({ tab: t === 'calendar' ? null : t })} />
       {tab === 'appointments' ? (
         <AppointmentsList />
       ) : (

@@ -35,6 +35,10 @@ const nextConfig = {
     API_URL,
   },
   poweredByHeader: false,
+  async redirects() {
+    // Marketing now lives in Settings (Automations & marketing); old links and bookmarks still work.
+    return [{ source: '/marketing/:path*', destination: '/settings/marketing/:path*', permanent: true }];
+  },
   async rewrites() {
     // The browser only talks to this origin; session cookies stay first-party.
     return [{ source: '/api/:path*', destination: `${API_URL}/api/:path*` }];

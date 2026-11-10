@@ -32,7 +32,7 @@ import { TemplateGallery } from '@/components/automations/templates';
 import { hourLabel, offerScheduleText, type AutomationOptions } from '@/components/automations/describe';
 import { BarChartCard } from '@/components/charts';
 import { useConfirm } from '@/components/confirm';
-import { EmptyState, ErrorState, LoadingRows, PageHeader } from '@/components/page';
+import { EmptyState, ErrorState, LoadingRows } from '@/components/page';
 import { FeatureLockedPage, usePlanFeature } from '@/components/plan/upgrade';
 import { RequirePermission } from '@/components/require';
 import { Badge } from '@/components/ui/badge';
@@ -220,7 +220,7 @@ function CampaignsTab({ rows, options }: { rows: AutomationRow[]; options?: Auto
         others.map((a) => <AutomationCard key={a.id} a={a} options={options} full={full(a)} />)
       ) : (
         <Card>
-          <EmptyState icon={Megaphone} title="No campaigns yet" description="Create your own with the campaign builder, or start from a ready-made one below. Nothing is sent until it is switched on." action={<Button asChild><Link href="/marketing/new"><Megaphone /> Create a campaign</Link></Button>} />
+          <EmptyState icon={Megaphone} title="No campaigns yet" description="Create your own with the campaign builder, or start from a ready-made one below. Nothing is sent until it is switched on." action={<Button asChild><Link href="/settings/marketing/new"><Megaphone /> Create a campaign</Link></Button>} />
         </Card>
       )}
       <div id="templates" className="mt-2 grid scroll-mt-24 gap-3">
@@ -287,7 +287,7 @@ function CalendarTab({ rows }: { rows: AutomationRow[] }) {
             })}
           </ol>
         ) : (
-          <CardContent><EmptyState icon={CalendarDays} title="Nothing scheduled" description="Offers you schedule appear here on the days they go out." action={<Button asChild><Link href="/marketing/new?type=date"><Tag /> Schedule an offer</Link></Button>} /></CardContent>
+          <CardContent><EmptyState icon={CalendarDays} title="Nothing scheduled" description="Offers you schedule appear here on the days they go out." action={<Button asChild><Link href="/settings/marketing/new?type=date"><Tag /> Schedule an offer</Link></Button>} /></CardContent>
         )}
       </Card>
       <Card className="h-fit">
@@ -464,16 +464,22 @@ function MarketingPage() {
   const pending = rows.filter((a) => a.marketing && a.approvalStatus === 'PENDING').length;
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
-      <PageHeader
-        title="Marketing"
-        description="Offers, discounts and campaigns to clients who agreed to hear from you — with results, approvals and opt-outs in one place."
-        actions={
-          <>
+      <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-rose-500/[0.1] via-pink-500/[0.06] to-transparent p-6 ring-1 ring-inset ring-rose-500/10 sm:p-8">
+        <span aria-hidden className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-rose-500/15 blur-3xl" />
+        <div className="relative flex flex-wrap items-start gap-5">
+          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-3xl bg-gradient-to-br from-pink-500 to-rose-600 text-white shadow-lg">
+            <Megaphone className="h-7 w-7" />
+          </span>
+          <div className="min-w-0 flex-1 basis-72">
+            <h2 className="text-2xl font-semibold tracking-tight">Marketing</h2>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Offers, discounts and campaigns to clients who agreed to hear from you — with results, approvals and opt-outs in one place.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
             <Button variant="outline" asChild><Link href="/settings/automations"><Settings2 /> Automations</Link></Button>
             <CreateChooser kind="campaign" />
-          </>
-        }
-      />
+          </div>
+        </div>
+      </div>
       {settings?.paused && (
         <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-destructive/[0.08] p-4 ring-1 ring-inset ring-destructive/20">
           <PauseCircle className="h-5 w-5 text-destructive" />

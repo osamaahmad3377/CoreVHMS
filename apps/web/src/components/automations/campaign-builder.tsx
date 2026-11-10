@@ -271,7 +271,7 @@ export function CampaignBuilder() {
     onSuccess: (r, isActive) => {
       ['automations', 'automation-stats', 'marketing-overview', 'clinic-plan'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
       toast.success(r.approvalStatus === 'PENDING' ? `“${draft.name}” sent for approval — a manager switches it on` : isActive ? `“${draft.name}” is live` : `“${draft.name}” saved as a draft (off)`);
-      router.push('/marketing?tab=campaigns');
+      router.push('/settings/marketing?tab=campaigns');
     },
     onError: (e: Error) => {
       setError(e.message);
@@ -332,7 +332,7 @@ export function CampaignBuilder() {
     <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
       <div className="flex flex-wrap items-center gap-3">
         <Button variant="ghost" size="sm" asChild>
-          <Link href="/marketing?tab=campaigns">
+          <Link href="/settings/marketing?tab=campaigns">
             <ArrowLeft /> Marketing
           </Link>
         </Button>

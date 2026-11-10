@@ -31,10 +31,10 @@ export function CreateChooser({ kind, label, variant = 'default' }: { kind: 'aut
   const mine = (templates.data ?? []).filter((t) => t.marketing === marketing).length;
   const choices: Choice[] = marketing
     ? [
-        { href: '/marketing/new', icon: Megaphone, tone: 'bg-gradient-to-br from-pink-500 to-rose-600', title: 'Campaign builder', text: 'Choose when it goes out, who gets it and the offer — the message is written for you. You can change every word.', badge: 'Recommended' },
+        { href: '/settings/marketing/new', icon: Megaphone, tone: 'bg-gradient-to-br from-pink-500 to-rose-600', title: 'Campaign builder', text: 'Choose when it goes out, who gets it and the offer — the message is written for you. You can change every word.', badge: 'Recommended' },
         { href: builder ? '/settings/automations/new?mode=advanced&marketing=1' : '/settings/plan?unlock=automationBuilder', icon: Hammer, tone: 'bg-gradient-to-br from-slate-600 to-slate-800', title: 'Build from scratch', text: 'The full builder: any trigger, your own rules, several messages, waits, checks and tasks for staff.', locked: !builder },
-        { href: '/marketing?tab=campaigns#ready-made', icon: Sparkles, tone: 'bg-gradient-to-br from-amber-500 to-orange-600', title: 'Ready-made campaign', text: 'Birthdays, Eid, tick season, win-back and more — written and ready to adjust.' },
-        { href: '/marketing?tab=campaigns#templates', icon: Bookmark, tone: 'bg-gradient-to-br from-primary to-brand-2', title: 'Your templates', text: mine ? `Start from one of the ${mine} campaign${mine === 1 ? '' : 's'} your clinic saved.` : 'Campaigns your clinic saved to reuse. Save one from its ⋯ menu.', badge: mine ? String(mine) : undefined },
+        { href: '/settings/marketing?tab=campaigns#ready-made', icon: Sparkles, tone: 'bg-gradient-to-br from-amber-500 to-orange-600', title: 'Ready-made campaign', text: 'Birthdays, Eid, tick season, win-back and more — written and ready to adjust.' },
+        { href: '/settings/marketing?tab=campaigns#templates', icon: Bookmark, tone: 'bg-gradient-to-br from-primary to-brand-2', title: 'Your templates', text: mine ? `Start from one of the ${mine} campaign${mine === 1 ? '' : 's'} your clinic saved.` : 'Campaigns your clinic saved to reuse. Save one from its ⋯ menu.', badge: mine ? String(mine) : undefined },
       ]
     : [
         { href: '/settings/automations/new', icon: Wand2, tone: 'bg-gradient-to-br from-primary to-brand-2', title: 'Guided', text: 'Three quick questions — when, what to send, and check. The wording is already written for you.', badge: 'Quickest' },

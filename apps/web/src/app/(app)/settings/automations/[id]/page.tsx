@@ -705,7 +705,7 @@ function Builder() {
       qc.invalidateQueries({ queryKey: ['automation', id] });
       toast.success(d!.marketing && options.data?.marketing?.approval ? `“${d!.name}” sent for approval — a manager switches it on` : d!.isActive ? `“${d!.name}” is on` : `“${d!.name}” saved (off)`);
       if (templateId) api.post(`/automations/templates/${templateId}/used`).then(() => qc.invalidateQueries({ queryKey: ['automation-templates'] }), () => undefined);
-      router.push(d!.marketing ? '/marketing?tab=campaigns' : '/settings/automations');
+      router.push(d!.marketing ? '/settings/marketing?tab=campaigns' : '/settings/automations');
     },
     onError: (e: Error) => {
       setError(e.message);
@@ -786,7 +786,7 @@ function Builder() {
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
       <div className="flex flex-wrap items-center gap-3">
         <Button variant="ghost" size="sm" asChild>
-          <Link href={d.marketing ? '/marketing?tab=campaigns' : '/settings/automations'}>
+          <Link href={d.marketing ? '/settings/marketing?tab=campaigns' : '/settings/automations'}>
             <ArrowLeft /> {d.marketing ? 'Marketing' : 'Automations'}
           </Link>
         </Button>

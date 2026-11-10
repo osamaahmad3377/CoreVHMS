@@ -84,8 +84,9 @@ export const NAV: NavSection[] = [
     label: 'Front desk',
     items: [
       { label: 'Front desk', href: '/front-desk', icon: ClipboardList, anyOf: ['appointments.checkin'], ready: true },
-      { label: 'Calendar & appointments', href: '/calendar', icon: CalendarDays, anyOf: ['appointments.read'], ready: true },
-      { label: 'Home visits', href: '/home-visits', icon: House, anyOf: ['appointments.read'], ready: true, module: 'homeVisits' },
+      { label: 'Calendar & appointments', href: '/calendar', icon: CalendarDays, anyOf: ['appointments.read'], ready: true, alsoActive: ['/home-visits'] },
+      // A tab of Calendar & appointments; kept here for its permissions and quick links.
+      { label: 'Home visits', href: '/home-visits', icon: House, anyOf: ['appointments.read'], ready: true, module: 'homeVisits', menu: false },
       { label: 'Clients', href: '/clients', icon: Users, anyOf: ['clients.read'], ready: true },
       { label: 'Patients', href: '/patients', icon: PawPrint, anyOf: ['patients.read'], ready: true },
     ],
@@ -125,13 +126,6 @@ export const NAV: NavSection[] = [
     ],
   },
   {
-    label: 'Engagement',
-    items: [
-      { label: 'Automations', href: '/settings/automations', icon: Workflow, anyOf: ['settings.manage', 'integrations.manage'], ready: true },
-      { label: 'Marketing', href: '/marketing', icon: Megaphone, anyOf: ['settings.manage', 'integrations.manage'], feature: 'marketing', ready: true },
-    ],
-  },
-  {
     label: 'Team',
     items: [
       { label: 'Staff', href: '/staff', icon: UserCog, anyOf: ['staff.read', 'users.read', 'attendance.clock', 'attendance.manage'], ready: true },
@@ -160,8 +154,8 @@ export const NAV: NavSection[] = [
   },
 ];
 
-export type SettingsGroup = 'Your clinic' | 'Staff & access' | 'Prices & billing' | 'Rooms & spaces' | 'Clinical setup' | 'Integrations' | 'Automations';
-export const SETTINGS_GROUPS: SettingsGroup[] = ['Your clinic', 'Staff & access', 'Prices & billing', 'Rooms & spaces', 'Clinical setup', 'Integrations', 'Automations'];
+export type SettingsGroup = 'Your clinic' | 'Staff & access' | 'Prices & billing' | 'Rooms & spaces' | 'Clinical setup' | 'Integrations' | 'Automations & marketing';
+export const SETTINGS_GROUPS: SettingsGroup[] = ['Your clinic', 'Staff & access', 'Prices & billing', 'Rooms & spaces', 'Clinical setup', 'Integrations', 'Automations & marketing'];
 
 /** Settings pages, grouped the way an owner thinks about them; `hint` is the one-line description on the Settings home page. */
 export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyOf: Permission[]; group: SettingsGroup; hint: string; module?: OptionalModule; /** Only where the installation has plans (multi-clinic hosting). */ plansOnly?: boolean; /** Not in the menu: opened from the page named here (whose menu item stays highlighted). */ partOf?: string }[] = [
@@ -191,7 +185,8 @@ export const SETTINGS_NAV: { label: string; href: string; icon: LucideIcon; anyO
   { label: 'Surgical checklist', href: '/settings/surgery-checklist', icon: Scissors, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Safety checks ticked before each operation', module: 'surgery' },
   { label: 'Email', href: '/settings/integrations/email', icon: Mail, anyOf: ['integrations.manage', 'settings.manage'], group: 'Integrations', hint: 'Send client emails from your own Gmail, Outlook or clinic mailbox' },
   { label: 'WhatsApp', href: '/settings/integrations/whatsapp', icon: MessageCircle, anyOf: ['integrations.manage'], group: 'Integrations', hint: 'Send reminders and messages from your own WhatsApp Business number' },
-  { label: 'Your automations', href: '/settings/automations', icon: Workflow, anyOf: ['settings.manage', 'integrations.manage'], group: 'Automations', hint: 'Your own workflows: when something happens → send a message, wait, create a task' },
+  { label: 'Automations', href: '/settings/automations', icon: Workflow, anyOf: ['settings.manage', 'integrations.manage'], group: 'Automations & marketing', hint: 'Your own workflows: when something happens → send a message, wait, create a task' },
+  { label: 'Marketing', href: '/settings/marketing', icon: Megaphone, anyOf: ['settings.manage', 'integrations.manage'], group: 'Automations & marketing', hint: 'Offers, discounts and campaigns to clients who agreed to hear from you — with results and opt-outs' },
   { label: 'Livestock pregnancy lengths', href: '/settings/livestock', icon: Tractor, anyOf: ['settings.manage'], group: 'Clinical setup', hint: 'Used to work out calving and lambing dates', module: 'livestock' },
 ];
 

@@ -345,7 +345,7 @@ function AutomationsPage() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="mine" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
-          <Link href="/marketing" className="flex flex-wrap items-center gap-2 rounded-2xl bg-rose-500/[0.06] px-4 py-3 text-sm ring-1 ring-inset ring-rose-500/15 hover:bg-rose-500/10">
+          <Link href="/settings/marketing" className="flex flex-wrap items-center gap-2 rounded-2xl bg-rose-500/[0.06] px-4 py-3 text-sm ring-1 ring-inset ring-rose-500/15 hover:bg-rose-500/10">
             <Megaphone className="h-4 w-4 text-rose-500" />
             {marketing.length ? <>{marketing.length} offer{marketing.length === 1 ? '' : 's'} and promotional automation{marketing.length === 1 ? '' : 's'} are managed in <b className="text-primary">Marketing</b>.</> : <>Offers, discounts and campaigns are in <b className="text-primary">Marketing</b>.</>}
             <ArrowRight className="ml-auto h-4 w-4 text-primary" />
