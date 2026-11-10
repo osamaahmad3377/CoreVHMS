@@ -18,13 +18,13 @@ export interface Task {
  * saying what they want to do instead of knowing which menu holds it.
  */
 export const TASKS: Task[] = [
-  { label: 'Check in someone who has arrived', keywords: 'arrived arrival waiting reception walk-in emergency check in front desk queue', href: '/front-desk', icon: ClipboardList, anyOf: ['appointments.checkin'] },
+  { label: 'Check in someone who has arrived', keywords: 'arrived arrival waiting reception walk-in emergency check in front desk queue', href: '/front-desk?visit=1', icon: ClipboardList, anyOf: ['appointments.checkin'] },
   { label: 'Book an appointment', keywords: 'appointment booking schedule visit slot calendar new', href: '/calendar?book=1', icon: CalendarPlus, anyOf: ['appointments.write'] },
   { label: 'See today’s appointments', keywords: 'calendar today diary schedule day', href: '/calendar', icon: CalendarPlus, anyOf: ['appointments.read'] },
   { label: 'Add a new client (pet owner)', keywords: 'new client owner customer register person farmer add', href: '/clients/new', icon: UserPlus, anyOf: ['clients.write'] },
   { label: 'Add a new patient (animal)', keywords: 'new patient pet animal dog cat register add', href: '/patients/new', icon: PawPrint, anyOf: ['patients.write'] },
   { label: 'Find a client or patient', keywords: 'find search look up client patient owner phone', href: '/patients', icon: PawPrint, anyOf: ['patients.read'] },
-  { label: 'Start a consultation', keywords: 'consult exam examine see patient vet notes visit', href: '/front-desk', icon: Stethoscope, anyOf: ['clinical.write'] },
+  { label: 'Start a consultation', keywords: 'consult exam examine see patient vet notes visit', href: '/consultations?start=1', icon: Stethoscope, anyOf: ['clinical.write'] },
   { label: 'Finish or sign my consultation notes', keywords: 'sign notes unsigned finish consultation write notes', href: '/consultations?mine=true', icon: FileText, anyOf: ['clinical.sign', 'clinical.write'] },
   { label: 'Prescribe medicine', keywords: 'prescription prescribe medicine drug tablets', href: '/consultations', icon: Pill, anyOf: ['prescriptions.write'] },
   { label: 'Hand out medicine (pharmacy)', keywords: 'dispense hand over medicine pharmacy prescription collect', href: '/pharmacy', icon: Pill, anyOf: ['pharmacy.dispense', 'prescriptions.read'] },

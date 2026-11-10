@@ -78,11 +78,11 @@ test.describe('Clinical day: book → check in → consult → sign', () => {
   test('walk-in appears in the front-desk waiting list and can be triaged', async ({ page }) => {
     await login(page, 'nurse@demo.pk');
     await page.goto('/front-desk');
-    await page.getByRole('button', { name: 'Walk-in' }).click();
+    await page.getByRole('button', { name: 'New visit' }).click();
     const dialog = page.getByRole('dialog');
-    await dialog.getByRole('combobox').first().click();
-    await page.getByLabel('Search patients').fill('Max');
-    await page.getByRole('option', { name: /Max/ }).first().click();
+    await dialog.getByLabel('Owner’s name').fill('Hina Farooq');
+    await dialog.getByRole('list', { name: 'Clients found' }).getByRole('button').first().click();
+    await dialog.getByRole('button', { name: 'Visit for Max' }).click();
     await dialog.locator('#wi-r').fill('E2E: hit by car');
     await dialog.getByRole('button', { name: 'Check in' }).click();
     await expect(page.getByText(/Checked in: Max as a walk-in/)).toBeVisible();

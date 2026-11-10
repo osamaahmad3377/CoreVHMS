@@ -49,18 +49,21 @@ test.describe('Front desk: clients and patients', () => {
     const client = uniq('Walkin Owner ');
     const pet = uniq('Moti');
     await page.goto('/front-desk');
-    await page.getByRole('button', { name: 'Walk-in' }).click();
+    await page.getByRole('button', { name: 'New visit' }).click();
     const dialog = page.getByRole('dialog');
-    await dialog.getByRole('combobox').first().click();
-    await page.getByLabel('Search patients').fill(client);
-    await expect(page.getByText(`No patient matches “${client}”`)).toBeVisible();
-    await page.getByRole('button', { name: 'New client and patient' }).click();
-    await expect(dialog.locator('#qa-client')).toHaveValue(client);
-    await dialog.locator('#qa-mobile').fill(`0300 ${Math.floor(1000000 + Math.random() * 8999999)}`);
-    await dialog.locator('#qa-patient').fill(pet);
-    await dialog.locator('#qa-species').selectOption({ label: 'Dog' });
-    await dialog.getByRole('button', { name: 'Save and select' }).click();
-    await expect(dialog.getByRole('combobox').first()).toContainText(pet);
+    // 1. Owner: not found, so registered here.
+    await dialog.getByLabel('Owner’s name').fill(client);
+    await expect(dialog.getByText(`No client found for “${client}”`)).toBeVisible();
+    await dialog.getByRole('button', { name: /Register a new client/ }).click();
+    await expect(dialog.locator('#nv-name')).toHaveValue(client);
+    await dialog.locator('#nv-mobile').fill(`0300 ${Math.floor(1000000 + Math.random() * 8999999)}`);
+    await dialog.getByRole('button', { name: /Save and continue/ }).click();
+    // 2. Animal: none yet, so the first one is added.
+    await dialog.locator('#nv-pet').fill(pet);
+    await dialog.locator('#nv-species').selectOption({ label: 'Dog' });
+    await dialog.getByRole('button', { name: /Save and continue/ }).click();
+    // 3. Next step: the waiting queue.
+    await expect(dialog.getByText(pet).first()).toBeVisible();
     await dialog.getByRole('button', { name: 'Check in' }).click();
     await expect(page.getByText(new RegExp(`Checked in: ${pet} as a walk-in`))).toBeVisible();
   });

@@ -16,7 +16,7 @@ export function useCreateActions(): CreateAction[] {
     can('clients.write') && { label: 'Add client', keywords: 'new owner customer register client', href: '/clients/new', icon: UserPlus },
     can('patients.write') && { label: 'Add patient', keywords: 'new animal pet register patient', href: '/patients/new', icon: PawPrint },
     can('appointments.write') && { label: 'Book appointment', keywords: 'new appointment booking schedule calendar', href: '/calendar?book=1', icon: CalendarPlus },
-    can('appointments.checkin') && { label: 'Walk-in / emergency', keywords: 'check in arrive triage urgent', href: '/front-desk', icon: ClipboardList },
+    can('appointments.checkin') && { label: 'New visit', keywords: 'walk-in arrival patient arrived check in queue emergency triage urgent', href: '/front-desk?visit=1', icon: ClipboardList },
     can('clinical.write') && { label: 'Consultations', keywords: 'consult notes soap exam', href: '/consultations', icon: Stethoscope },
     can('pos.use') && { label: 'Counter sale', keywords: 'pos shop sell till', href: '/pos', icon: ShoppingCart },
     can('billing.write') && { label: 'New invoice', keywords: 'bill charge invoice', href: '/billing/invoices/new', icon: Receipt },

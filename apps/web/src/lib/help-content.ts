@@ -76,7 +76,7 @@ export const GUIDES: HelpGuide[] = [
       'Click Add patient. Then choose Book appointment, Check in now or Add another patient.',
       'Add any allergies or warnings with Add medical alert — they then show in red on every screen for that patient.',
     ],
-    tips: ['In a hurry at the front desk? In Walk-in or Book appointment, search for the patient; if nothing is found, click “New client and patient” to register both in one short form.'],
+    tips: ['In a hurry at the front desk? Click New visit, type the owner’s name or mobile, choose the animal (or add one), then add them to the waiting queue or book a time. Not found? “Register a new client” is right there.'],
     links: [{ label: 'Add client', href: '/clients/new', anyOf: ['clients.write'] }, { label: 'Clients', href: '/clients' }],
     keywords: ['new client', 'owner', 'add patient', 'animal', 'pet', 'register'],
   },
@@ -282,7 +282,7 @@ export const GUIDES: HelpGuide[] = [
     steps: [
       'Open Front desk. Today’s appointments are listed by time, with the client’s name and phone on each card.',
       'When the client arrives, click Check in. The vet now sees them as waiting.',
-      'For someone without an appointment, click Walk-in. New client? Search, then click “New client and patient”.',
+      'For someone without an appointment, click New visit: find the owner by name or mobile, choose the animal (or add a new one), then Add to waiting queue. New client? Click “Register a new client”.',
       'Not sure how urgent it is? Choose “Don’t know yet” — a vet will check. Use Triage to record urgency; the most urgent move to the top.',
       'Click Details on any card to confirm, move, finish or cancel the visit.',
     ],
@@ -812,7 +812,7 @@ export const SYNONYMS: Record<string, string[]> = {
 
 /** Glossary terms. `anyOf` shows a term under "For my role" only to people who hold one of the permissions. */
 export const GLOSSARY: { term: string; meaning: string; anyOf?: Permission[] }[] = [
-  { term: 'Walk-in', meaning: 'A client who arrives without an appointment. Check them in from Front desk → Walk-in; they join the waiting list straight away.', anyOf: ['appointments.checkin'] },
+  { term: 'Walk-in', meaning: 'A client who arrives without an appointment. Check them in from Front desk → New visit → Add to waiting queue; they join the waiting list straight away.', anyOf: ['appointments.checkin'] },
   { term: 'No-show', meaning: 'A booked client who did not come. Mark it after the start time so the slot history is right and you can follow up.', anyOf: ['appointments.checkin', 'appointments.write'] },
   { term: 'Triage', meaning: 'Deciding how urgent a patient is (Critical — see now, Very urgent, Urgent, Can wait, Routine). The most urgent patients are seen first; a vet makes the final decision.', anyOf: ['appointments.checkin', 'triage.write'] },
   { term: 'Credit', meaning: 'Money the client has paid that is not yet used on an invoice, shown in green as “Rs 1,000 credit”. It is used on their next invoice or refunded.', anyOf: ['payments.take', 'billing.read'] },

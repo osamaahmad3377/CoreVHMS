@@ -8,7 +8,7 @@ import { notFound } from '../../common/http/errors';
 import { localDayBounds } from '../../common/time/tz';
 import { InventoryService } from '../inventory/inventory.service';
 import { ChargeCaptureService } from './charge-capture.service';
-import { shapeInvoice } from './invoices.service';
+import { invoiceNo, shapeInvoice } from './invoices.service';
 
 export interface PosItem {
   type: 'PRODUCT' | 'SERVICE';
@@ -60,8 +60,9 @@ export class PosService {
   ) {}
 
   /**
-   * Who is ready to pay at the counter today: clients with something waiting from today's visits (consultation fee,
-   * medicines given in the clinic, other charges) or a prescription written today. Newest first.
+   * Today's visits at the counter, each with its status: TO_PAY while something from today is still waiting (a
+   * consultation fee, a medicine given in the clinic, another charge) or a prescription written today has not been
+   * followed by a sale; DONE once checked out (an invoice made after the last charge or prescription). Newest first.
    */
   async waiting() {
     const ctx = RequestContext.require();
@@ -69,38 +70,66 @@ export class PosService {
     const db = this.prisma.db;
     const branch = await db.branch.findUniqueOrThrow({ where: { id: ctx.branchId } });
     const { start } = localDayBounds(new Date(), branch.timezone);
-    const [charges, rxs] = await Promise.all([
+    const [pending, invoiced, rxs] = await Promise.all([
       db.charge.findMany({ where: { branchId: branch.id, status: 'PENDING', createdAt: { gte: start } }, select: { clientId: true, patientId: true, quantity: true, unitPriceMinor: true, discountMinor: true, createdAt: true } }),
+      // Today's charges already on an invoice: the visit has been billed.
+      db.charge.findMany({ where: { branchId: branch.id, status: 'INVOICED', createdAt: { gte: start } }, select: { clientId: true, patientId: true, createdAt: true } }),
       // Today's prescriptions (typed or from stock), which the counter reads.
       db.prescription.findMany({ where: { branchId: branch.id, status: { in: ['AUTHORIZED', 'PARTIALLY_DISPENSED', 'DISPENSED'] }, authorizedAt: { gte: start } }, include: { _count: { select: { items: true } }, prescriber: { select: { user: { select: { name: true } } } } } }),
     ]);
-    const byClient = new Map<string, { since: Date; charges: number; totalMinor: number; prescribed: number; patientIds: Set<string>; vet: string | null }>();
-    const entry = (id: string) => byClient.get(id) ?? byClient.set(id, { since: new Date(0), charges: 0, totalMinor: 0, prescribed: 0, patientIds: new Set(), vet: null }).get(id)!;
-    for (const c of charges) {
+    type Visit = { since: Date; charges: number; totalMinor: number; prescribed: number; lastRx: Date | null; patientIds: Set<string>; vet: string | null };
+    const byClient = new Map<string, Visit>();
+    const entry = (id: string) => byClient.get(id) ?? byClient.set(id, { since: new Date(0), charges: 0, totalMinor: 0, prescribed: 0, lastRx: null, patientIds: new Set(), vet: null }).get(id)!;
+    for (const c of pending) {
       const e = entry(c.clientId);
       e.charges++;
       e.totalMinor += Math.round(Number(c.quantity) * c.unitPriceMinor) - c.discountMinor;
       if (c.patientId) e.patientIds.add(c.patientId);
       if (c.createdAt > e.since) e.since = c.createdAt;
     }
+    for (const c of invoiced) {
+      const e = entry(c.clientId);
+      if (c.patientId) e.patientIds.add(c.patientId);
+      if (c.createdAt > e.since) e.since = c.createdAt;
+    }
     for (const rx of rxs) {
       const e = entry(rx.clientId);
+      const at = rx.authorizedAt ?? rx.createdAt;
       e.prescribed += rx._count.items;
       e.patientIds.add(rx.patientId);
       e.vet ??= rx.prescriber?.user.name ?? null;
-      if ((rx.authorizedAt ?? rx.createdAt) > e.since) e.since = rx.authorizedAt ?? rx.createdAt;
+      if (!e.lastRx || at > e.lastRx) e.lastRx = at;
+      if (at > e.since) e.since = at;
     }
     if (!byClient.size) return [];
-    const [clients, patients] = await Promise.all([
-      db.client.findMany({ where: { id: { in: [...byClient.keys()] } }, select: { id: true, number: true, displayName: true, mobilePhone: true } }),
+    const ids = [...byClient.keys()];
+    const [clients, patients, invoices] = await Promise.all([
+      db.client.findMany({ where: { id: { in: ids } }, select: { id: true, number: true, displayName: true, mobilePhone: true } }),
       db.patient.findMany({ where: { id: { in: [...byClient.values()].flatMap((e) => [...e.patientIds]) } }, select: { id: true, name: true } }),
+      // Today's invoices for these clients (the checkout).
+      db.invoice.findMany({ where: { clientId: { in: ids }, issuedAt: { gte: start }, status: { notIn: ['DRAFT', 'VOID'] } }, select: { id: true, number: true, clientId: true, totalMinor: true, balanceMinor: true, issuedAt: true }, orderBy: { issuedAt: 'desc' } }),
     ]);
     return clients
       .map((c) => {
         const e = byClient.get(c.id)!;
-        return { client: { ...c, clientNo: formatNumber('C', c.number) }, patients: patients.filter((p) => e.patientIds.has(p.id)).map((p) => p.name), vet: e.vet, since: e.since, charges: e.charges, totalMinor: e.totalMinor, prescribed: e.prescribed };
+        const mine = invoices.filter((i) => i.clientId === c.id);
+        const paidAt = mine[0]?.issuedAt ?? null;
+        // Still to pay: something waiting, or today's prescription not yet followed by a sale.
+        const toPay = e.charges > 0 || (!!e.lastRx && (!paidAt || paidAt < e.lastRx));
+        return {
+          client: { ...c, clientNo: formatNumber('C', c.number) },
+          patients: patients.filter((p) => e.patientIds.has(p.id)).map((p) => p.name),
+          vet: e.vet,
+          since: e.since,
+          status: toPay ? ('TO_PAY' as const) : ('DONE' as const),
+          charges: e.charges,
+          totalMinor: e.totalMinor,
+          prescribed: e.prescribed,
+          paidAt,
+          invoices: mine.map((i) => ({ id: i.id, invoiceNo: invoiceNo(i.number), totalMinor: i.totalMinor, balanceMinor: i.balanceMinor, issuedAt: i.issuedAt })),
+        };
       })
-      .sort((a, b) => b.since.getTime() - a.since.getTime());
+      .sort((a, b) => (b.status === 'DONE' && a.status === 'DONE' ? (b.paidAt?.getTime() ?? 0) - (a.paidAt?.getTime() ?? 0) : b.since.getTime() - a.since.getTime()));
   }
 
   /**

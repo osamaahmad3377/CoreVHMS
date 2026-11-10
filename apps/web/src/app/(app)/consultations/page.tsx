@@ -9,7 +9,9 @@ import { Suspense, useState } from 'react';
 import { DataTable } from '@/components/data-table';
 import { EmptyState, ErrorState, LoadingRows, PageHeader } from '@/components/page';
 import { QueueBoard, useQueue } from '@/components/scheduling/queue-board';
-import { StartConsultationDialog } from '@/components/clinical/start-consultation-dialog';
+import { NewVisitDialog } from '@/components/front-desk/new-visit-dialog';
+import type { PickedPatient } from '@/components/patients/patient-picker';
+import { BookingDialog } from '@/components/scheduling/booking-dialog';
 import { RequirePermission } from '@/components/require';
 import { SearchInput } from '@/components/search-input';
 import { AlertChip } from '@/components/status';
@@ -57,6 +59,7 @@ function ConsultationsList() {
   const url = useUrlState();
   // ?start=1 (e.g. "See a walk-in" on the dashboard) opens the start window straight away.
   const [start, setStart] = useState(() => url.get('start') === '1');
+  const [bookFor, setBookFor] = useState<PickedPatient | null>(null);
   // Vets see their own consultations first; everyone can switch to all.
   const mineDefault = dashboardRole((p) => can(p)) === 'vet' ? 'true' : 'false';
   const params = {
@@ -261,7 +264,9 @@ function ConsultationsList() {
           />
         </Card>
       )}
-      <StartConsultationDialog open={start} onOpenChange={setStart} />
+      {/* Start a consultation: find the owner and animal (or register them), then start — or queue or book instead. */}
+      <NewVisitDialog open={start} onOpenChange={setStart} initialAction="consult" onBook={(p) => setBookFor(p)} />
+      <BookingDialog open={!!bookFor} onOpenChange={(o) => !o && setBookFor(null)} defaults={bookFor ? { patient: bookFor } : undefined} />
     </>
   );
 }

@@ -31,7 +31,7 @@ describe('Consultation → shop counter bill', () => {
     // The counter: the client is ready to pay.
     const waiting = await org.owner.get('/pos/waiting');
     expect(waiting.status).toBe(200);
-    expect(waiting.body).toEqual([expect.objectContaining({ client: expect.objectContaining({ id: client.id }), patients: [patient.name], charges: 2, prescribed: 1 })]);
+    expect(waiting.body).toEqual([expect.objectContaining({ client: expect.objectContaining({ id: client.id }), patients: [patient.name], status: 'TO_PAY', charges: 2, prescribed: 1, invoices: [] })]);
 
     // Their bill: the visit charges in sections, and the prescription to read.
     const bill = (await org.owner.get(`/pos/bill/${client.id}`)).body;
@@ -68,6 +68,14 @@ describe('Consultation → shop counter bill', () => {
     expect(inv.body.totalMinor).toBe(200000 - 50000 + 2 * 3000 + 6 * 1000);
     expect(inv.body.notes).toContain(`Sold on prescription: Shelfomycin 250 mg tablets — ${rx.body.prescriptionNo}`);
     expect((await org.owner.get(`/pos/bill/${client.id}`)).body.charges).toEqual([]);
+    // Checked out: the visit leaves the "to pay" list and shows as done, with its invoice, for the record.
+    expect((await org.owner.get('/pos/waiting')).body).toEqual([
+      expect.objectContaining({ client: expect.objectContaining({ id: client.id }), status: 'DONE', charges: 0, invoices: [expect.objectContaining({ id: inv.body.id, invoiceNo: inv.body.invoiceNo, totalMinor: inv.body.totalMinor })] }),
+    ]);
+    // Another prescription later in the day puts them back on the list until the next sale.
+    const again = await vet.client.post('/prescriptions', { patientId: patient.id, authorize: true, items: [{ outsideName: 'Laterol drops', route: 'TOPICAL', doseValue: 2, doseUnit: 'drop', frequencyCode: 'BID', durationDays: 3, instructions: 'Two drops twice a day for 3 days.' }] });
+    expect(again.status).toBe(201);
+    expect((await org.owner.get('/pos/waiting')).body[0]).toMatchObject({ status: 'TO_PAY', prescribed: 2 });
 
     // Point-of-sale staff see who is ready to pay.
     const shop = await staff(org, 'pharmacy');

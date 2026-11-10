@@ -1,12 +1,14 @@
 'use client';
 import { fromMinor } from '@vcms/shared';
 import { POS_BILL_SECTIONS } from '@vcms/shared';
-import { ChevronDown, Clock, FileText, Minus, Pencil, Percent, Plus, Search, ShoppingCart, Stethoscope, Trash2, UserRound, X } from 'lucide-react';
+import { Check, ChevronDown, Clock, FileText, Minus, Pencil, Percent, Plus, Search, ShoppingCart, Stethoscope, Trash2, UserRound, X } from 'lucide-react';
+import Link from 'next/link';
 import { useState } from 'react';
 import { MoneyInput, bpToPct, parseMoney } from '../billing/money';
 import { ClientPicker, type PickedClient } from '../clients/client-picker';
 import { PatientPicker } from '../patients/patient-picker';
 import { Button } from '../ui/button';
+import { Avatar } from '../ui/misc';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { blockReason, lineAmounts, lineSection, type CartLine, type CounterWaiting, type RxReference, type SaleDiscount } from './model';
 import { fmtMoney } from '@/lib/format';
@@ -106,6 +108,102 @@ function PrescriptionPanel({ prescriptions, onFind }: { prescriptions: RxReferen
   );
 }
 
+const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+
+/**
+ * Today's visits at the counter: who is still to pay (tap to bring up their bill) and, for the record, who has paid —
+ * a visit leaves "To pay" the moment its sale is completed.
+ */
+function TodaysVisits({ waiting, currency, onPick }: { waiting: CounterWaiting[]; currency: string; onPick?: (w: CounterWaiting) => void }) {
+  const toPay = waiting.filter((w) => w.status === 'TO_PAY');
+  const done = waiting.filter((w) => w.status === 'DONE');
+  const [tab, setTab] = useState<'TO_PAY' | 'DONE'>('TO_PAY');
+  const list = tab === 'TO_PAY' ? toPay : done;
+  return (
+    <div className="grid gap-2.5 p-3">
+      <div className="flex items-center justify-between gap-2 px-1">
+        <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <Stethoscope className="h-3.5 w-3.5 text-primary" /> Today’s visits
+        </p>
+        <div className="inline-flex rounded-full border bg-background p-0.5" role="tablist" aria-label="Today’s visits">
+          {(
+            [
+              ['TO_PAY', 'To pay', toPay.length],
+              ['DONE', 'Paid today', done.length],
+            ] as const
+          ).map(([k, label, n]) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={tab === k}
+              onClick={() => setTab(k)}
+              className={cn('inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-xs font-medium transition-colors', tab === k ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground')}
+            >
+              {label}
+              <span className={cn('tabular', tab === k ? 'text-background/70' : 'text-muted-foreground/70')}>{n}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      {list.length === 0 ? (
+        <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+          {tab === 'TO_PAY' ? (done.length ? 'Everyone from today’s visits has paid.' : 'Nobody is waiting to pay.') : 'Nobody has paid yet today.'}
+        </p>
+      ) : (
+        <ul className="grid gap-1.5" aria-label={tab === 'TO_PAY' ? 'To pay' : 'Paid today'}>
+          {list.map((w) => (
+            <li key={w.client.id}>
+              {tab === 'TO_PAY' ? (
+                <button type="button" onClick={() => onPick?.(w)} className="flex w-full items-center gap-3 rounded-lg border bg-background px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-primary/[0.03]">
+                  <Avatar name={w.client.displayName} className="h-9 w-9 text-xs" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold">
+                      {w.client.displayName}
+                      {w.patients.length ? <span className="font-normal text-muted-foreground"> · {w.patients.join(', ')}</span> : null}
+                    </span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {[w.charges ? `${w.charges} ${w.charges === 1 ? 'item' : 'items'} waiting` : null, w.prescribed ? `${w.prescribed} on prescription` : null, w.vet].filter(Boolean).join(' · ')}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right">
+                    {w.totalMinor > 0 && <span className="block text-sm font-semibold tabular">{fmtMoney(w.totalMinor, currency)}</span>}
+                    <span className="flex items-center justify-end gap-1 text-[11px] text-muted-foreground"><Clock className="h-3 w-3" />{timeOf(w.since)}</span>
+                  </span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-3 rounded-lg border border-success/20 bg-success/[0.04] px-3 py-2.5">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-success/15 text-success"><Check className="h-4 w-4" /></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold">
+                      {w.client.displayName}
+                      {w.patients.length ? <span className="font-normal text-muted-foreground"> · {w.patients.join(', ')}</span> : null}
+                    </span>
+                    <span className="flex flex-wrap gap-x-2 text-xs text-muted-foreground">
+                      {w.invoices.map((i) => (
+                        <Link key={i.id} href={`/billing/invoices/${i.id}`} className="font-mono text-[11px] text-primary hover:underline">{i.invoiceNo}</Link>
+                      ))}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right">
+                    <span className="block text-sm font-semibold tabular">{fmtMoney(w.invoices.reduce((n, i) => n + i.totalMinor, 0), currency)}</span>
+                    {w.invoices.some((i) => i.balanceMinor > 0) ? (
+                      <span className="block text-[11px] font-medium text-warning">{fmtMoney(w.invoices.reduce((n, i) => n + i.balanceMinor, 0), currency)} due</span>
+                    ) : (
+                      <span className="flex items-center justify-end gap-1 text-[11px] text-success">Paid {w.paidAt ? timeOf(w.paidAt) : ''}</span>
+                    )}
+                  </span>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {tab === 'TO_PAY' && <p className="px-1 text-xs text-muted-foreground">Tap a client to bring up their bill, or scan an item to start a shop sale.</p>}
+    </div>
+  );
+}
+
 /** "Discount" on the whole sale: a percentage or a fixed amount, spread over the items. */
 function SaleDiscountPopover({ currency, onApply }: { currency: string; onApply: (d: SaleDiscount) => void }) {
   const [open, setOpen] = useState(false);
@@ -188,7 +286,6 @@ export function PosCart({
   // The pet the client was found by (shown beside the client's name).
   const [forPet, setForPet] = useState<{ clientId: string; name: string } | null>(null);
   const setQty = (key: string, quantity: number) => onChange(quantity <= 0 ? lines.filter((l) => l.key !== key) : lines.map((l) => (l.key === key ? { ...l, quantity } : l)));
-  const items = lines.reduce((n, l) => n + l.quantity, 0);
   const stockProblem = lines.find((l) => l.item.trackStock && !allowNegative && l.item.available !== null && l.quantity > l.item.available);
   return (
     <div className="flex h-full min-h-[480px] flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
@@ -200,11 +297,13 @@ export function PosCart({
       </div>
       <div className="border-b p-3 pt-2.5">
         {client && !pickingClient ? (
-          <div className="flex items-center gap-2.5 rounded-lg bg-primary/[0.06] px-3 py-2 ring-1 ring-inset ring-primary/15">
-            <span className="grid h-7 w-7 place-items-center rounded-full bg-primary/15 text-primary"><UserRound className="h-4 w-4" /></span>
-            <span className="min-w-0 flex-1 truncate text-sm font-medium">
-              {client.displayName}
-              {forPet?.clientId === client.id && <span className="font-normal text-muted-foreground"> · for {forPet.name}</span>}
+          <div className="flex items-center gap-3 rounded-xl bg-primary/[0.05] px-3 py-2 ring-1 ring-inset ring-primary/15">
+            <Avatar name={client.displayName} className="h-9 w-9 text-xs" />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-semibold">{client.displayName}</span>
+              <span className="block truncate text-xs text-muted-foreground">
+                {[forPet?.clientId === client.id ? `for ${forPet.name}` : null, client.clientNo, client.mobilePhone].filter(Boolean).join(' · ') || 'Client'}
+              </span>
             </span>
             <Button variant="ghost" size="icon-sm" aria-label="Remove client" onClick={() => { setForPet(null); onClient(null); }}><X /></Button>
           </div>
@@ -242,51 +341,71 @@ export function PosCart({
               if (!inSection.length) return null;
               const subtotal = inSection.reduce((n, l) => n + lineAmounts(l, inclusive).grossMinor, 0);
               return [
-                <li key={`h-${sec.key}`} role="presentation" className="sticky top-0 z-[1] flex items-center justify-between border-y bg-muted/60 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur first:border-t-0">
-                  <span>{sec.label}</span>
-                  <span className="tabular normal-case tracking-normal">{fmtMoney(subtotal, currency)}</span>
+                <li key={`h-${sec.key}`} role="presentation" className="sticky top-0 z-[1] flex items-center justify-between border-y bg-card/95 px-4 py-2 backdrop-blur first:border-t-0">
+                  <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <span className={cn('h-1.5 w-1.5 rounded-full', sec.key === 'SERVICES' ? 'bg-primary' : sec.key === 'GIVEN' ? 'bg-warning' : sec.key === 'PRESCRIBED' ? 'bg-success' : 'bg-muted-foreground/50')} aria-hidden />
+                    {sec.label}
+                    <span className="font-medium normal-case tracking-normal text-muted-foreground/70">{inSection.length}</span>
+                  </span>
+                  <span className="text-xs font-semibold tabular text-foreground/80">{fmtMoney(subtotal, currency)}</span>
                 </li>,
                 ...inSection.map((l) => {
               const a = lineAmounts(l, inclusive);
               const atLimit = !!blockReason(l.item, l.quantity, allowNegative) && !l.item.rxOnly;
               // Waiting from a visit (fee, given in the clinic, handed out): fixed quantity and price; a discount or removal only.
               const fixed = l.item.type === 'CHARGE';
+              const tax = l.item.taxRateBasisPoints > 0 ? ` · tax ${bpToPct(l.item.taxRateBasisPoints)}` : '';
+              const actions = (
+                <span className="ml-auto flex shrink-0 items-center opacity-70 transition-opacity group-hover:opacity-100">
+                  {allowOverrides && <LineEditPopover line={l} currency={currency} discountOnly={fixed} onSave={(patch) => onChange(lines.map((x) => (x.key === l.key ? { ...x, ...patch } : x)))} />}
+                  <Button variant="ghost" size="icon-sm" aria-label={`Remove ${l.item.name}`} title={fixed ? 'Takes it out of this sale; it stays under Not yet invoiced' : undefined} onClick={() => setQty(l.key, 0)}><Trash2 /></Button>
+                </span>
+              );
               return (
-                <li key={l.key} className="px-4 py-3">
-                  <div className="flex items-start gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{l.item.name}</p>
-                      <p className="text-xs text-muted-foreground tabular">
-                        {fmtMoney(l.priceMinor, currency)}{l.item.type === 'PRODUCT' && ` / ${l.item.unit}`}{fixed && <span> × {l.quantity} · {l.item.note ?? 'not yet paid'}</span>}
-                        {l.prescriptionNo && <span className="text-primary"> · on {l.prescriptionNo}</span>}
-                        {l.priceMinor !== l.item.priceMinor && <span className="text-warning"> (price changed)</span>}
-                        {!!l.discountMinor && <span className="text-success"> · −{fmtMoney(l.discountMinor, currency)}</span>}
-                        <span> · tax {bpToPct(l.item.taxRateBasisPoints)}</span>
+                <li key={l.key} className="group px-4 py-2.5 transition-colors hover:bg-muted/30">
+                  <div className="flex items-start gap-3">
+                    <p className="line-clamp-2 min-w-0 flex-1 text-sm font-medium leading-snug">{l.item.name}</p>
+                    <div className="shrink-0 text-right">
+                      <p className="text-sm font-semibold tabular">{fmtMoney(a.grossMinor, currency)}</p>
+                      {!!l.discountMinor && <p className="text-[11px] font-medium tabular text-success">−{fmtMoney(l.discountMinor, currency)}</p>}
+                    </div>
+                  </div>
+                  {fixed ? (
+                    <div className="flex items-center gap-2">
+                      <p className="min-w-0 flex-1 truncate text-xs tabular text-muted-foreground">
+                        {l.quantity !== 1 && `${l.quantity} × `}
+                        {fmtMoney(l.priceMinor, currency)} · {l.item.note ?? 'not yet paid'}
+                        {tax}
                       </p>
+                      {actions}
                     </div>
-                    <p className="text-sm font-semibold tabular">{fmtMoney(a.grossMinor, currency)}</p>
-                  </div>
-                  {l.rxNote && <p className="mt-1 text-2xs text-warning">Sold without a prescription: {l.rxNote}</p>}
-                  <div className="mt-1.5 flex items-center gap-1">
-                    {!fixed && (
-                    <div className="flex items-center rounded-md border">
-                      <Button variant="ghost" size="icon-sm" aria-label={`Decrease ${l.item.name}`} onClick={() => setQty(l.key, l.quantity - 1)}><Minus /></Button>
-                      <input
-                        aria-label={`Quantity of ${l.item.name}`}
-                        inputMode="decimal"
-                        className="h-7 w-12 bg-transparent text-center text-sm tabular outline-none"
-                        value={l.quantity}
-                        onChange={(e) => { const v = Number(e.target.value); if (!Number.isNaN(v)) setQty(l.key, v); }}
-                      />
-                      <Button variant="ghost" size="icon-sm" aria-label={`Increase ${l.item.name}`} disabled={atLimit} onClick={() => setQty(l.key, l.quantity + 1)}><Plus /></Button>
-                    </div>
-                    )}
-                    {l.item.trackStock && l.item.available !== null && <span className={cn('text-2xs', l.quantity > l.item.available ? 'font-medium text-destructive' : 'text-muted-foreground')}>{qtyUnit(l.item.available - l.quantity, l.item.unit)} left</span>}
-                    <span className="ml-auto flex">
-                      {allowOverrides && <LineEditPopover line={l} currency={currency} discountOnly={fixed} onSave={(patch) => onChange(lines.map((x) => (x.key === l.key ? { ...x, ...patch } : x)))} />}
-                      <Button variant="ghost" size="icon-sm" aria-label={`Remove ${l.item.name}`} title={fixed ? 'Takes it out of this sale; it stays under Not yet invoiced' : undefined} onClick={() => setQty(l.key, 0)}><Trash2 /></Button>
-                    </span>
-                  </div>
+                  ) : (
+                    <>
+                      <p className="mt-0.5 text-xs tabular text-muted-foreground">
+                        {fmtMoney(l.priceMinor, currency)}
+                        {l.item.type === 'PRODUCT' && ` / ${l.item.unit}`}
+                        {l.prescriptionNo && <span className="font-medium text-primary"> · on {l.prescriptionNo}</span>}
+                        {l.priceMinor !== l.item.priceMinor && <span className="text-warning"> · price changed</span>}
+                        {tax}
+                      </p>
+                      {l.rxNote && <p className="mt-0.5 text-[11px] text-warning">Sold without a prescription: {l.rxNote}</p>}
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <div className="flex h-8 items-center rounded-full border bg-background">
+                          <Button variant="ghost" size="icon-sm" className="rounded-full" aria-label={`Decrease ${l.item.name}`} onClick={() => setQty(l.key, l.quantity - 1)}><Minus /></Button>
+                          <input
+                            aria-label={`Quantity of ${l.item.name}`}
+                            inputMode="decimal"
+                            className="h-7 w-10 bg-transparent text-center text-sm font-medium tabular outline-none"
+                            value={l.quantity}
+                            onChange={(e) => { const v = Number(e.target.value); if (!Number.isNaN(v)) setQty(l.key, v); }}
+                          />
+                          <Button variant="ghost" size="icon-sm" className="rounded-full" aria-label={`Increase ${l.item.name}`} disabled={atLimit} onClick={() => setQty(l.key, l.quantity + 1)}><Plus /></Button>
+                        </div>
+                        {l.item.trackStock && l.item.available !== null && <span className={cn('text-[11px]', l.quantity > l.item.available ? 'font-medium text-destructive' : 'text-muted-foreground')}>{qtyUnit(l.item.available - l.quantity, l.item.unit)} left</span>}
+                        {actions}
+                      </div>
+                    </>
+                  )}
                 </li>
               );
                 }),
@@ -295,31 +414,7 @@ export function PosCart({
           </ul>
         ) : (
           !client && waiting.length > 0 ? (
-            <div className="grid gap-2 p-3">
-              <p className="flex items-center gap-2 px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                <Stethoscope className="h-3.5 w-3.5 text-primary" /> Ready to pay · from today’s visits
-              </p>
-              <ul className="grid gap-1.5" aria-label="Ready to pay">
-                {waiting.map((w) => (
-                  <li key={w.client.id}>
-                    <button type="button" onClick={() => onPickWaiting?.(w)} className="flex w-full items-center gap-3 rounded-lg border bg-background px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-primary/[0.03]">
-                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary"><UserRound className="h-4 w-4" /></span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-semibold">{w.client.displayName}{w.patients.length ? <span className="font-normal text-muted-foreground"> · {w.patients.join(', ')}</span> : null}</span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {[w.charges ? `${w.charges} ${w.charges === 1 ? 'item' : 'items'}` : null, w.prescribed ? `${w.prescribed} on prescription` : null, w.vet].filter(Boolean).join(' · ')}
-                        </span>
-                      </span>
-                      <span className="shrink-0 text-right">
-                        {w.totalMinor > 0 && <span className="block text-sm font-semibold tabular">{fmtMoney(w.totalMinor, currency)}</span>}
-                        <span className="flex items-center justify-end gap-1 text-[11px] text-muted-foreground"><Clock className="h-3 w-3" />{new Date(w.since).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <p className="px-1 text-xs text-muted-foreground">Tap a client to bring up their bill, or scan an item to start a shop sale.</p>
-            </div>
+            <TodaysVisits waiting={waiting} currency={currency} onPick={onPickWaiting} />
           ) : (
           <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
             <span className="grid h-14 w-14 place-items-center rounded-2xl bg-muted text-muted-foreground">
@@ -336,10 +431,10 @@ export function PosCart({
 
       <div className="border-t bg-muted/30 p-4">
         {onOtherItem && (
-          <Button type="button" variant="outline" size="sm" className="mb-2 w-full border-dashed" onClick={onOtherItem}><Plus /> Other item</Button>
+          <Button type="button" variant="ghost" size="sm" className="mb-2 h-8 w-full border border-dashed text-muted-foreground" onClick={onOtherItem}><Plus /> Other item</Button>
         )}
         <dl className="grid gap-1 text-sm">
-          <div className="flex justify-between text-muted-foreground"><dt>{items} item{items === 1 ? '' : 's'} · subtotal (excl. tax)</dt><dd className="tabular">{fmtMoney(totals.subtotalMinor, currency)}</dd></div>
+          <div className="flex justify-between text-muted-foreground"><dt>Subtotal{inclusive ? '' : ' (excl. tax)'} · {lines.length} {lines.length === 1 ? 'line' : 'lines'}</dt><dd className="tabular">{fmtMoney(totals.subtotalMinor, currency)}</dd></div>
           {totals.discountMinor - saleDiscountMinor > 0 && <div className="flex justify-between text-success"><dt>Discounts</dt><dd className="tabular">−{fmtMoney(totals.discountMinor - saleDiscountMinor, currency)}</dd></div>}
           {saleDiscount && saleDiscountMinor > 0 ? (
             <div className="flex items-center justify-between text-success">

@@ -33,9 +33,13 @@ export interface CounterWaiting {
   patients: string[];
   vet: string | null;
   since: string;
+  /** TO_PAY until checked out; DONE once an invoice was made after the last charge or prescription. */
+  status: 'TO_PAY' | 'DONE';
   charges: number;
   totalMinor: number;
   prescribed: number;
+  paidAt: string | null;
+  invoices: { id: string; invoiceNo: string; totalMinor: number; balanceMinor: number; issuedAt: string }[];
 }
 
 /** Where a basket line shows on the bill. */
@@ -143,8 +147,8 @@ export function cartTotals(lines: CartLine[], inclusive: boolean) {
 
 /** Why an item cannot be added (or more of it), or null if it can. */
 export function blockReason(item: CartItem, qtyInCart: number, allowNegative: boolean, allowRx = false): string | null {
-  if (item.rxOnly && item.controlled) return 'Controlled medicine — needs a prescription (use “Collect a prescription”)';
-  if (item.rxOnly && !allowRx) return 'Prescription only — use “Collect a prescription”';
+  if (item.rxOnly && item.controlled) return 'Controlled medicine — hand it out from the Pharmacy tab';
+  if (item.rxOnly && !allowRx) return 'Prescription only — find the patient to sell it on their prescription';
   if (item.priceMinor === null) return 'No price set';
   if (item.trackStock && !allowNegative && item.available !== null && qtyInCart >= item.available) return item.available <= 0 ? 'Out of stock' : 'No more in stock';
   return null;

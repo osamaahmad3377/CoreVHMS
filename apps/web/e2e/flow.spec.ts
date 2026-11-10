@@ -41,12 +41,13 @@ test.describe('Everyday flow', () => {
     await page.goto('/consultations');
     await page.getByRole('button', { name: 'Start consultation' }).click();
     const dlg = page.getByRole('dialog');
-    await dlg.getByRole('combobox').first().click();
-    await page.getByLabel('Search patients').fill('Toto');
-    await page.getByRole('option', { name: /Toto/ }).first().click();
-    await expect(page.getByLabel('Search patients')).toHaveCount(0); // picker closed
-    await dlg.locator('#sc-c').fill(complaint);
-    await dlg.getByRole('button', { name: 'Start', exact: true }).click();
+    // Owner → animal → start (the window opens on "Start consultation now").
+    await dlg.getByLabel('Owner’s name').fill('Kamran Akmal');
+    await dlg.getByRole('list', { name: 'Clients found' }).getByRole('button').first().click();
+    await dlg.getByRole('button', { name: 'Visit for Toto' }).click();
+    await expect(dlg.getByRole('radio', { name: /Start consultation now/ })).toHaveAttribute('aria-checked', 'true');
+    if (await dlg.locator('#nv-complaint').isVisible()) await dlg.locator('#nv-complaint').fill(complaint);
+    await dlg.getByRole('button', { name: 'Start consultation', exact: true }).click();
     await expect(page).toHaveURL(/\/consultations\/[0-9a-f-]{36}/);
     // Quick consult: nothing written, straight to review — completing is still allowed.
     await step(page, 'Review & sign');

@@ -1,6 +1,6 @@
 'use client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Clock, History, Landmark, Pill, Printer, ReceiptText, Undo2 } from 'lucide-react';
+import { CheckCircle2, Clock, History, Landmark, Printer, ReceiptText, Undo2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -17,7 +17,6 @@ import { ShopTabs } from '@/components/pos/shop-tabs';
 import { MoneyInput, parseMoney } from '@/components/billing/money';
 import { Field } from '@/components/forms/field';
 import { CloseDrawerDialog, OpenDrawerDialog } from '@/components/billing/cash-dialogs';
-import { CollectPrescriptionDialog } from '@/components/pos/prescription-collect';
 import { ReturnItemsDialog } from '@/components/pos/return-dialog';
 import { RxNoteDialog } from '@/components/pos/rx-note-dialog';
 import { applySaleDiscount, blockReason, cartTotals, chargeItem, customItem, isOutOfStock, toChargeDiscounts, toChargeIds, toInvoiceLines, saleDiscountAmount, type CartLine, type CounterWaiting, type RxReference, type SaleDiscount, type Tender } from '@/components/pos/model';
@@ -130,7 +129,6 @@ function Pos() {
   const [payBalance, setPayBalance] = useState(false);
   const [otherItem, setOtherItem] = useState(false);
   const [saleDiscount, setSaleDiscount] = useState<SaleDiscount | null>(null);
-  const [collectOpen, setCollectOpen] = useState(false);
   const [returning, setReturning] = useState(false);
   const [openingDrawer, setOpeningDrawer] = useState(false);
   const [closingDrawer, setClosingDrawer] = useState<string | null>(null);
@@ -396,11 +394,6 @@ function Pos() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <ShopTabs className="mb-0" />
         <div className="flex flex-wrap items-center gap-2">
-          {can('pharmacy.dispense') && (
-            <Button size="sm" variant="outline" onClick={() => setCollectOpen(true)}>
-              <Pill /> Collect a prescription
-            </Button>
-          )}
           {can('billing.refund') && (
             <Button size="sm" variant="outline" onClick={() => setReturning(true)}>
               <Undo2 /> Return items
@@ -464,7 +457,6 @@ function Pos() {
           setPendingRx(null);
         }}
       />
-      <CollectPrescriptionDialog open={collectOpen} onOpenChange={setCollectOpen} client={client} onClient={pickClient} onCollected={addCollected} />
       <TodaySalesDialog
         open={showToday}
         onOpenChange={setShowToday}
