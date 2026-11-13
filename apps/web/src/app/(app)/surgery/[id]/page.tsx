@@ -2,7 +2,7 @@
 import { useUnits } from '@/lib/units';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ASA_GRADES, SURGERY_ROLES, enumLabel } from '@vcms/shared';
-import { BedDouble, Check, CheckCircle2, Circle, Lock, Pill, Printer, Syringe, Trash2, XCircle } from 'lucide-react';
+import { Activity, AlertTriangle, BedDouble, CalendarDays, Check, ChevronLeft, ClipboardCheck, Clock, DoorOpen, Hash, HeartPulse, ListChecks, Lock, Paperclip, PenLine, Pill, Play, Printer, Scissors, ShieldAlert, ShieldCheck, Siren, Syringe, Trash2, UserCheck, Users, Utensils, XCircle, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
@@ -226,12 +226,16 @@ function SurgeryView() {
   const [product, setProduct] = useState<Product | null>(null);
   const [qty, setQty] = useState('1');
   const [addendum, setAddendum] = useState('');
+  const [tabChoice, setTabChoice] = useState<string | null>(null);
   const q = useQuery({ queryKey: ['surgery', id], queryFn: () => api.get<Surgery>(`/surgeries/${id}`), refetchInterval: 30_000 });
   const org = useQuery({ queryKey: ['organization'], queryFn: () => api.get<ClinicHeader>('/organization'), staleTime: 300_000 });
   const m = useSurgeryMutation(id);
   if (q.isLoading) return <LoadingRows />;
   if (q.error || !q.data) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
   const s = q.data;
+  // Opens on the part that matters now; the user's choice wins after that.
+  const tab = tabChoice ?? (s.status === 'IN_PROGRESS' ? 'anaesthesia' : s.status === 'RECOVERY' ? 'recovery' : 'preop');
+  const setTab = setTabChoice;
   const writable = can('surgery.write');
   const locked = !writable || s.status === 'COMPLETED' || s.status === 'CANCELLED';
   const stepIdx = STEPS.indexOf(s.status as (typeof STEPS)[number]);
@@ -239,114 +243,290 @@ function SurgeryView() {
   const startBlockers = [!s.consentObtained && 'owner consent', !s.asaGrade && 'ASA grade', unchecked(['SIGN_IN', 'TIME_OUT']).length && `${unchecked(['SIGN_IN', 'TIME_OUT']).length} checklist items`].filter(Boolean) as string[];
   const go = (action: string, reason?: string) => m.mutate({ path: '/status', body: { action, reason } });
 
+  const checklistDone = s.checklist.filter((c) => c.checked).length;
+  const beforeIncision = s.checklist.filter((c) => ['SIGN_IN', 'TIME_OUT'].includes(c.phase));
+  const beforeIncisionDone = beforeIncision.filter((c) => c.checked).length;
+  const preStart = ['SCHEDULED', 'PRE_OP'].includes(s.status);
+  const readiness = [
+    { key: 'consent', label: 'Owner consent', done: s.consentObtained, detail: s.consentObtained ? `Given by ${s.consentGivenBy}` : 'Not recorded yet', tab: 'preop' },
+    { key: 'asa', label: 'ASA grade', done: !!s.asaGrade, detail: s.asaGrade ? `ASA ${s.asaGrade}${s.asaEmergency ? 'E' : ''}` : 'Not graded yet', tab: 'preop' },
+    { key: 'checklist', label: 'Safety checklist', done: beforeIncisionDone === beforeIncision.length, detail: `${beforeIncisionDone} of ${beforeIncision.length} before incision`, tab: 'checklist' },
+  ];
+  const meta: { icon: LucideIcon; text: React.ReactNode }[] = [
+    { icon: CalendarDays, text: `${fmtDate(s.scheduledAt)} · ${branchTime(s.scheduledAt, tz)}` },
+    { icon: Clock, text: `${s.durationMinutes} min` },
+    { icon: DoorOpen, text: s.theatre?.name ?? 'No theatre' },
+    { icon: Hash, text: s.surgeryNo },
+    ...(s.admission ? [{ icon: BedDouble, text: <Link className="hover:text-primary hover:underline" href={`/hospital/admissions/${s.admission.id}`}>{s.admission.admissionNo}</Link> }] : []),
+  ];
+
   return (
     <>
       <div className="no-print">
-        <nav aria-label="Breadcrumb" className="mb-2 flex items-center gap-1 text-xs text-muted-foreground"><Link href="/surgery" className="hover:text-foreground hover:underline">Surgery</Link><span>/</span><span>{s.surgeryNo}</span></nav>
-        <Card className="mb-4">
-          <CardContent className="grid gap-4 pt-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-xl font-semibold">{s.procedure}</h1>
-                  <SurgeryStatusBadge status={s.status} />
-                  {s.priority !== 'ELECTIVE' && <Badge variant={s.priority === 'EMERGENCY' ? 'destructive' : 'warning'}>{enumLabel(s.priority)}</Badge>}
-                  {locked && s.status === 'COMPLETED' && <Badge variant="secondary" className="gap-1"><Lock className="h-3 w-3" /> Signed</Badge>}
-                </div>
-                <p className="text-sm">
-                  <Link href={`/patients/${s.patient.id}`} className="font-medium hover:underline">{s.patient.name}</Link>
-                  <span className="text-muted-foreground"> · {s.patient.species.name}{s.patient.breed ? ` · ${s.patient.breed.name}` : ''} · {fmtWeight(s.patient.latestWeightKg)} · {s.client.displayName}</span>
-                </p>
-                <p className="text-sm text-muted-foreground">{fmtDate(s.scheduledAt)} {branchTime(s.scheduledAt, tz)} · {s.durationMinutes} min · {s.theatre?.name ?? 'No theatre'} · {s.surgeryNo}{s.admission ? <> · <Link className="hover:underline" href={`/hospital/admissions/${s.admission.id}`}>{s.admission.admissionNo}</Link></> : ''}</p>
-                <div className="mt-2 flex flex-wrap gap-1">{s.patient.alerts.map((a) => <AlertChip key={a.id} alert={a} />)}</div>
+        <nav aria-label="Breadcrumb" className="mb-3 flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Link href="/surgery" className="inline-flex items-center gap-1 hover:text-foreground">
+            <ChevronLeft className="h-3.5 w-3.5" /> Surgery
+          </Link>
+          <span>/</span>
+          <span className="font-medium text-foreground">{s.surgeryNo}</span>
+        </nav>
+
+        <Card className="mb-5 overflow-hidden p-0">
+          <div className="flex flex-col gap-4 p-5 sm:p-6 lg:flex-row lg:items-start">
+            <span className="hidden h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary to-brand-2 text-white shadow-md sm:grid">
+              <Scissors className="h-5 w-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-xl font-semibold tracking-tight">{s.procedure}</h1>
+                <SurgeryStatusBadge status={s.status} />
+                {s.priority !== 'ELECTIVE' && <Badge variant={s.priority === 'EMERGENCY' ? 'destructive' : 'warning'}>{enumLabel(s.priority)}</Badge>}
+                {locked && s.status === 'COMPLETED' && (
+                  <Badge variant="secondary" className="gap-1">
+                    <Lock className="h-3 w-3" /> Signed
+                  </Badge>
+                )}
               </div>
-              <div className="flex flex-wrap gap-2 lg:justify-end">
-                {writable && s.status === 'SCHEDULED' && <Button size="sm" variant="outline" onClick={() => go('pre-op')}>Patient arrived (pre-op)</Button>}
-                {writable && ['SCHEDULED', 'PRE_OP'].includes(s.status) && (
-                  <Button size="sm" disabled={startBlockers.length > 0} title={startBlockers.length ? `Still needed: ${startBlockers.join(', ')}` : undefined} onClick={() => go('start')}>Start surgery</Button>
-                )}
-                {writable && s.status === 'IN_PROGRESS' && <Button size="sm" onClick={() => go('recovery')}>Move to recovery</Button>}
-                {writable && s.status === 'RECOVERY' && (
-                  <Button size="sm" onClick={async () => (await confirm({ title: 'Complete and sign this surgical record?', description: 'The report, checklist and anaesthesia record are locked. Later corrections are added as addenda. The procedure fee is added to the client’s unbilled charges.', confirmLabel: 'Complete & sign' })).confirmed && go('complete')}>Complete & sign</Button>
-                )}
-                {writable && ['SCHEDULED', 'PRE_OP'].includes(s.status) && (
-                  <Button size="sm" variant="ghost" onClick={async () => { const r = await confirm({ title: 'Cancel this surgery?', description: 'The theatre booking is released.', requireReason: true, destructive: true, confirmLabel: 'Cancel surgery', cancelLabel: 'Keep surgery' }); if (r.confirmed) go('cancel', r.reason); }}><XCircle /> Cancel surgery</Button>
-                )}
-                {can('hospital.write') && !s.admission && ['RECOVERY', 'COMPLETED', 'IN_PROGRESS'].includes(s.status) && <Button size="sm" variant="outline" onClick={() => setAdmitting(true)}><BedDouble /> Admit to hospital</Button>}
-                {s.status === 'COMPLETED' && <Button size="sm" variant="outline" onClick={() => window.print()}><Printer /> Print report</Button>}
+              <p className="mt-1 text-sm">
+                <Link href={`/patients/${s.patient.id}`} className="font-semibold text-primary hover:underline">
+                  {s.patient.name}
+                </Link>
+                <span className="text-muted-foreground">
+                  {' '}
+                  · {s.patient.species.name}
+                  {s.patient.breed ? ` · ${s.patient.breed.name}` : ''}
+                  {s.patient.latestWeightKg ? ` · ${fmtWeight(s.patient.latestWeightKg)}` : ''} · Owner {s.client.displayName}
+                </span>
+              </p>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {meta.map((x, i) => (
+                  <span key={i} className="inline-flex items-center gap-1.5 rounded-full bg-muted/70 px-2.5 py-1 text-xs text-muted-foreground">
+                    <x.icon className="h-3.5 w-3.5" /> {x.text}
+                  </span>
+                ))}
+                {s.patient.alerts.map((a) => (
+                  <AlertChip key={a.id} alert={a} />
+                ))}
               </div>
             </div>
+            <div className="flex flex-wrap items-center gap-2 lg:max-w-[50%] lg:justify-end">
+              {writable && preStart && (
+                <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive" onClick={async () => { const r = await confirm({ title: 'Cancel this surgery?', description: 'The theatre booking is released.', requireReason: true, destructive: true, confirmLabel: 'Cancel surgery', cancelLabel: 'Keep surgery' }); if (r.confirmed) go('cancel', r.reason); }}>
+                  <XCircle /> Cancel surgery
+                </Button>
+              )}
+              {can('hospital.write') && !s.admission && ['RECOVERY', 'COMPLETED', 'IN_PROGRESS'].includes(s.status) && <Button size="sm" variant="outline" onClick={() => setAdmitting(true)}><BedDouble /> Admit to hospital</Button>}
+              {s.status === 'COMPLETED' && <Button size="sm" variant="outline" onClick={() => window.print()}><Printer /> Print report</Button>}
+              {writable && s.status === 'SCHEDULED' && <Button size="sm" variant="outline" onClick={() => go('pre-op')}><UserCheck /> Patient arrived (pre-op)</Button>}
+              {writable && preStart && (
+                <Button size="sm" disabled={startBlockers.length > 0} title={startBlockers.length ? `Still needed: ${startBlockers.join(', ')}` : undefined} onClick={() => go('start')}>
+                  <Play /> Start surgery
+                </Button>
+              )}
+              {writable && s.status === 'IN_PROGRESS' && <Button size="sm" onClick={() => go('recovery')}><HeartPulse /> Move to recovery</Button>}
+              {writable && s.status === 'RECOVERY' && (
+                <Button size="sm" onClick={async () => (await confirm({ title: 'Complete and sign this surgical record?', description: 'The report, checklist and anaesthesia record are locked. Later corrections are added as addenda. The procedure fee is added to the client’s unbilled charges.', confirmLabel: 'Complete & sign' })).confirmed && go('complete')}>
+                  <PenLine /> Complete & sign
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Where the surgery is: a stepper. */}
+          <div className="border-t border-foreground/[0.06] bg-muted/20 px-5 py-4 sm:px-6">
             {s.status !== 'CANCELLED' ? (
-              <ol className="grid grid-cols-5 gap-1" aria-label="Progress">
-                {STEPS.map((st, i) => (
-                  <li key={st} className={cn('flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs', i < stepIdx ? 'bg-success/10 text-success' : i === stepIdx ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>
-                    {i < stepIdx ? <Check className="h-3.5 w-3.5" /> : <Circle className="h-3 w-3" />} {enumLabel(st, 'surgery')}
-                  </li>
-                ))}
+              <ol className="flex items-start" aria-label="Progress">
+                {STEPS.map((st, i) => {
+                  const done = i < stepIdx || s.status === 'COMPLETED';
+                  const current = i === stepIdx && s.status !== 'COMPLETED';
+                  return (
+                    <li key={st} className="relative flex flex-1 flex-col items-center gap-1.5 text-center" aria-current={current ? 'step' : undefined}>
+                      {i > 0 && <span aria-hidden className={cn('absolute right-1/2 top-3.5 h-0.5 w-full -translate-y-1/2', i <= stepIdx ? 'bg-primary' : 'bg-foreground/10')} />}
+                      <span
+                        className={cn(
+                          'relative z-10 grid h-7 w-7 place-items-center rounded-full text-xs font-semibold ring-4 ring-card',
+                          done ? 'bg-primary text-primary-foreground' : current ? 'bg-primary text-primary-foreground shadow-[0_0_0_4px_hsl(var(--primary)/0.2)]' : 'bg-muted text-muted-foreground',
+                        )}
+                      >
+                        {done ? <Check className="h-3.5 w-3.5" /> : i + 1}
+                      </span>
+                      <span className={cn('text-2xs sm:text-xs', current ? 'font-semibold text-foreground' : done ? 'text-foreground/80' : 'text-muted-foreground')}>{enumLabel(st, 'surgery')}</span>
+                    </li>
+                  );
+                })}
               </ol>
-            ) : <p className="rounded-md bg-muted px-3 py-2 text-sm">Cancelled: {s.cancelReason}</p>}
-            {startBlockers.length > 0 && ['SCHEDULED', 'PRE_OP'].includes(s.status) && <p className="text-xs text-warning">Before starting: {startBlockers.join(', ')}.</p>}
-          </CardContent>
+            ) : (
+              <p className="flex items-center gap-2 text-sm text-destructive">
+                <XCircle className="h-4 w-4" /> Cancelled: {s.cancelReason}
+              </p>
+            )}
+          </div>
+
+          {/* Before the first cut: what is still needed, one click away. */}
+          {preStart && (
+            <div className="grid gap-2 border-t border-foreground/[0.06] px-5 py-4 sm:grid-cols-3 sm:px-6">
+              {readiness.map((r) => (
+                <button
+                  key={r.key}
+                  type="button"
+                  onClick={() => setTab(r.tab)}
+                  className={cn('flex items-center gap-3 rounded-xl px-3 py-2.5 text-left ring-1 ring-inset transition-colors', r.done ? 'bg-success/[0.06] ring-success/20 hover:bg-success/10' : 'bg-warning/[0.07] ring-warning/25 hover:bg-warning/[0.12]')}
+                >
+                  <span className={cn('grid h-7 w-7 shrink-0 place-items-center rounded-full', r.done ? 'bg-success text-white' : 'bg-warning/20 text-warning')}>
+                    {r.done ? <Check className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">{r.label}</span>
+                    <span className="block truncate text-2xs text-muted-foreground">{r.detail}</span>
+                  </span>
+                </button>
+              ))}
+              <p className="text-2xs text-muted-foreground sm:col-span-3">{startBlockers.length ? 'All three are needed before the surgery can start.' : 'Ready — the surgery can start.'}</p>
+            </div>
+          )}
         </Card>
 
-        <Tabs defaultValue={['IN_PROGRESS'].includes(s.status) ? 'anaesthesia' : s.status === 'RECOVERY' ? 'recovery' : 'preop'}>
-          <TabsList>
-            <TabsTrigger value="preop">Pre-op & consent</TabsTrigger>
-            <TabsTrigger value="checklist">Safety checklist ({s.checklist.filter((c) => c.checked).length}/{s.checklist.length})</TabsTrigger>
-            <TabsTrigger value="anaesthesia">Anaesthesia</TabsTrigger>
-            <TabsTrigger value="procedure">Procedure</TabsTrigger>
-            <TabsTrigger value="recovery">Recovery & post-op</TabsTrigger>
-            <TabsTrigger value="team">Team</TabsTrigger>
-            <TabsTrigger value="documents">Documents</TabsTrigger>
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList className="mb-1">
+            <TabsTrigger value="preop"><ClipboardCheck className="h-4 w-4" /> Pre-op & consent{s.consentObtained && s.asaGrade && <span className="h-1.5 w-1.5 rounded-full bg-success" aria-label="done" />}</TabsTrigger>
+            <TabsTrigger value="checklist">
+              <ListChecks className="h-4 w-4" /> Safety checklist
+              <span className={cn('rounded-full px-1.5 text-2xs tabular', checklistDone === s.checklist.length ? 'bg-success/15 text-success' : 'bg-muted')}>{checklistDone}/{s.checklist.length}</span>
+            </TabsTrigger>
+            <TabsTrigger value="anaesthesia"><Activity className="h-4 w-4" /> Anaesthesia</TabsTrigger>
+            <TabsTrigger value="procedure"><Scissors className="h-4 w-4" /> Procedure</TabsTrigger>
+            <TabsTrigger value="recovery"><HeartPulse className="h-4 w-4" /> Recovery & post-op</TabsTrigger>
+            <TabsTrigger value="team"><Users className="h-4 w-4" /> Team{s.team.length > 0 && <span className="rounded-full bg-muted px-1.5 text-2xs tabular">{s.team.length}</span>}</TabsTrigger>
+            <TabsTrigger value="documents"><Paperclip className="h-4 w-4" /> Documents</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="preop" className="grid gap-4 lg:grid-cols-2">
+          <TabsContent value="preop" className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
             <Card>
               <CardHeader><CardTitle>Pre-operative assessment</CardTitle></CardHeader>
-              <CardContent className="grid gap-3">
-                <div className="flex flex-wrap items-end gap-3">
-                  <Field label="ASA grade" htmlFor="sx-asa" hint="ASA physical status classification">
-                    <NativeSelect id="sx-asa" className="w-28" disabled={locked} value={s.asaGrade ?? ''} onChange={(e) => m.mutate({ path: '', method: 'patch', body: { asaGrade: e.target.value || null } })}>
-                      <option value="">—</option>{ASA_GRADES.map((g) => <option key={g} value={g}>ASA {g}</option>)}
-                    </NativeSelect>
-                  </Field>
-                  <label className="flex items-center gap-2 pb-2 text-sm"><Checkbox disabled={locked} checked={s.asaEmergency} onCheckedChange={(v) => m.mutate({ path: '', method: 'patch', body: { asaEmergency: !!v } })} /> Emergency (E)</label>
-                  <label className="flex items-center gap-2 pb-2 text-sm"><Checkbox disabled={locked} checked={s.fastingConfirmed} onCheckedChange={(v) => m.mutate({ path: '', method: 'patch', body: { fastingConfirmed: !!v } })} /> Fasting confirmed</label>
+              <CardContent className="grid gap-5">
+                <div className="grid gap-2">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p id="sx-asa-label" className="text-sm font-medium">ASA grade</p>
+                    <p className="text-2xs text-muted-foreground">ASA physical status classification</p>
+                  </div>
+                  <div role="radiogroup" aria-labelledby="sx-asa-label" className="flex flex-wrap gap-1.5">
+                    {ASA_GRADES.map((g) => {
+                      const on = s.asaGrade === g;
+                      return (
+                        <button
+                          key={g}
+                          type="button"
+                          role="radio"
+                          aria-checked={on}
+                          aria-label={`ASA ${g}`}
+                          disabled={locked}
+                          onClick={() => m.mutate({ path: '', method: 'patch', body: { asaGrade: on ? null : g } })}
+                          className={cn('h-9 min-w-[3.25rem] rounded-xl px-3 text-sm font-semibold ring-1 ring-inset transition-colors disabled:cursor-not-allowed disabled:opacity-60', on ? 'bg-primary text-primary-foreground ring-primary' : 'bg-background ring-foreground/10 hover:ring-primary/40 hover:text-primary')}
+                        >
+                          {g}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {[
+                      { key: 'asaEmergency' as const, label: 'Emergency (E)', on: s.asaEmergency, icon: Siren },
+                      { key: 'fastingConfirmed' as const, label: 'Fasting confirmed', on: s.fastingConfirmed, icon: Utensils },
+                    ].map((t) => (
+                      <label key={t.key} className={cn('flex cursor-pointer items-center gap-2 rounded-full px-3 py-1.5 text-sm ring-1 ring-inset transition-colors', t.on ? 'bg-primary/10 text-primary ring-primary/30' : 'ring-foreground/10 hover:bg-muted/60', locked && 'cursor-not-allowed opacity-70')}>
+                        <Checkbox disabled={locked} checked={t.on} onCheckedChange={(v) => m.mutate({ path: '', method: 'patch', body: { [t.key]: !!v } })} />
+                        <t.icon className="h-3.5 w-3.5" /> {t.label}
+                      </label>
+                    ))}
+                  </div>
                 </div>
                 <TextFields s={s} locked={locked} fields={[{ key: 'preOpAssessment', label: 'Examination & risk assessment', rows: 5, hint: 'Clinical exam, relevant history, bloodwork reviewed, risks discussed.' }]} />
               </CardContent>
             </Card>
             <Card>
               <CardHeader><CardTitle>Owner consent</CardTitle></CardHeader>
-              <CardContent className="grid gap-3 text-sm">
+              <CardContent className="grid gap-4 text-sm">
                 {s.consentObtained ? (
-                  <p className="flex items-start gap-2 text-success"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /><span>Consent given by <b>{s.consentGivenBy}</b> · recorded {fmtDateTime(s.consentAt)} by {s.consentRecordedBy}</span></p>
-                ) : <p className="text-warning">Consent has not been recorded. Surgery cannot start without it.</p>}
-                {s.estimateMinor != null && <p>Estimate given: <b>{fmtMoney(s.estimateMinor, currency)}</b></p>}
-                {s.service && <p>Procedure fee: {s.service.name} ({fmtMoney(s.service.priceMinor, currency)}) — charged on completion.</p>}
-                {!locked && <div><Button size="sm" variant={s.consentObtained ? 'outline' : 'default'} onClick={() => setConsenting(true)}>{s.consentObtained ? 'Re-record consent' : 'Record consent'}</Button></div>}
+                  <div className="flex items-start gap-3 rounded-xl bg-success/[0.07] p-3.5 ring-1 ring-inset ring-success/20">
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-success text-white"><ShieldCheck className="h-4 w-4" /></span>
+                    <div className="min-w-0">
+                      <p className="font-medium">Consent given by {s.consentGivenBy}</p>
+                      <p className="text-xs text-muted-foreground">Recorded {fmtDateTime(s.consentAt)} by {s.consentRecordedBy}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-3 rounded-xl bg-warning/[0.08] p-3.5 ring-1 ring-inset ring-warning/25">
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-warning/20 text-warning"><ShieldAlert className="h-4 w-4" /></span>
+                    <div className="min-w-0">
+                      <p className="font-medium">Consent has not been recorded</p>
+                      <p className="text-xs text-muted-foreground">Surgery cannot start without it.</p>
+                    </div>
+                  </div>
+                )}
+                {(s.estimateMinor != null || s.service) && (
+                  <dl className="divide-y divide-foreground/[0.06] rounded-xl ring-1 ring-inset ring-foreground/[0.07]">
+                    {s.estimateMinor != null && (
+                      <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+                        <dt className="text-muted-foreground">Estimate given</dt>
+                        <dd className="font-semibold tabular">{fmtMoney(s.estimateMinor, currency)}</dd>
+                      </div>
+                    )}
+                    {s.service && (
+                      <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+                        <dt className="min-w-0 text-muted-foreground">Procedure fee <span className="block text-2xs">{s.service.name} · charged on completion</span></dt>
+                        <dd className="font-semibold tabular">{fmtMoney(s.service.priceMinor, currency)}</dd>
+                      </div>
+                    )}
+                  </dl>
+                )}
+                {!locked && (
+                  <div>
+                    <Button size="sm" variant={s.consentObtained ? 'outline' : 'default'} onClick={() => setConsenting(true)}>
+                      <PenLine /> {s.consentObtained ? 'Re-record consent' : 'Record consent'}
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="checklist" className="grid gap-4 lg:grid-cols-3">
-            {PHASES.map((ph) => (
-              <Card key={ph.key}>
-                <CardHeader><CardTitle>{ph.title}</CardTitle></CardHeader>
-                <CardContent>
-                  <ul className="grid gap-2">
-                    {s.checklist.filter((c) => c.phase === ph.key).map((c) => (
-                      <li key={c.key}>
-                        <label className="flex items-start gap-2 text-sm">
-                          <Checkbox className="mt-0.5" disabled={locked} checked={c.checked} onCheckedChange={(v) => m.mutate({ path: '/checklist', body: { key: c.key, checked: !!v } })} />
-                          <span>{c.label}{c.checked && c.by && <span className="block text-2xs text-muted-foreground">{c.by} · {c.at ? branchTime(c.at, tz) : ''}</span>}</span>
-                        </label>
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
-            ))}
+            {PHASES.map((ph, pi) => {
+              const items = s.checklist.filter((c) => c.phase === ph.key);
+              const done = items.filter((c) => c.checked).length;
+              const complete = items.length > 0 && done === items.length;
+              return (
+                <Card key={ph.key} className="flex flex-col">
+                  <CardHeader>
+                    <div className="grid w-full gap-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <span className={cn('grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-semibold', complete ? 'bg-success text-white' : 'bg-primary/10 text-primary')}>{complete ? <Check className="h-3.5 w-3.5" /> : pi + 1}</span>
+                      <CardTitle className="min-w-0 flex-1 text-sm">{ph.title}</CardTitle>
+                      <span className={cn('text-xs tabular', complete ? 'font-semibold text-success' : 'text-muted-foreground')}>{done}/{items.length}</span>
+                    </div>
+                    <div className="h-1 overflow-hidden rounded-full bg-muted" aria-hidden>
+                      <div className={cn('h-full rounded-full transition-[width]', complete ? 'bg-success' : 'bg-primary')} style={{ width: `${items.length ? (done / items.length) * 100 : 0}%` }} />
+                    </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <ul className="grid gap-1">
+                      {items.map((c) => (
+                        <li key={c.key}>
+                          <label className={cn('flex cursor-pointer items-start gap-2.5 rounded-lg px-2 py-2 text-sm transition-colors hover:bg-muted/50', c.checked && 'text-muted-foreground', locked && 'cursor-default hover:bg-transparent')}>
+                            <Checkbox className="mt-0.5" disabled={locked} checked={c.checked} onCheckedChange={(v) => m.mutate({ path: '/checklist', body: { key: c.key, checked: !!v } })} />
+                            <span>
+                              {c.label}
+                              {c.checked && c.by && <span className="block text-2xs text-muted-foreground">✓ {c.by} · {c.at ? branchTime(c.at, tz) : ''}</span>}
+                            </span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+              );
+            })}
             <p className="text-xs text-muted-foreground lg:col-span-3">Adapted from the WHO Surgical Safety Checklist. Your clinic can edit the items in Settings → Surgical checklist.</p>
           </TabsContent>
 
